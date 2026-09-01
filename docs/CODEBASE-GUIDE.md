@@ -63,7 +63,7 @@ Verification内部の最初のtracerは、合成source re-derivationとdetermini
 
 | Module | Production Status | 現在存在する土台 | 次に読む文書 |
 | --- | --- | --- | --- |
-| Campaign Control | partial | prepare、read、inspect、deterministic replay | [Initial implementation seams](design/initial-implementation-seams.md) |
+| Campaign Control | partial | prepare、read、inspect、deterministic replay。closed-loop `run(plan)`はproposed | [Campaign execution seam](design/campaign-execution-seam.md) |
 | Source Understanding | partial | PHP Program Index、静的initial/source revision、asset inventory、根拠状態、coverage gap | [Source mapping seam](design/source-mapping-seam.md) |
 | Exploration | partial | bootstrap Map gate、Focus Area、有限Work Wave、Lane/Strategy/model-family割当、Source-bound Hypothesis取込 | [Exploration seam](design/exploration-seam.md) |
 | Verification | partial | `verify(plan)`、Stored XSS Finding/Disproved、gVisor/sibling Blocked、typed Witness/Control、durable outcome replay | [Verification seam](design/verification-seam.md) |
@@ -74,7 +74,7 @@ Verification内部の最初のtracerは、合成source re-derivationとdetermini
 
 Milestoneの順序と完了条件は[Roadmap](design/roadmap.md)、実装Issueの依存順は[Issue #8](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/8)を正本とする。
 
-現在の最優先delivery contractは[First closed vertical slice goal](design/first-closed-slice-goal.md)である。探索の水平拡張より先に、既存のinner sliceをacceptedな[Verification seam](design/verification-seam.md)、Research Ledger replay、Iteration Decisionへ接続する。
+現在の最優先delivery contractは[First closed vertical slice goal](design/first-closed-slice-goal.md)である。探索の水平拡張より先に、既存のinner sliceをacceptedな[Verification seam](design/verification-seam.md)、Research Ledger replay、Iteration Decisionへ接続する。構成入口はproposedな[Campaign execution seam](design/campaign-execution-seam.md)で固定し、user acceptance後にproduction codeへ進む。
 
 ## 情報の正本
 
