@@ -13,3 +13,4 @@
 white-box review、static analysis、検証手法の個別判断では、OWASP、NIST、OASIS、公式tool documentation等の一次資料を補助根拠として使う。これらは上記3件と同列のagentic harness設計参照資料ではなく、外部資料が直接支持する範囲とharness固有の推論を分けて記録する。
 
 - [White-box Surface Mapping security reference](research/white-box-surface-mapping-security-reference.md)
+- [Harness source-mapping implementation patterns](research/harness-source-mapping-patterns.md)

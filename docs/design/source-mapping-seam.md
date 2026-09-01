@@ -118,6 +118,8 @@ PHP/WordPress factを地図の骨格にするが、Evidence Routeが非PHP asset
 
 Mapperの初期contextはPHP Program Indexの関連fact、stable orderingのgraph近傍、根拠source slices、選択したKnowledge Capsule facts、明示したcoverage gapsだけから決定的にrenderする。全repositoryを一つのpromptへ投入せず、truncateした事実を成功扱いしない。
 
+graph近傍はOpenAntのPHP parserと同様にcaller/calleeの双方向をdepth-boundedなAnalysis Unitへ束ねられる。ただしUnitはmodelへ渡すcontext containerであって、完全なcall graphまたは到達可能性の証明ではない。構文上のentryが一件も取れない時やedge欠落が疑われる時は対象を除外せず、coverage gapを残してfail openする。Mapperが追加entry候補を示しても既存のobserved entryをdemoteせず、source anchor付き`inferred`候補として次revisionへ追加する。実装比較と採否は[Harness source-mapping implementation patterns](../research/harness-source-mapping-patterns.md)に記録する。
+
 Mapperが追加sourceを必要とする場合は、anchor、理由、用途、期待する決定を持つContext Requestを出す。同一Targetのread-only source sliceでも要求と応答を記録し、physical host pathや暗黙のagent file historyに依存しない。追加sourceは次のSurface Map revisionへだけ入り、進行中revisionを変えない。
 
 WordPress Coreまたはframework semanticsはversioned Knowledge Capsuleから選び、そこから導くrelationを`inferred: knowledge`とする。Target固有sourceから同じrelationを直接確認できた場合も、observed claimを別に追加して由来を失わない。
