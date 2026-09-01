@@ -71,13 +71,14 @@ interface LedgerProjection {
 function verificationRef(
   verificationId: string,
   recordDigest: string,
+  outcome: VerificationRecordRef["outcome"],
 ): VerificationRecordRef {
   return {
     kind: "verification-record",
     schemaVersion: 1,
     verificationId,
     digest: recordDigest,
-    outcome: "finding",
+    outcome,
   };
 }
 
@@ -271,7 +272,11 @@ class SqliteResearchRecord implements ResearchRecord {
       return {
         ledgerHead,
         occurredAt: completedAt,
-        ref: verificationRef(input.verificationId, recordDigest),
+        ref: verificationRef(
+          input.verificationId,
+          recordDigest,
+          record.outcome.kind,
+        ),
         value: record,
       };
     });
@@ -430,6 +435,7 @@ class SqliteResearchRecord implements ResearchRecord {
             ref: verificationRef(
               payload.record.verificationId,
               payload.recordDigest,
+              payload.record.outcome.kind,
             ),
             value: payload.record,
           },

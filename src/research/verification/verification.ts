@@ -70,7 +70,7 @@ async function readObservation(
   return observation;
 }
 
-function supportsFinding(
+function isValidStoredXssPair(
   plan: VerificationPlan,
   witnessPlan: ExperimentPlan,
   controlPlan: ExperimentPlan,
@@ -93,6 +93,7 @@ function supportsFinding(
     witness.isolation.runtime === "gvisor" &&
     control.isolation.runtime === "gvisor" &&
     witness.isolation.runtimeDigest === control.isolation.runtimeDigest &&
+    witness.isolation.runtimeDigest === plan.labBaseline.runtimeProfileDigest &&
     witness.isolation.siblingGroupId === witnessPlan.siblingGroupId &&
     control.isolation.siblingGroupId === witnessPlan.siblingGroupId &&
     witness.isolation.labId !== control.isolation.labId &&
@@ -109,10 +110,36 @@ function supportsFinding(
     witness.result.kind === "stored-xss-browser" &&
     control.result.kind === "stored-xss-browser" &&
     witness.result.attackerRequestAccepted &&
+    control.result.attackerRequestAccepted
+  );
+}
+
+function supportsFinding(
+  plan: VerificationPlan,
+  witnessPlan: ExperimentPlan,
+  controlPlan: ExperimentPlan,
+  witness: ExperimentObservation,
+  control: ExperimentObservation,
+): boolean {
+  return (
+    isValidStoredXssPair(plan, witnessPlan, controlPlan, witness, control) &&
     witness.result.persistentStateObserved &&
     witness.result.browserCanaryExecuted &&
-    control.result.attackerRequestAccepted &&
     !control.result.persistentStateObserved &&
+    !control.result.browserCanaryExecuted
+  );
+}
+
+function supportsDisproved(
+  plan: VerificationPlan,
+  witnessPlan: ExperimentPlan,
+  controlPlan: ExperimentPlan,
+  witness: ExperimentObservation,
+  control: ExperimentObservation,
+): boolean {
+  return (
+    isValidStoredXssPair(plan, witnessPlan, controlPlan, witness, control) &&
+    !witness.result.browserCanaryExecuted &&
     !control.result.browserCanaryExecuted
   );
 }
@@ -171,7 +198,25 @@ class IndependentVerification implements Verification {
       controlRef,
     );
 
-    if (!supportsFinding(plan, witnessPlan, controlPlan, witness, control)) {
+    const outcome = supportsFinding(
+      plan,
+      witnessPlan,
+      controlPlan,
+      witness,
+      control,
+    )
+      ? {
+          kind: "finding" as const,
+          causalIdentity: plan.hypothesis.causalIdentity,
+        }
+      : supportsDisproved(plan, witnessPlan, controlPlan, witness, control)
+        ? {
+            kind: "disproved" as const,
+            reason: "security-property-preserved" as const,
+            causalIdentity: plan.hypothesis.causalIdentity,
+          }
+        : undefined;
+    if (outcome === undefined) {
       throw new Error("Verification evidence does not satisfy Finding gates");
     }
 
@@ -190,10 +235,7 @@ class IndependentVerification implements Verification {
       },
       witness: witnessRef,
       control: controlRef,
-      outcome: {
-        kind: "finding",
-        causalIdentity: plan.hypothesis.causalIdentity,
-      },
+      outcome,
     });
     return completed.ref;
   }

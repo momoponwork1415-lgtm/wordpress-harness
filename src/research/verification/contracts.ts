@@ -184,6 +184,17 @@ const findingOutcomeSchema = z.strictObject({
   causalIdentity: sourceBoundHypothesisSchema.shape.causalIdentity,
 });
 
+const disprovedOutcomeSchema = z.strictObject({
+  kind: z.literal("disproved"),
+  reason: z.literal("security-property-preserved"),
+  causalIdentity: sourceBoundHypothesisSchema.shape.causalIdentity,
+});
+
+const verificationOutcomeSchema = z.discriminatedUnion("kind", [
+  findingOutcomeSchema,
+  disprovedOutcomeSchema,
+]);
+
 export const verificationCompletionInputSchema = z.strictObject({
   kind: z.literal("verification-completion"),
   schemaVersion: z.literal(1),
@@ -195,7 +206,7 @@ export const verificationCompletionInputSchema = z.strictObject({
   sourceRederivation: sourceRederivationRefSchema,
   witness: experimentObservationRefSchema,
   control: experimentObservationRefSchema,
-  outcome: findingOutcomeSchema,
+  outcome: verificationOutcomeSchema,
 });
 
 export const verificationRecordSchema = z.strictObject({
@@ -209,7 +220,7 @@ export const verificationRecordSchema = z.strictObject({
   sourceRederivation: sourceRederivationRefSchema,
   witness: experimentObservationRefSchema,
   control: experimentObservationRefSchema,
-  outcome: findingOutcomeSchema,
+  outcome: verificationOutcomeSchema,
   completedAt: z.string().datetime(),
 });
 
@@ -218,7 +229,7 @@ export const verificationRecordRefSchema = z.strictObject({
   schemaVersion: z.literal(1),
   verificationId: identifierSchema,
   digest: digestSchema,
-  outcome: z.literal("finding"),
+  outcome: z.enum(["finding", "disproved"]),
 });
 
 export type VerificationPlan = z.infer<typeof verificationPlanSchema>;
