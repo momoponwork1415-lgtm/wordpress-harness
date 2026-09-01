@@ -183,6 +183,13 @@ function hasSiblingBindingMismatch(
   );
 }
 
+function reportsNonHermeticExecution(
+  witness: ExperimentObservation,
+  control: ExperimentObservation,
+): boolean {
+  return witness.isolation.fallbackUsed || control.isolation.fallbackUsed;
+}
+
 class IndependentVerification implements Verification {
   readonly #options: OpenVerificationOptions;
 
@@ -321,6 +328,13 @@ class IndependentVerification implements Verification {
           }
         : undefined;
     if (outcome === undefined) {
+      if (reportsNonHermeticExecution(witness, control)) {
+        return this.#recordBlocked(plan, start.planDigest, "non-hermetic", {
+          sourceRederivationDigest: rederivationDigest,
+          witness: witnessRef,
+          control: controlRef,
+        });
+      }
       if (
         hasSiblingBindingMismatch(witnessPlan, controlPlan, witness, control)
       ) {

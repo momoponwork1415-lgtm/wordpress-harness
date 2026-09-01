@@ -34,7 +34,8 @@ type LabScenario =
   | "artifact-mismatch"
   | "verifier-unavailable"
   | "verifier-budget-exhausted"
-  | "evidence-incomplete";
+  | "evidence-incomplete"
+  | "fallback-observed";
 
 interface VerificationIdentity {
   readonly campaignId: string;
@@ -222,7 +223,7 @@ function storedXssLabControl(
           siblingGroupId: experiment.siblingGroupId,
           labId: isWitness ? "lab-witness-a" : "lab-control-a",
           fresh: true,
-          fallbackUsed: false,
+          fallbackUsed: scenario === "fallback-observed",
         },
         causalFactor: {
           id: experiment.mechanism.causalFactor,
@@ -551,6 +552,36 @@ describe("Verification.verify", () => {
           outcome: {
             kind: "blocked",
             reason: "budget-exhausted",
+            causalIdentity: plan.hypothesis.causalIdentity,
+          },
+        },
+      },
+    });
+  });
+
+  it("durably records non-hermetic Blocked when a Lab reports fallback use", async () => {
+    const plan = verificationPlan({
+      campaignId: "campaign-fallback-observed",
+      verificationId: "verification-fallback-observed",
+    });
+    await expect(
+      verifyAndReplay(plan, "fallback-observed"),
+    ).resolves.toMatchObject({
+      ref: {
+        kind: "verification-record",
+        schemaVersion: 1,
+        verificationId: plan.verificationId,
+        outcome: "blocked",
+      },
+      replayed: {
+        value: {
+          kind: "verification-record",
+          schemaVersion: 1,
+          verificationId: plan.verificationId,
+          campaignId: plan.campaignId,
+          outcome: {
+            kind: "blocked",
+            reason: "non-hermetic",
             causalIdentity: plan.hypothesis.causalIdentity,
           },
         },
