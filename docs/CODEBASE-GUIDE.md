@@ -23,6 +23,8 @@ Status: living map, 2026-09-01
 3. [アーキテクチャ概要](design/architecture-overview.md)の3枚の図で全体、探索loop、信頼領域を確認する。
 4. 作業中のGitHub Issueから、変更するModuleのSeam文書とTestを一つずつ開く。
 
+Source Mappingを変更する場合は、先に[Surface Map visual guide](visuals/surface-map.html)で「小さなInterface」「根拠状態」「AI Mapperとの責任分担」を確認する。
+
 通常の実装変更で[Module architecture](design/module-architecture.md)全体や全ADRを通読する必要はない。新しいModule ownershipを決める場合だけ該当節へ進み、意外な判断の理由が必要な場合だけSeamから直接linkされたADRを読む。
 
 ## 現在の実装

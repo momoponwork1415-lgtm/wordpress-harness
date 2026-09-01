@@ -123,6 +123,7 @@ sequenceDiagram
 ## 5. 詳細を読むとき
 
 - 現在どこまで動くか、どのsourceとTestか: [Codebase Guide](../CODEBASE-GUIDE.md)
+- Surface MapのInterface、根拠状態、AIとの責任分担: [Surface Map visual guide](../visuals/surface-map.html)
 - 全体のcontextと信頼領域: [Architecture overview](architecture-overview.md)
 - Module ownershipと依存方向: [Module architecture](module-architecture.md)
 - 探索の分割と合流: [Exploration seam](exploration-seam.md)
