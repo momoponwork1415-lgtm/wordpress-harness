@@ -190,46 +190,107 @@ const disprovedOutcomeSchema = z.strictObject({
   causalIdentity: sourceBoundHypothesisSchema.shape.causalIdentity,
 });
 
+export const verificationBlockReasonSchema = z.enum([
+  "unsupported-experiment",
+  "verifier-unavailable",
+  "budget-exhausted",
+  "gvisor-unavailable",
+  "baseline-unavailable",
+  "sibling-isolation-failed",
+  "experiment-failed",
+  "non-hermetic",
+  "evidence-incomplete",
+]);
+
+const blockedOutcomeSchema = z.strictObject({
+  kind: z.literal("blocked"),
+  reason: verificationBlockReasonSchema,
+  causalIdentity: sourceBoundHypothesisSchema.shape.causalIdentity,
+});
+
 const verificationOutcomeSchema = z.discriminatedUnion("kind", [
   findingOutcomeSchema,
   disprovedOutcomeSchema,
+  blockedOutcomeSchema,
 ]);
 
-export const verificationCompletionInputSchema = z.strictObject({
-  kind: z.literal("verification-completion"),
-  schemaVersion: z.literal(1),
-  verificationId: identifierSchema,
-  campaignId: identifierSchema,
-  planDigest: digestSchema,
-  targetSnapshotDigest: digestSchema,
-  hypothesisDigest: digestSchema,
+const conclusiveEvidenceSchema = z.strictObject({
+  kind: z.literal("experiment-pair"),
   sourceRederivation: sourceRederivationRefSchema,
   witness: experimentObservationRefSchema,
   control: experimentObservationRefSchema,
-  outcome: verificationOutcomeSchema,
 });
 
-export const verificationRecordSchema = z.strictObject({
-  kind: z.literal("verification-record"),
-  schemaVersion: z.literal(1),
+const partialEvidenceSchema = z.strictObject({
+  kind: z.literal("partial"),
+  sourceRederivation: sourceRederivationRefSchema.optional(),
+  witness: experimentObservationRefSchema.optional(),
+});
+
+const verificationIdentityFields = {
   verificationId: identifierSchema,
   campaignId: identifierSchema,
   planDigest: digestSchema,
   targetSnapshotDigest: digestSchema,
   hypothesisDigest: digestSchema,
-  sourceRederivation: sourceRederivationRefSchema,
-  witness: experimentObservationRefSchema,
-  control: experimentObservationRefSchema,
-  outcome: verificationOutcomeSchema,
+};
+
+const conclusiveCompletionInputSchema = z.strictObject({
+  kind: z.literal("verification-completion"),
+  schemaVersion: z.literal(1),
+  ...verificationIdentityFields,
+  evidence: conclusiveEvidenceSchema,
+  outcome: z.discriminatedUnion("kind", [
+    findingOutcomeSchema,
+    disprovedOutcomeSchema,
+  ]),
+});
+
+const blockedCompletionInputSchema = z.strictObject({
+  kind: z.literal("verification-completion"),
+  schemaVersion: z.literal(1),
+  ...verificationIdentityFields,
+  evidence: partialEvidenceSchema,
+  outcome: blockedOutcomeSchema,
+});
+
+export const verificationCompletionInputSchema = z.union([
+  conclusiveCompletionInputSchema,
+  blockedCompletionInputSchema,
+]);
+
+const conclusiveVerificationRecordSchema = z.strictObject({
+  kind: z.literal("verification-record"),
+  schemaVersion: z.literal(1),
+  ...verificationIdentityFields,
+  evidence: conclusiveEvidenceSchema,
+  outcome: z.discriminatedUnion("kind", [
+    findingOutcomeSchema,
+    disprovedOutcomeSchema,
+  ]),
   completedAt: z.string().datetime(),
 });
+
+const blockedVerificationRecordSchema = z.strictObject({
+  kind: z.literal("verification-record"),
+  schemaVersion: z.literal(1),
+  ...verificationIdentityFields,
+  evidence: partialEvidenceSchema,
+  outcome: blockedOutcomeSchema,
+  completedAt: z.string().datetime(),
+});
+
+export const verificationRecordSchema = z.union([
+  conclusiveVerificationRecordSchema,
+  blockedVerificationRecordSchema,
+]);
 
 export const verificationRecordRefSchema = z.strictObject({
   kind: z.literal("verification-record"),
   schemaVersion: z.literal(1),
   verificationId: identifierSchema,
   digest: digestSchema,
-  outcome: z.enum(["finding", "disproved"]),
+  outcome: z.enum(["finding", "disproved", "blocked"]),
 });
 
 export type VerificationPlan = z.infer<typeof verificationPlanSchema>;
@@ -244,6 +305,9 @@ export type VerificationCompletionInput = z.infer<
 >;
 export type VerificationRecord = z.infer<typeof verificationRecordSchema>;
 export type VerificationRecordRef = z.infer<typeof verificationRecordRefSchema>;
+export type VerificationBlockReason = z.infer<
+  typeof verificationBlockReasonSchema
+>;
 
 export interface VerificationRecordView {
   readonly ledgerHead: number;
@@ -282,5 +346,15 @@ export class VerificationConflictError extends Error {
     this.name = "VerificationConflictError";
     this.campaignId = campaignId;
     this.verificationId = verificationId;
+  }
+}
+
+export class LabControlBlockedError extends Error {
+  readonly reason: VerificationBlockReason;
+
+  constructor(reason: VerificationBlockReason) {
+    super(`Lab Control blocked Verification: ${reason}`);
+    this.name = "LabControlBlockedError";
+    this.reason = reason;
   }
 }

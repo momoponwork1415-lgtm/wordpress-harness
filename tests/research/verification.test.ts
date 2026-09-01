@@ -12,6 +12,7 @@ import {
 } from "../../src/research/research-record/index.js";
 import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
 import {
+  LabControlBlockedError,
   openVerification,
   type ExperimentObservation,
   type IndependentVerifier,
@@ -182,10 +183,13 @@ function supportedStoredXssVerifier(): IndependentVerifier {
 
 function storedXssLabControl(
   artifactStore: JsonArtifactStore,
-  securityProperty: "broken" | "preserved",
+  securityProperty: "broken" | "preserved" | "gvisor-unavailable",
 ): LabControl {
   return {
     execute: async (experiment) => {
+      if (securityProperty === "gvisor-unavailable") {
+        throw new LabControlBlockedError("gvisor-unavailable");
+      }
       const isWitness = experiment.role === "witness";
       const observation: ExperimentObservation = {
         kind: "experiment-observation",
@@ -231,7 +235,7 @@ function storedXssLabControl(
 async function openVerificationFixture(
   directory: string,
   plan: VerificationPlan,
-  securityProperty: "broken" | "preserved",
+  securityProperty: "broken" | "preserved" | "gvisor-unavailable",
 ) {
   const databasePath = join(directory, "research.sqlite");
   const artifactStore = openFileJsonArtifactStore(
@@ -338,6 +342,63 @@ describe("Verification.verify", () => {
               outcome: {
                 kind: "disproved",
                 reason: "security-property-preserved",
+                causalIdentity: plan.hypothesis.causalIdentity,
+              },
+            },
+          },
+        });
+      } finally {
+        reopened.close();
+      }
+    } finally {
+      try {
+        record.close();
+      } catch {
+        // The successful path closes before reopening the same database.
+      }
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("durably records Blocked when gVisor is unavailable", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "verification-blocked-"));
+    const plan = verificationPlan({
+      campaignId: "campaign-verification-blocked",
+      verificationId: "verification-stored-xss-blocked",
+    });
+    const { databasePath, record, verification } =
+      await openVerificationFixture(directory, plan, "gvisor-unavailable");
+
+    try {
+      const ref = await verification.verify(plan);
+      record.close();
+
+      const reopened = openSqliteResearchRecord({ databasePath });
+      try {
+        const replayed = await reopened.readVerification(
+          plan.campaignId,
+          plan.verificationId,
+        );
+
+        expect({ ref, replayed }).toMatchObject({
+          ref: {
+            kind: "verification-record",
+            schemaVersion: 1,
+            verificationId: plan.verificationId,
+            outcome: "blocked",
+          },
+          replayed: {
+            value: {
+              kind: "verification-record",
+              schemaVersion: 1,
+              verificationId: plan.verificationId,
+              campaignId: plan.campaignId,
+              evidence: {
+                kind: "partial",
+              },
+              outcome: {
+                kind: "blocked",
+                reason: "gvisor-unavailable",
                 causalIdentity: plan.hypothesis.causalIdentity,
               },
             },

@@ -246,17 +246,8 @@ class SqliteResearchRecord implements ResearchRecord {
 
       const completedAt = this.#clock().toISOString();
       const record = verificationRecordSchema.parse({
+        ...input,
         kind: "verification-record",
-        schemaVersion: 1,
-        verificationId: input.verificationId,
-        campaignId: input.campaignId,
-        planDigest: input.planDigest,
-        targetSnapshotDigest: input.targetSnapshotDigest,
-        hypothesisDigest: input.hypothesisDigest,
-        sourceRederivation: input.sourceRederivation,
-        witness: input.witness,
-        control: input.control,
-        outcome: input.outcome,
         completedAt,
       });
       const recordDigest = sha256Digest(record);

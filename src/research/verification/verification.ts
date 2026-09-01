@@ -3,6 +3,7 @@ import {
   sha256Digest,
 } from "../research-record/canonical-json.js";
 import {
+  LabControlBlockedError,
   experimentObservationRefSchema,
   experimentObservationSchema,
   experimentPlanSchema,
@@ -171,6 +172,11 @@ class IndependentVerification implements Verification {
 
     const rederivationDigest =
       await this.#options.artifactStore.putJson(rederivation);
+    const sourceRederivationRef = {
+      kind: "source-rederivation" as const,
+      schemaVersion: 1 as const,
+      digest: rederivationDigest,
+    };
     const witnessPlan = experimentPlan(
       plan,
       start.planDigest,
@@ -183,12 +189,37 @@ class IndependentVerification implements Verification {
       rederivation,
       "control",
     );
-    const witnessRef = experimentObservationRefSchema.parse(
-      await this.#options.labControl.execute(witnessPlan),
-    );
-    const controlRef = experimentObservationRefSchema.parse(
-      await this.#options.labControl.execute(controlPlan),
-    );
+    let witnessRef: ExperimentObservationRef;
+    let controlRef: ExperimentObservationRef;
+    try {
+      witnessRef = experimentObservationRefSchema.parse(
+        await this.#options.labControl.execute(witnessPlan),
+      );
+      controlRef = experimentObservationRefSchema.parse(
+        await this.#options.labControl.execute(controlPlan),
+      );
+    } catch (error) {
+      if (!(error instanceof LabControlBlockedError)) throw error;
+      const blocked = await this.#options.record.recordVerificationCompletion({
+        kind: "verification-completion",
+        schemaVersion: 1,
+        verificationId: plan.verificationId,
+        campaignId: plan.campaignId,
+        planDigest: start.planDigest,
+        targetSnapshotDigest: plan.targetSnapshot.digest,
+        hypothesisDigest: plan.hypothesisDigest,
+        evidence: {
+          kind: "partial",
+          sourceRederivation: sourceRederivationRef,
+        },
+        outcome: {
+          kind: "blocked",
+          reason: error.reason,
+          causalIdentity: plan.hypothesis.causalIdentity,
+        },
+      });
+      return blocked.ref;
+    }
     const witness = await readObservation(
       this.#options.artifactStore,
       witnessRef,
@@ -228,13 +259,12 @@ class IndependentVerification implements Verification {
       planDigest: start.planDigest,
       targetSnapshotDigest: plan.targetSnapshot.digest,
       hypothesisDigest: plan.hypothesisDigest,
-      sourceRederivation: {
-        kind: "source-rederivation",
-        schemaVersion: 1,
-        digest: rederivationDigest,
+      evidence: {
+        kind: "experiment-pair",
+        sourceRederivation: sourceRederivationRef,
+        witness: witnessRef,
+        control: controlRef,
       },
-      witness: witnessRef,
-      control: controlRef,
       outcome,
     });
     return completed.ref;
