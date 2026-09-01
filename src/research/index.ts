@@ -19,3 +19,12 @@ export {
   UnsupportedLedgerSchemaError,
 } from "./contracts.js";
 export { openSqliteResearch as openResearch } from "./sqlite-research.js";
+export {
+  openPhpSourceAnalysis,
+  phpProgramIndexSchema,
+  type AnalyzePhpSourceInput,
+  type OpenPhpSourceAnalysisOptions,
+  type PhpProgramIndex,
+  type PhpProgramIndexRef,
+  type PhpSourceAnalysis,
+} from "./php-program-index.js";

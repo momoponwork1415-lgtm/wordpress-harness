@@ -23,16 +23,21 @@ WordPressプラグインのsource reviewを、LLMの探索力と独立した実�
 
 ## Current implementation
 
-Milestone 1の最初の増分として、versioned `campaign.prepared` event、single-writer SQLite Research Ledger、deterministic replay、crash-safe prepare retry、read-only inspect、薄いCLI adapterを実装しています。現在のinterfaceとtest対象は[Initial implementation seams](docs/design/initial-implementation-seams.md)に記録しています。
+Milestone 1では、versioned `campaign.prepared` event、single-writer SQLite Research Ledger、deterministic replay、crash-safe prepare retry、read-only inspect、薄いCLI adapterに加え、target PHPを実行しないcontent-addressed `PHP Program Index`を実装しています。Program Indexはsymbol、call、WordPress registration、guard、source、storage、sinkという構文上の事実だけを返し、脆弱性やtaintを判定しません。interfaceとtest対象は[Initial implementation seams](docs/design/initial-implementation-seams.md)と[PHP Program Index seam](docs/design/php-program-index-seam.md)に記録しています。
 
 ```bash
 pnpm install
+cd tools/php-program-index
+composer install --no-dev --prefer-dist --no-interaction --no-scripts --no-plugins
+cd ../..
 pnpm check
 pnpm build
 mkdir -p .private
 node dist/cli.js campaign prepare --database .private/research.sqlite --input campaign.json
 node dist/cli.js campaign inspect --database .private/research.sqlite --campaign <campaign-id>
 ```
+
+PHP helperはComposer lockで`nikic/php-parser` 5.8.0へ固定しています。`vendor/`は生成物でありGitへ含めません。解析時にtargetのautoload、Composer script、WordPress bootstrapは実行されません。
 
 `campaign.json`は[`NewCampaignInput`](src/research/contracts.ts)に従い、CampaignId、Target Snapshot、policy、runtime、prompt、Model Profile、Knowledge Capsule、Experiment registry、budgetを固定します。`.private/`はGit対象外です。
 

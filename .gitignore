@@ -3,6 +3,7 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+/tools/php-program-index/vendor/
 
 # Local configuration and credentials
 .env

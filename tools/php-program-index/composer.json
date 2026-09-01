@@ -1,0 +1,26 @@
+{
+  "name": "wordpress-harness/php-program-index-helper",
+  "description": "Pinned, non-executing PHP source index helper for wordpress-harness",
+  "type": "project",
+  "license": "proprietary",
+  "require": {
+    "php": "^8.3",
+    "ext-json": "*",
+    "ext-tokenizer": "*",
+    "nikic/php-parser": "5.8.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "WordPressHarness\\PhpProgramIndex\\": "src/"
+    }
+  },
+  "config": {
+    "allow-plugins": false,
+    "platform": {
+      "php": "8.3.0"
+    },
+    "sort-packages": true
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}
