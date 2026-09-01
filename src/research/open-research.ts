@@ -4,7 +4,7 @@ import { openSqliteResearchRecord } from "./research-record/index.js";
 
 export function openResearch(options: OpenResearchOptions): ResearchModule {
   const record = openSqliteResearchRecord(options);
-  const campaign = openCampaignControl(record);
+  const campaign = openCampaignControl(record, options.campaignExecution);
   return {
     runner: campaign.runner,
     reader: campaign.reader,

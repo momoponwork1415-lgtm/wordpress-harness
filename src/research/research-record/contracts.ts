@@ -1,5 +1,10 @@
 import type { NewCampaignInput } from "../contracts.js";
 import type {
+  CampaignRunCompletionInput,
+  CampaignRunPlan,
+  CampaignRunRecordView,
+} from "../campaign-control/contracts.js";
+import type {
   VerificationCompletionInput,
   VerificationPlan,
   VerificationRecordView,
@@ -22,6 +27,16 @@ export interface RecordPreparationResult {
 export interface ResearchRecord {
   recordPreparation(input: NewCampaignInput): Promise<RecordPreparationResult>;
   readPreparation(campaignId: string): Promise<PreparationRecord | undefined>;
+  recordCampaignRunStart(
+    plan: CampaignRunPlan,
+  ): Promise<RecordCampaignRunStartResult>;
+  recordCampaignRunCompletion(
+    input: CampaignRunCompletionInput,
+  ): Promise<CampaignRunRecordView>;
+  readCampaignRun(
+    campaignId: string,
+    runId: string,
+  ): Promise<CampaignRunRecordView | undefined>;
   recordVerificationStart(
     plan: VerificationPlan,
   ): Promise<RecordVerificationStartResult>;
@@ -34,6 +49,19 @@ export interface ResearchRecord {
   ): Promise<VerificationRecordView | undefined>;
   close(): void;
 }
+
+export type RecordCampaignRunStartResult =
+  | {
+      readonly disposition: "started";
+      readonly planDigest: string;
+      readonly ledgerHead: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly disposition: "completed";
+      readonly planDigest: string;
+      readonly run: CampaignRunRecordView;
+    };
 
 export type RecordVerificationStartResult =
   | {

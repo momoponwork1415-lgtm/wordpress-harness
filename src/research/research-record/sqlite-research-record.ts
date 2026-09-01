@@ -8,6 +8,16 @@ import {
   type NewCampaignInput,
 } from "../contracts.js";
 import {
+  CampaignRunConflictError,
+  campaignRunCompletionInputSchema,
+  campaignRunPlanSchema,
+  campaignRunRecordSchema,
+  type CampaignRunCompletionInput,
+  type CampaignRunPlan,
+  type CampaignRunRecordRef,
+  type CampaignRunRecordView,
+} from "../campaign-control/contracts.js";
+import {
   VerificationConflictError,
   verificationCompletionInputSchema,
   verificationPlanSchema,
@@ -21,6 +31,7 @@ import { canonicalJson, sha256Digest } from "./canonical-json.js";
 import type {
   OpenResearchRecordOptions,
   PreparationRecord,
+  RecordCampaignRunStartResult,
   RecordPreparationResult,
   RecordVerificationStartResult,
   ResearchRecord,
@@ -44,6 +55,17 @@ const verificationCompletedPayloadSchema = z.strictObject({
   recordDigest: digestSchema,
 });
 
+const campaignRunStartedPayloadSchema = z.strictObject({
+  plan: campaignRunPlanSchema,
+  planDigest: digestSchema,
+});
+
+const campaignRunCompletedPayloadSchema = z.strictObject({
+  completionInputDigest: digestSchema,
+  record: campaignRunRecordSchema,
+  recordDigest: digestSchema,
+});
+
 const storedEventRowSchema = z.strictObject({
   campaign_sequence: z.number().int().positive(),
   kind: z.string(),
@@ -63,9 +85,33 @@ interface StoredVerification {
   readonly completed?: VerificationRecordView;
 }
 
+interface StoredCampaignRun {
+  readonly plan: CampaignRunPlan;
+  readonly planDigest: string;
+  readonly startedAt: string;
+  readonly startedLedgerHead: number;
+  readonly completionInputDigest?: string;
+  readonly completed?: CampaignRunRecordView;
+}
+
 interface LedgerProjection {
   readonly preparation: PreparationRecord;
+  readonly runs: ReadonlyMap<string, StoredCampaignRun>;
   readonly verifications: ReadonlyMap<string, StoredVerification>;
+}
+
+function campaignRunRef(
+  runId: string,
+  recordDigest: string,
+  decision: CampaignRunRecordRef["decision"],
+): CampaignRunRecordRef {
+  return {
+    kind: "campaign-run-record",
+    schemaVersion: 1,
+    runId,
+    digest: recordDigest,
+    decision,
+  };
 }
 
 function verificationRef(
@@ -149,6 +195,148 @@ class SqliteResearchRecord implements ResearchRecord {
     return rows.length === 0
       ? undefined
       : this.#decodeLedger(campaignId, rows).preparation;
+  }
+
+  async recordCampaignRunStart(
+    value: CampaignRunPlan,
+  ): Promise<RecordCampaignRunStartResult> {
+    const plan = campaignRunPlanSchema.parse(value);
+    const planDigest = sha256Digest(plan);
+    const transact = this.#database.transaction(
+      (): RecordCampaignRunStartResult => {
+        const rows = this.#readRows(plan.campaignId);
+        if (rows.length === 0) {
+          throw new Error(`Campaign not found: ${plan.campaignId}`);
+        }
+        const ledger = this.#decodeLedger(plan.campaignId, rows);
+        const preparation = ledger.preparation;
+        const input = preparation.input;
+        const matchesModel = (candidate: { id: string; digest: string }) =>
+          input.modelProfiles.some(
+            (profile) =>
+              profile.id === candidate.id &&
+              profile.digest === candidate.digest,
+          );
+        if (
+          preparation.inputDigest !== plan.preparationDigest ||
+          plan.surfaceMap.targetSnapshotId !== input.targetSnapshot.id ||
+          plan.verification.labBaseline.targetSnapshotDigest !==
+            input.targetSnapshot.digest ||
+          plan.verification.labBaseline.runtimeProfileDigest !==
+            input.runtimeProfile.digest ||
+          !matchesModel(plan.finder.modelProfile) ||
+          !matchesModel(plan.verification.verifierModelProfile) ||
+          plan.finder.promptSet.id !== input.promptSet.id ||
+          plan.finder.promptSet.digest !== input.promptSet.digest ||
+          plan.verification.promptSet.id !== input.promptSet.id ||
+          plan.verification.promptSet.digest !== input.promptSet.digest ||
+          plan.verification.experimentRegistry.id !==
+            input.experimentRegistry.id ||
+          plan.verification.experimentRegistry.digest !==
+            input.experimentRegistry.digest ||
+          plan.budget.maxFinderAttempts > input.budget.maxAttempts ||
+          plan.budget.maxWallTimeMs > input.budget.maxWallTimeMs ||
+          plan.budget.maxModelTokens > input.budget.maxModelTokens
+        ) {
+          throw new CampaignRunConflictError(plan.campaignId, plan.runId);
+        }
+
+        const existing = ledger.runs.get(plan.runId);
+        if (existing !== undefined) {
+          if (existing.planDigest !== planDigest) {
+            throw new CampaignRunConflictError(plan.campaignId, plan.runId);
+          }
+          return existing.completed === undefined
+            ? {
+                disposition: "started",
+                planDigest,
+                ledgerHead: existing.startedLedgerHead,
+                occurredAt: existing.startedAt,
+              }
+            : {
+                disposition: "completed",
+                planDigest,
+                run: existing.completed,
+              };
+        }
+
+        const occurredAt = this.#clock().toISOString();
+        const ledgerHead = rows.length + 1;
+        this.#insertEvent(
+          plan.campaignId,
+          ledgerHead,
+          "campaign.run-started",
+          occurredAt,
+          { plan, planDigest },
+        );
+        return {
+          disposition: "started",
+          planDigest,
+          ledgerHead,
+          occurredAt,
+        };
+      },
+    );
+    return transact();
+  }
+
+  async recordCampaignRunCompletion(
+    value: CampaignRunCompletionInput,
+  ): Promise<CampaignRunRecordView> {
+    const input = campaignRunCompletionInputSchema.parse(value);
+    const completionInputDigest = sha256Digest(input);
+    const transact = this.#database.transaction((): CampaignRunRecordView => {
+      const rows = this.#readRows(input.campaignId);
+      if (rows.length === 0) {
+        throw new Error(`Campaign not found: ${input.campaignId}`);
+      }
+      const ledger = this.#decodeLedger(input.campaignId, rows);
+      const existing = ledger.runs.get(input.runId);
+      if (existing === undefined || existing.planDigest !== input.planDigest) {
+        throw new LedgerIntegrityError(
+          input.campaignId,
+          "campaign-run-plan-digest-mismatch",
+        );
+      }
+      if (existing.completed !== undefined) {
+        if (existing.completionInputDigest !== completionInputDigest) {
+          throw new CampaignRunConflictError(input.campaignId, input.runId);
+        }
+        return existing.completed;
+      }
+
+      const completedAt = this.#clock().toISOString();
+      const record = campaignRunRecordSchema.parse({
+        ...input,
+        kind: "campaign-run-record",
+        completedAt,
+      });
+      const recordDigest = sha256Digest(record);
+      const ledgerHead = rows.length + 1;
+      this.#insertEvent(
+        input.campaignId,
+        ledgerHead,
+        "campaign.run-completed",
+        completedAt,
+        { completionInputDigest, record, recordDigest },
+      );
+      return {
+        ledgerHead,
+        occurredAt: completedAt,
+        ref: campaignRunRef(input.runId, recordDigest, record.decision.kind),
+        value: record,
+      };
+    });
+    return transact();
+  }
+
+  async readCampaignRun(
+    campaignId: string,
+    runId: string,
+  ): Promise<CampaignRunRecordView | undefined> {
+    const rows = this.#readRows(campaignId);
+    if (rows.length === 0) return undefined;
+    return this.#decodeLedger(campaignId, rows).runs.get(runId)?.completed;
   }
 
   async recordVerificationStart(
@@ -361,10 +549,78 @@ class SqliteResearchRecord implements ResearchRecord {
       throw new LedgerIntegrityError(campaignId, "input-digest-mismatch");
     }
 
+    const runs = new Map<string, StoredCampaignRun>();
     const verifications = new Map<string, StoredVerification>();
     for (const event of rows.slice(1)) {
       if (event.kind === "campaign.prepared") {
         throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+      }
+      if (event.kind === "campaign.run-started") {
+        if (event.schema_version !== 1) {
+          throw new UnsupportedLedgerSchemaError(
+            event.kind,
+            event.schema_version,
+          );
+        }
+        const payload = campaignRunStartedPayloadSchema.parse(
+          this.#parsePayload(event),
+        );
+        if (
+          payload.plan.campaignId !== campaignId ||
+          sha256Digest(payload.plan) !== payload.planDigest ||
+          runs.has(payload.plan.runId)
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        runs.set(payload.plan.runId, {
+          plan: payload.plan,
+          planDigest: payload.planDigest,
+          startedAt: event.occurred_at,
+          startedLedgerHead: event.campaign_sequence,
+        });
+        continue;
+      }
+      if (event.kind === "campaign.run-completed") {
+        if (event.schema_version !== 1) {
+          throw new UnsupportedLedgerSchemaError(
+            event.kind,
+            event.schema_version,
+          );
+        }
+        const payload = campaignRunCompletedPayloadSchema.parse(
+          this.#parsePayload(event),
+        );
+        const existing = runs.get(payload.record.runId);
+        if (
+          existing === undefined ||
+          existing.completed !== undefined ||
+          payload.record.campaignId !== campaignId ||
+          payload.record.planDigest !== existing.planDigest ||
+          payload.record.completedAt !== event.occurred_at
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        if (sha256Digest(payload.record) !== payload.recordDigest) {
+          throw new LedgerIntegrityError(
+            campaignId,
+            "campaign-run-record-digest-mismatch",
+          );
+        }
+        runs.set(payload.record.runId, {
+          ...existing,
+          completionInputDigest: payload.completionInputDigest,
+          completed: {
+            ledgerHead: event.campaign_sequence,
+            occurredAt: event.occurred_at,
+            ref: campaignRunRef(
+              payload.record.runId,
+              payload.recordDigest,
+              payload.record.decision.kind,
+            ),
+            value: payload.record,
+          },
+        });
+        continue;
       }
       if (event.kind === "verification.started") {
         if (event.schema_version !== 1) {
@@ -445,6 +701,7 @@ class SqliteResearchRecord implements ResearchRecord {
         inputDigest: preparationPayload.inputDigest,
         input: preparationPayload.input,
       },
+      runs,
       verifications,
     };
   }

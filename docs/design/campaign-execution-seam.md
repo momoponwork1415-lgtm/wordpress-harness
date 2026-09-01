@@ -1,6 +1,6 @@
 # Campaign execution seam
 
-Status: proposed, awaiting user acceptance
+Status: accepted on 2026-09-02; implementation in progress
 
 ## Design target
 
@@ -84,7 +84,7 @@ Work LeaseからAttempt Planを作る処理はCampaign Control implementation内
 
 Finderへprovider組込みweb、shell、filesystem、subagent、ambient MCPを渡さない。最初のclosed sliceは既存のtool-free Claude processを使う。harness-owned read/search toolは別のaccepted Model Execution sliceで追加するまで、未実装の安全性として扱う。
 
-render済みAttempt Planはprivate CASへ保存し、policy auditでCase role、advisory、patch、既知payloadが含まれないことを確認する。raw promptはResearch public viewまたはGitへ出さない。
+render済みAttempt Planはprivate CASへ保存し、policy auditでCase role、advisory、patch、既知payloadが含まれないことを確認する。Attempt Plan materializerへもCampaign Run Plan全体を渡さず、Finder ref、対象、有限Work Lease、Finder予算だけを渡す。これによりopaque Calibration Contextへ到達する経路自体を作らない。raw promptはResearch public viewまたはGitへ出さない。
 
 ## Iteration Review
 
@@ -94,11 +94,13 @@ Iteration ReviewはResearch内部のpure Moduleとし、clock、provider、Lab�
 
 ```ts
 type IterationDecisionV1 =
+  | { kind: "await-calibration"; terminalVerifications: VerificationRecordRef[] }
   | { kind: "stop-boundary-pair-complete"; evidence: BoundaryPairEvidenceRef }
   | { kind: "continue-unresolved-work"; next: FiniteWorkRef }
   | { kind: "blocked-capability"; reasons: readonly BlockReason[] };
 ```
 
+- `await-calibration`: 一つのTarget Snapshotのconclusive FindingまたはDisprovedを記録済みだが、private Boundary Pairの比較はまだ完了していない。単一Campaignをpair全体の成功として扱わないためのterminal decisionである。
 - `stop-boundary-pair-complete`: private Calibration Reviewがpositive Finding、同じCausal Identityのpatched Disproved、benign functional control、no false promotionをすべてdigest固定している。
 - `continue-unresolved-work`: budget内に、情報利得と停止条件を持つ次の有限workが残る。
 - `blocked-capability`: gVisor、baseline、provider、browser、evidence等の不足により、固定Plan内で支持も反証も安全に進められない。
@@ -155,3 +157,9 @@ Behavior Testは`CampaignRunner.run(plan)`と`CampaignReader.read/inspect`から
 - Verification mechanismは最初に`stored-xss-browser@v1`だけ
 - private Calibration ReviewはBrizy Boundary Pairだけ
 - UI、Remote Control、Target Intelligence automation、multi-provider、general workflow engineは追加しない
+
+## Implementation status
+
+最初のbehavior sliceは実装済みである。`CampaignRunner.run`はCASに固定されたSurface MapとExploration Policyを検査し、有限Work Waveを作り、最大3 Attemptの上限内でFinderを実行し、source-bound Hypothesisだけを独立Verificationへ渡す。FindingまたはDisprovedは`await-calibration`を伴うterminal Campaign RunとしてResearch Ledgerへ記録され、close/reopen後の再実行はproviderやLabを再起動せず同じrefを返す。
+
+未実装の必須境界は、Attempt intentの先行記録とcrash recovery、到着順に依存しないdigestのbehavior test、Blocked/未解決workの完全なIteration Review、private Calibration Review、実gVisor/browser adapterである。

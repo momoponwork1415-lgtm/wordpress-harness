@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+import type {
+  CampaignExecutionDependencies,
+  CampaignRunPlan,
+  CampaignRunRecord,
+  CampaignRunRecordRef,
+} from "./campaign-control/contracts.js";
+
 const identifierSchema = z
   .string()
   .min(1)
@@ -58,6 +65,7 @@ export type PreparedCampaign = CampaignView;
 
 export interface CampaignRunner {
   prepare(input: NewCampaignInput): Promise<PreparedCampaign>;
+  run(plan: CampaignRunPlan): Promise<CampaignRunRecordRef>;
 }
 
 export interface CampaignReader {
@@ -69,7 +77,12 @@ export interface PreparationSubjectRef {
   readonly kind: "preparation";
 }
 
-export type SubjectRef = PreparationSubjectRef;
+export interface CampaignRunSubjectRef {
+  readonly kind: "run";
+  readonly runId: string;
+}
+
+export type SubjectRef = PreparationSubjectRef | CampaignRunSubjectRef;
 
 export interface PreparationSubjectView {
   readonly kind: "preparation";
@@ -79,7 +92,15 @@ export interface PreparationSubjectView {
   readonly input: NewCampaignInput;
 }
 
-export type SubjectView = PreparationSubjectView;
+export interface CampaignRunSubjectView {
+  readonly kind: "run";
+  readonly campaignId: string;
+  readonly runId: string;
+  readonly occurredAt: string;
+  readonly value: CampaignRunRecord;
+}
+
+export type SubjectView = PreparationSubjectView | CampaignRunSubjectView;
 
 export interface ResearchModule {
   readonly runner: CampaignRunner;
@@ -90,6 +111,7 @@ export interface ResearchModule {
 export interface OpenResearchOptions {
   readonly databasePath: string;
   readonly clock?: () => Date;
+  readonly campaignExecution?: CampaignExecutionDependencies;
 }
 
 export class CampaignPreparationConflictError extends Error {
@@ -122,7 +144,9 @@ export class LedgerIntegrityError extends Error {
     | "non-contiguous-sequence"
     | "invalid-event-order"
     | "verification-plan-digest-mismatch"
-    | "verification-record-digest-mismatch";
+    | "verification-record-digest-mismatch"
+    | "campaign-run-plan-digest-mismatch"
+    | "campaign-run-record-digest-mismatch";
 
   constructor(
     campaignId: string,
@@ -132,7 +156,9 @@ export class LedgerIntegrityError extends Error {
       | "non-contiguous-sequence"
       | "invalid-event-order"
       | "verification-plan-digest-mismatch"
-      | "verification-record-digest-mismatch",
+      | "verification-record-digest-mismatch"
+      | "campaign-run-plan-digest-mismatch"
+      | "campaign-run-record-digest-mismatch",
   ) {
     super(`Ledger integrity check failed: ${campaignId} (${reason})`);
     this.name = "LedgerIntegrityError";
