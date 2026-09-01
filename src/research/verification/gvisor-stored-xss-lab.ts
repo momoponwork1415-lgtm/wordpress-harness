@@ -1,11 +1,15 @@
-import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { isAbsolute } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { readdir, readFile } from "node:fs/promises";
+import { isAbsolute, relative, sep } from "node:path";
 
 import { z } from "zod";
 
 import type { JsonArtifactStore } from "../research-record/contracts.js";
-import { canonicalJson } from "../research-record/canonical-json.js";
+import {
+  canonicalJson,
+  sha256Digest,
+} from "../research-record/canonical-json.js";
+import { targetFileManifestSchema } from "../source-mapping/contracts.js";
 import {
   LabControlBlockedError,
   experimentObservationRefSchema,
@@ -67,12 +71,16 @@ const storedXssLabDefinitionSchema = z.strictObject({
   target: z.strictObject({
     sourceDirectory: absolutePathSchema,
     pluginSlug: pluginSlugSchema,
+    manifestFile: absolutePathSchema,
   }),
   fixture: z.strictObject({
     sourceDirectory: absolutePathSchema,
     pluginSlug: pluginSlugSchema,
   }),
-  browser: z.strictObject({ workerFile: absolutePathSchema }),
+  browser: z.strictObject({
+    workerFile: absolutePathSchema,
+    inputFile: absolutePathSchema,
+  }),
 });
 
 const storedXssBrowserResultSchema = z.strictObject({
@@ -85,6 +93,45 @@ const storedXssBrowserResultSchema = z.strictObject({
 });
 
 type StoredXssLabDefinition = z.infer<typeof storedXssLabDefinitionSchema>;
+
+interface DirectoryManifestEntry {
+  readonly path: string;
+  readonly digest: string;
+  readonly size: number;
+}
+
+function rawDigest(content: Buffer): string {
+  return `sha256:${createHash("sha256").update(content).digest("hex")}`;
+}
+
+async function directoryManifest(
+  root: string,
+  directory = root,
+): Promise<readonly DirectoryManifestEntry[]> {
+  const entries: DirectoryManifestEntry[] = [];
+  const children = await readdir(directory, { withFileTypes: true });
+  children.sort((left, right) => left.name.localeCompare(right.name));
+  for (const child of children) {
+    const absolutePath = `${directory}/${child.name}`;
+    if (child.isSymbolicLink()) {
+      throw new Error("Lab fixture must not contain symbolic links");
+    }
+    if (child.isDirectory()) {
+      entries.push(...(await directoryManifest(root, absolutePath)));
+      continue;
+    }
+    if (!child.isFile()) {
+      throw new Error("Lab fixture must contain only regular files");
+    }
+    const content = await readFile(absolutePath);
+    entries.push({
+      path: relative(root, absolutePath).split(sep).join("/"),
+      digest: rawDigest(content),
+      size: content.byteLength,
+    });
+  }
+  return entries;
+}
 
 class LabCommandFailedError extends Error {
   constructor() {
@@ -139,6 +186,71 @@ class GvisorStoredXssLabControl implements LabControl {
     );
     if (canonicalJson(value.bindings) !== canonicalJson(plan.bindings)) {
       throw new Error("Stored XSS Lab definition binding mismatch");
+    }
+    const runtimeProfileDigest = sha256Digest({
+      kind: "gvisor-wordpress-runtime-profile",
+      schemaVersion: 1,
+      runtime: "runsc-systrap",
+      images: value.images,
+    });
+    if (runtimeProfileDigest !== plan.bindings.runtimeProfileDigest) {
+      throw new Error("Stored XSS Lab runtime profile binding mismatch");
+    }
+    const setupPlanDigest = sha256Digest({
+      kind: "stored-xss-setup-plan",
+      schemaVersion: 1,
+      operations: [
+        "install-wordpress",
+        "activate-target",
+        "activate-reviewed-fixture",
+      ],
+    });
+    if (setupPlanDigest !== plan.bindings.setupPlanDigest) {
+      throw new Error("Stored XSS Lab setup plan binding mismatch");
+    }
+    const fixtureManifestDigest = sha256Digest({
+      kind: "trusted-fixture-manifest",
+      schemaVersion: 1,
+      entries: await directoryManifest(value.fixture.sourceDirectory),
+    });
+    const targetManifest = targetFileManifestSchema.parse(
+      JSON.parse(await readFile(value.target.manifestFile, "utf8")),
+    );
+    const actualTargetEntries = await directoryManifest(
+      value.target.sourceDirectory,
+    );
+    if (
+      targetManifest.targetSnapshot.digest !==
+        plan.bindings.targetSnapshotDigest ||
+      canonicalJson(targetManifest.entries) !==
+        canonicalJson(actualTargetEntries)
+    ) {
+      throw new Error("Stored XSS Lab Target source binding mismatch");
+    }
+    const targetManifestDigest = sha256Digest(targetManifest);
+    const configurationDigest = sha256Digest({
+      kind: "stored-xss-lab-configuration",
+      schemaVersion: 1,
+      targetPluginSlug: value.target.pluginSlug,
+      targetManifestDigest,
+      fixturePluginSlug: value.fixture.pluginSlug,
+      fixtureManifestDigest,
+      browserWorkerDigest: rawDigest(await readFile(value.browser.workerFile)),
+      browserInputDigest: rawDigest(await readFile(value.browser.inputFile)),
+    });
+    if (configurationDigest !== plan.bindings.configurationDigest) {
+      throw new Error("Stored XSS Lab configuration binding mismatch");
+    }
+    const labBaselineDigest = sha256Digest({
+      kind: "lab-baseline-definition",
+      schemaVersion: 1,
+      targetSnapshotDigest: plan.bindings.targetSnapshotDigest,
+      runtimeProfileDigest,
+      setupPlanDigest,
+      configurationDigest,
+    });
+    if (labBaselineDigest !== plan.bindings.labBaselineDigest) {
+      throw new Error("Stored XSS Lab baseline binding mismatch");
     }
     return { value, path };
   }
@@ -338,10 +450,13 @@ class GvisorStoredXssLabControl implements LabControl {
           "--runtime=runsc",
           "--network",
           network,
+          "--shm-size=1g",
           "--volume",
           `${definition.browser.workerFile}:/harness/browser-worker.mjs:ro`,
           "--volume",
           `${definitionFile}:/harness/experiment.private.json:ro`,
+          "--volume",
+          `${definition.browser.inputFile}:/harness/browser-input.private.json:ro`,
           "--env",
           `HARNESS_ROLE=${plan.role}`,
           "--env",

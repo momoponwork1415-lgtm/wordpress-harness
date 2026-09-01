@@ -1,4 +1,12 @@
-import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import {
+  access,
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -15,8 +23,76 @@ import {
   openFileJsonArtifactStore,
   type JsonArtifactStore,
 } from "../../src/research/research-record/index.js";
+import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
+const testImages = {
+  database: `docker.io/library/mariadb@${digest("9")}`,
+  wordpress: `docker.io/library/wordpress@${digest("a")}`,
+  wordpressCli: `docker.io/library/wordpress-cli@${digest("b")}`,
+  browser: `docker.io/microsoft/playwright@${digest("c")}`,
+};
+const testWorkerContent = "// private browser worker fixture\n";
+const testInputContent = '{"private":"fixture"}\n';
+const testTargetContent = "<?php // admitted target fixture\n";
+
+function rawDigest(content: string): string {
+  return `sha256:${createHash("sha256").update(content).digest("hex")}`;
+}
+
+const testRuntimeProfileDigest = sha256Digest({
+  kind: "gvisor-wordpress-runtime-profile",
+  schemaVersion: 1,
+  runtime: "runsc-systrap",
+  images: testImages,
+});
+const testSetupPlanDigest = sha256Digest({
+  kind: "stored-xss-setup-plan",
+  schemaVersion: 1,
+  operations: [
+    "install-wordpress",
+    "activate-target",
+    "activate-reviewed-fixture",
+  ],
+});
+const testTargetManifest = {
+  kind: "target-file-manifest",
+  schemaVersion: 1,
+  targetSnapshot: {
+    id: "fixture-plugin-1.0.0",
+    digest: digest("4"),
+  },
+  entries: [
+    {
+      path: "plugin.php",
+      digest: rawDigest(testTargetContent),
+      size: Buffer.byteLength(testTargetContent),
+    },
+  ],
+};
+const testTargetManifestDigest = sha256Digest(testTargetManifest);
+const testConfigurationDigest = sha256Digest({
+  kind: "stored-xss-lab-configuration",
+  schemaVersion: 1,
+  targetPluginSlug: "fixture-plugin",
+  targetManifestDigest: testTargetManifestDigest,
+  fixturePluginSlug: "harness-fixture",
+  fixtureManifestDigest: sha256Digest({
+    kind: "trusted-fixture-manifest",
+    schemaVersion: 1,
+    entries: [],
+  }),
+  browserWorkerDigest: rawDigest(testWorkerContent),
+  browserInputDigest: rawDigest(testInputContent),
+});
+const testBaselineDigest = sha256Digest({
+  kind: "lab-baseline-definition",
+  schemaVersion: 1,
+  targetSnapshotDigest: digest("4"),
+  runtimeProfileDigest: testRuntimeProfileDigest,
+  setupPlanDigest: testSetupPlanDigest,
+  configurationDigest: testConfigurationDigest,
+});
 
 function storedXssExperimentPlan(): ExperimentPlan {
   return {
@@ -29,10 +105,10 @@ function storedXssExperimentPlan(): ExperimentPlan {
     hypothesisDigest: digest("3"),
     bindings: {
       targetSnapshotDigest: digest("4"),
-      labBaselineDigest: digest("5"),
-      runtimeProfileDigest: digest("6"),
-      setupPlanDigest: digest("7"),
-      configurationDigest: digest("8"),
+      labBaselineDigest: testBaselineDigest,
+      runtimeProfileDigest: testRuntimeProfileDigest,
+      setupPlanDigest: testSetupPlanDigest,
+      configurationDigest: testConfigurationDigest,
       adapterVersion: "stored-xss-browser@v1",
     },
     mechanism: {
@@ -53,44 +129,47 @@ async function writeLabDefinition(
   readonly browserImage: string;
   readonly definitionFile: string;
   readonly fixtureDirectory: string;
+  readonly inputFile: string;
   readonly targetDirectory: string;
   readonly workerFile: string;
 }> {
   const targetDirectory = join(directory, "target-plugin");
   const fixtureDirectory = join(directory, "fixture-plugin");
   const workerFile = join(directory, "browser-worker.mjs");
+  const inputFile = join(directory, "browser-input.private.json");
   const definitionFile = join(directory, "experiment.private.json");
-  const browserImage = `docker.io/microsoft/playwright@${digest("c")}`;
+  const targetManifestFile = join(directory, "target-manifest.json");
+  const browserImage = testImages.browser;
   await mkdir(targetDirectory);
   await mkdir(fixtureDirectory);
-  await writeFile(workerFile, "// private browser worker fixture\n");
+  await writeFile(workerFile, testWorkerContent);
+  await writeFile(inputFile, testInputContent);
+  await writeFile(join(targetDirectory, "plugin.php"), testTargetContent);
+  await writeFile(targetManifestFile, JSON.stringify(testTargetManifest));
   await writeFile(
     definitionFile,
     JSON.stringify({
       kind: "stored-xss-lab-definition",
       schemaVersion: 1,
       bindings: plan.bindings,
-      images: {
-        database: `docker.io/library/mariadb@${digest("9")}`,
-        wordpress: `docker.io/library/wordpress@${digest("a")}`,
-        wordpressCli: `docker.io/library/wordpress-cli@${digest("b")}`,
-        browser: browserImage,
-      },
+      images: testImages,
       target: {
         sourceDirectory: targetDirectory,
         pluginSlug: "fixture-plugin",
+        manifestFile: targetManifestFile,
       },
       fixture: {
         sourceDirectory: fixtureDirectory,
         pluginSlug: "harness-fixture",
       },
-      browser: { workerFile },
+      browser: { workerFile, inputFile },
     }),
   );
   return {
     browserImage,
     definitionFile,
     fixtureDirectory,
+    inputFile,
     targetDirectory,
     workerFile,
   };
@@ -236,6 +315,7 @@ describe("gVisor Stored XSS Lab Control", () => {
         definition.fixtureDirectory,
       );
       expect(JSON.stringify(observation)).not.toContain(definition.workerFile);
+      expect(JSON.stringify(observation)).not.toContain(definition.inputFile);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
@@ -273,6 +353,133 @@ describe("gVisor Stored XSS Lab Control", () => {
 
       await expect(labControl.execute(plan)).rejects.toEqual(
         new LabControlBlockedError("baseline-unavailable"),
+      );
+      expect(labCreationAttempted).toBe(false);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects a runtime image that differs from the bound Runtime Profile", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "gvisor-runtime-binding-"));
+    const artifactStore = openFileJsonArtifactStore(join(directory, "cas"));
+    const plan = storedXssExperimentPlan();
+    let labCreationAttempted = false;
+
+    try {
+      const definition = await writeLabDefinition(directory, plan);
+      const value = JSON.parse(
+        await readFile(definition.definitionFile, "utf8"),
+      );
+      value.images.browser = `docker.io/microsoft/playwright@${digest("d")}`;
+      await writeFile(definition.definitionFile, JSON.stringify(value));
+      const processRunner: LabProcessRunner = {
+        run: async (request) => {
+          if (request.args[0] === "info") {
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({ runsc: { path: "runsc" } }),
+              stderr: "",
+            };
+          }
+          if (request.args[0] === "image") {
+            return { exitCode: 0, stdout: "", stderr: "" };
+          }
+          labCreationAttempted = true;
+          throw new Error("Lab resources must not be created");
+        },
+      };
+      const labControl = openGvisorStoredXssLabControl({
+        artifactStore,
+        processRunner,
+        definitionFile: definition.definitionFile,
+      });
+
+      await expect(labControl.execute(plan)).rejects.toThrow(
+        "Stored XSS Lab runtime profile binding mismatch",
+      );
+      expect(labCreationAttempted).toBe(false);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects a private worker that differs from the bound Lab Configuration", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "gvisor-config-binding-"));
+    const artifactStore = openFileJsonArtifactStore(join(directory, "cas"));
+    const plan = storedXssExperimentPlan();
+    let labCreationAttempted = false;
+
+    try {
+      const definition = await writeLabDefinition(directory, plan);
+      await writeFile(definition.workerFile, "// changed worker\n");
+      const processRunner: LabProcessRunner = {
+        run: async (request) => {
+          if (request.args[0] === "info") {
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({ runsc: { path: "runsc" } }),
+              stderr: "",
+            };
+          }
+          if (request.args[0] === "image") {
+            return { exitCode: 0, stdout: "", stderr: "" };
+          }
+          labCreationAttempted = true;
+          throw new Error("Lab resources must not be created");
+        },
+      };
+      const labControl = openGvisorStoredXssLabControl({
+        artifactStore,
+        processRunner,
+        definitionFile: definition.definitionFile,
+      });
+
+      await expect(labControl.execute(plan)).rejects.toThrow(
+        "Stored XSS Lab configuration binding mismatch",
+      );
+      expect(labCreationAttempted).toBe(false);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects Target source that differs from its admitted file manifest", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "gvisor-target-binding-"));
+    const artifactStore = openFileJsonArtifactStore(join(directory, "cas"));
+    const plan = storedXssExperimentPlan();
+    let labCreationAttempted = false;
+
+    try {
+      const definition = await writeLabDefinition(directory, plan);
+      await writeFile(
+        join(definition.targetDirectory, "plugin.php"),
+        "<?php // changed target fixture\n",
+      );
+      const processRunner: LabProcessRunner = {
+        run: async (request) => {
+          if (request.args[0] === "info") {
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({ runsc: { path: "runsc" } }),
+              stderr: "",
+            };
+          }
+          if (request.args[0] === "image") {
+            return { exitCode: 0, stdout: "", stderr: "" };
+          }
+          labCreationAttempted = true;
+          throw new Error("Lab resources must not be created");
+        },
+      };
+      const labControl = openGvisorStoredXssLabControl({
+        artifactStore,
+        processRunner,
+        definitionFile: definition.definitionFile,
+      });
+
+      await expect(labControl.execute(plan)).rejects.toThrow(
+        "Stored XSS Lab Target source binding mismatch",
       );
       expect(labCreationAttempted).toBe(false);
     } finally {
