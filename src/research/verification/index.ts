@@ -3,6 +3,7 @@ export {
   LabControlBlockedError,
 } from "./contracts.js";
 export { openVerification } from "./verification.js";
+export { openClaudeIndependentVerifier } from "./claude-independent-verifier.js";
 export { openGvisorStoredXssLabControl } from "./gvisor-stored-xss-lab.js";
 export { openNativeLabProcessRunner } from "./native-lab-process.js";
 export type {
@@ -12,6 +13,7 @@ export type {
   OpenGvisorStoredXssLabControlOptions,
 } from "./gvisor-stored-xss-lab.js";
 export type { OpenNativeLabProcessRunnerOptions } from "./native-lab-process.js";
+export type { OpenClaudeIndependentVerifierOptions } from "./claude-independent-verifier.js";
 export type {
   ExperimentObservation,
   ExperimentObservationRef,

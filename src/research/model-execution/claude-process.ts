@@ -18,6 +18,23 @@ export interface OpenClaudeModelExecutionOptions {
   readonly workingDirectory: string;
 }
 
+export interface OpenClaudeStructuredProcessOptions {
+  readonly executablePath: string;
+  readonly executableVersion: string;
+  readonly workingDirectory: string;
+}
+
+export interface ClaudeStructuredProcessRequest {
+  readonly modelProfile: ModelProcessRequest["plan"]["modelProfile"];
+  readonly prompt: string;
+  readonly budget: ModelProcessRequest["plan"]["budget"];
+  readonly outputJsonSchema: object;
+}
+
+export interface ClaudeStructuredProcess {
+  execute(request: ClaudeStructuredProcessRequest): Promise<ModelProcessResult>;
+}
+
 type NativeProcessResult = Exclude<
   ModelProcessResult,
   { readonly kind: "auth-required" }
@@ -84,12 +101,12 @@ function signalProcessTree(
   }
 }
 
-class NativeClaudeProcess implements ModelProcess {
+class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
   readonly #executablePath;
   readonly #executableVersion;
   readonly #workingDirectory;
 
-  constructor(options: OpenClaudeModelExecutionOptions) {
+  constructor(options: OpenClaudeStructuredProcessOptions) {
     if (!isAbsolute(options.executablePath)) {
       throw new Error("Claude executable path must be absolute");
     }
@@ -101,17 +118,17 @@ class NativeClaudeProcess implements ModelProcess {
     this.#workingDirectory = options.workingDirectory;
   }
 
-  async execute(request: ModelProcessRequest): Promise<ModelProcessResult> {
-    if (
-      request.plan.modelProfile.executableVersion !== this.#executableVersion
-    ) {
+  async execute(
+    request: ClaudeStructuredProcessRequest,
+  ): Promise<ModelProcessResult> {
+    if (request.modelProfile.executableVersion !== this.#executableVersion) {
       throw new Error("Attempt Plan Claude version does not match adapter");
     }
     const startedAt = performance.now();
     const remainingTime = (): number =>
       Math.max(
         0,
-        request.plan.budget.maxWallTimeMs - (performance.now() - startedAt),
+        request.budget.maxWallTimeMs - (performance.now() - startedAt),
       );
     const version = await this.#run(
       ["--version"],
@@ -169,9 +186,9 @@ class NativeClaudeProcess implements ModelProcess {
     const args = [
       "-p",
       "--model",
-      request.plan.modelProfile.model,
+      request.modelProfile.model,
       "--effort",
-      request.plan.modelProfile.effort,
+      request.modelProfile.effort,
       "--restricted",
       "--safe-mode",
       "--strict-mcp-config",
@@ -189,9 +206,9 @@ class NativeClaudeProcess implements ModelProcess {
     ];
     return this.#run(
       args,
-      request.plan.prompt,
+      request.prompt,
       remainingTime(),
-      request.plan.budget.maxOutputBytes,
+      request.budget.maxOutputBytes,
     );
   }
 
@@ -281,8 +298,23 @@ class NativeClaudeProcess implements ModelProcess {
 export function openClaudeModelExecution(
   options: OpenClaudeModelExecutionOptions,
 ): ModelExecution {
+  const process = openClaudeStructuredProcess(options);
   return openModelExecution({
     artifactDirectory: options.artifactDirectory,
-    process: new NativeClaudeProcess(options),
+    process: {
+      execute: (request: ModelProcessRequest) =>
+        process.execute({
+          modelProfile: request.plan.modelProfile,
+          prompt: request.plan.prompt,
+          budget: request.plan.budget,
+          outputJsonSchema: request.outputJsonSchema,
+        }),
+    },
   });
+}
+
+export function openClaudeStructuredProcess(
+  options: OpenClaudeStructuredProcessOptions,
+): ClaudeStructuredProcess {
+  return new NativeClaudeStructuredProcess(options);
 }

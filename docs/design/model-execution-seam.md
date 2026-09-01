@@ -1,6 +1,6 @@
 # Model execution seam
 
-Status: accepted; first tool-free Finder slice implemented, 2026-09-02
+Status: accepted; tool-free Finder and shared Claude structured process implemented, 2026-09-02
 
 ## Owner and purpose
 
@@ -29,7 +29,7 @@ type AttemptExecutionResult =
   };
 ```
 
-最初の実装はFinderだけにspecializeしているため`value`は`FinderAttemptResult`である。第二roleを接続する時にversioned `RoleOutputRef`と完全な`Attempt Receipt`へ拡張するが、それ以前に未使用のgeneric hierarchyを作らない。
+公開`ModelExecution`の最初の実装はFinderだけにspecializeしているため`value`は`FinderAttemptResult`である。Independent Verifierとの重複を避けるため、Claudeのversion/auth probe、tool-free argv、process-group終了を担う内部`ClaudeStructuredProcess`を共有する。Finder schemaの取込とVerifierのsource evidence判断は各owner Moduleに残し、未使用のgeneric role hierarchyは作らない。将来、複数roleのreceiptを公開境界で扱う必要が生じた時だけversioned `RoleOutputRef`と完全な`Attempt Receipt`へ拡張する。
 
 callerはprovider executable、argv、session ID、credential path、process ID、retry timing、transcript pathを渡さない。`start`、`resume`、`kill`、`readStdout`等を別methodとして公開せず、Segment lifecycleを`run`の背後へ隠す。
 
@@ -39,7 +39,7 @@ callerはprovider executable、argv、session ID、credential path、process ID�
 
 native adapterは推論前にexecutable versionと公式`auth status`を検査する。認証切れは`auth-required`として終了し、別modelへfallbackしない。provider built-in tool、Web、subagent、ambient MCP、slash command、session persistence、Chromeを無効化し、promptはargvではなくstdinへ渡す。親processだけでなくdetached process groupをwall ceiling時に終了し、`SIGTERM`後または親終了時に残った子へ`SIGKILL`を送る。wall budgetにはversion/auth probeも含める。
 
-Claude JSON envelope、実model identity、permission denial、Web request数、subagent数、Finder schema、Work Lease bindingをruntime decodeする。成功outputまたは型付きterminal resultはprivate CASへ保存し、呼出元へdigest付きrefを返す。provider errorのstderrはcredential値をredactしてprivate error artifactへ置き、公開resultにはそのdigestだけを残す。
+Claude JSON envelope、実model identity、permission denial、Web request数、subagent数は一つのdecoderでruntime decodeする。FinderはさらにFinder schemaとWork Lease bindingを、Independent Verifierは検証identityとsource evidence bindingを各Moduleで検査する。Finderの成功outputまたは型付きterminal resultはprivate CASへ保存し、呼出元へdigest付きrefを返す。provider errorのstderrはcredential値をredactしてprivate error artifactへ置き、公開resultにはそのdigestだけを残す。
 
 2026-09-02のprivate development benchmarkでは、oracle情報を与えず、実在するTranslatePress 3.2.5のSurface Mapから一つのWork Leaseを選び、約414 KBのsource contextをOpus 5へ渡した。独立した二回の成功実行はそれぞれ二件と一件のschema-valid Source-bound Hypothesisを返し、どちらもExplorationの`verify` decisionまで到達した。この差は候補生成の分散であり、単発runを能力評価に使わない。これはtransportと取込経路の成立確認であって、Hypothesisの正しさ、脆弱性発見、Milestone 1完了を意味しない。target source、prompt、provider outputはGitへ置かない。
 

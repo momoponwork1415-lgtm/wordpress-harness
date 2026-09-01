@@ -1,5 +1,8 @@
 export { openModelExecution } from "./model-execution.js";
-export { openClaudeModelExecution } from "./claude-process.js";
+export {
+  openClaudeModelExecution,
+  openClaudeStructuredProcess,
+} from "./claude-process.js";
 export type {
   AttemptExecutionResult,
   AttemptPlan,
@@ -9,4 +12,9 @@ export type {
   ModelProcessResult,
   OpenModelExecutionOptions,
 } from "./contracts.js";
-export type { OpenClaudeModelExecutionOptions } from "./claude-process.js";
+export type {
+  ClaudeStructuredProcess,
+  ClaudeStructuredProcessRequest,
+  OpenClaudeModelExecutionOptions,
+  OpenClaudeStructuredProcessOptions,
+} from "./claude-process.js";

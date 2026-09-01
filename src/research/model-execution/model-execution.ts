@@ -13,28 +13,7 @@ import {
   type ModelExecution,
   type OpenModelExecutionOptions,
 } from "./contracts.js";
-
-const providerEnvelopeSchema = z.object({
-  type: z.literal("result"),
-  subtype: z.literal("success"),
-  is_error: z.literal(false),
-  terminal_reason: z.literal("completed"),
-  structured_output: z.unknown(),
-  permission_denials: z.array(z.unknown()),
-  usage: z.object({
-    server_tool_use: z.object({
-      web_search_requests: z.number().int().nonnegative(),
-      web_fetch_requests: z.number().int().nonnegative(),
-    }),
-  }),
-  subagent_stats: z.object({
-    spawned: z.number().int().nonnegative(),
-  }),
-  modelUsage: z.record(
-    z.string(),
-    z.object({ canonicalModel: z.string().min(1) }),
-  ),
-});
+import { decodeClaudeEnvelope } from "./claude-envelope.js";
 
 class FirstFinderModelExecution implements ModelExecution {
   readonly #artifacts;
@@ -86,34 +65,22 @@ class FirstFinderModelExecution implements ModelExecution {
       );
     }
 
-    let envelope: z.infer<typeof providerEnvelopeSchema>;
-    try {
-      const parsed: unknown = JSON.parse(processResult.stdout);
-      envelope = providerEnvelopeSchema.parse(parsed);
-    } catch {
+    const envelope = decodeClaudeEnvelope(
+      processResult.stdout,
+      plan.modelProfile.model,
+    );
+    if (envelope.kind === "invalid-envelope") {
       return this.#terminal(
         plan,
         "invalid-output",
         "invalid-provider-envelope",
       );
     }
-    if (
-      envelope.permission_denials.length > 0 ||
-      envelope.usage.server_tool_use.web_search_requests !== 0 ||
-      envelope.usage.server_tool_use.web_fetch_requests !== 0 ||
-      envelope.subagent_stats.spawned !== 0
-    ) {
-      return this.#terminal(plan, "policy-denied", "tool-free-policy-violated");
-    }
-    if (
-      !Object.values(envelope.modelUsage).some(
-        (usage) => usage.canonicalModel === plan.modelProfile.model,
-      )
-    ) {
-      return this.#terminal(plan, "policy-denied", "model-substitution");
+    if (envelope.kind === "policy-denied") {
+      return this.#terminal(plan, "policy-denied", envelope.reason);
     }
 
-    const decoded = finderOutputSchema.safeParse(envelope.structured_output);
+    const decoded = finderOutputSchema.safeParse(envelope.output);
     if (!decoded.success || decoded.data.leaseId !== plan.leaseId) {
       return this.#terminal(plan, "invalid-output", "invalid-finder-output");
     }
