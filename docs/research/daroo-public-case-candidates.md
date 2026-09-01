@@ -1,6 +1,6 @@
 # daroo public Case candidates
 
-Status: research note, 2026-09-02; candidate shortlist only, not accepted design
+Status: research note, 2026-09-02; selected holdout availability audited, not accepted design
 
 ## Research identity and scope
 
@@ -12,6 +12,17 @@ Wordfenceの公開profileに表示されるresearcher名は正確には`daroo`�
 
 これは313件の完全inventoryではなく、Stored XSSとSQL injectionを中心に、公開sourceを取得でき、vulnerable/patched Boundary Pairを構成できる可能性が高いCaseを抽出したshortlistである。darooの公開portfolioは目標成果とmechanism coverageの参考であり、[3件のDesign references](../REFERENCES.md)へ追加する設計参照資料ではない。
 
+## Selected holdout availability audit
+
+2026-09-02に選択済みの2件を再監査した。Wordfenceの個別recordは両方を`daroo`へ帰属し、下記のaffected/patched境界を示す。positiveとpatched negativeの4 archiveはWordPress.org公式download endpointでHTTP 200を返し、source acquisitionに利用できることを確認した。
+
+| Holdout | Public boundary | Official archive availability | Audit conclusion |
+| --- | --- | --- | --- |
+| WP Statistics Stored XSS | `<= 14.16.4` / patched `14.16.5` | `14.16.4`、`14.16.5`とも取得可能 | source acquisition ready |
+| WPGraphQL SQL injection | `< 2.11.1` / patched `2.11.1` | `2.11.0`、`2.11.1`とも取得可能 | source acquisition ready |
+
+これはholdoutのCase固有調整を許可するものではない。また、HTTP availabilityと公開remediation recordだけではmechanism-specific negativeを実証しない。private workspaceでarchive digestを固定し、同一Setup Plan、positive Witness、patched-side negative、benign functional controlを再現した後にgraderをfreezeする。
+
 ## Recommended shortlist
 
 ### WPGraphQL SQL injection
@@ -20,8 +31,8 @@ Wordfenceの公開profileに表示されるresearcher名は正確には`daroo`�
 - Versions: vulnerable positive `2.11.0`（Wordfenceのaffected rangeは`< 2.11.1`）、patched negative `2.11.1`
 - Attacker premise: unauthenticated
 - Public route-shape: GraphQLから渡るnon-numeric user loader keyがuser lookupへ入り、database query constructionへ到達する。これはWordfenceの一般的なSQLi説明に加え、vendorの2.11.1 release noteが「non-numeric user loader keysを拒否してSQL injectionを防ぐ」と明記しているため、公開情報として確認できる。
-- Sources: [Wordfence advisory](https://www.wordfence.com/threat-intel/vulnerabilities/wordpress-plugins/wp-graphql/wpgraphql-2111-unauthenticated-sql-injection), [official WPGraphQL 2.11.1 release](https://github.com/wp-graphql/wp-graphql/releases/tag/wp-graphql%2Fv2.11.1), [official source repository](https://github.com/wp-graphql/wp-graphql)
-- Recommended cohort role: **primary SQLi Development Boundary Pair**。公開source、明確なversion boundary、specificなsource-to-query routeを持ち、SQLi WitnessとCausal Controlを最初に型付けするのに最も適する。
+- Sources: [Wordfence advisory](https://www.wordfence.com/threat-intel/vulnerabilities/wordpress-plugins/wp-graphql/wpgraphql-2111-unauthenticated-sql-injection), [official WPGraphQL 2.11.1 release](https://github.com/wp-graphql/wp-graphql/releases/tag/wp-graphql%2Fv2.11.1), [official source repository](https://github.com/wp-graphql/wp-graphql), WordPress.org archives for [2.11.0](https://downloads.wordpress.org/plugin/wp-graphql.2.11.0.zip) and [2.11.1](https://downloads.wordpress.org/plugin/wp-graphql.2.11.1.zip)
+- Recommended cohort role: **selected SQLi holdout Boundary Pair**。公開source、明確なversion boundary、specificなsource-to-query routeを持ち、Development Cohortで調整した同じSQLi capabilityをCase固有調整なしで評価するのに適する。
 
 ### WP Statistics Stored XSS
 
@@ -29,8 +40,8 @@ Wordfenceの公開profileに表示されるresearcher名は正確には`daroo`�
 - Versions: vulnerable positive `14.16.4`、patched negative `14.16.5`
 - Attacker premise: unauthenticated visitor; administrator later opens the affected analytics view
 - Public route-shape: requestの`utm_source` -> referral parser -> persistent `source_name` -> admin chart legendのDOM rendering。Wordfenceはwildcard channel matchと`innerHTML` renderingまで公開している。
-- Sources: [Wordfence advisory](https://www.wordfence.com/threat-intel/vulnerabilities/wordpress-plugins/wp-statistics/wp-statistics-14164-unauthenticated-stored-cross-site-scripting-via-utm-source-parameter), [official source repository](https://github.com/wp-statistics/wp-statistics), [official changelog](https://github.com/wp-statistics/wp-statistics/blob/master/CHANGELOG.md)
-- Recommended cohort role: **primary cross-request Stored XSS Development Boundary Pair**。HTTP input、PHP persistence、admin-side JavaScript consumerを跨ぐため、Surface Mapのserver/client relationとbrowser Witnessを同時に評価できる。
+- Sources: [Wordfence advisory](https://www.wordfence.com/threat-intel/vulnerabilities/wordpress-plugins/wp-statistics/wp-statistics-14164-unauthenticated-stored-cross-site-scripting-via-utm-source-parameter), [official source repository](https://github.com/wp-statistics/wp-statistics), [official changelog](https://github.com/wp-statistics/wp-statistics/blob/master/CHANGELOG.md), WordPress.org archives for [14.16.4](https://downloads.wordpress.org/plugin/wp-statistics.14.16.4.zip) and [14.16.5](https://downloads.wordpress.org/plugin/wp-statistics.14.16.5.zip)
+- Recommended cohort role: **selected cross-request Stored XSS holdout Boundary Pair**。HTTP input、PHP persistence、admin-side JavaScript consumerを跨ぐため、Development Cohortで調整したSurface Mapとbrowser Witness能力をCase固有調整なしで評価できる。
 
 ### TranslatePress Stored XSS
 
