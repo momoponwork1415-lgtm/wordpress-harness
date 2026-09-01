@@ -21,7 +21,7 @@ WordPressプラグインのsource reviewを、LLMの探索力と独立した実�
 
 - [Architecture](docs/design/architecture.md)
 - [Module architecture](docs/design/module-architecture.md)
-- [Proposed development harness](docs/design/development-harness.md)
+- [Development harness](docs/design/development-harness.md)
 - [Exploration seam](docs/design/exploration-seam.md)
 - [Capability-first roadmap](docs/design/roadmap.md)
 - [Design Baseline v0.1](docs/design/baseline-v0.1.md)

@@ -3,10 +3,7 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-import {
-  decodeNewCampaignInput,
-  openResearch,
-} from "./research/index.js";
+import { decodeNewCampaignInput, openResearch } from "./research/index.js";
 
 export interface CliIo {
   stdout(text: string): void;
@@ -81,6 +78,9 @@ export async function runCli(
 }
 
 const entryPath = process.argv[1];
-if (entryPath !== undefined && import.meta.url === pathToFileURL(entryPath).href) {
+if (
+  entryPath !== undefined &&
+  import.meta.url === pathToFileURL(entryPath).href
+) {
   process.exitCode = await runCli(process.argv.slice(2));
 }

@@ -48,28 +48,32 @@ describe("campaign CLI", () => {
       const prepared: unknown = JSON.parse(output[0] ?? "null");
       const inspected: unknown = JSON.parse(output[1] ?? "null");
 
-      expect({ prepareExit, inspectExit, errors, prepared, inspected }).toMatchObject(
-        {
-          prepareExit: 0,
-          inspectExit: 0,
-          errors: [],
-          prepared: {
-            campaignId: "campaign-cli-brizy",
-            status: "prepared",
-            ledgerHead: 1,
-          },
-          inspected: {
-            kind: "preparation",
-            campaignId: "campaign-cli-brizy",
-            input: {
-              targetSnapshot: {
-                id: "brizy-2.8.11",
-                version: "2.8.11",
-              },
+      expect({
+        prepareExit,
+        inspectExit,
+        errors,
+        prepared,
+        inspected,
+      }).toMatchObject({
+        prepareExit: 0,
+        inspectExit: 0,
+        errors: [],
+        prepared: {
+          campaignId: "campaign-cli-brizy",
+          status: "prepared",
+          ledgerHead: 1,
+        },
+        inspected: {
+          kind: "preparation",
+          campaignId: "campaign-cli-brizy",
+          input: {
+            targetSnapshot: {
+              id: "brizy-2.8.11",
+              version: "2.8.11",
             },
           },
         },
-      );
+      });
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

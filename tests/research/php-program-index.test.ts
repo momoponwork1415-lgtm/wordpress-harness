@@ -72,8 +72,10 @@ describe("PHP Source Analysis", () => {
         endLine: symbol.range.endLine,
       }));
       const registrationCalls = pluginFile?.calls
-        .filter((call) =>
-          call.callee === "add_action" || call.callee === "register_rest_route"
+        .filter(
+          (call) =>
+            call.callee === "add_action" ||
+            call.callee === "register_rest_route",
         )
         .map((call) => ({
           kind: call.kind,
@@ -83,8 +85,10 @@ describe("PHP Source Analysis", () => {
           endLine: call.range.endLine,
         }));
       const registrationFacts = pluginFile?.wordpressFacts
-        .filter((fact) =>
-          fact.kind === "hook-registration" || fact.kind === "route-registration"
+        .filter(
+          (fact) =>
+            fact.kind === "hook-registration" ||
+            fact.kind === "route-registration",
         )
         .map((fact) => ({
           ...fact,
@@ -94,8 +98,11 @@ describe("PHP Source Analysis", () => {
           },
         }));
       const securityFacts = pluginFile?.wordpressFacts
-        .filter((fact) =>
-          fact.kind === "guard" || fact.kind === "source" || fact.kind === "storage"
+        .filter(
+          (fact) =>
+            fact.kind === "guard" ||
+            fact.kind === "source" ||
+            fact.kind === "storage",
         )
         .map((fact) => ({
           ...fact,
@@ -118,14 +125,15 @@ describe("PHP Source Analysis", () => {
         targetSnapshot: index.targetSnapshot,
         analysisProfile: index.analysisProfile,
         filePaths: index.files.map((file) => file.path),
-        pluginFile: pluginFile === undefined
-          ? undefined
-          : {
-              symbols: pluginSymbols,
-              registrationCalls,
-              registrationFacts,
-              diagnostics: pluginFile.diagnostics,
-            },
+        pluginFile:
+          pluginFile === undefined
+            ? undefined
+            : {
+                symbols: pluginSymbols,
+                registrationCalls,
+                registrationFacts,
+                diagnostics: pluginFile.diagnostics,
+              },
         diagnostics: index.diagnostics,
       }).toMatchObject({
         ref: {
@@ -253,17 +261,21 @@ describe("PHP Source Analysis", () => {
         },
       ]);
       expect(repeatedRef).toEqual(ref);
-      await expect(analysis.read({
-        ...ref,
-        targetSnapshotId: "different-snapshot-1.0.0",
-      })).rejects.toThrow("identity");
+      await expect(
+        analysis.read({
+          ...ref,
+          targetSnapshotId: "different-snapshot-1.0.0",
+        }),
+      ).rejects.toThrow("identity");
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
   });
 
   it("records syntax diagnostics while preserving recoverable facts", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "wordpress-php-index-error-"));
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordpress-php-index-error-"),
+    );
     const analysis = openPhpSourceAnalysis({
       artifactDirectory: join(directory, "artifacts"),
       helperPath,
@@ -315,12 +327,23 @@ describe("PHP Source Analysis", () => {
   });
 
   it("does not follow PHP symlinks outside the target root", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "wordpress-php-index-link-"));
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordpress-php-index-link-"),
+    );
     const sourceDirectory = join(directory, "source");
     await mkdir(sourceDirectory);
-    await writeFile(join(sourceDirectory, "inside.php"), "<?php function inside(): void {}\n");
-    await writeFile(join(directory, "outside.php"), "<?php function outside(): void {}\n");
-    await symlink(join(directory, "outside.php"), join(sourceDirectory, "linked.php"));
+    await writeFile(
+      join(sourceDirectory, "inside.php"),
+      "<?php function inside(): void {}\n",
+    );
+    await writeFile(
+      join(directory, "outside.php"),
+      "<?php function outside(): void {}\n",
+    );
+    await symlink(
+      join(directory, "outside.php"),
+      join(sourceDirectory, "linked.php"),
+    );
     const analysis = openPhpSourceAnalysis({
       artifactDirectory: join(directory, "artifacts"),
       helperPath,
@@ -344,14 +367,18 @@ describe("PHP Source Analysis", () => {
       const index = await analysis.read(ref);
 
       expect(index.files.map((file) => file.path)).toEqual(["inside.php"]);
-      expect(index.files[0]?.symbols.map((symbol) => symbol.name)).toEqual(["inside"]);
+      expect(index.files[0]?.symbols.map((symbol) => symbol.name)).toEqual([
+        "inside",
+      ]);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
   });
 
   it("rejects malformed helper output without publishing an artifact", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "wordpress-php-index-output-"));
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordpress-php-index-output-"),
+    );
     const malformedHelperPath = join(directory, "malformed-helper.php");
     await writeFile(malformedHelperPath, "<?php echo 'not-json';\n");
     const analysis = openPhpSourceAnalysis({
@@ -361,29 +388,35 @@ describe("PHP Source Analysis", () => {
     });
 
     try {
-      await expect(analysis.analyze({
-        targetSnapshot: {
-          id: "malformed-helper-plugin-1.0.0",
-          pluginSlug: "malformed-helper-plugin",
-          version: "1.0.0",
-          digest: `sha256:${"d".repeat(64)}`,
+      await expect(
+        analysis.analyze({
+          targetSnapshot: {
+            id: "malformed-helper-plugin-1.0.0",
+            pluginSlug: "malformed-helper-plugin",
+            version: "1.0.0",
+            digest: `sha256:${"d".repeat(64)}`,
+          },
+          sourceDirectory: fixtureDirectory,
+          profile: {
+            id: "wordpress-php-8.3-v1",
+            phpVersion: "8.3",
+          },
+        }),
+      ).rejects.toBeInstanceOf(SyntaxError);
+      await expect(readdir(join(directory, "artifacts"))).rejects.toMatchObject(
+        {
+          code: "ENOENT",
         },
-        sourceDirectory: fixtureDirectory,
-        profile: {
-          id: "wordpress-php-8.3-v1",
-          phpVersion: "8.3",
-        },
-      })).rejects.toBeInstanceOf(SyntaxError);
-      await expect(readdir(join(directory, "artifacts"))).rejects.toMatchObject({
-        code: "ENOENT",
-      });
+      );
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
   });
 
   it("terminates helper output above the configured ceiling", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "wordpress-php-index-limit-"));
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordpress-php-index-limit-"),
+    );
     const noisyHelperPath = join(directory, "noisy-helper.php");
     await writeFile(noisyHelperPath, "<?php echo str_repeat('x', 1024);\n");
     const analysis = openPhpSourceAnalysis({
@@ -394,22 +427,26 @@ describe("PHP Source Analysis", () => {
     });
 
     try {
-      await expect(analysis.analyze({
-        targetSnapshot: {
-          id: "noisy-helper-plugin-1.0.0",
-          pluginSlug: "noisy-helper-plugin",
-          version: "1.0.0",
-          digest: `sha256:${"e".repeat(64)}`,
+      await expect(
+        analysis.analyze({
+          targetSnapshot: {
+            id: "noisy-helper-plugin-1.0.0",
+            pluginSlug: "noisy-helper-plugin",
+            version: "1.0.0",
+            digest: `sha256:${"e".repeat(64)}`,
+          },
+          sourceDirectory: fixtureDirectory,
+          profile: {
+            id: "wordpress-php-8.3-v1",
+            phpVersion: "8.3",
+          },
+        }),
+      ).rejects.toThrow("exceeded output ceiling");
+      await expect(readdir(join(directory, "artifacts"))).rejects.toMatchObject(
+        {
+          code: "ENOENT",
         },
-        sourceDirectory: fixtureDirectory,
-        profile: {
-          id: "wordpress-php-8.3-v1",
-          phpVersion: "8.3",
-        },
-      })).rejects.toThrow("exceeded output ceiling");
-      await expect(readdir(join(directory, "artifacts"))).rejects.toMatchObject({
-        code: "ENOENT",
-      });
+      );
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

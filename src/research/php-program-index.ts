@@ -14,21 +14,29 @@ const identifierSchema = z
   .max(128)
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
 
-const sourceRangeSchema = z.strictObject({
-  startLine: z.number().int().positive(),
-  endLine: z.number().int().positive(),
-  startOffset: z.number().int().nonnegative(),
-  endOffset: z.number().int().nonnegative(),
-}).refine(
-  (range) => range.endLine >= range.startLine && range.endOffset >= range.startOffset,
-  { message: "Source range must end at or after its start" },
-);
+const sourceRangeSchema = z
+  .strictObject({
+    startLine: z.number().int().positive(),
+    endLine: z.number().int().positive(),
+    startOffset: z.number().int().nonnegative(),
+    endOffset: z.number().int().nonnegative(),
+  })
+  .refine(
+    (range) =>
+      range.endLine >= range.startLine && range.endOffset >= range.startOffset,
+    { message: "Source range must end at or after its start" },
+  );
 
-const relativePhpPathSchema = z.string().min(1).refine((path) =>
-  !path.startsWith("/")
-  && !path.includes("\\")
-  && !path.split("/").includes(".."),
-{ message: "Program file path must be a normalized relative path" });
+const relativePhpPathSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (path) =>
+      !path.startsWith("/") &&
+      !path.includes("\\") &&
+      !path.split("/").includes(".."),
+    { message: "Program file path must be a normalized relative path" },
+  );
 
 const symbolSchema = z.strictObject({
   kind: z.enum(["class", "interface", "trait", "enum", "function", "method"]),
@@ -201,7 +209,10 @@ interface ChildResult {
 function summarizeIndex(index: PhpProgramIndex): PhpProgramIndexRef["summary"] {
   return {
     files: index.files.length,
-    symbols: index.files.reduce((count, file) => count + file.symbols.length, 0),
+    symbols: index.files.reduce(
+      (count, file) => count + file.symbols.length,
+      0,
+    ),
     calls: index.files.reduce((count, file) => count + file.calls.length, 0),
     wordpressFacts: index.files.reduce(
       (count, file) => count + file.wordpressFacts.length,
@@ -227,7 +238,10 @@ class PhpSourceAnalysisImplementation implements PhpSourceAnalysis {
     if (!Number.isSafeInteger(this.#timeoutMs) || this.#timeoutMs <= 0) {
       throw new RangeError("timeoutMs must be a positive safe integer");
     }
-    if (!Number.isSafeInteger(this.#maxOutputBytes) || this.#maxOutputBytes <= 0) {
+    if (
+      !Number.isSafeInteger(this.#maxOutputBytes) ||
+      this.#maxOutputBytes <= 0
+    ) {
       throw new RangeError("maxOutputBytes must be a positive safe integer");
     }
   }
@@ -236,7 +250,9 @@ class PhpSourceAnalysisImplementation implements PhpSourceAnalysis {
     const parsedInput = analyzePhpSourceInputSchema.parse(input);
     const sourceDirectory = resolve(parsedInput.sourceDirectory);
     if (sourceDirectory.includes(delimiter)) {
-      throw new Error(`sourceDirectory cannot contain path delimiter ${delimiter}`);
+      throw new Error(
+        `sourceDirectory cannot contain path delimiter ${delimiter}`,
+      );
     }
     const request = {
       schemaVersion: 1,
@@ -249,16 +265,18 @@ class PhpSourceAnalysisImplementation implements PhpSourceAnalysis {
     };
     const result = await this.#runHelper(request, sourceDirectory);
     if (result.exitCode !== 0) {
-      throw new Error(`PHP Program Index helper failed: ${result.stderr.trim()}`);
+      throw new Error(
+        `PHP Program Index helper failed: ${result.stderr.trim()}`,
+      );
     }
 
     const responseValue: unknown = JSON.parse(result.stdout);
     const index = phpProgramIndexSchema.parse(responseValue);
     if (
-      index.targetSnapshot.id !== parsedInput.targetSnapshot.id
-      || index.targetSnapshot.digest !== parsedInput.targetSnapshot.digest
-      || index.analysisProfile.id !== parsedInput.profile.id
-      || index.analysisProfile.phpVersion !== parsedInput.profile.phpVersion
+      index.targetSnapshot.id !== parsedInput.targetSnapshot.id ||
+      index.targetSnapshot.digest !== parsedInput.targetSnapshot.digest ||
+      index.analysisProfile.id !== parsedInput.profile.id ||
+      index.analysisProfile.phpVersion !== parsedInput.profile.phpVersion
     ) {
       throw new Error("PHP Program Index helper returned mismatched identity");
     }
@@ -283,19 +301,26 @@ class PhpSourceAnalysisImplementation implements PhpSourceAnalysis {
     const value: unknown = JSON.parse(content);
     const index = phpProgramIndexSchema.parse(value);
     if (sha256Digest(index) !== parsedRef.digest) {
-      throw new Error(`PHP Program Index artifact digest mismatch: ${parsedRef.digest}`);
+      throw new Error(
+        `PHP Program Index artifact digest mismatch: ${parsedRef.digest}`,
+      );
     }
     if (
-      index.targetSnapshot.id !== parsedRef.targetSnapshotId
-      || index.analysisProfile.id !== parsedRef.analysisProfileId
-      || canonicalJson(summarizeIndex(index)) !== canonicalJson(parsedRef.summary)
+      index.targetSnapshot.id !== parsedRef.targetSnapshotId ||
+      index.analysisProfile.id !== parsedRef.analysisProfileId ||
+      canonicalJson(summarizeIndex(index)) !== canonicalJson(parsedRef.summary)
     ) {
-      throw new Error("PHP Program Index reference identity does not match artifact");
+      throw new Error(
+        "PHP Program Index reference identity does not match artifact",
+      );
     }
     return index;
   }
 
-  async #runHelper(request: unknown, sourceDirectory: string): Promise<ChildResult> {
+  async #runHelper(
+    request: unknown,
+    sourceDirectory: string,
+  ): Promise<ChildResult> {
     const helperDirectory = dirname(this.#helperPath);
     const helperRoot = dirname(helperDirectory);
     if (helperRoot.includes(delimiter)) {
@@ -336,7 +361,11 @@ class PhpSourceAnalysisImplementation implements PhpSourceAnalysis {
       let exceededOutput = false;
       const timer = setTimeout(() => {
         child.kill("SIGKILL");
-        reject(new Error(`PHP Program Index helper timed out after ${this.#timeoutMs}ms`));
+        reject(
+          new Error(
+            `PHP Program Index helper timed out after ${this.#timeoutMs}ms`,
+          ),
+        );
       }, this.#timeoutMs);
 
       child.on("error", (error) => {
@@ -372,7 +401,11 @@ class PhpSourceAnalysisImplementation implements PhpSourceAnalysis {
         });
       });
       child.stdin.on("error", (error) => {
-        if (!(error instanceof Error && "code" in error && error.code === "EPIPE")) {
+        if (!(
+          error instanceof Error &&
+          "code" in error &&
+          error.code === "EPIPE"
+        )) {
           reject(error);
         }
       });
@@ -393,7 +426,10 @@ class PhpSourceAnalysisImplementation implements PhpSourceAnalysis {
 
   #artifactPath(digest: string): string {
     const parsedDigest = digestSchema.parse(digest);
-    return join(this.#artifactDirectory, `${parsedDigest.slice("sha256:".length)}.json`);
+    return join(
+      this.#artifactDirectory,
+      `${parsedDigest.slice("sha256:".length)}.json`,
+    );
   }
 }
 

@@ -4,9 +4,7 @@ import { z } from "zod";
 
 type JsonPrimitive = boolean | null | number | string;
 type JsonValue =
-  | JsonPrimitive
-  | JsonValue[]
-  | { readonly [key: string]: JsonValue };
+  JsonPrimitive | JsonValue[] | { readonly [key: string]: JsonValue };
 
 const jsonValueSchema = z.json();
 

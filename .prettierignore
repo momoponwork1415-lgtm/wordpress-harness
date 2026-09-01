@@ -1,0 +1,19 @@
+.agents/
+.codex/
+.private/
+artifacts/
+campaigns/
+coverage/
+custom-facebook-feed/
+dist/
+node_modules/
+tools/php-program-index/vendor/
+
+# Generated lockfiles and human-authored design documents are outside the format gate.
+pnpm-lock.yaml
+tools/php-program-index/composer.lock
+**/*.md
+
+# Bootstrap Target metadata is private input, not repository-authored configuration.
+info.json
+wf.json

@@ -25,6 +25,8 @@
 ## Change discipline
 
 - 一回の変更は一つの観測可能なbehaviorまたは一つの明確な文書判断へ絞る。将来用のframeworkや未使用の設定を先回りして追加しない。
+- public CLIのcommand、argument、flag、accepted value、environment variable、defaultは互換性を持つInterfaceとして扱い、変更時はhelp、runtime schema、Behavior Testを同じ変更で更新する。
+- 実在するfailureまたはsecurity propertyに根拠がないsanitization、fallback、limit、abstractionを推測で追加しない。
 - North Starへ直接寄与する探索、Source Mapping、Verificationを優先する。UI、notification、multi-user、運用自動化は、安全隔離とevidence integrityに必要な最小限を除き、実戦で観測した故障をissue化して直す。
 - hard-to-reverse、文脈なしでは意外、実在するtrade-offの3条件を満たす判断だけADRにする。既存ADRの歴史を書き換えず、新しいADRでsupersedeする。
 - domain termが変わったら該当`CONTEXT.md`と[日本語用語早見表](docs/JAPANESE-GLOSSARY.md)を同じ変更で更新する。`CONTEXT.md`へ実装詳細を置かない。
@@ -47,6 +49,7 @@
 - private method、内部call count、内部module同士の呼出順、直接database queryでbehaviorを検証しない。
 - expected valueはspecification、固定fixture、worked example等の独立した根拠から作り、implementationと同じ計算をtest内で再実装しない。
 - mockはprovider CLI、clock、filesystem等のsystem seamだけに使う。所有する内部moduleはmockせず、可能ならreal local substituteを使う。
+- fixtureは合成データを使い、private target、未公開Finding、credentialをTest、Issue、PR、CI artifactへ入れない。
 - refactorはgreenになったsliceのreview段階で行い、behavior変更と混ぜない。
 - Ledger replay、crash境界、unknown event version、stable work ordering、minority Hypothesis保持、Boundary Pairのpositive/negative/controlは回帰testを必須とする。
 
@@ -76,6 +79,6 @@
 ## Git and review
 
 - userの未関連変更を保持する。private campaign dataや生成物をstageしない。
-- implementation commit前に、変更scopeに応じたtest、typecheck、lintを実行する。commandが未整備なら、その不足を隠さずhand-offへ記録する。
+- red-green中は`pnpm test <test-path>`で対象Seamだけを反復し、commit前はofflineかつ決定的な全体gateとして`pnpm check`を実行する。commandが未整備なら、その不足を隠さずhand-offへ記録する。
 - reviewでは、oracle leakage、context ownership違反、Research事実のmutation、Verification bypass、raw transcript handoff、非決定的replay、model多数決によるsource-bound route消失、Runtime ObservationのWitness化、危険なtarget execution、grantなしegressをblockerとして扱う。
 - safe pathは、sanitized immutable handoff、append-only record、fresh Verification、typed Experiment、explicit grant、human decisionの分離である。

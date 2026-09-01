@@ -115,10 +115,7 @@ class SqliteResearch {
     return this.#project(campaignId, rows);
   }
 
-  async inspect(
-    campaignId: string,
-    subject: SubjectRef,
-  ): Promise<SubjectView> {
+  async inspect(campaignId: string, subject: SubjectRef): Promise<SubjectView> {
     const rows = this.#readRows(campaignId);
     if (rows.length === 0) {
       throw new Error(`Campaign not found: ${campaignId}`);
@@ -173,10 +170,7 @@ class SqliteResearch {
   } {
     for (const [index, event] of rows.entries()) {
       if (event.campaign_sequence !== index + 1) {
-        throw new LedgerIntegrityError(
-          campaignId,
-          "non-contiguous-sequence",
-        );
+        throw new LedgerIntegrityError(campaignId, "non-contiguous-sequence");
       }
       if (event.kind !== "campaign.prepared" || event.schema_version !== 1) {
         throw new UnsupportedLedgerSchemaError(

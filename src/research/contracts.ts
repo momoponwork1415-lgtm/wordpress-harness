@@ -62,10 +62,7 @@ export interface CampaignRunner {
 
 export interface CampaignReader {
   read(campaignId: string): Promise<CampaignView>;
-  inspect(
-    campaignId: string,
-    subject: SubjectRef,
-  ): Promise<SubjectView>;
+  inspect(campaignId: string, subject: SubjectRef): Promise<SubjectView>;
 }
 
 export interface PreparationSubjectRef {

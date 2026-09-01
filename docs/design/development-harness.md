@@ -1,6 +1,6 @@
 # Development Harness
 
-Status: proposed, 2026-09-01
+Status: accepted; baseline implemented, 2026-09-01
 
 ## Purpose
 
@@ -14,7 +14,7 @@ Development Harnessは、productionのResearch Harnessを作る人間とcoding a
 
 ```text
 pnpm check                 # commit可能かを決める、offlineで決定的な全体gate
-pnpm test -- <test-path>   # red-green中のfocused test
+pnpm test <test-path>      # red-green中のfocused test
 ```
 
 `pnpm check`の内部順序、formatter、link checker、test runner、compilerはimplementation detailとする。GitHub Actionsは独自の判定を再実装せず、fresh checkoutで同じ`pnpm check`を呼ぶCI Adapterである。
@@ -68,9 +68,11 @@ coverage percentageは当初gateにしない。重要なinterface scenarioの欠
 最初のGitHub Actions workflowはUbuntu上の一jobだけとする。
 
 1. 最小のread-only permissionでcheckoutする
-2. repositoryの`packageManager`へ固定したpnpmとNode 22を使う
-3. `pnpm install --frozen-lockfile`を実行する
-4. `pnpm check`を実行する
+2. `ubuntu-24.04`に含まれるPHP 8.3とComposerをversion確認する
+3. repositoryの`packageManager`へ固定したpnpmとNode 22を使う
+4. `pnpm install --frozen-lockfile`を実行する
+5. `composer.lock`からPHP Program Index helperをscript・pluginなしでinstallする
+6. `pnpm check`を実行する
 
 Action dependencyはtagだけでなくfull commit SHAへ固定し、対応するrelease versionをcommentに残す。job timeoutとconcurrency cancellationを設定する。CI専用のtest分岐、変更fileだけのskip、sharding、cache tuningは最初に入れない。
 
@@ -92,16 +94,19 @@ Issueは今回の変更範囲と受入条件を所有する一時的な仕様で
 
 ## Current baseline
 
-既に次が存在する。
+次のbaselineを実装済みである。
 
 - strict TypeScriptと`noUncheckedIndexedAccess`、`exactOptionalPropertyTypes`、`useUnknownInCatchVariables`
-- `pnpm check`によるtypecheck、17 behavior tests、build
+- pinned Prettierによるauthored codeとmachine-readable configurationのformat検査
+- `pnpm check`によるformat、typecheck、19 behavior tests、build、docs検査
 - real temporary SQLite、filesystem、PHP helperを使うtest
 - architecture、TDD、security、Git運用を定めた`AGENTS.md`
 - 現在のInterface、実装、Test、Seamを結ぶ`Codebase Guide`
+- repository-owned Markdownの相対linkと115個のContext termを検査する`docs:check`
+- read-only permission、SHA-pinned actions、`ubuntu-24.04`、Node 22、PHP 8.3、frozen lockfilesで同じ`pnpm check`を呼ぶGitHub CI
 - local hookによるgitleaks、test、Trivy
 
-不足しているのは、format gate、repository-owned docs check、versioned GitHub CIである。Codebase Guideは現時点では人間が保守するliving mapであり、path/link driftの自動検査はdocs checkの実装後に有効になる。local hookは開発機固有であり、fresh cloneの合格条件には数えない。また現行Trivy hookは結果にかかわらずpushを継続するため、blocking security gateとは呼ばない。
+Codebase Guideの意味上のModule対応は人間が保守し、`docs:check`はpath/link driftだけを自動検査する。local hookは開発機固有であり、fresh cloneの合格条件には数えない。また現行Trivy hookは結果にかかわらずpushを継続するため、blocking security gateとは呼ばない。
 
 ## Deferred until observed need
 
@@ -119,19 +124,20 @@ Model ExecutionでOS固有のprocess cleanup failureが観測された場合は�
 
 ## Acceptance scenarios
 
-1. fresh checkoutで`corepack`、Node 22、lockfileだけからinstallし、`pnpm check`が成功する。
-2. formatting差分、TypeScript error、behavior regression、build failure、repository-owned broken linkのいずれか一つで`pnpm check`がnon-zeroになる。
+1. fresh checkoutでNode 22、固定pnpm、PHP 8.3、`pnpm-lock.yaml`、`composer.lock`から依存をinstallし、`pnpm check`が成功する。
+2. formatting差分、TypeScript error、behavior regression、build failure、repository-owned broken link、Context termの日本語早見表欠落のいずれか一つで`pnpm check`がnon-zeroになる。
 3. `pnpm check`はnetwork credential、model login、target code executionを要求しない。
 4. GitHub Actionsとlocal shellが同じ`pnpm check`を呼び、CIだけの合格経路を持たない。
 5. focused testは全suiteを動かさず、一つのred-green sliceを再現できる。
 6. private source、未公開Finding、credentialをfixtureまたはCI artifactへ含めない。
 
-## First implementation slices
+## Implemented slices
 
-1. Developer Contractへpublic CLI互換性、合成fixture、推測上の防御を増やさない規則を不足分だけ追記する。
-2. Prettierとrepository-owned `docs:check`を追加し、`pnpm check`から実行する。Codebase Guide内のrepository linkも検査する。
-3. 一つのUbuntu GitHub Actions jobを追加し、fresh checkoutで同じgateを実行する。
-4. 実装Issue #1を開始し、Module treeとCodebase Guideの対応を同じ変更で更新する。
-5. 実際に人間が迷った経路だけをGuideへ追加し、file単位の自動wikiへ拡張しない。
+1. Developer Contractへpublic CLI互換性、合成fixture、推測上の防御を増やさない規則を追記した。
+2. Prettierとrepository-owned `docs:check`を追加し、`pnpm check`から実行するようにした。
+3. 一つのUbuntu GitHub Actions jobを追加し、fresh checkoutで同じgateを実行するようにした。
+4. Module MapとCodebase Guideを人間向けの段階的な入口にした。
+
+次のproduction sliceはIssue #1である。Module treeとCodebase Guideの対応を同じ変更で更新する。以後は、実際に人間が迷った経路だけをGuideへ追加し、file単位の自動wikiへ拡張しない。
 
 この順序はproduction moduleの設計gateを置き換えない。Development Harnessがgreenでも、未承認のproduction seamを実装してよいことにはならない。

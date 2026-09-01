@@ -18,7 +18,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "cli": "node dist/cli.js",
-    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "check": "pnpm format:check && pnpm typecheck && pnpm test && pnpm build && pnpm docs:check",
+    "docs:check": "node scripts/check-docs.mjs",
+    "format": "prettier --write . --ignore-unknown",
+    "format:check": "prettier --check . --ignore-unknown",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json"
@@ -30,6 +33,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.20.1",
+    "prettier": "3.9.6",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
   }
