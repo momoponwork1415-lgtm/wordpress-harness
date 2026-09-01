@@ -1,0 +1,25 @@
+# Installed dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+
+# Private Campaign state and evidence
+.private/
+campaigns/
+artifacts/
+
+# Bootstrap Target staging inputs (move to the private workspace later)
+/cff-4.12.0.zip
+/custom-facebook-feed/
+/info.json
+/wf.json
+
+# Local tooling
+.DS_Store
+*.log
