@@ -6,6 +6,8 @@ Status: Accepted initial cohort spine; each Case remains pending admission check
 
 この4件を初期Development Cohortの骨格とする。各Caseは下記admission checkを満たすまで実行可能benchmarkには昇格しない。RCE Caseはprivate workspaceでvulnerable/patched両側を人間再現できた時点で追加する。
 
+現在のactive deliveryでは、この4件を日常調整可能なDevelopment Cohortとして使い、daroo由来のWP Statistics Stored XSSとWPGraphQL SQL injectionを別のholdout候補として扱う。候補の一次資料と選定根拠は[daroo public Case candidates](daroo-public-case-candidates.md)、実行順と合格条件は[First closed vertical slice goal](../design/first-closed-slice-goal.md)を正本とする。
+
 公開情報だけを記録し、提出時のprivate report、PoC、payload、raw communicationはGitへ置かない。
 
 ## First admitted public Boundary Pair

@@ -64,13 +64,15 @@ Surface Map
 | Campaign Control | partial | prepare、read、inspect、deterministic replay | [Initial implementation seams](design/initial-implementation-seams.md) |
 | Source Understanding | partial | PHP Program Index、静的initial/source revision、asset inventory、根拠状態、coverage gap | [Source mapping seam](design/source-mapping-seam.md) |
 | Exploration | partial | bootstrap Map gate、Focus Area、有限Work Wave、Lane/Strategy/model-family割当、Source-bound Hypothesis取込 | [Exploration seam](design/exploration-seam.md) |
-| Verification | not implemented | architecture上のownershipとevidence規則のみ | [Module architecture](design/module-architecture.md#verification) |
+| Verification | proposed seam, not implemented | architecture上のownershipとevidence規則、最初のclosed sliceのInterface案 | [Verification seam](design/verification-seam.md) |
 | Model Execution | partial | Finder schema、tool-free Claude process、version/auth probe、budget/process-group終了、policy監査、private result CAS | [Model execution seam](design/model-execution-seam.md) |
 | Research Record | foundation only | single-writer SQLite Ledger、canonical digest、replay | [Initial implementation seams](design/initial-implementation-seams.md) |
 | Target Intelligence | not implemented | manual intake設計のみ | [Target intake seam](design/target-intake-seam.md) |
 | Human OS | not implemented | handoff ownershipのみ | [Module architecture](design/module-architecture.md#human-os-modules) |
 
 Milestoneの順序と完了条件は[Roadmap](design/roadmap.md)、実装Issueの依存順は[Issue #8](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/8)を正本とする。
+
+現在の最優先delivery contractは[First closed vertical slice goal](design/first-closed-slice-goal.md)である。探索の水平拡張より先に、既存のinner sliceをVerification、Research Ledger replay、Iteration Decisionへ接続する。Verificationのproduction codeとBehavior Testは、proposedな[Verification seam](design/verification-seam.md)がuser acceptanceを得た後に開始する。
 
 ## 情報の正本
 
