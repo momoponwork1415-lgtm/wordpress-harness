@@ -13,7 +13,7 @@ const immutableRefSchema = z.strictObject({
   digest: digestSchema,
 });
 
-const targetSnapshotRefSchema = z.strictObject({
+export const targetSnapshotRefSchema = z.strictObject({
   id: identifierSchema,
   pluginSlug: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
   version: z.string().min(1).max(64),

@@ -175,7 +175,7 @@ const programIndexSummarySchema = z.strictObject({
   diagnostics: z.number().int().nonnegative(),
 });
 
-const phpProgramIndexRefSchema = z.strictObject({
+export const phpProgramIndexRefSchema = z.strictObject({
   kind: z.literal("php-program-index"),
   schemaVersion: z.literal(1),
   targetSnapshotId: identifierSchema,

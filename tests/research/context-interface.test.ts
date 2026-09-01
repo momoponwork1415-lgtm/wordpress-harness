@@ -9,5 +9,7 @@ describe("Research context Interface", () => {
     expect(researchContext).not.toHaveProperty("openSqliteResearch");
     expect(researchContext).not.toHaveProperty("openSqliteResearchRecord");
     expect(researchContext).not.toHaveProperty("openFileJsonArtifactStore");
+    expect(researchContext).not.toHaveProperty("openSourceMapping");
+    expect(researchContext).not.toHaveProperty("decodeSurfaceMap");
   });
 });

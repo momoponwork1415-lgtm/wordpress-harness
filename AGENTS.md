@@ -6,7 +6,7 @@
 
 - North Starは、oracle-freeなprospective CampaignでRCEまたは同等のsite-wide compromiseへ至る未知routeを発見し、独立VerificationとHuman Confirmationまで到達すること。
 - 作業前に[Codebase Guide](docs/CODEBASE-GUIDE.md)から現在の実装、対象Module、公開Interface、Test、正本となるSeamを特定する。変更対象contextの`CONTEXT.md`とSeamを読み、system全体の判断が必要な場合だけ[architecture](docs/design/architecture.md)、理由の確認が必要な場合だけSeamから直接linkされたADRを読む。全ADRの通読を前提にしない。
-- 設計を正当化する外部資料は[docs/REFERENCES.md](docs/REFERENCES.md)の3件だけとする。Codex文書やtool文書は開発手順の参考であり、第4の設計参照資料ではない。
+- agentic harness全体の設計参照資料は[docs/REFERENCES.md](docs/REFERENCES.md)の3件とする。個別のsecurity methodologyは一次資料を補助根拠にできるが、外部資料が直接支持する主張とharness固有の推論を分け、3件と同列の第4の設計参照資料にしない。Codex文書やtool文書は開発手順の参考として扱う。
 - `CONTEXT.md`、code、Issueでは英語のdomain termとcode identifierを正式語として使う。user向け説明は日本語で書き、必要に応じて「正式語（日本語の意味）」を併記し、[日本語用語早見表](docs/JAPANESE-GLOSSARY.md)から意味を確認できるようにする。
 - Mermaid図の箱には短い正式語だけを置き、長い日本語説明、制約、例は図の直下へ出す。GitHub上で文字が見切れる長さのlabelを作らない。
 

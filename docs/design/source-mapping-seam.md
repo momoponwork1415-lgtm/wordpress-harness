@@ -1,6 +1,6 @@
 # Source mapping seam
 
-Status: accepted, 2026-09-01
+Status: accepted; first static slice implemented, 2026-09-02
 
 ## Owner and purpose
 
@@ -32,6 +32,40 @@ type SurfaceMappingInput =
 
 `MappingProfileRef`はPHP analysis profile、asset classification policy、Knowledge Capsule refs、Mapper用Model Profile、context ceiling、Runtime Observation policyとbudget、schema versionをdigest固定する。callerはparser、file list、prompt chunk、model session、host path、node merge順、Lab handleを渡さない。
 
+## Implemented static slice
+
+最初の実装は`initial`と、空の`acceptedContext`を持つsource-only `revision`を提供する。全manifest entryをinventory化し、PHP Program IndexのsymbolとWordPress factをsource anchor付き`observed` nodeへ変換する。一意なliteral callback名の対応は、runtime dispatchではなく構文上の名前対応なので決定論的な`inferred` relationにする。literal名が解決不能または曖昧なcallbackと、callback式が非literalなregistrationは、必要証拠を持つ`unknown` relationとして残す。非PHP asset、PHP index欠落、parse diagnosticはgapになる。
+
+Target IntakeとTarget Workspaceが未実装の間は、`openSourceMapping`の内部bootstrap構成で一つの固定Target Snapshot、manifest ref、PHP Program Index ref、private CAS directoryを束ねる。`build`へhost pathまたはfile listは渡さない。この構成はTarget Workspace接続時に置き換え、`build`のInterfaceとbehavior testを維持する。
+
+現時点では非空のContext Response、Mapper model、Knowledge由来inference、非PHP asset relation、`runtime-revision`を処理しない。未対応assetを解析済みにせずgapとして公開する。これらは実戦のmapping gapまたは後続Issueから追加する。
+
+最終的なSurface Map全体を決定論的解析だけで構築する方針ではない。決定論的sliceはTarget identity、inventory、構文上のfact、source anchor、evidence state、stable orderingという骨格を固定する。Mapper modelはその上へ、feature境界、cross-file relation、dynamic dispatch候補、stateを跨ぐroute、追加Context Requestを`inferred`または`unknown`として補完する。modelは`observed`を訂正・削除せず、重要なrelationはsemantic analysisまたはpolicy適合Runtime Observationから別の根拠を追加する。
+
+### 決定的な構築手順（Deterministic construction）
+
+1. manifest、PHP Program Index、predecessorをdigest指定でprivate CASから読み、schema、Target identity、analysis profile、summaryを照合する。
+2. manifest全entryをpathのcode-unit順へ固定し、PHP index済みか理由付きgapかを記録する。
+3. PHP symbolとWordPress factから、Target digest、relative path、file digest、byte offset、subjectをcanonical化してnode IDを作る。表示用line番号、host path、入力配列の到着順はIDへ含めない。
+4. literal callback名が一つのsymbol名へ対応する時だけ、両nodeをpremiseに持つ決定論的な`inferred` relationを作る。ゼロ件または複数件なら候補と必要証拠を持つ`unknown` relationにする。callbackが非literalならregistrationを黙って落とさず、`callback-not-literal`と必要なexpression evidenceを持つ`unknown` relationにする。
+5. 非PHP asset、PHP index欠落、parse diagnosticをgapへ変換し、node、relation、gapをstable ID順へ並べる。
+6. source-only revisionではpredecessorのnode、relation、gapを保持し、新しいclaimだけを追加する。旧artifactは書き換えない。
+7. 完成viewをcanonical JSONとしてCASへ保存し、そのdigestをSurface Map refとして返す。
+
+Surface Map refはmanifestとPHP Program Indexの正確なartifact digestへ結び付くため、入力artifactが異なればrefも異なる。一方、同じsource anchorとclaimから作るnode/relation IDは入力配列の順序が変わっても同じになる。この分離によりprovenanceの違いを失わず、同じ研究上のclaimをrevision間で追跡できる。
+
+この方式はMapの内容が正しいと仮定するものではない。parser事実、推論、未解決relation、未解析assetを区別し、誤りや不足が後から観測・訂正できることを保証する。
+
+根拠と適用限界は[White-box Surface Mapping security reference](../research/white-box-surface-mapping-security-reference.md)に記録する。OSWE固有の手順には固定せず、OWASP、NIST、OASIS、公式static-analysis documentation等の一次資料が収束する実務を採用する。
+
+### 実プラグインによる特性確認（Real-target characterization）
+
+合成fixtureのBehavior Testに加え、Git外のprivate Campaign workspaceでBrizy 2.8.11と2.8.12を同じprofileから解析する。Source Mappingへadvisory、CVE、既知symbol、payload、patch説明は渡さない。まずinventory、observed node、inferred/unknown relation、coverage gapを出力し、その後に公開済みoracleと照合して「既知routeを発見したか」だけでなく「どの解析不足がrouteを隠したか」を記録する。
+
+このrunは合成fixtureを置き換えない。合成fixtureは決定性とfailure semanticsを高速に保護し、実Targetはnamespace、class callback、conditional registration、bundled dependency、非PHP asset等の想定漏れを発見する。positiveだけに合わせずpatched negativeも同じ手順で処理し、脆弱性名やversion固有symbolを汎用実装へ埋め込まない。
+
+2026-09-02の最初のrunでは、非literal callbackを持つregistrationがrelationなしで消える欠陥を検出した。修正後は405 registrationすべてがrelationを持ち、9件が`inferred: deterministic`、396件が理由付き`unknown`になった。既知Stored XSS routeはまだ接続できず、これが後続AI Mapperとflow relationの具体的な入力になる。取得hash、集計、oracle照合は[security reference](../research/white-box-surface-mapping-security-reference.md#real-target-characterization)に残す。
+
 ## Interface invariants
 
 - Surface MapはTarget Snapshot、Mapping Profile、predecessor、accepted Context Response、実行したRuntime Observationのdigestへ結び付き、同じ入力から同じcanonical refへ収束する。`runtime-revision`だけがLab Baselineを入力に持つ。
@@ -42,6 +76,8 @@ type SurfaceMappingInput =
 - `unknown`は候補、分からない理由、必要な次の証拠を持つ未解決状態であり、call edgeまたはreachability factとして扱わない。
 - stable identityはarrival order、model wording、line number、host path、random IDへ依存しない。
 - Target Snapshot外のWordPress Core、framework、external dependency knowledgeをTargetの`observed` source factとして保存しない。
+
+現行sliceはpredecessor claimを監査用に保持できるが、`superseded`、`contradicted`、`retracted`状態をまだ実装していない。したがって訂正を含むrevisionには未対応であり、保持されたclaimを常に最新のactive truthと解釈しない。訂正を受け入れる前に明示的なsupersession表現を追加する。
 
 ## Canonical evidence states
 
@@ -112,7 +148,7 @@ behavior testは`build(input)`が返すSurfaceMapRefと、そのrefからResearc
 
 1. 同じTarget SnapshotとMapping Profileは同じSurface Map ref、node identity、relation identityを返す。
 2. PHP Program Indexのobserved hookをmodelが異なるhook名として出力しても、元factは変更されず矛盾した出力は受理されない。
-3. 組立てhookまたはdynamic callを一意に解決できない場合、候補と必要証拠を持つ未解決（unknown）relationになる。
+3. 組立てhook、非literal callbackまたはdynamic callを一意に解決できない場合、候補と必要証拠を持つ未解決（unknown）relationになる。
 4. PHPから参照されるJavaScript templateはfile digestとsource anchorを持ってMapへ接続される。
 5. 到達可能なbundled vendor関数はprovenance付きで接続され、vendor directoryという理由だけで除外されない。
 6. minified assetをceilingのため読まない場合、asset metadataとreason付きgapが残る。

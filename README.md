@@ -30,11 +30,12 @@ WordPressプラグインのsource reviewを、LLMの探索力と独立した実�
 - [AI-navigable codebase and development-harness research](docs/research/ai-navigable-codebase-specification-reference.md)
 - [Codex Security development-harness reference](docs/research/codex-security-development-harness-reference.md)
 - [daroo researcher reference](docs/research/daroo-researcher-reference.md)
+- [White-box Surface Mapping security reference](docs/research/white-box-surface-mapping-security-reference.md)
 - [Why the ten verbs are control properties](docs/adr/0001-ten-verbs-as-control-properties.md)
 
 ## Current implementation
 
-Milestone 1では、versioned `campaign.prepared` event、single-writer SQLite Research Ledger、deterministic replay、crash-safe prepare retry、read-only inspect、薄いCLI adapterに加え、target PHPを実行しないcontent-addressed `PHP Program Index`を実装しています。Program Indexはsymbol、call、WordPress registration、guard、source、storage、sinkという構文上の事実だけを返し、脆弱性やtaintを判定しません。interfaceとtest対象は[Initial implementation seams](docs/design/initial-implementation-seams.md)と[PHP Program Index seam](docs/design/php-program-index-seam.md)に記録しています。
+Milestone 1では、versioned `campaign.prepared` event、single-writer SQLite Research Ledger、deterministic replay、crash-safe prepare retry、read-only inspect、薄いCLI adapterに加え、target PHPを実行しないcontent-addressed `PHP Program Index`と最初の静的`Surface Map`を実装しています。Program Indexはsymbol、call、WordPress registration、guard、source、storage、sinkという構文上の事実だけを返します。Surface Mapはそれらをsource anchor付き`observed` claimへ変換し、一意なliteral callback名の対応を決定論的な`inferred` relation、解けないrelationを`unknown`、非PHP assetとparse diagnosticをcoverage gapとして残します。これはAIを置き換える完全な静的解析器ではなく、後続Mapper modelがcross-file relation、dynamic route、追加contextを根拠状態付きで補完するための骨格です。脆弱性の存在やFinding昇格はどちらも判定しません。Interfaceとtest対象は[Initial implementation seams](docs/design/initial-implementation-seams.md)、[PHP Program Index seam](docs/design/php-program-index-seam.md)、[Source mapping seam](docs/design/source-mapping-seam.md)に記録しています。
 
 ```bash
 pnpm install

@@ -51,4 +51,4 @@ indexは脆弱性、taint、reachability、severityを判定しない。dynamic 
 4. 同じinputを繰り返すと同じdigestとartifactを返す
 5. target root外へのsymlinkとmalformed helper outputを安全側に拒否する
 
-このinternal seamのtestは移行中の回帰保護として残せるが、根拠状態付きSurface Mapが実装された後は[Source mapping seam](source-mapping-seam.md)から同じobservable behaviorを確認し、helperの内部構造へ依存する重複testを残さない。
+このinternal seamのtestはPHP抽出behaviorを保護する。[Source mapping seam](source-mapping-seam.md)のtestは固定PHP Program Indexをmapへ取り込み、根拠状態、inventory、gap、revisionを観測する。両方で同じ内部visitorまたは変換helperを重複検査しない。

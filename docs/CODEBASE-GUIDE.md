@@ -31,6 +31,7 @@ Status: living map, 2026-09-01
 | --- | --- | --- | --- | --- | --- |
 | Campaign preparation and read-only inspection | implemented | `openResearch` -> `ResearchModule.runner` / `reader` | [`src/research/index.ts`](../src/research/index.ts), [`open-research.ts`](../src/research/open-research.ts), [`campaign-control`](../src/research/campaign-control/index.ts), [`research-record`](../src/research/research-record/index.ts) | [`campaign-prepare.test.ts`](../tests/research/campaign-prepare.test.ts), [`ledger-compatibility.test.ts`](../tests/research/ledger-compatibility.test.ts), [`context-interface.test.ts`](../tests/research/context-interface.test.ts) | [Initial implementation seams](design/initial-implementation-seams.md) |
 | Content-addressed PHP Program Index | implemented, internal | `openPhpSourceAnalysis` -> `PhpSourceAnalysis.analyze` | [`source-mapping/php-program-index`](../src/research/source-mapping/php-program-index/index.ts), [`file-json-artifact-store.ts`](../src/research/research-record/file-json-artifact-store.ts), [`tools/php-program-index`](../tools/php-program-index) | [`php-program-index.test.ts`](../tests/research/php-program-index.test.ts) | [PHP Program Index seam](design/php-program-index-seam.md) |
+| Evidence-graded static Surface Map | partial, internal | `openSourceMapping` -> `SourceMapping.build` | [`source-mapping/index.ts`](../src/research/source-mapping/index.ts), [`static-source-mapping.ts`](../src/research/source-mapping/static-source-mapping.ts), [`contracts.ts`](../src/research/source-mapping/contracts.ts) | [`source-mapping.test.ts`](../tests/research/source-mapping.test.ts) | [Source mapping seam](design/source-mapping-seam.md) |
 | Command-line adapter | implemented | `runCli` and `wordpress-harness` executable | [`src/cli.ts`](../src/cli.ts) | [`campaign-cli.test.ts`](../tests/cli/campaign-cli.test.ts) | [ADR 0053](adr/0053-start-with-a-cli-interface.md), [ADR 0054](adr/0054-keep-the-cli-as-a-thin-adapter.md) |
 
 `src/research/index.ts`はcontext外へCampaign contractと`openResearch`だけを公開する。`open-research.ts`がcomposition rootとなり、Campaign lifecycleは`campaign-control/`、append/replay/CASは`research-record/`、PHP Program Indexは`source-mapping/`の内部に置く。未実装Moduleのfolderを先回りで作らず、behaviorを追加するIssueで一つずつ増やす。
@@ -40,7 +41,7 @@ Status: living map, 2026-09-01
 | Module | Production Status | 現在存在する土台 | 次に読む文書 |
 | --- | --- | --- | --- |
 | Campaign Control | partial | prepare、read、inspect、deterministic replay | [Initial implementation seams](design/initial-implementation-seams.md) |
-| Source Understanding | partial | PHP Program Index | [Source mapping seam](design/source-mapping-seam.md) |
+| Source Understanding | partial | PHP Program Index、静的initial/source revision、asset inventory、根拠状態、coverage gap | [Source mapping seam](design/source-mapping-seam.md) |
 | Exploration | not implemented | accepted Seamと実装Issueのみ | [Exploration seam](design/exploration-seam.md) |
 | Verification | not implemented | architecture上のownershipとevidence規則のみ | [Module architecture](design/module-architecture.md#verification) |
 | Model Execution | not implemented | accepted transport設計のみ | [Model execution seam](design/model-execution-seam.md) |

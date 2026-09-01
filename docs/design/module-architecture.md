@@ -478,9 +478,9 @@ folderはownershipを示すために使い、各名詞ごとにfileを分けな�
 
 最初のownership移行は完了している。`src/research/index.ts`はCampaign contractと`openResearch`だけを公開し、`open-research.ts`が内部moduleを組み立てる。Campaign lifecycleとprojectionは`campaign-control/`、SQLite append/replayとcanonical JSON/CASは`research-record/`、PHP Program Indexは`source-mapping/php-program-index/`が所有する。CLIは薄いadapterのままなので、次にCLI behaviorを変更する時まで`src/cli.ts`から動かさない。
 
-これはfolderを完成形まで先に作る移行ではない。未実装Moduleは、それぞれacceptedなSeamと最初のbehaviorを持つIssueで追加する。次はacceptedなModel Execution seamの最小Attempt behaviorへ進み、Transport Eligibilityのoffline contract fixtureを先に作る。公式性・安全性capability probeを通過した場合だけ、最初のprovider process adapterを有効化する。
+これはfolderを完成形まで先に作る移行ではない。未実装Moduleは、それぞれacceptedなSeamと最初のbehaviorを持つIssueで追加する。Source Mappingの最初の静的sliceまで実装したため、次は固定Surface MapからacceptedなExploration seamで最初の決定的Work Waveを計画する。Model Executionとprovider process adapterは、Issue依存上のWork WaveとFinder output取込が成立してから接続する。
 
-現行PHP Program Indexはfile digest、byte range、WordPress fact、diagnosticを保持するため`observed` factの入力として再利用できる。一方、`pluginSlug`を含む旧Target Snapshot形状、非PHP asset inventory、根拠状態、stable map identity、immutable revision、Context RequestはまだSource Mapping seamを満たさない。module ownershipの移行とSurface Map behaviorを混ぜず、次のsliceからこのseamをred-greenで追加する。
+現行Source MappingはPHP Program Indexのsymbol、WordPress fact、diagnosticを`observed`として取り込み、全manifest entry、非PHP gap、stable node/relation identity、初期mapとsource-only revisionをCASへ固定する。一方、`pluginSlug`を含む旧Target Snapshot形状、Context Response、Mapper synthesis、非PHP asset relation、Knowledge由来inference、Runtime Observationはまだ完全なSource Mapping seamを満たさない。初期探索は明示gapを持つ最小Mapから始め、必要性が観測された能力を独立sliceで追加する。
 
 ## Failure semantics across modules
 
