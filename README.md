@@ -13,6 +13,7 @@ WordPressプラグインのsource reviewを、LLMの探索力と独立した実�
 - [Development rules](AGENTS.md)
 - [Context map](CONTEXT-MAP.md)
 - [Domain language](CONTEXT.md)
+- [日本語用語早見表](docs/JAPANESE-GLOSSARY.md)
 - [Architecture overview diagram](docs/design/architecture-overview.md)
 - [Architecture](docs/design/architecture.md)
 - [Module architecture](docs/design/module-architecture.md)
