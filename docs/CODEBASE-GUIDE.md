@@ -57,7 +57,7 @@ Surface Map
 
 `CampaignRunner.run`の最初のbehavior sliceは、CAS固定のSurface Mapから有限Work Wave、Finder、独立Verification、Finding、`await-calibration` decision、Research Ledger replayまでを一つのpublic入口で接続している。Finderの外部実行より前にAttempt intentを記録し、中断したprocessを`orphaned`へ確定して残予算内のfresh Attemptへ置き換える。仮説なしで予算が残る場合はpure Iteration Reviewが停止条件付きの有限next workをCASへ固定する。現時点のsystem seamは合成adapterであり、実gVisor/browser evidenceではない。次の実装はこの同じ経路へ実Lab adapterとBrizy Boundary Pairを接続する。
 
-Verification内部の最初のtracerは、合成source re-derivationとdeterministic Lab Control adapterから、Stored XSSのgVisor/no-fallback binding、fresh sibling、browser Witness、Causal Control、normal-function条件を検査し、Finding、同じCausal Identityに限定したDisproved、またはVerifier/gVisor unavailable・sibling configuration mismatch・non-hermetic fallback・evidence incompleteのBlockedをprivate CASとResearch Ledgerへdurable writeしてclose/reopen後にreplayできる。これは[Verification Behavior Test](../tests/research/verification.test.ts)で保護するが、実gVisor、WordPress、browserを使うevidentiary runではなく、上記の製品closed loop完了を意味しない。
+Verification内部の最初のtracerは、合成source re-derivationとdeterministic Lab Control adapterから、Stored XSSのgVisor/no-fallback binding、fresh sibling、browser Witness、Causal Control、normal-function条件を検査し、Finding、同じCausal Identityに限定したDisproved、またはVerifier/gVisor unavailable・sibling configuration mismatch・non-hermetic fallback・evidence incompleteのBlockedをprivate CASとResearch Ledgerへdurable writeしてclose/reopen後にreplayできる。Stored XSS専用のproduction Lab Controlは、shellなしのDocker process adapter、`runsc`とlocal pinned imageの事前gate、fresh internal WordPress Lab、private fixture/browser worker、sanitized Observationまで実装済みである。[Verification Behavior Test](../tests/research/verification.test.ts)と[Lab Control Test](../tests/research/gvisor-stored-xss-lab.test.ts)で保護するが、端末へ`runsc`が未登録のため実Targetによるevidentiary runは未完了であり、上記の製品closed loop完了を意味しない。
 
 ## 設計上の現在地
 
@@ -66,7 +66,7 @@ Verification内部の最初のtracerは、合成source re-derivationとdetermini
 | Campaign Control | partial | prepare、read、inspect、deterministic replay。closed-loop `run(plan)`はproposed | [Campaign execution seam](design/campaign-execution-seam.md) |
 | Source Understanding | partial | PHP Program Index、静的initial/source revision、asset inventory、根拠状態、coverage gap | [Source mapping seam](design/source-mapping-seam.md) |
 | Exploration | partial | bootstrap Map gate、Focus Area、有限Work Wave、Lane/Strategy/model-family割当、Source-bound Hypothesis取込 | [Exploration seam](design/exploration-seam.md) |
-| Verification | partial | `verify(plan)`、Stored XSS Finding/Disproved、Verifier/gVisor/sibling Blocked、typed Witness/Control、durable outcome replay | [Verification seam](design/verification-seam.md) |
+| Verification | partial | `verify(plan)`、Stored XSS Finding/Disproved、Verifier/gVisor/sibling Blocked、typed Witness/Control、durable outcome replay、production gVisor Stored XSS Lab Control（実Target run未完了） | [Verification seam](design/verification-seam.md) |
 | Model Execution | partial | Finder schema、tool-free Claude process、version/auth probe、budget/process-group終了、policy監査、private result CAS | [Model execution seam](design/model-execution-seam.md) |
 | Research Record | partial | single-writer SQLite Ledger、canonical digest、Campaign preparation、Verification start/completion replay | [Initial implementation seams](design/initial-implementation-seams.md) |
 | Target Intelligence | not implemented | manual intake設計のみ | [Target intake seam](design/target-intake-seam.md) |

@@ -2,7 +2,7 @@
 
 Status: accepted, 2026-09-02
 
-Implementation status: partial. 合成system-seam adapterを使うBehavior Testでは、Stored XSSのFinding gate、同じCausal Identityに限定したDisproved、VerifierまたはgVisor unavailable、budget exhausted、sibling configuration/identity mismatch、non-hermetic fallback、evidence incompleteのBlocked、artifact digest mismatchのread rejection、private CAS write、Verification start/completion event、close/reopen replayまで実装済みである。Witness完了後にControlがtyped Blockedとなった場合は、完了済みWitness refをpartial evidenceとして保持する。Campaign Control compositionは実装済みだが、実Verifier Model Executionと実gVisor Lab Controlは未実装であり、このtracerをevidentiary Verificationへ読み替えない。
+Implementation status: partial. 合成system-seam adapterを使うBehavior Testでは、Stored XSSのFinding gate、同じCausal Identityに限定したDisproved、VerifierまたはgVisor unavailable、budget exhausted、sibling configuration/identity mismatch、non-hermetic fallback、evidence incompleteのBlocked、artifact digest mismatchのread rejection、private CAS write、Verification start/completion event、close/reopen replayまで実装済みである。Witness完了後にControlがtyped Blockedとなった場合は、完了済みWitness refをpartial evidenceとして保持する。Stored XSS専用のproduction Lab Controlは、shellを介さないDocker CLI、明示的な`runsc` preflight、local-only pinned image preflight、internal network、fresh volume、固定setup lifecycle、private fixture/browser worker、sanitized Observation、resource cleanupを実装済みである。現時点ではdeterministic process seamでのみ確認済みで、端末へ`runsc`が未登録のため実Targetによるevidentiary runは未完了である。実Verifier Model Executionとのproduction compositionも未完了であり、この状態をclosed slice完了へ読み替えない。
 
 ## Design target
 
