@@ -17,11 +17,13 @@ WordPressプラグインのsource reviewを、LLMの探索力と独立した実�
 - [Architecture overview diagram](docs/design/architecture-overview.md)
 - [Architecture](docs/design/architecture.md)
 - [Module architecture](docs/design/module-architecture.md)
+- [Proposed development harness](docs/design/development-harness.md)
 - [Exploration seam](docs/design/exploration-seam.md)
 - [Capability-first roadmap](docs/design/roadmap.md)
 - [Design Baseline v0.1](docs/design/baseline-v0.1.md)
 - [Design references](docs/REFERENCES.md)
 - [Research synthesis](docs/research/agentic-source-review-ten-verbs.md)
+- [Codex Security development-harness reference](docs/research/codex-security-development-harness-reference.md)
 - [daroo researcher reference](docs/research/daroo-researcher-reference.md)
 - [Why the ten verbs are control properties](docs/adr/0001-ten-verbs-as-control-properties.md)
 
