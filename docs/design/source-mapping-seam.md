@@ -66,6 +66,8 @@ Surface Map refはmanifestとPHP Program Indexの正確なartifact digestへ結�
 
 2026-09-02の最初のrunでは、非literal callbackを持つregistrationがrelationなしで消える欠陥を検出した。修正後は405 registrationすべてがrelationを持ち、9件が`inferred: deterministic`、396件が理由付き`unknown`になった。既知Stored XSS routeはまだ接続できず、これが後続AI Mapperとflow relationの具体的な入力になる。取得hash、集計、oracle照合は[security reference](../research/white-box-surface-mapping-security-reference.md#real-target-characterization)に残す。
 
+同日の5 plugin family比較では全PHPをparse diagnostic 0件で処理できた一方、callback解決率が大きく異なり、superglobal、直接request候補PHP、file/code/SQL operationが骨格に不足していることが分かった。局所的で再現可能なsource factだけを実測に基づいて追加し、全call graphやtaint engineを先回りで自作しない。cross-file/cross-request relationとsecurity invariantはMapper modelの補完対象とする。
+
 ## Interface invariants
 
 - Surface MapはTarget Snapshot、Mapping Profile、predecessor、accepted Context Response、実行したRuntime Observationのdigestへ結び付き、同じ入力から同じcanonical refへ収束する。`runtime-revision`だけがLab Baselineを入力に持つ。

@@ -97,6 +97,32 @@ Map生成後に2.8.11と2.8.12の公開patchを照合すると、`editor/forms/a
 
 この結果は全relationを決定論的解析で作る必要性を示さない。逆に、固定したsource factを骨格にして、AI Mapperがcross-file relation、persistent state、dynamic callback候補と追加source requestを根拠付きで補完する必要性を示す。AI出力は`inferred`または`unknown`であり、`observed` factの訂正として扱わない。
 
+### Five-plugin-family sample
+
+一つのplugin構造への過適合を避けるため、Brizyの二versionに加え、TranslatePress 3.2.5、Simply Schedule Appointments 1.6.10.0、Custom Facebook Feed 4.12.0、Iptanus/WordPress File Upload 4.24.12を同じprofileで解析した。合計は6 snapshot、5 plugin familyである。
+
+| Target Snapshot | 全file / PHP | WordPress facts | Surface nodes | relation inferred / unknown | gaps |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Brizy 2.8.11 | 8,183 / 352 | 708 | 3,166 | 9 / 396 | 7,831 |
+| Brizy 2.8.12 | 8,183 / 352 | 708 | 3,166 | 9 / 396 | 7,831 |
+| TranslatePress 3.2.5 | 912 / 180 | 1,251 | 2,711 | 287 / 145 | 732 |
+| Simply Schedule Appointments 1.6.10.0 | 749 / 176 | 717 | 2,398 | 1 / 261 | 573 |
+| Custom Facebook Feed 4.12.0 | 568 / 213 | 1,085 | 2,164 | 44 / 113 | 355 |
+| Iptanus/WordPress File Upload 4.24.12 | 135 / 27 | 545 | 1,040 | 47 / 3 | 108 |
+
+全snapshotでparse diagnosticは0件だった。一方、literal callbackの名前対応率はplugin familyによって大きく異なる。これはparserの構文抽出が安定していても、単純な名前一致をsemantic dispatchまたはcoverageへ読み替えられないことを示す。
+
+現行source factは`WP_REST_Request::get_param`だけを扱うため、Simply Schedule Appointmentsの4 nodeを除き、全sampleで`source` nodeが0だった。Iptanus/WordPress File Upload 4.24.12をMap生成後に公開済みRCE oracleと照合すると、直接アクセス可能なPHP file、`$_COOKIE`由来値、dynamic `require_once`のrouteが現在のnode/relationへ現れない。[Wordfence advisory](https://www.wordfence.com/threat-intel/vulnerabilities/wordpress-plugins/wp-file-upload/wordpress-file-upload-42412-unuathenticated-remote-code-execution)
+
+このmissから、全routeを静的に完成させるのではなく、次の境界を採用する。
+
+- superglobal、直接request候補PHP、file/code/SQL/output operation等、source上に局所的かつ再現可能に存在するfactは、実測caseを根拠に決定論的骨格へ段階追加する
+- callback semantics、feature ownership、cross-file/cross-request relation、persistent state、security invariantはAI Mapperが根拠付き`inferred`または`unknown`として補完する
+- Work Waveは登録済みentryだけでなく、entry relationを持たないPHP fileと未解決relationをcoverage対象にできるようにする
+- known affected symbol、payload、patch narrativeはprospective Mapper/Finderへ渡さず、出力後のmiss分析だけに使う
+
+追加配布物のZIP SHA-256は、[TranslatePress 3.2.5](https://downloads.wordpress.org/plugin/translatepress-multilingual.3.2.5.zip)が`99f5b8ee7241115d7e4a910478f4a6ab5cdca242db50152a1301e71b34f9c56f`、[Simply Schedule Appointments 1.6.10.0](https://downloads.wordpress.org/plugin/simply-schedule-appointments.1.6.10.0.zip)が`270f432a73a6dbd22b9e986b2f450713147eb3e16bcb2f17778a6adbe0dc0f40`、[Iptanus/WordPress File Upload 4.24.12](https://downloads.wordpress.org/plugin/wp-file-upload.4.24.12.zip)が`ef84589748e27417624b088a300406eb5d5b13e0f590e4e107bb3ffda278eb9a`である。Custom Facebook Feedは既存のGit外bootstrap archiveを使い、そのSHA-256は`f7b98c1cb92b792ad05685a246bc0188ab198c53b962bbe27ebbd52ec1350d12`である。
+
 ## Assessment of the current static slice
 
 現在の実装は、全manifest entryのinventory、PHP Program Index由来node、source anchor、literal callback relation、coverage gap、canonical CAS、revisionを一つのdeterministic artifactにする。この範囲は上記methodologyと整合し、次の探索機能を積む土台として妥当である。
