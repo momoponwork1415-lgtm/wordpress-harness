@@ -14,7 +14,7 @@ Research            -- Human Review Packet --> Human OS
 Research            <-- Evidence Request ----- Human OS
 ```
 
-- **Target Intelligence -> Research**: Target Intelligenceは選定根拠と取得provenanceを`Target Intake Packet`へ固定する。Researchはそのsourceをdigest固定して`Target Snapshot`を作り、選定policyを再評価しない。
+- **Target Intelligence -> Research**: Target Intelligenceは正規化source tree、取得原本、採用結論、policy version、oracle-freeな選定理由と取得provenanceを`Target Intake Packet`へ固定する。Researchは正規化ファイル一覧をsource tree identityとして`Target Snapshot`を作り、選定policyを再評価しない。
 - **Research -> Human OS**: ResearchはFindingと再現に必要な最小証拠を`Human Review Packet`へ固定する。raw model transcriptまたはwritable worker stateをhandoffにしない。
 - **Human OS -> Research**: 不足証拠は既存FindingまたはResearch Ledgerを書き換えず、`Evidence Request`として新しいResearch workを要求する。
 - **Ownership**: 各contextは自分の判断記録を所有する。物理的に同じprocessまたはSQLite databaseを使っても、別contextのtable、event、内部moduleを直接更新しない。

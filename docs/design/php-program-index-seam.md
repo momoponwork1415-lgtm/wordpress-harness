@@ -1,8 +1,8 @@
 # PHP Program Index seam
 
-Status: confirmed, 2026-09-01
+Status: confirmed internal seam; context-public test surface superseded by `source-mapping-seam.md`, 2026-09-01
 
-PHP Source Analysisのpublic test surfaceは、固定Target SnapshotとAnalysis Profileからcontent-addressed `PHP Program Index`を作り、同じmoduleからruntime-validated indexを読むinterfaceである。
+PHP Source Analysisの内部interfaceは、固定Target SnapshotとAnalysis Profileからcontent-addressed `PHP Program Index`を作り、同じmoduleからruntime-validated indexを読む形である。Source Mapping実装前の既存codeでは一時的にResearch rootから公開されているが、最終的なcontext-public test surfaceではない。
 
 ```ts
 interface PhpSourceAnalysis {
@@ -37,7 +37,7 @@ indexは脆弱性、taint、reachability、severityを判定しない。dynamic 
 ## Invariants
 
 - helperはtarget fileを文字列として読み、PHP-Parserでparseするだけである。target file、autoload、Composer script、WordPress bootstrapを実行しない。
-- target root外のsymlinkを追わず、`vendor`、`node_modules`、`.git`を既定で除外する。
+- target root外のsymlinkを追わず、`.git`と非source管理領域を除外する。現行schema v1は`vendor`と`node_modules`も一律除外するが、acceptedなSource Mappingではbundled vendor PHPをprovenance付きで扱うため、この除外はprofile-controlledな次versionへ移行する。
 - stdin requestとstdout responseはversioned JSONとし、stderrをhandoffに使わない。
 - TypeScript moduleはchild outputをruntime schemaで検証し、canonical JSONをprivate artifact directoryへatomic writeしてdigestを返す。
 - child processへtimeout、output ceiling、PHP memory limitを適用する。failure時にpartial artifactを昇格しない。
@@ -50,3 +50,5 @@ indexは脆弱性、taint、reachability、severityを判定しない。dynamic 
 3. syntax errorを含むfileでもdiagnosticとrecoverable factsを返す
 4. 同じinputを繰り返すと同じdigestとartifactを返す
 5. target root外へのsymlinkとmalformed helper outputを安全側に拒否する
+
+このinternal seamのtestは移行中の回帰保護として残せるが、根拠状態付きSurface Mapが実装された後は[Source mapping seam](source-mapping-seam.md)から同じobservable behaviorを確認し、helperの内部構造へ依存する重複testを残さない。

@@ -4,4 +4,4 @@ status: accepted
 
 # Measure model variance
 
-各Model Profileは同じbenchmark Caseで最低三回実行し、per-run性能、variance、worst run、三回のunion yieldを別々に記録する。unionだけを能力scoreにすると、不安定で高コストな多重実行が過大評価されるため、単発の安定性と反復による追加yieldを分離する。三回を超える反復はmarginal verified yieldと費用から判断する。
+Model Profileの不安定性は、実戦Campaignで蓄積する比較可能なnatural replicateと、Frontier roleの採用または高コスト変更など意思決定が変わる場合の対応固定replicateで測る。全Profileの一律三回benchmarkは行わない。反復した場合はper-run性能、variance、worst run、union yieldを分け、unionだけで採用を決めない。

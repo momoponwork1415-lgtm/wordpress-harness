@@ -6,21 +6,22 @@ Status: implementation research, 2026-09-01
 
 ## Conclusion
 
-consumer subscriptionのOAuth tokenまたはCoding Plan keyを、独自の共通model APIへ取り出して流用しない。初期構成はprovider公式のagent CLIをfresh processとして起動する`NativeAgentProcessTransport`とし、API/service credentialを明示的に導入した場合だけ`DirectApiTransport`を追加する。
+consumer subscriptionのOAuth tokenまたはCoding Plan keyを、独自の共通model APIへ取り出して流用しない。初期候補はprovider公式のagent CLIをfresh processとして起動する`NativeAgentProcessTransport`だが、公式用途、version固定、credential isolation、built-in tool無効化、structured output、process terminationのprobeを全て通過したtransportだけをproductionへ採用する。API/service credentialを明示的に導入した場合だけ`DirectApiTransport`を追加する。
 
 ```text
 CampaignRunner
   -> Model Execution supervisor
        -> NativeAgentProcessTransport
-            -> claude -p       (Claude / GLM profile)
-            -> codex exec      (GPT profile)
-            -> grok -p         (Grok profile)
+            -> eligible official Claude client
+            -> eligible official Codex client
+            -> eligible official Grok client
+            -> eligible official GLM-supported client
        -> DirectApiTransport   (future, API/service credentials only)
 ```
 
-CLIは一つのWork Lease内のagent loop、context、built-in tool mechanicsを所有する。harnessはWork Lease、Prompt Set、tool policy、process/container、wall ceiling、retry ceiling、usage normalization、transcript durability、Campaign transitionを所有する。CLIはResearch Ledgerを読まず、workerを割り当てず、modelまたはeffortを選ばない。
+CLIは一つのWork Lease内のagent loopとprovider protocolを所有する。harnessはWork Lease、Prompt Set、role別tool manifest、process/container、wall ceiling、retry ceiling、usage normalization、transcript durability、Campaign transitionを所有する。provider組込みtoolは無効化し、CLIはResearch Ledgerを読まず、workerを割り当てず、modelまたはeffortを選ばない。
 
-Remote Controlは人間がCodex sessionを遠隔操作するoperator surfaceであり、再現可能なworker transportまたはscheduler protocolにはしない。
+Remote ControlはCampaignRunner/Readerを遠隔操作するoperator surfaceであり、provider session、worker transportまたはscheduler protocolにはしない。
 
 ## Anthropic reference harness
 
@@ -31,6 +32,8 @@ Anthropicのautonomous reference pipelineはSDK/API直結ではなく、trusted 
 - agent processはtargetと同じgVisor containerへ置き、host orchestratorはtarget codeまたはmodel-selected commandを実行しない。
 - setupとattackでnetwork policyを分け、attack時のegressをmodel endpointへ限定する。
 - transient errorではCLI sessionを外側の上限内でresumeし、stage resultはdurableに保存する。
+
+このreference harnessがClaude CodeのRead/Write/Bashを利用することは実装事実として参考にするが、本projectではuntrusted sourceからprovider credentialとhost control planeを隔離するため、そのtool設計を採用しない。provider組込みtoolを無効化し、harness所有の制限付きtoolへ置き換える判断は[ADR 0105](../adr/0105-expose-only-harness-owned-attempt-tools.md)に記録する。
 
 Primary evidence:
 
@@ -86,7 +89,8 @@ GLM Coding Plan is a subscription with a dedicated key and endpoint rather than 
 Each provider adapter must pass a common contract test while retaining provider-specific facts.
 
 - executable path, version, profile, model, effort, prompt digest, and effective config are recorded before launch
-- user/global instructions, plugins, MCP servers, memory, web search, auto-update, and subagents are disabled unless the pinned profile explicitly permits them
+- user/global instructions、built-in shell/filesystem、plugins、hooks、MCP servers、memory、web search、auto-update、subagentsを無効化する
+- source read/search、graph query、隔離scratch compute、typed Experimentはharness所有のrole別tool manifestからだけ提供する
 - source is read-only; only Attempt scratch is writable; credentials are not mounted into a model-readable path
 - stdout event stream, stderr, final output, usage, exit reason, session reference, and termination escalation are captured as private artifacts
 - outer supervisor enforces wall, process, turn/tool, concurrency, and retry ceilings even when the CLI has its own limits
@@ -95,8 +99,7 @@ Each provider adapter must pass a common contract test while retaining provider-
 
 ## Open questions and policy gates
 
-- consumer subscriptions do not provide a six-to-twelve-month availability SLA; reauthentication and quota exhaustion must produce a visible paused/blocked state
-- confirm whether the intended volume remains ordinary internal use for each subscription
-- obtain written confirmation before using Grok for automated defensive vulnerability research if its acceptable-use wording remains ambiguous
-- obtain written confirmation that repeated supervised Claude Code launches remain within GLM Coding Plan's supported-tool rule; otherwise use PAYG credentials or exclude the profile
-- benchmark CLI session resume as a bounded continuation of one Attempt rather than silently treating it as a fresh independent run
+- consumer subscriptionのavailability、再認証、quota exhaustionはTransport Eligibilityと運用probeで継続観測し、`auth-required`またはprovider failureを可視化する
+- intended volumeまたはautomated defensive researchの許可を公式資料で確認できないproviderは、有効化前に書面確認するか候補から保留する
+- built-in tool無効化とtool subprocessからのcredential isolationを実証できないproviderは候補から保留する
+- CLI session resumeは同じAttemptのbounded continuationとしてだけ校正し、fresh independent runに数えない

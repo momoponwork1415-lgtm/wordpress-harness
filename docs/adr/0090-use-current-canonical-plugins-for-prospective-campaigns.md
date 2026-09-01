@@ -1,0 +1,7 @@
+---
+status: accepted
+---
+
+# Use current canonical plugins for prospective Campaigns
+
+実戦Campaignは取得時点の最新安定版pluginとsingle-siteのCanonical Configurationから開始し、旧versionはDevelopment Cohortまたは既知差分の検証に限定する。Multisite、optional feature、追加dependencyは具体的なsource evidenceまたはHypothesisがある場合だけConfiguration Variantとして固定し、安全でない作為的な設定を通常Findingの前提にしない。これにより現在の攻撃可能性と再現性を優先し、旧版の再発見を実戦成果に数えない。

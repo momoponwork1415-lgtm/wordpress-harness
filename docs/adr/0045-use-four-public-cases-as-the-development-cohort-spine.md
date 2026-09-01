@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0089
 ---
 
 # Use four public Cases as the Development Cohort spine

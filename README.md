@@ -13,6 +13,7 @@ WordPressプラグインのsource reviewを、LLMの探索力と独立した実�
 - [Development rules](AGENTS.md)
 - [Context map](CONTEXT-MAP.md)
 - [Domain language](CONTEXT.md)
+- [Architecture overview diagram](docs/design/architecture-overview.md)
 - [Architecture](docs/design/architecture.md)
 - [Module architecture](docs/design/module-architecture.md)
 - [Capability-first roadmap](docs/design/roadmap.md)
@@ -54,4 +55,4 @@ PHP helperはComposer lockで`nikic/php-parser` 5.8.0へ固定しています。
 
 programme eligibility、報告書作成、vendor communication、patch生成は、DiscoveryとVerificationが実測で機能するまで対象外です。
 
-最初のStored XSS vertical sliceは最終目標ではありません。安全に実行できるbrowser Witnessから研究loopを成立させ、private RCE Boundary Pair、prospectiveな重大脆弱性探索へ段階的に進みます。
+最初のStored XSS vertical sliceは最終目標ではありません。browserによる安全な成立証拠（Witness）から研究loopを成立させ、private RCE Boundary Pair、prospectiveな重大脆弱性探索へ段階的に進みます。

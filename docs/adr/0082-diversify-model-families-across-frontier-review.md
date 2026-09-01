@@ -8,4 +8,4 @@ Milestone 2以降、eligibleなModel Profileが複数ある場合は、Frontier 
 
 Model familyの多様性はevidenceの代わりではなく、同じWitness、Causal Control、Evidence Route gateを全Attemptへ適用する。provider outage、policy、capability、budgetにより分離できない場合は同一familyを使えるが、`Model Separation Exception`として理由をLedgerへ記録し、Frontier resultの評価sliceを分ける。Milestone 1のOpus-only bootstrapは明示的な例外である。
 
-通常のPrimitiveまたはCoverage workへ常時異種modelを強制せず、M2 benchmarkでrole別能力とcostを比較してModel Profileを選ぶ。
+通常のPrimitiveまたはCoverage workへ常時異種modelを強制せず、小さな校正と実戦Campaignで蓄積したrole別能力とcostからModel Profileを選ぶ。

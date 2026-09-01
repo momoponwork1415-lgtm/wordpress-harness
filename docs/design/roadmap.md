@@ -6,10 +6,12 @@ North Starは、oracle-freeのprospective CampaignでRCEまたは同等のsite-w
 
 ## Milestone 1 — one closed loop
 
-Opus Model ProfileとClaude process adapter一つを使い、gVisor上のBrizy 2.8.11/2.8.12 Boundary Pairをend-to-endで完走する。
+Transport Eligibilityを通過したOpus候補のModel ProfileとClaude process adapter一つを使い、gVisor上のBrizy 2.8.11/2.8.12 Boundary Pairをend-to-endで完走する。公式性またはcredential/tool隔離を確認できない場合は別transportへ逃げず、このMilestoneを停止して設計を再評価する。
 
 - manual Target import and immutable Campaign Spec
-- deterministic Surface Map plus Mapper synthesis
+- one primary plugin per Campaign、明示的な環境依存のみ、無制限な複数plugin組合せ探索は行わない
+- PHPを骨格にJavaScript・template・SQL・configuration・bundled vendor assetを必要に応じて結ぶ、根拠状態付きimmutable Surface Map revisions
+- observed factをmodelが変更せず、dynamic relationは根拠付きinferredまたは未解決gapとして保持するbounded Mapper synthesis
 - Focus Areas、parallel Finder、Hypothesis deduplication
 - evidence state付きEvidence Routeによるmulti-file・cross-request chain表現
 - Frontier、Primitive、Coverageの三Exploration Laneを持つdeterministic Work Wave
@@ -25,54 +27,82 @@ Opus Model ProfileとClaude process adapter一つを使い、gVisor上のBrizy 2
 
 1. event schema、SQLite Research Ledger、replay/crash test、最小`prepare/read/inspect`
 2. pinned PHP helperとPHP Program Index
-3. Opus native agent process transport
-4. gVisor Verification LabとBrizy Witness/Causal Control
+3. Transport Eligibilityを通過したOpus候補のofficial native agent process transport
+4. gVisor Lab Baseline Builder、Verification Lab、Brizy Witness/Causal Control
 5. Human Review PacketとHuman Confirmationの記録
 
-## Milestone 2 — measurable research capability
+## Milestone 2 — early prospective operation
 
-Development Cohortの四CaseをBoundary Pairとしてadmitし、GLM、Grok、GPT、OpusをMapper、Finder、Verifier、Skepticの全roleで最低3回ずつ評価する。
+Milestone 1の一つのBoundary Pairでresearch loopと安全機構が閉じたら、手動対象投入した最新安定版pluginへ少数ずつ実戦Campaignを開始する。四Case×四model×全role×複数runの完了は開始条件にしない。
 
-- Stored XSS、SQL injection、account takeover用typed Experiment adapters
-- executable upload、command injection、dynamic PHP execution、object injection/gadget用のcanary-only RCE Experiment adapters
-- target-bound Route FragmentとFrontier Gapによるchain探索・決定的priority
-- Semgrep OSSを最初のengineとする独立Static Rule Lane
-- Verified FindingからRule ProposalまたはNot Codifiable Recordを作る
-- vulnerable positive、patched negative、benign functional control、benign corpusを通ったruleだけを昇格する
-- static matchはHypothesisだけを生成し、通常の独立Verificationを省略しない
-- CodeQLはPHPには使わず、Target Snapshot内の公式対応言語だけにcapability-gatedで使う
-- role-specific benchmarkからend-to-end finalist比較への二段階評価
-- Frontier Hypothesisの二回Independent Reproductionと、可能な限り異なるmodel familyによるreview
-- Corpus由来Knowledge CapsuleのOracle Leakage Gate
-- verified unique Findings、false promotion、closure、cost、wall time、varianceのvector
-- prompt、Knowledge Capsule、priority、Lesson proposalのcontrolled iteration
-- darooの公開portfolioをversioned Researcher Reference Corpusへ分類してmechanism coverage gapを測る。ただしworkerへCVE oracleを渡さない
-- sealed Evaluation Cohortによるpromotion gate
+- 取得時点の最新安定版、single-site Canonical Configuration、oracle-freeで開始する
+- operatorがsource、version、正規入手provenance、必要な構成と環境依存だけを手動投入し、`ready`なTarget Intake PacketからCampaignを明示的に開始する
+- 対象固有のCVE、advisory、疑わしいfile・symbol・parameter、期待class・routeを手動入力として受理しない
+- 受入preflightは`ready | deferred | rejected`を理由付きで記録し、解消可能なdependency・runtime・設定不足はdeferred、scope・provenance・integrity・oracle-free policy違反はrejectedとする
+- 取得原本と正規化ファイル一覧を別々にdigest固定し、path traversal、link、special file、path衝突、展開quota超過を拒否する。host上でtarget package scriptを実行しない
+- 正規化ファイル一覧のdigestをsource treeの主identityにし、file bytesを変換せず、archive timestamp・owner・compression・local pathをidentityから除く。一つのplugin rootを決められない外側bundleはdeferredとする
+- plugin identityを`wporg:<slug>`または`premium:<vendor>/<product>`として名前空間化し、main plugin fileを明示または一意なheader候補から確定する。version evidence不足はdeferred、不一致はrejectedとする
+- WordPress.org版はofficial slug、premium版はvendor provenanceまたはmanual requestからcanonical install directoryを固定し、main plugin fileと結合したPlugin BasenameをTarget Snapshotへ保持する
+- readyはinstall可能性を保証せず、install・activateとCanonical ConfigurationのsmokeはCampaign setupのgVisor内で行う。失敗はセットアップ阻害の未完了Campaignとして残す
+- Runtime ProfileはWordPress、PHP、database、web serverのartifact/image digestとgVisor `runsc` identityを固定し、Campaign中に`latest`を解決しない
+- Lab Baseline Builderは版付き・型付きSetup Planだけを実行し、fresh stateでdigest固定dependency、主対象、分離したLab principal、Canonical Configuration、frontend・admin・REST health、客観的な正常機能確認を成立させる。任意shell、任意PHP、未固定download、model自己判定を許可せず、immutable baselineだけをVerificationへ渡す
+- Canonical ConfigurationはUTC・en_USを基準とし、別localeや設定は根拠付きConfiguration Variantの別Setup Plan・別baselineとして扱う
+- 外部serviceはlocal emulator、record/replay、live External Dependency Grantの順で選び、live接続はCampaign専用の非production research accountだけを使う
+- Campaign開始後は自律実行するが、候補の自動選定と次Campaignの自動開始はMilestone 3まで行わない
+- 初期はactive Campaignを1件に限定し、Campaign内の重複しないWork Leaseだけを並列実行する
+- 予算枠はwall time、Attempt数、Work Wave数、concurrencyを強制し、少なくとも1件の完全検証予約をDiscoveryから保護する
+- provider usage、token、subscriptionの推定金額は比較telemetryとして保存し、取得できない金額をhard ceilingにしない
+- 公式transport、用途、version固定、credential isolation、built-in tool無効化を確認したTransport Eligibility Receiptがある候補だけを有効化する。consumer subscription認証を独自APIへ転用しない
+- 全workerはharness所有のrole別read/search/graph/scratch toolだけを使い、provider組込みshell・web・plugin・hookを無効にする。ExperimentはVerifierと必要なSkepticだけへ渡す
+- Opus候補から開始し、GPT、Grok、GLM候補はTransport Eligibility、共通contract test、一つの小さなBoundary Pair smoke testを通過したものから実戦roleへ追加する
+- モデル比較は実戦Campaignの既知重複を除いたverified unique Findings、誤昇格、coverage closure、cost、wall time、varianceを安定した条件で記録する
+- Stored XSS、SQL injection、account takeover、RCE等のtyped Experiment adapterは実戦Hypothesisとcoverage gapの優先度に応じて一つずつ追加する
+- 対応ExperimentがないHypothesisはFindingにせず、不足capability付き`Blocked`として次の改善候補にする
+- 高価な隔離検証前にsymbol実在、entry到達性、権限・nonce防御、sink接続を三値で事前検査し、`inconclusive`を誤検出扱いしない
+- 検証待ち行列の上位Hypothesisから隔離検証し、未選択項目はqueueへ保持する
+- 予算またはcapability不足で未検証項目を残して停止したCampaignは未完了とし、zero Findingを「脆弱性なし」にしない
+- 予算を自動延長せず、未解決gapの継続は他Targetと再比較して選定された新しい後続Campaignで行う
+- RCE Findingを昇格する前に、対応mechanismのprivate Boundary PairとLab内の無害なcanaryでadapterを校正する
+- Verified FindingからSemgrep Rule ProposalまたはNot Codifiable Recordを作り、static matchはHypothesisだけを生成する
+- PHPにCodeQLを使わず、必要になった公式対応言語だけを将来capability-gatedで扱う
+- Frontier Hypothesisは二回のIndependent Reproductionと、可能な限り異なるmodel familyでreviewする
+- Corpus由来Knowledge CapsuleはOracle Leakage Gateを通し、由来Caseの再発見を能力向上に数えない
+- 大きなpolicyまたはKnowledge昇格だけ、小さなDevelopment/Sealed Cohortで回帰とoracle leakageを確認する
+- 通常のprompt・priority変更はDevelopment smokeと次の少数Campaignへの試験投入、static rule・誤検出基準・global Knowledgeは追加で小さなSealed Evaluationを要求する
 
-RCEはprivate workspaceで人間がvulnerable/patched両側を再現してから追加する。Milestone 2を完了する前に、少なくとも一つのprivate RCE Boundary Pairと、Lab内の無害なcanaryだけを観測するtyped RCE Experiment adapterを成立させる。
+実戦Campaign中に人間がroute、priority、Hypothesisを操作しない。実戦結果から改善候補を生成し、versionを上げた次Campaignで適用する。
 
-## Milestone 3 — Target Intelligence
+## Milestone 3 — automated Target Intelligence
 
-Wordfence Intelligence APIの定期取得、immutable observation、eligibility、ranking、Target acquisitionを独立contextとして追加する。
+Milestone 2の手動対象投入を置き換えず、その上流にWordfence Intelligence APIの定期取得、immutable observation、eligibility、ranking、自動候補選定を追加する。
 
+- Target CandidateはWordPress pluginに限定し、themeを取り込まない
+- WordPress.org配布pluginはversion固定して自動取得し、premium pluginは正規入手したlocal sourceの手動importだけを受け付ける
 - API ingestion failureは進行中Campaignへ影響させない
 - selection factsとknown-vulnerability oracleを分離する
+- Wordfence programme対象内を外部提出価値のため優先するが、対象外でも技術的価値が高いpluginを調査専用候補として扱える
+- 潜在impact、Permitted Attackerから到達し得る攻撃面、利用規模、現行安定版、更新状況、取得可能性を主要な選定要素とし、報奨金額とmodel confidenceを使わない
+- 既知脆弱性履歴は初期選定の主要因にせず、将来使う場合も低比重の件数・密度集計だけをTarget Intelligence内に隔離する
 - prospective workerへadvisory、CVE、patch narrative、case roleを渡さない
+- Wordfence既知脆弱性との重複照合はFinding成立後のHuman OSで行い、Researchへ逆流させない
 - Target Candidateからmanual reviewまたはpolicy gateを経て、Oracle Factを除いたTarget Intake Packetを作る
-- ResearchがTarget Intake Packetのsourceをdigest固定してTarget Snapshotを作る
+- ResearchがTarget Intake Packetの正規化ファイル一覧をsource tree identityとして固定し、取得原本とprovenanceも参照するTarget Snapshotを作る
 
-Target IntelligenceがなくてもMilestone 1と2はmanual Target importで運用できる。
+自動観測・rankingがなくてもMilestone 1と2は手動対象投入で運用する。Milestone 2の手動経路は同じoracle-freeなTarget Intake Packetを作り、Research内部へ別の抜け道を設けない。
 
-## Milestone 4 — prospective frontier discovery
+## Milestone 4 — continuous frontier operation
 
-Development Cohort、rule library、既知advisoryからoracle-isolatedな最新Target SnapshotへCampaignを実行し、未知の重大routeを探索する。
+Milestone 2で開始した実戦Campaignを、Target Intelligenceによる定期選定と継続改善へ接続する。
 
 - RCEおよび同等のsite-wide compromiseを最上位security goalとしてFocusする
 - SQL injection、Stored XSS、account takeoverを独立impactとchain primitiveの両方として探索する
-- agentic discovery、static rule-assisted discovery、human leadを分離してprovenanceを記録する
+- agentic discoveryとstatic rule-assisted discoveryを分離してprovenanceを記録する
 - Findingにはfresh Verification、Witness、Causal Control、Skepticを要求する
 - Frontier Discovery Capabilityの達成判定にはHuman Confirmation済みのprospective Findingを要求する
+- 人間はCampaign開始・停止、外部依存Grant、auth failure、最終review、外部提出承認だけに関与する
 
 ## Later contexts and adapters
 
 Programme eligibility、submission drafting、vendor communication、patch generationはresearch capabilityとTarget Intelligenceの外側に置き、Human OSの明示的なExternal Action Authorizationへ接続する。web dashboardとremote controlはHuman OSおよびResearchを操作するadapterであり、独立したdomain contextにしない。
+
+ThemeとWordPress Coreはroadmapに入れない。これらの将来用拡張点も先行実装せず、WordPress pluginの調査能力に集中する。発展先を検討する場合は、WordPress外のホワイトボックス・バグバウンティ用の別productとし、このharnessのMilestoneに混ぜない。

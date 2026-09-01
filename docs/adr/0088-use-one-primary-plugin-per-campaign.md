@@ -1,0 +1,7 @@
+---
+status: accepted
+---
+
+# Use one primary plugin per Campaign
+
+各Campaignは一つの主対象Target Snapshotだけを持ち、追加pluginは主対象の通常動作または具体的なConfiguration Variantに必要な環境依存スナップショットとしてのみ固定する。依存pluginを第二のTargetとして独立探索したり、任意のplugin組合せを生成したりすると、Finding帰属、coverage closure、budgetが不定になるため行わない。依存のidentityとconfigurationはTarget Snapshotと同様にdigest固定し、実行・検証の前提として記録する。原因が依存内だけにある場合は別Campaign候補とし、主対象が原因で依存がgadgetまたはsinkを提供する場合だけ、前提を明記した主対象Findingにできる。

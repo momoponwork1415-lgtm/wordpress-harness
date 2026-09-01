@@ -28,6 +28,18 @@ Research            <-- Evidence Request ----- Human OS
 - **Research**: Surface Map、Discovery、Verification、Research Ledger、priority、iterationを所有する。Findingまでは機械系の独立検証で作る。
 - **Human OS**: review queue、独立した人間再現、Review Disposition、Evidence Request、External Action Authorizationを所有する。UIではなくdecision systemである。
 
+Target IntelligenceはWordfence programme対象内の候補を外部提出価値のため優先するが、それを技術的Researchのhard gateにしない。選定の主要因は潜在impact、Permitted Attackerから到達し得る攻撃面、利用規模、現行安定版と更新状況、取得可能性とする。報奨金額とmodel confidenceは使わない。既知脆弱性の履歴を使う場合も、将来の低比重な脆弱性履歴集計に限り、元のOracle Factと集計値のどちらもResearchへ渡さない。詳細は[ADR 0095](../adr/0095-prioritize-targets-by-non-oracle-research-value.md)に記録する。
+
+Milestone 2ではoperatorが最新安定版pluginを選び、手動対象投入を行い、readyになったTarget Intake PacketからCampaignを明示的に開始する。自動選定、候補queue、feed-driven rankingは行わず、Campaign開始後のResearchだけを自律化する。手動入力はsource、version、入手経路、必要な構成と環境依存に限定し、対象固有の脆弱性hintを拒否する。受入判定は`ready | deferred | rejected`を理由付きで残し、黙ってskipしない。詳細は[ADR 0096](../adr/0096-bootstrap-prospective-research-with-manual-intake.md)に記録する。
+
+Target Acquisitionはuntrustedなsourceをhost上で実行せず、取得原本と正規化ファイル一覧を別々にdigest固定する。archiveまたはdirectoryのabsolute path、parent traversal、symlink・hardlink、device・FIFO・socket、正規化後のpath衝突、versioned quotaを超えるfile数・単体size・総展開sizeを拒否する。`ready`は安全なResearch handoffが作れたことだけを意味し、install・activate成功を保証しない。Canonical Configurationの構築はCampaign開始後のgVisor内で行い、失敗はセットアップ阻害の未完了Campaignとして記録する。詳細は[ADR 0097](../adr/0097-separate-source-admission-from-runtime-setup.md)に記録する。
+
+source treeの主identityは正規化ファイル一覧のdigestとし、取得原本digestはprovenanceとして別に保持する。manifestは単一プラグインルートからの相対path、原文のfile bytesに対するdigest、sizeだけをsource contentへ反映し、改行・encoding・内容を変換しない。archive timestamp、owner、compression、local host pathはtree identityに含めない。一つのinstall対象を一意に決められない外側bundleは推測して展開せずdeferredとするが、確定済みplugin root内のarchive fileは通常のdata fileとして保存する。詳細は[ADR 0098](../adr/0098-identify-target-source-by-canonical-file-manifest.md)に記録する。
+
+pluginの論理identityはdirectory名から作らず、WordPress.org版を`wporg:<slug>`、premium版を`premium:<vendor>/<product>`としてprovenanceへ固定する。主プラグインファイルは明示pathを検証するか、有効なplugin header候補が一つだけの場合に限り自動確定する。候補がゼロまたは複数ならdeferredとする。main header version、要求version、利用可能な配布metadataを照合し、値の不足はdeferred、矛盾はrejectedとする。詳細は[ADR 0099](../adr/0099-bind-plugin-identity-main-file-and-version.md)に記録する。
+
+WordPress.org版の正規インストールディレクトリはofficial slugへ固定する。premium版はvendor配布provenanceまたは手動対象投入で明示し、`premium:<vendor>/<product>`から自動生成しない。正規インストールディレクトリと主プラグインファイルを結んだPlugin BasenameをTarget Intake PacketとTarget Snapshotへ固定する。別directoryでの調査はTarget Snapshotのcanonical値を変更せず、根拠付きConfiguration Variantとしてruntime evidenceへ結び付ける。詳細は[ADR 0100](../adr/0100-fix-the-canonical-plugin-basename.md)に記録する。
+
 初期deploymentは一つのstrict TypeScript modular monolithとする。contextはnetwork serviceで分離せず、versioned contractとrecord ownershipで分離する。PHP parser helperだけをresource-limited child processにする。詳細は[ADR 0084](../adr/0084-use-a-modular-monolith.md)と[ADR 0085](../adr/0085-separate-target-intelligence-research-and-human-os.md)に記録する。
 
 ## Lineage from wp2shell
@@ -82,7 +94,9 @@ Research            <-- Evidence Request ----- Human OS
 
 ```mermaid
 flowchart TB
-    spec[Campaign Spec] --> map[Surface Map]
+    spec[Campaign Spec] --> setup[Lab Baseline Builder]
+    setup -->|ready| map[Surface Map]
+    setup -->|setup-blocked| result[Incomplete Campaign]
     map --> plan[Focus Plan]
     plan --> discover[Discovery workers]
     discover --> hypotheses[Hypothesis pool]
@@ -94,22 +108,23 @@ flowchart TB
     outcome --> ledger
     ledger --> learn[Iteration Review]
     learn -->|new gap / variant / rule| plan
-    learn -->|stop condition met| result[Campaign Result]
+    learn -->|stop condition met| result2[Campaign Result]
 ```
 
 ### Campaign lifecycle
 
-1. `prepare`: Target Snapshot、scope、budget、sandbox policyを固定する。
-2. `map`: WordPress固有のentry pointとsecurity-relevant relationを列挙する。
-3. `plan`: coverageとexpected information gainからFocus Areaを選ぶ。
-4. `discover`: 分離したworkerがfalsifiableなHypothesisを作る。
-5. `verify`: 優先Hypothesisを別contextとclean runtimeで反証しに行く。
-6. `review`: positive/negative evidenceをまとめ、map・Lesson・priorityを更新する。
-7. `repeat | stop`: 次のiterationへ進むか、停止理由を確定する。
+1. `prepare`: 一つの主対象Target Snapshot、必要最小限の環境依存、scope、検証予約を含む予算枠、sandbox policyを固定する。
+2. `setup`: digest固定したRuntime Profileと版付き・型付きSetup Planを使ってgVisor内にCanonical Configurationを構築し、客観的な正常機能確認を経てLab Baselineをsealする。失敗はセットアップ阻害として停止する。
+3. `map`: WordPress固有のentry pointとsecurity-relevant relationを列挙する。
+4. `plan`: coverageとexpected information gainからFocus Areaを選ぶ。
+5. `discover`: 分離したworkerがfalsifiableなHypothesisを作る。
+6. `verify`: 優先Hypothesisを別contextとclean runtimeで反証しに行く。
+7. `review`: positive/negative evidenceをまとめ、map・Lesson・priorityを更新する。
+8. `repeat | stop`: 次のiterationへ進むか、停止理由を確定する。
 
 停止は「agentが完了と言った」ではなく、少なくとも次のどれかで決める。
 
-- Campaign budgetを消費した
+- Campaignの予算枠を消費した（未完了として停止）
 - すべてのin-scope Focus Areaがclosure conditionを満たした
 - 一定回数、priority thresholdを超える新Hypothesisが生まれなかった
 - operatorがFinding確認またはscope変更のgateで停止した
@@ -135,18 +150,18 @@ callerがworker数、prompt順、provider session、artifact file名を知る必
 | Module | Interface at the seam | Hidden implementation |
 | --- | --- | --- |
 | Target Workspace | `open(TargetRef, Policy) -> Workspace` | snapshot identity、read/write mounts、network policy、cleanup |
-| Model Execution | `invoke(Role, Assignment) -> Attempt` | provider/model selection、prompt rendering、usage capture、retry |
-| PHP Source Analysis | `analyze(TargetSnapshotRef, AnalysisProfile) -> PhpProgramIndexRef` | pinned PHP-Parser helper、name resolution、WordPress fact extraction、schema validation、canonical ordering、CAS storage |
-| Surface Mapper | `map(Workspace, Knowledge) -> SurfaceMap` | PHP/WordPress extraction、cross-file navigation、LLM synthesis |
+| Lab Baseline Builder | `establish(TargetSnapshot, RuntimeProfile, SetupPlan) -> SetupDisposition` | Plan validation、gVisor setup、dependency ordering、principal、health・正常機能確認、sealing |
+| Model Execution | `run(AttemptPlan) -> AttemptExecutionResult` | transport適格性、provider認証、role別tool、process supervision、schema output、resume |
+| Source Mapping | `build(SurfaceMappingInput) -> SurfaceMapRef` | PHP Program Index、asset inventory、根拠状態、bounded context、Mapper synthesis、immutable revisions |
 | Research Ledger | `append(Event)` / `view(Query)` | append-only storage、hashing、index、redaction |
 | Verifier | `verify(Hypothesis, TargetSnapshot) -> VerificationRecord` | fresh sandbox、re-derivation、category-specific Experiment、judge |
 | Human Review Packager | `prepare(FindingRef) -> HumanReviewPacketRef` | evidence minimization、digest binding、source excerpts、reproduction recipe |
 | Prioritizer | `rank(State) -> OrderedWork` | score calibration、deduplication、information-gain policy |
 | Learner | `review(Iteration) -> LessonsAndPlan` | transcript retro、rule proposals、benchmark deltas |
 
-Model Executionはprompt、tool policy、Attempt ceiling、retry、usage accountingを所有する。provider adapterはversion固定したProfileをCLI argvまたはwire formatへ変換し、正規化Outcomeを返すだけで、Campaign lifecycleを所有しない。CLI、低水準SDK、直接HTTPは交換可能なadapter implementationであり、Agent SDKへcross-Attempt orchestrationを委譲しない。詳細は[ADR 0060](../adr/0060-keep-model-execution-policy-outside-provider-adapters.md)に記録する。
+Model ExecutionはPrompt Set、Model Profile、role別tool policy、Output Schema、Attempt ceiling、retry、usage accountingを所有する。provider adapterはversion固定したProfileを公式CLI argvまたはwire formatへ変換し、正規化Outcomeを返すだけで、Campaign lifecycleを所有しない。Agent SDKへcross-Attempt orchestrationを委譲しない。詳細は[Model execution seam](model-execution-seam.md)と[ADR 0060](../adr/0060-keep-model-execution-policy-outside-provider-adapters.md)に記録する。
 
-subscription modelの初期実装は`NativeAgentProcessTransport`とし、Claude/GLMを`claude -p`、GPTを`codex exec`、Grokを`grok -p`で起動する。CLIが一Work Lease内のagent loopを実行し、外側のsupervisorが隔離、policy、ceiling、記録を強制する。Direct APIはAPI/service credentialを別途導入した場合だけ追加する。詳細は[ADR 0061](../adr/0061-use-native-agent-processes-for-subscription-models.md)に記録する。
+subscription modelはprovider公式のnative agent processを優先するが、公式配布・公式用途、version固定、built-in tool無効化、credential isolation、structured output、process terminationのcapability probeを通過したTransport Eligibility Receiptがある場合だけproductionへ採用する。consumer OAuthまたはsubscription keyを独自APIへ転用せず、条件を満たさない候補は保留する。Direct APIは公式API/service credentialを別途導入した場合だけ追加する。詳細は[ADR 0104](../adr/0104-admit-only-official-model-transports.md)に記録する。
 
 一時的なprovider failureでは同じCLI sessionをresumeできるが、一回のprocess invocationをAttempt内の`Segment`として個別に記録する。session resumeは同じfrozen inputsと外部ceilingの内側だけで行い、別Work Lease、独立Verification、Skepticへcontextを引き継がない。詳細は[ADR 0062](../adr/0062-resume-provider-sessions-only-within-an-attempt.md)に記録する。
 
@@ -156,23 +171,23 @@ Agent Sandboxのegressはprovider通信だけに制限する。Verification Lab�
 
 live service credentialはtrusted Credential BrokerがSecretRefとして管理し、原則proxyで最終requestへ注入する。plugin自身がcredentialを読む必要がある時だけGrantへ`target-visible`を明示し、Campaign専用かつ期限付きのtest credentialをLabへ渡す。Agentとartifactにはsecret値を渡さない。詳細は[ADR 0065](../adr/0065-broker-live-service-credentials.md)に記録する。
 
-AgentからLabへの唯一のcross-zone tool境界は、hash固定したharness専用stdio MCPとする。Discoveryには渡さず、Verifier/SkepticへWork Leaseとmechanismに必要なtyped Experiment toolsだけを公開する。ambient MCP、plugin、hook、memory、web toolは無効にし、ad-hocなread-only解析はscratch内の小さなscriptとして許可する。詳細は[ADR 0066](../adr/0066-expose-only-a-harness-owned-experiment-mcp.md)に記録する。
+workerへはhash固定したharness所有toolだけを公開する。Target限定read/search/graph queryと、credential・network・host pathを持たない隔離scratch computeをrole別manifestで与え、provider組込みshell、filesystem tool、web、plugin、hook、ambient MCP、memory、subagentを無効にする。DiscoveryにはExperimentを渡さず、Verifierと必要なSkepticだけへWork Leaseとmechanismに拘束したtyped Experiment toolを追加する。詳細は[ADR 0105](../adr/0105-expose-only-harness-owned-attempt-tools.md)に記録する。
 
 初期production isolation backendはgVisor `runsc`とし、Agent SandboxとVerification Labの両方へ要求する。plain Dockerはsynthetic fixtureの開発用`non-evidentiary` modeだけで許可し、その結果をFindingまたはbenchmark evidenceへ昇格させない。詳細は[ADR 0067](../adr/0067-require-gvisor-for-production-evidence.md)に記録する。
 
 WitnessとCausal Controlは、同じsealed Lab Baselineから生成した別々のfresh sibling Labで実行する。両者は一つのcausal factor以外を同じにし、先行実行のdatabase、cache、session、filesystemを共有しない。詳細は[ADR 0068](../adr/0068-run-witness-and-control-in-sibling-labs.md)に記録する。
 
-最初のvertical sliceはClaude process adapterのOpus profile一つでbootstrapし、end-to-end evidenceとresumeが安定してからGLM、Codex、Grokを順に追加する。これはadapter実装順であり、4候補を全roleで比較するbenchmark判断とは分離する。詳細は[ADR 0069](../adr/0069-bootstrap-with-the-claude-process-adapter.md)に記録する。
+最初のvertical sliceはTransport Eligibilityを満たした場合のClaude process/Opus Profile一つでbootstrapし、end-to-end evidenceとresumeが安定してからGLM、Codex、Grok候補を個別probe後に追加する。これはadapter実装順であり、4候補を全roleで比較するbenchmark判断とは分離する。bootstrap順は[ADR 0069](../adr/0069-bootstrap-with-the-claude-process-adapter.md)、適格性条件は[ADR 0104](../adr/0104-admit-only-official-model-transports.md)に記録する。
 
 Adapter seamは、現実に二つ以上の実装が必要な場所だけに置く。初期からprovider、container runtime、ledger backendの抽象化frameworkを作らない。最初の実装が動き、二つ目が必要になった時点でinterfaceを抽出する。
 
 PHP Source Analysisは、Composer lockした`nikic/PHP-Parser` helperをresource-limited child processとして実行する。Target Snapshotはread-only、networkはdenyとし、target PHP、target autoloader、target Composer script、WordPress bootstrapを実行しない。TypeScript coreへ渡すのはruntime schemaで検証したversioned `PHP Program Index`だけである。初期実装が一つの間は汎用Parser portを作らず、tree-sitter等は実測したcoverage gapが第二実装を正当化した時だけ評価する。詳細は[ADR 0074](../adr/0074-extract-php-through-a-pinned-parser-helper.md)に記録する。
 
-Milestone 1のPHP Program Indexはgeneric symbol・call relationとWordPress固有factのdeterministic inventoryに限定し、汎用taint analysisまたはvulnerability verdictを持たせない。これにより最初のsliceを閉じながら、MapperとDiscoveryがTarget Snapshotを直接たどってmulti-file routeを仮説化する余地を保つ。
+Milestone 1のPHP Program Indexはgeneric symbol・call relationとWordPress固有factのdeterministic inventoryに限定し、汎用taint analysisまたはvulnerability verdictを持たせない。これにより最初のsliceを閉じながら、Source Mapping内部のMapperとDiscoveryが記録されたread-only context経由でmulti-file routeを仮説化する余地を保つ。
 
 ## WordPress-specific focusing
 
-Surface Mapperはfileを均等分割しない。最初に次を抽出し、実行可能なrouteとして関連付ける。
+Source Mapping内部のMapperはfileを均等分割しない。最初に次を抽出し、実行可能なrouteとして関連付ける。
 
 - REST routes、AJAX actions、`admin_post`、shortcodes、blocks、widgets、cron、WP-CLI、direct-access PHP
 - callbackの登録条件と到達role
@@ -184,6 +199,8 @@ Surface Mapperはfileを均等分割しない。最初に次を抽出し、実�
 RCE-oriented focusingでは、単一の危険関数だけでなく、uploadまたはwriteからexecutable pathへ至るroute、path manipulation、command invocation、unsafe deserializationとgadget、dynamic includeまたはevaluation、template execution、権限獲得からcode変更へ至るchainをsecurity property単位で扱う。この列挙は固定checklistではなく、Surface Mapと実測したgapから拡張する。SQL injection、Stored XSS、account takeoverを別queueへ追放せず、それ自体のimpactと重大routeへのchain可能性を記録する。
 
 初期Focus Areaはvulnerability classだけで固定しない。たとえば「unauthenticated AJAXから永続stateへ入る全route」「subscriberがobject ownershipを越えるREST mutation」「stored valueがadmin HTML attributeへ出る経路」のように、attacker premise × surface × security propertyで切る。workerは担当file外のcalleeやguardを追ってよいが、Hypothesisの所有権はFocus Areaに残す。
+
+Surface MapはTarget SnapshotとMapping Profileへ固定した不変revisionとし、nodeとrelationを`observed`、`inferred`、未解決（`unknown`）に分ける。PHP Program Indexのobserved factをmodelが上書きせず、追加contextは理由付きContext Requestと次revisionへ記録する。PHPを骨格に関連するJavaScript、template、SQL、configuration、bundled vendor assetを接続し、未解析assetをcoverage gapとして残す。詳細は[Source mapping seam](source-mapping-seam.md)と[ADR 0103](../adr/0103-build-evidence-graded-surface-map-revisions.md)に記録する。
 
 ## Hypothesis contract
 
@@ -270,7 +287,7 @@ event schemaはkindごとにversionを持ち、過去eventを更新せず純粋�
 
 Frontier Laneではmodel confidenceを使わず、Permitted Attacker、terminal impact、observed Route Fragment、Frontier Gapの決定可能性、次のExperiment費用、novelty、coverage debtをpriority tupleへ加える。Frontier Gapは未確認edgeの個数ではなく、必要fact、falsifier、次のExperimentを持つessential causal relationである。詳細は[ADR 0079](../adr/0079-prioritize-frontier-work-by-observed-route-gaps.md)に記録する。
 
-prompt、model、Lesson、priority policyを変更する時はversionを上げ、同じbenchmark cohortを複数回走らせる。評価はverified Finding、false-positive rejection、surface coverage、cost、time、run varianceを分けて測る。一つの成功例や一回のrunを能力向上の証拠にしない。
+prompt、model、Lesson、priority policyを変更する時はversionを上げる。日常の改善は実戦Campaignのverified Finding、false-positive rejection、surface coverage、cost、time、run varianceを主に比較し、小さなDevelopment Cohortで安全性と明白な回帰を確認する。高リスクなpolicyまたはKnowledge昇格だけSealed Evaluation Cohortを使う。一つの成功例、一回のrun、既知Caseの再発見を能力向上の証拠にしない。
 
 Researcher Reference Corpusから作るKnowledge Capsule候補はtarget identity、CVE、固有symbol、payload、patch informationをrendered promptから除き、Oracle Leakage Gateを通す。由来Caseを除いたDevelopment評価とSealed Evaluationで改善を示すまでglobal Knowledgeへ昇格させない。詳細は[ADR 0083](../adr/0083-gate-corpus-derived-knowledge-against-oracle-leakage.md)に記録する。
 
@@ -287,7 +304,7 @@ Milestone 1は一つのclosed vertical sliceだが、実装は次の細い増分
 1. versioned event schema、single-writer SQLite Research Ledger、pure replay、crash-boundary testを作る
 2. `CampaignRunner.prepare`と`CampaignReader.read | inspect`だけを通し、同一inputとLedgerから決定的なviewを再構成する
 3. pinned PHP helperからdeterministic PHP Program Indexを作り、Target Snapshotへ結び付ける
-4. Opusのnative agent process transportを接続し、one Work LeaseのAttemptをLedgerへ記録する
+4. Transport Eligibilityを通過したOpus候補のofficial native agent processを接続し、one Work LeaseのAttemptをLedgerへ記録する
 5. gVisor上のBrizy Boundary Pairへtyped Experimentを通し、Witness、Causal Control、Finding、Human Review Packetまで閉じる
 
 各増分は合意したpublic seamからred -> greenで作り、次の増分を先回りしない。最初の二増分ではmodel、parser、browser、containerを導入せず、event compatibilityとresume可能性を先に固定する。
@@ -318,10 +335,12 @@ Milestone 1は、Opus profile、gVisor、Brizy Boundary Pairだけでこのloop�
 
 Milestone 1はmechanicsの合格であり、Frontier Discovery Capabilityの証明ではない。private RCE Boundary Pairでは、使い捨てVerification Lab内の無害なcanary effectをWitnessとし、interactive shell、host access、許可外egressを必要としないtyped Experimentを構築する。詳細は[ADR 0075](../adr/0075-make-frontier-compromise-discovery-the-north-star.md)に記録する。
 
-実装順はcapability-firstとする。Milestone 2で四Case・四modelによる探索と検証の能力を測定可能にし、その後のMilestone 3でWordfence Intelligence APIによるTarget Intelligenceを追加する。それまではmanual Target importを使用する。詳細は[Roadmap](roadmap.md)と[ADR 0072](../adr/0072-prove-research-capability-before-automating-target-selection.md)に記録する。
+実装順はcapability-firstとする。Milestone 1の一つのBoundary Pairでclosed loopを成立させた後、Milestone 2で手動対象投入による少数の実戦Campaignを開始し、実戦証拠からmodel、Experiment adapter、prompt、priorityを改善する。Milestone 3でWordfence Intelligence APIによる自動Target Intelligenceを追加する。詳細は[Roadmap](roadmap.md)、[ADR 0096](../adr/0096-bootstrap-prospective-research-with-manual-intake.md)、[ADR 0089](../adr/0089-start-prospective-campaigns-after-minimal-calibration.md)に記録する。
 
 ## Source material
 
 設計資料の正本URLは[Design references](../REFERENCES.md)に保存する。資料から確認できる事実と、そこから導いたこちらの設計判断は[Research synthesis](../research/agentic-source-review-ten-verbs.md)で分けて記録する。
 
 目指す研究成果とmechanism breadthは[daroo researcher reference](../research/daroo-researcher-reference.md)も参照する。これはarchitectureを正当化する第4のDesign referenceではなく、公開Findingからcoverage gapを作るResearcher Referenceである。public vulnerability detailsをprospective workerへ渡すoracleにはしない。
+
+Wordfenceのprogramme適格性と共通誤検出基準の現行一次資料は[Wordfence programme scope and false-positive controls](../research/wordfence-programme-scope.md)に版付きで記録する。これも設計原理を追加する資料ではなく、Target選定、Verification、外部提出判定に使う変更可能なprogramme evidenceである。

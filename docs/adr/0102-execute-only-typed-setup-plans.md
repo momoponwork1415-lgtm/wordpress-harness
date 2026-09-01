@@ -1,0 +1,9 @@
+---
+status: accepted
+---
+
+# Execute only immutable typed Setup Plans
+
+Canonical ConfigurationとConfiguration Variantは、版付き・content-addressedなSetup PlanとしてLab Baseline Builderだけが検証・実行する。Planは許可されたtyped action、固定dependency、Lab principal、事前に定義した客観的postconditionを持ち、LLMの提案や成功判断を実行権限または証拠にしない。任意shell、任意PHP、未固定dependency download、汎用network requestは拒否する。
+
+Canonical ConfigurationはUTC・`en_US`を基準とし、条件差は別Planと別Lab Baselineへ固定する。setup administratorと攻撃者役は別principalにし、credential値はSecretRefの最終利用境界だけで扱う。Verificationはimmutable baselineからExperimentごとのfresh siblingだけを作り、Setup Plan、Runtime Profile、dependency、seedを変更する場合は既存baselineを変えず新しいbaselineを構築する。この制約によりplugin固有setupの柔軟性はtyped actionの追加を必要とするが、model-generated commandの権限拡大、再現不能な成功判定、baseline間の状態汚染を防ぐ。

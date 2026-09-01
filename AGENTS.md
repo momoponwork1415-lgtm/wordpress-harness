@@ -7,6 +7,7 @@
 - North Starは、oracle-freeなprospective CampaignでRCEまたは同等のsite-wide compromiseへ至る未知routeを発見し、独立VerificationとHuman Confirmationまで到達すること。
 - 作業前に[CONTEXT-MAP.md](CONTEXT-MAP.md)、変更対象contextの`CONTEXT.md`、[architecture](docs/design/architecture.md)、関連ADRを読む。
 - 設計を正当化する外部資料は[docs/REFERENCES.md](docs/REFERENCES.md)の3件だけとする。Codex文書やtool文書は開発手順の参考であり、第4の設計参照資料ではない。
+- user向け説明と設計文書は日本語を主名称にし、英語のdomain termまたはcode identifierは初出時の括弧内に添える。英語だけを理解の前提にしない。
 
 ## Architecture
 
@@ -25,6 +26,7 @@
 - domain termが変わったら該当`CONTEXT.md`を同じ変更で更新する。`CONTEXT.md`へ実装詳細を置かない。
 - 外部入力、event、artifact、prompt、Model Profileはversionとprovenanceを持ち、runtime schemaでdecodeする。
 - clock、ID、randomness、provider response順をdomain判断へ暗黙に混ぜない。再現可能な入力とstable orderingを使う。
+- deterministic source fact、model推論、未解決gapを同じ真偽値へ潰さない。modelは観測済みfactを変更できず、追加relationはsourceまたは版付きKnowledgeの根拠を持つ。未解決のcode identifierは既存Evidence Route schemaと同じ`unknown`を使う。
 
 ## Design gate
 
@@ -53,11 +55,16 @@
 
 ## Security and evidence
 
-- target codeをhostで実行しない。Agent SandboxとVerification Labへcontainer socketを渡さず、gVisor unavailable時にevidentiary runをplain Dockerへfallbackしない。
+- 受入sourceは信頼しない。元配布物をdataとして保存し、安全検査済みの正規化file manifestを別に作る。absolute/parent traversal、link、special file、path衝突、展開quota超過を拒否し、host上でtarget package scriptを実行しない。
+- target codeをhostで実行しない。Agent Sandboxと隔離検証環境（Verification Lab）へcontainer socketを渡さず、gVisor unavailable時にevidentiary runをplain Dockerへfallbackしない。
+- Campaign setupは版付き・型付きSetup Planの許可操作だけをgVisor内で実行する。model提案を実行権限にせず、任意shell、任意PHP、未固定dependency downloadをSetup Planへ許可しない。
+- model transportは公式配布・公式認証・固定version・安全性probeを満たすものだけを有効化し、consumer OAuthやsubscription keyを独自APIへ転用しない。
+- provider組込みshell、web、plugin、hook、ambient MCPをworkerへ公開しない。source read/search、隔離scratch計算、typed Experimentはharness所有のrole別tool manifestからだけ提供する。
+- provider credentialをmodel-visibleなfilesystem、environment、tool、prompt、transcriptへ置かない。tool subprocessから認証状態を隔離できないtransportはproduction不適格とする。
 - egressはdefault-denyとし、外部serviceはlocal emulator、record/replay、`External Dependency Grant`の順で検討する。
-- credential、token、private target、transcript、PoC、WitnessをGitへcommitしない。secret値をLedger、prompt、artifact metadataへ残さない。
+- credential、token、private target、transcript、PoC、成立証拠（Witness）をGitへcommitしない。secret値をLedger、prompt、artifact metadataへ残さない。
 - RCEの証明はdisposable Lab内のnonce付き`Execution Canary`だけを使う。reverse shell、persistence、host access、許可外egressを使わない。
-- static ruleまたはmodel verdictだけで`Finding`へ昇格させない。固定Target Snapshot、独立Verification、Witness、Causal Controlを要求する。
+- static ruleまたはmodel verdictだけで`Finding`へ昇格させない。固定Target Snapshot、独立Verification、成立証拠、因果対照実験（Causal Control）を要求する。
 - 外部report、vendor連絡、issue、PR、公開artifactの作成・送信は明示的なuser authorizationなしに行わない。Human ConfirmationはExternal Action Authorizationではない。
 
 ## Git and review

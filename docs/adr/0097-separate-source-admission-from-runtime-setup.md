@@ -1,0 +1,9 @@
+---
+status: accepted
+---
+
+# Separate source admission from runtime setup
+
+Target Acquisitionはuntrustedなarchiveまたはdirectoryをhost上で実行せず、取得原本と、安全にstageした通常fileだけから作る正規化ファイル一覧を別々にdigest固定する。absolute・parent traversal path、symlink・hardlink、device・FIFO・socket、正規化後のpath衝突、versioned quota超過をrejectedとし、Composer、npm、install hook、plugin PHP等をhostで実行しない。
+
+`ready`はoracle-freeなTarget Intake PacketをResearchへ安全に渡せることだけを意味し、install・activate成功を保証しない。Canonical Configurationの構築はCampaign開始後にtarget-controlled codeを実行できるgVisor内で行い、失敗はIntake Dispositionを変更せず、セットアップ阻害の未完了Campaignとして証拠と理由を残す。この分離によりTarget Intelligenceへruntime orchestrationを持ち込まず、Researchへunsafe extractionを重複実装しない。

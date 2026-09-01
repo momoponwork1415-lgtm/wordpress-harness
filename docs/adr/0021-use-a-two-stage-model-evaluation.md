@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0089
 ---
 
 # Use a two-stage model evaluation
