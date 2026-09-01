@@ -21,6 +21,21 @@ WordPressプラグインのsource reviewを、LLMの探索力と独立した実�
 - [daroo researcher reference](docs/research/daroo-researcher-reference.md)
 - [Why the ten verbs are control properties](docs/adr/0001-ten-verbs-as-control-properties.md)
 
+## Current implementation
+
+Milestone 1の最初の増分として、versioned `campaign.prepared` event、single-writer SQLite Research Ledger、deterministic replay、crash-safe prepare retry、read-only inspect、薄いCLI adapterを実装しています。現在のinterfaceとtest対象は[Initial implementation seams](docs/design/initial-implementation-seams.md)に記録しています。
+
+```bash
+pnpm install
+pnpm check
+pnpm build
+mkdir -p .private
+node dist/cli.js campaign prepare --database .private/research.sqlite --input campaign.json
+node dist/cli.js campaign inspect --database .private/research.sqlite --campaign <campaign-id>
+```
+
+`campaign.json`は[`NewCampaignInput`](src/research/contracts.ts)に従い、CampaignId、Target Snapshot、policy、runtime、prompt、Model Profile、Knowledge Capsule、Experiment registry、budgetを固定します。`.private/`はGit対象外です。
+
 ## Initial scope
 
 最初のvertical sliceは次だけを扱います。
