@@ -26,7 +26,11 @@ const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 const fixedNow = "2026-09-02T00:00:00.000Z";
 
 type LabScenario =
-  "broken" | "preserved" | "gvisor-unavailable" | "sibling-mismatch";
+  | "broken"
+  | "preserved"
+  | "gvisor-unavailable"
+  | "sibling-mismatch"
+  | "artifact-mismatch";
 
 interface VerificationIdentity {
   readonly campaignId: string;
@@ -249,9 +253,16 @@ async function openVerificationFixture(
   scenario: LabScenario,
 ) {
   const databasePath = join(directory, "research.sqlite");
-  const artifactStore = openFileJsonArtifactStore(
+  const fileArtifactStore = openFileJsonArtifactStore(
     join(directory, "private-artifacts"),
   );
+  const artifactStore: JsonArtifactStore =
+    scenario === "artifact-mismatch"
+      ? {
+          putJson: (value) => fileArtifactStore.putJson(value),
+          readJson: async () => ({ corrupted: true }),
+        }
+      : fileArtifactStore;
   const record = openSqliteResearchRecord({
     databasePath,
     clock: () => new Date(fixedNow),
@@ -411,5 +422,27 @@ describe("Verification.verify", () => {
         },
       },
     });
+  });
+
+  it("rejects an Experiment artifact digest mismatch instead of recording Blocked", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "verification-tampered-"));
+    const plan = verificationPlan({
+      campaignId: "campaign-verification-tampered",
+      verificationId: "verification-stored-xss-tampered",
+    });
+    const { record, verification } = await openVerificationFixture(
+      directory,
+      plan,
+      "artifact-mismatch",
+    );
+
+    try {
+      await expect(verification.verify(plan)).rejects.toThrow(
+        "Experiment Observation digest mismatch",
+      );
+    } finally {
+      record.close();
+      await rm(directory, { force: true, recursive: true });
+    }
   });
 });
