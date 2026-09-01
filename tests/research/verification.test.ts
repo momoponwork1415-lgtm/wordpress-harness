@@ -33,6 +33,7 @@ type LabScenario =
   | "sibling-mismatch"
   | "artifact-mismatch"
   | "verifier-unavailable"
+  | "verifier-budget-exhausted"
   | "evidence-incomplete";
 
 interface VerificationIdentity {
@@ -278,10 +279,15 @@ async function openVerificationFixture(
     record,
     artifactStore,
     independentVerifier:
-      scenario === "verifier-unavailable"
+      scenario === "verifier-unavailable" ||
+      scenario === "verifier-budget-exhausted"
         ? {
             rederive: async () => {
-              throw new IndependentVerifierBlockedError("verifier-unavailable");
+              throw new IndependentVerifierBlockedError(
+                scenario === "verifier-unavailable"
+                  ? "verifier-unavailable"
+                  : "budget-exhausted",
+              );
             },
           }
         : supportedStoredXssVerifier(),
@@ -515,6 +521,36 @@ describe("Verification.verify", () => {
           outcome: {
             kind: "blocked",
             reason: "evidence-incomplete",
+            causalIdentity: plan.hypothesis.causalIdentity,
+          },
+        },
+      },
+    });
+  });
+
+  it("durably records Blocked when the independent Verifier exhausts its reserved budget", async () => {
+    const plan = verificationPlan({
+      campaignId: "campaign-verifier-budget-exhausted",
+      verificationId: "verification-verifier-budget-exhausted",
+    });
+    await expect(
+      verifyAndReplay(plan, "verifier-budget-exhausted"),
+    ).resolves.toMatchObject({
+      ref: {
+        kind: "verification-record",
+        schemaVersion: 1,
+        verificationId: plan.verificationId,
+        outcome: "blocked",
+      },
+      replayed: {
+        value: {
+          kind: "verification-record",
+          schemaVersion: 1,
+          verificationId: plan.verificationId,
+          campaignId: plan.campaignId,
+          outcome: {
+            kind: "blocked",
+            reason: "budget-exhausted",
             causalIdentity: plan.hypothesis.causalIdentity,
           },
         },
