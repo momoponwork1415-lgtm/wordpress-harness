@@ -1,6 +1,6 @@
 # Exploration seam
 
-Status: accepted, 2026-09-01
+Status: accepted; first bootstrap planning slice implemented, 2026-09-02
 
 ## Owner and purpose
 
@@ -46,6 +46,26 @@ type ExplorationDecision =
 ```
 
 `ExplorationPolicyRef`はLane/Strategy policy、eligible Model Profile registry、ranking tuple、closure policyをdigest固定する。`decide`は同じ入力refsから同じdecisionとstable orderingを返すpure decisionである。callerはFinder role別method、`runChainSynthesizer`、`reopenFocus`、score更新、model votingを呼ばない。
+
+## Implemented bootstrap slice
+
+現行実装は`bootstrap` inputだけを受け、CASからdecode済みのSurface Mapとversioned bootstrap policyを`openExploration`で一度束ねる。その後の`decide`はfilesystem、Research Ledger、provider process、Lab、clock、randomnessを使わないpure decisionである。binding時にMapとPolicyのcanonical digest、identity、summaryを照合する。
+
+最小Map gateはinventoryの存在、summary、path uniqueness、observed source anchorとinventoryのbinding、relation endpoint、gap pathを確認する。空inventoryは`blocked`、訂正可能な不整合は必要証拠を持つ`revise-map`を返し、推測したworkを作らない。
+
+最初のFocus候補は次から作る。
+
+- symbol以外のentry、guard、source、state、sink node
+- observed entryを持たないindexed PHP file。直接request surfaceの可能性を安全と仮定せず、`unregistered-php-file`としてCoverage Laneへ置く
+- Surface Mapが明示したcoverage gap
+
+各候補は一つのstable owner keyだけを持つ。候補全件を一Waveへ投入せず、REST entry、sink、state、source、未登録PHP、mapping gap、guard、hookというversion固定categoryをround-robinし、Policyの`maxFocusAreas`と`maxLeases`内へ切る。これはseverity scoreではなく、初回Waveで異なるsurface kindを失わないための決定的portfolioである。同じcategory内はstable ID順とする。
+
+各Focusへ一つのprimary Finder leaseを作り、entry順方向、sink逆方向、state-chain、権限・security invariant、Wildcardをfeatureに応じて割り当てる。REST entryまたはsinkをelevated candidateとして、最初の一件へ異なるStrategyと、利用可能なら異なるmodel familyの二つ目のleaseを置く。eligible familyが一つだけなら同じfamilyを黙って再利用せず、`reuse-with-exception: single-eligible-family`をplanへ残す。elevated candidateがなくても一つのFocusを独立二系統にし、WaveにWildcardを最低一枠残す。具体的modelではなくPolicyが許可したmodel family constraintだけをplanへ入れ、各leaseはwall time、model token、Hypothesis数の上限を持つ。
+
+5 plugin familyのGit外characterizationでは、同じ8 Focus/9 lease policyから全Targetで有限な`run-wave`を返した。各Waveは少なくとも未登録PHP、mapping gap、sink、state、guardまたはentryを含み、Wildcardを一枠保持した。これは探索結果の質を示す評価ではなく、大規模なBrizyから小規模なWordPress File Uploadまで、Mapの大きさに比例してworkが無制限化しないことの特性確認である。
+
+現行risk basisはREST interfaceとsink presenceだけを使う粗いbootstrap分類であり、脆弱性、attacker reachability、severityを意味しない。actor、required privilege、state transitionがMapから確定しないfieldは`unresolved`のままにする。AI Finder実行、feature-level regrouping、Finder output取込、Chain Synthesis、Gap Review、map revision後の再計画は後続sliceである。
 
 ## Minimum map gate and incremental understanding
 

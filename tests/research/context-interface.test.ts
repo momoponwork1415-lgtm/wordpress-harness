@@ -11,5 +11,6 @@ describe("Research context Interface", () => {
     expect(researchContext).not.toHaveProperty("openFileJsonArtifactStore");
     expect(researchContext).not.toHaveProperty("openSourceMapping");
     expect(researchContext).not.toHaveProperty("decodeSurfaceMap");
+    expect(researchContext).not.toHaveProperty("openExploration");
   });
 });
