@@ -35,7 +35,8 @@ type LabScenario =
   | "verifier-unavailable"
   | "verifier-budget-exhausted"
   | "evidence-incomplete"
-  | "fallback-observed";
+  | "fallback-observed"
+  | "same-lab";
 
 interface VerificationIdentity {
   readonly campaignId: string;
@@ -221,7 +222,12 @@ function storedXssLabControl(
           runtime: "gvisor",
           runtimeDigest: experiment.bindings.runtimeProfileDigest,
           siblingGroupId: experiment.siblingGroupId,
-          labId: isWitness ? "lab-witness-a" : "lab-control-a",
+          labId:
+            scenario === "same-lab"
+              ? "lab-shared-a"
+              : isWitness
+                ? "lab-witness-a"
+                : "lab-control-a",
           fresh: true,
           fallbackUsed: scenario === "fallback-observed",
         },
@@ -582,6 +588,34 @@ describe("Verification.verify", () => {
           outcome: {
             kind: "blocked",
             reason: "non-hermetic",
+            causalIdentity: plan.hypothesis.causalIdentity,
+          },
+        },
+      },
+    });
+  });
+
+  it("durably records sibling isolation Blocked when Witness and Control share a Lab", async () => {
+    const plan = verificationPlan({
+      campaignId: "campaign-shared-lab",
+      verificationId: "verification-shared-lab",
+    });
+    await expect(verifyAndReplay(plan, "same-lab")).resolves.toMatchObject({
+      ref: {
+        kind: "verification-record",
+        schemaVersion: 1,
+        verificationId: plan.verificationId,
+        outcome: "blocked",
+      },
+      replayed: {
+        value: {
+          kind: "verification-record",
+          schemaVersion: 1,
+          verificationId: plan.verificationId,
+          campaignId: plan.campaignId,
+          outcome: {
+            kind: "blocked",
+            reason: "sibling-isolation-failed",
             causalIdentity: plan.hypothesis.causalIdentity,
           },
         },

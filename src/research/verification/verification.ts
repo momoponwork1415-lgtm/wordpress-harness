@@ -171,7 +171,8 @@ function supportsDisproved(
   );
 }
 
-function hasSiblingBindingMismatch(
+function hasSiblingIsolationFailure(
+  plan: VerificationPlan,
   witnessPlan: ExperimentPlan,
   controlPlan: ExperimentPlan,
   witness: ExperimentObservation,
@@ -179,7 +180,14 @@ function hasSiblingBindingMismatch(
 ): boolean {
   return (
     canonicalJson(witness.bindings) !== canonicalJson(witnessPlan.bindings) ||
-    canonicalJson(control.bindings) !== canonicalJson(controlPlan.bindings)
+    canonicalJson(control.bindings) !== canonicalJson(controlPlan.bindings) ||
+    witness.isolation.runtimeDigest !== control.isolation.runtimeDigest ||
+    witness.isolation.runtimeDigest !== plan.labBaseline.runtimeProfileDigest ||
+    witness.isolation.siblingGroupId !== witnessPlan.siblingGroupId ||
+    control.isolation.siblingGroupId !== controlPlan.siblingGroupId ||
+    witness.isolation.labId === control.isolation.labId ||
+    !witness.isolation.fresh ||
+    !control.isolation.fresh
   );
 }
 
@@ -336,7 +344,13 @@ class IndependentVerification implements Verification {
         });
       }
       if (
-        hasSiblingBindingMismatch(witnessPlan, controlPlan, witness, control)
+        hasSiblingIsolationFailure(
+          plan,
+          witnessPlan,
+          controlPlan,
+          witness,
+          control,
+        )
       ) {
         return this.#recordBlocked(
           plan,
