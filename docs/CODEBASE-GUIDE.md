@@ -57,7 +57,7 @@ Surface Map
 
 これは探索の主要境界を一度貫通するが、製品のclosed loopではない。Work Leaseからsource contextとAttempt Planを作るcompositionはdevelopment runnerにあり、CampaignRunner、Research Ledger、Verification Lab、Witness、Causal Control、Finding/Blocked record、次iterationはまだ接続していない。次の実装は新しい水平moduleを増やすより、この経路をCampaign ControlとResearch Recordへ接続し、Brizy Boundary Pairの独立Verificationまで一段ずつ延ばす。
 
-Verification内部の最初のtracerは、合成source re-derivationとdeterministic Lab Control adapterから、Stored XSSのgVisor/no-fallback binding、fresh sibling、browser Witness、Causal Control、normal-function条件を検査し、Finding、同じCausal Identityに限定したDisproved、またはVerifier/gVisor unavailable・sibling configuration mismatchのBlockedをprivate CASとResearch Ledgerへdurable writeしてclose/reopen後にreplayできる。これは[Verification Behavior Test](../tests/research/verification.test.ts)で保護するが、実gVisor、WordPress、browserを使うevidentiary runではなく、上記の製品closed loop完了を意味しない。
+Verification内部の最初のtracerは、合成source re-derivationとdeterministic Lab Control adapterから、Stored XSSのgVisor/no-fallback binding、fresh sibling、browser Witness、Causal Control、normal-function条件を検査し、Finding、同じCausal Identityに限定したDisproved、またはVerifier/gVisor unavailable・sibling configuration mismatch・evidence incompleteのBlockedをprivate CASとResearch Ledgerへdurable writeしてclose/reopen後にreplayできる。これは[Verification Behavior Test](../tests/research/verification.test.ts)で保護するが、実gVisor、WordPress、browserを使うevidentiary runではなく、上記の製品closed loop完了を意味しない。
 
 ## 設計上の現在地
 

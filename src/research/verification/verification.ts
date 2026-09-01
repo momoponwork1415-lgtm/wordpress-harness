@@ -73,7 +73,7 @@ async function readObservation(
   return observation;
 }
 
-function isValidStoredXssPair(
+function isBoundStoredXssPair(
   plan: VerificationPlan,
   witnessPlan: ExperimentPlan,
   controlPlan: ExperimentPlan,
@@ -108,10 +108,22 @@ function isValidStoredXssPair(
     control.causalFactor.id === witnessPlan.mechanism.causalFactor &&
     witness.causalFactor.state === "present" &&
     control.causalFactor.state === "removed" &&
+    witness.result.kind === "stored-xss-browser" &&
+    control.result.kind === "stored-xss-browser"
+  );
+}
+
+function hasCompleteStoredXssEvidence(
+  plan: VerificationPlan,
+  witnessPlan: ExperimentPlan,
+  controlPlan: ExperimentPlan,
+  witness: ExperimentObservation,
+  control: ExperimentObservation,
+): boolean {
+  return (
+    isBoundStoredXssPair(plan, witnessPlan, controlPlan, witness, control) &&
     witness.normalFunction === "preserved" &&
     control.normalFunction === "preserved" &&
-    witness.result.kind === "stored-xss-browser" &&
-    control.result.kind === "stored-xss-browser" &&
     witness.result.attackerRequestAccepted &&
     control.result.attackerRequestAccepted
   );
@@ -125,7 +137,13 @@ function supportsFinding(
   control: ExperimentObservation,
 ): boolean {
   return (
-    isValidStoredXssPair(plan, witnessPlan, controlPlan, witness, control) &&
+    hasCompleteStoredXssEvidence(
+      plan,
+      witnessPlan,
+      controlPlan,
+      witness,
+      control,
+    ) &&
     witness.result.persistentStateObserved &&
     witness.result.browserCanaryExecuted &&
     !control.result.persistentStateObserved &&
@@ -141,7 +159,13 @@ function supportsDisproved(
   control: ExperimentObservation,
 ): boolean {
   return (
-    isValidStoredXssPair(plan, witnessPlan, controlPlan, witness, control) &&
+    hasCompleteStoredXssEvidence(
+      plan,
+      witnessPlan,
+      controlPlan,
+      witness,
+      control,
+    ) &&
     !witness.result.browserCanaryExecuted &&
     !control.result.browserCanaryExecuted
   );
@@ -304,6 +328,20 @@ class IndependentVerification implements Verification {
           plan,
           start.planDigest,
           "sibling-isolation-failed",
+          {
+            sourceRederivationDigest: rederivationDigest,
+            witness: witnessRef,
+            control: controlRef,
+          },
+        );
+      }
+      if (
+        isBoundStoredXssPair(plan, witnessPlan, controlPlan, witness, control)
+      ) {
+        return this.#recordBlocked(
+          plan,
+          start.planDigest,
+          "evidence-incomplete",
           {
             sourceRederivationDigest: rederivationDigest,
             witness: witnessRef,

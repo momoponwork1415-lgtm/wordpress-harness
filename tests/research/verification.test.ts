@@ -32,7 +32,8 @@ type LabScenario =
   | "gvisor-unavailable"
   | "sibling-mismatch"
   | "artifact-mismatch"
-  | "verifier-unavailable";
+  | "verifier-unavailable"
+  | "evidence-incomplete";
 
 interface VerificationIdentity {
   readonly campaignId: string;
@@ -226,7 +227,10 @@ function storedXssLabControl(
           id: experiment.mechanism.causalFactor,
           state: isWitness ? "present" : "removed",
         },
-        normalFunction: "preserved",
+        normalFunction:
+          scenario === "evidence-incomplete" && isWitness
+            ? "unknown"
+            : "preserved",
         result: {
           kind: "stored-xss-browser",
           schemaVersion: 1,
@@ -481,6 +485,36 @@ describe("Verification.verify", () => {
           outcome: {
             kind: "blocked",
             reason: "verifier-unavailable",
+            causalIdentity: plan.hypothesis.causalIdentity,
+          },
+        },
+      },
+    });
+  });
+
+  it("durably records Blocked when browser evidence is inconclusive", async () => {
+    const plan = verificationPlan({
+      campaignId: "campaign-evidence-incomplete",
+      verificationId: "verification-evidence-incomplete",
+    });
+    await expect(
+      verifyAndReplay(plan, "evidence-incomplete"),
+    ).resolves.toMatchObject({
+      ref: {
+        kind: "verification-record",
+        schemaVersion: 1,
+        verificationId: plan.verificationId,
+        outcome: "blocked",
+      },
+      replayed: {
+        value: {
+          kind: "verification-record",
+          schemaVersion: 1,
+          verificationId: plan.verificationId,
+          campaignId: plan.campaignId,
+          outcome: {
+            kind: "blocked",
+            reason: "evidence-incomplete",
             causalIdentity: plan.hypothesis.causalIdentity,
           },
         },
