@@ -55,7 +55,7 @@ Surface Map
   -> verify decision
 ```
 
-`CampaignRunner.run`の最初のbehavior sliceは、CAS固定のSurface Mapから有限Work Wave、Finder、独立Verification、Finding、`await-calibration` decision、Research Ledger replayまでを一つのpublic入口で接続している。現時点のsystem seamは合成adapterであり、実gVisor/browser evidenceではない。次の実装はAttempt intentとcrash recoveryを固めた後、この同じ経路へ実Lab adapterとBrizy Boundary Pairを接続する。
+`CampaignRunner.run`の最初のbehavior sliceは、CAS固定のSurface Mapから有限Work Wave、Finder、独立Verification、Finding、`await-calibration` decision、Research Ledger replayまでを一つのpublic入口で接続している。Finderの外部実行より前にAttempt intentを記録し、中断したprocessを`orphaned`へ確定して残予算内のfresh Attemptへ置き換える。現時点のsystem seamは合成adapterであり、実gVisor/browser evidenceではない。次の実装は決定的順序とBlocked foldを固めた後、この同じ経路へ実Lab adapterとBrizy Boundary Pairを接続する。
 
 Verification内部の最初のtracerは、合成source re-derivationとdeterministic Lab Control adapterから、Stored XSSのgVisor/no-fallback binding、fresh sibling、browser Witness、Causal Control、normal-function条件を検査し、Finding、同じCausal Identityに限定したDisproved、またはVerifier/gVisor unavailable・sibling configuration mismatch・non-hermetic fallback・evidence incompleteのBlockedをprivate CASとResearch Ledgerへdurable writeしてclose/reopen後にreplayできる。これは[Verification Behavior Test](../tests/research/verification.test.ts)で保護するが、実gVisor、WordPress、browserを使うevidentiary runではなく、上記の製品closed loop完了を意味しない。
 

@@ -9,6 +9,8 @@ import {
 } from "../contracts.js";
 import {
   CampaignRunConflictError,
+  campaignAttemptCompletionSchema,
+  campaignAttemptIntentSchema,
   campaignRunCompletionInputSchema,
   campaignRunPlanSchema,
   campaignRunRecordSchema,
@@ -16,6 +18,9 @@ import {
   type CampaignRunPlan,
   type CampaignRunRecordRef,
   type CampaignRunRecordView,
+  type CampaignAttemptCompletion,
+  type CampaignAttemptIntent,
+  type CampaignAttemptRecordView,
 } from "../campaign-control/contracts.js";
 import {
   VerificationConflictError,
@@ -31,6 +36,7 @@ import { canonicalJson, sha256Digest } from "./canonical-json.js";
 import type {
   OpenResearchRecordOptions,
   PreparationRecord,
+  RecordCampaignAttemptStartResult,
   RecordCampaignRunStartResult,
   RecordPreparationResult,
   RecordVerificationStartResult,
@@ -66,6 +72,14 @@ const campaignRunCompletedPayloadSchema = z.strictObject({
   recordDigest: digestSchema,
 });
 
+const campaignAttemptStartedPayloadSchema = z.strictObject({
+  intent: campaignAttemptIntentSchema,
+});
+
+const campaignAttemptCompletedPayloadSchema = z.strictObject({
+  completion: campaignAttemptCompletionSchema,
+});
+
 const storedEventRowSchema = z.strictObject({
   campaign_sequence: z.number().int().positive(),
   kind: z.string(),
@@ -97,6 +111,7 @@ interface StoredCampaignRun {
 interface LedgerProjection {
   readonly preparation: PreparationRecord;
   readonly runs: ReadonlyMap<string, StoredCampaignRun>;
+  readonly attempts: ReadonlyMap<string, CampaignAttemptRecordView>;
   readonly verifications: ReadonlyMap<string, StoredVerification>;
 }
 
@@ -305,6 +320,24 @@ class SqliteResearchRecord implements ResearchRecord {
         return existing.completed;
       }
 
+      const completedAttemptRefs = [...ledger.attempts.values()]
+        .filter((attempt) => attempt.intent.runId === input.runId)
+        .flatMap((attempt) =>
+          attempt.completion === undefined
+            ? []
+            : [attempt.completion.value.result],
+        )
+        .sort((left, right) => left.digest.localeCompare(right.digest));
+      const requestedAttemptRefs = [...input.attempts].sort((left, right) =>
+        left.digest.localeCompare(right.digest),
+      );
+      if (
+        canonicalJson(completedAttemptRefs) !==
+        canonicalJson(requestedAttemptRefs)
+      ) {
+        throw new LedgerIntegrityError(input.campaignId, "invalid-event-order");
+      }
+
       const completedAt = this.#clock().toISOString();
       const record = campaignRunRecordSchema.parse({
         ...input,
@@ -337,6 +370,132 @@ class SqliteResearchRecord implements ResearchRecord {
     const rows = this.#readRows(campaignId);
     if (rows.length === 0) return undefined;
     return this.#decodeLedger(campaignId, rows).runs.get(runId)?.completed;
+  }
+
+  async recordCampaignAttemptStart(
+    value: CampaignAttemptIntent,
+  ): Promise<RecordCampaignAttemptStartResult> {
+    const intent = campaignAttemptIntentSchema.parse(value);
+    const transact = this.#database.transaction(
+      (): RecordCampaignAttemptStartResult => {
+        const rows = this.#readRows(intent.campaignId);
+        if (rows.length === 0) {
+          throw new Error(`Campaign not found: ${intent.campaignId}`);
+        }
+        const ledger = this.#decodeLedger(intent.campaignId, rows);
+        const run = ledger.runs.get(intent.runId);
+        if (run === undefined || run.completed !== undefined) {
+          throw new CampaignRunConflictError(intent.campaignId, intent.runId);
+        }
+        const existing = ledger.attempts.get(intent.attemptId);
+        if (existing !== undefined) {
+          if (canonicalJson(existing.intent) !== canonicalJson(intent)) {
+            throw new CampaignRunConflictError(intent.campaignId, intent.runId);
+          }
+          return existing.completion === undefined
+            ? { disposition: "in-progress", attempt: existing }
+            : {
+                disposition: "completed",
+                attempt: { ...existing, completion: existing.completion },
+              };
+        }
+        if (
+          [...ledger.attempts.values()].some(
+            (attempt) =>
+              attempt.intent.runId === intent.runId &&
+              attempt.intent.leaseId === intent.leaseId &&
+              attempt.intent.ordinal === intent.ordinal,
+          )
+        ) {
+          throw new CampaignRunConflictError(intent.campaignId, intent.runId);
+        }
+        const occurredAt = this.#clock().toISOString();
+        const ledgerHead = rows.length + 1;
+        this.#insertEvent(
+          intent.campaignId,
+          ledgerHead,
+          "campaign.attempt-started",
+          occurredAt,
+          { intent },
+        );
+        return {
+          disposition: "started",
+          attempt: { ledgerHead, occurredAt, intent },
+        };
+      },
+    );
+    return transact();
+  }
+
+  async recordCampaignAttemptCompletion(
+    value: CampaignAttemptCompletion,
+  ): Promise<CampaignAttemptRecordView> {
+    const completion = campaignAttemptCompletionSchema.parse(value);
+    const transact = this.#database.transaction(
+      (): CampaignAttemptRecordView => {
+        const rows = this.#readRows(completion.campaignId);
+        if (rows.length === 0) {
+          throw new Error(`Campaign not found: ${completion.campaignId}`);
+        }
+        const ledger = this.#decodeLedger(completion.campaignId, rows);
+        const existing = ledger.attempts.get(completion.attemptId);
+        if (
+          existing === undefined ||
+          existing.intent.runId !== completion.runId ||
+          existing.intent.leaseId !== completion.leaseId ||
+          existing.intent.ordinal !== completion.ordinal ||
+          existing.intent.workWaveDigest !== completion.workWaveDigest ||
+          completion.result.attemptId !== completion.attemptId ||
+          completion.result.leaseId !== completion.leaseId
+        ) {
+          throw new CampaignRunConflictError(
+            completion.campaignId,
+            completion.runId,
+          );
+        }
+        if (existing.completion !== undefined) {
+          if (
+            canonicalJson(existing.completion.value) !==
+            canonicalJson(completion)
+          ) {
+            throw new CampaignRunConflictError(
+              completion.campaignId,
+              completion.runId,
+            );
+          }
+          return existing;
+        }
+        const occurredAt = this.#clock().toISOString();
+        const ledgerHead = rows.length + 1;
+        this.#insertEvent(
+          completion.campaignId,
+          ledgerHead,
+          "campaign.attempt-completed",
+          occurredAt,
+          { completion },
+        );
+        return {
+          ...existing,
+          completion: { ledgerHead, occurredAt, value: completion },
+        };
+      },
+    );
+    return transact();
+  }
+
+  async listCampaignAttempts(
+    campaignId: string,
+    runId: string,
+  ): Promise<readonly CampaignAttemptRecordView[]> {
+    const rows = this.#readRows(campaignId);
+    if (rows.length === 0) return [];
+    return [...this.#decodeLedger(campaignId, rows).attempts.values()]
+      .filter((attempt) => attempt.intent.runId === runId)
+      .sort(
+        (left, right) =>
+          left.intent.leaseId.localeCompare(right.intent.leaseId) ||
+          left.intent.ordinal - right.intent.ordinal,
+      );
   }
 
   async recordVerificationStart(
@@ -550,6 +709,7 @@ class SqliteResearchRecord implements ResearchRecord {
     }
 
     const runs = new Map<string, StoredCampaignRun>();
+    const attempts = new Map<string, CampaignAttemptRecordView>();
     const verifications = new Map<string, StoredVerification>();
     for (const event of rows.slice(1)) {
       if (event.kind === "campaign.prepared") {
@@ -580,6 +740,74 @@ class SqliteResearchRecord implements ResearchRecord {
         });
         continue;
       }
+      if (event.kind === "campaign.attempt-started") {
+        if (event.schema_version !== 1) {
+          throw new UnsupportedLedgerSchemaError(
+            event.kind,
+            event.schema_version,
+          );
+        }
+        const payload = campaignAttemptStartedPayloadSchema.parse(
+          this.#parsePayload(event),
+        );
+        const intent = payload.intent;
+        const run = runs.get(intent.runId);
+        if (
+          intent.campaignId !== campaignId ||
+          run === undefined ||
+          run.completed !== undefined ||
+          attempts.has(intent.attemptId) ||
+          [...attempts.values()].some(
+            (attempt) =>
+              attempt.intent.runId === intent.runId &&
+              attempt.intent.leaseId === intent.leaseId &&
+              attempt.intent.ordinal === intent.ordinal,
+          )
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        attempts.set(intent.attemptId, {
+          ledgerHead: event.campaign_sequence,
+          occurredAt: event.occurred_at,
+          intent,
+        });
+        continue;
+      }
+      if (event.kind === "campaign.attempt-completed") {
+        if (event.schema_version !== 1) {
+          throw new UnsupportedLedgerSchemaError(
+            event.kind,
+            event.schema_version,
+          );
+        }
+        const payload = campaignAttemptCompletedPayloadSchema.parse(
+          this.#parsePayload(event),
+        );
+        const completion = payload.completion;
+        const existing = attempts.get(completion.attemptId);
+        if (
+          completion.campaignId !== campaignId ||
+          existing === undefined ||
+          existing.completion !== undefined ||
+          existing.intent.runId !== completion.runId ||
+          existing.intent.leaseId !== completion.leaseId ||
+          existing.intent.ordinal !== completion.ordinal ||
+          existing.intent.workWaveDigest !== completion.workWaveDigest ||
+          completion.result.attemptId !== completion.attemptId ||
+          completion.result.leaseId !== completion.leaseId
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        attempts.set(completion.attemptId, {
+          ...existing,
+          completion: {
+            ledgerHead: event.campaign_sequence,
+            occurredAt: event.occurred_at,
+            value: completion,
+          },
+        });
+        continue;
+      }
       if (event.kind === "campaign.run-completed") {
         if (event.schema_version !== 1) {
           throw new UnsupportedLedgerSchemaError(
@@ -605,6 +833,23 @@ class SqliteResearchRecord implements ResearchRecord {
             campaignId,
             "campaign-run-record-digest-mismatch",
           );
+        }
+        const completedAttemptRefs = [...attempts.values()]
+          .filter((attempt) => attempt.intent.runId === payload.record.runId)
+          .flatMap((attempt) =>
+            attempt.completion === undefined
+              ? []
+              : [attempt.completion.value.result],
+          )
+          .sort((left, right) => left.digest.localeCompare(right.digest));
+        const recordedAttemptRefs = [...payload.record.attempts].sort(
+          (left, right) => left.digest.localeCompare(right.digest),
+        );
+        if (
+          canonicalJson(completedAttemptRefs) !==
+          canonicalJson(recordedAttemptRefs)
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
         }
         runs.set(payload.record.runId, {
           ...existing,
@@ -702,6 +947,7 @@ class SqliteResearchRecord implements ResearchRecord {
         input: preparationPayload.input,
       },
       runs,
+      attempts,
       verifications,
     };
   }

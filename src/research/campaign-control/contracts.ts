@@ -7,9 +7,9 @@ import {
   type WorkLease,
   type WorkWavePlan,
 } from "../exploration/contracts.js";
-import type {
-  AttemptPlan,
-  ModelExecution,
+import {
+  attemptPlanSchema,
+  type ModelExecution,
 } from "../model-execution/contracts.js";
 import type { JsonArtifactStore } from "../research-record/contracts.js";
 import {
@@ -47,6 +47,14 @@ const verificationPolicyRefSchema = immutableRef("verification-policy");
 const experimentRegistryRefSchema = immutableRef("experiment-registry");
 const iterationPolicyRefSchema = immutableRef("iteration-policy");
 const calibrationContextRefSchema = immutableRef("calibration-context");
+
+export const finderAttemptMaterializationSchema = z.strictObject({
+  kind: z.literal("finder-attempt-materialization"),
+  schemaVersion: z.literal(1),
+  modelProfile: attemptPlanSchema.shape.modelProfile,
+  prompt: attemptPlanSchema.shape.prompt,
+  maxOutputBytes: z.number().int().positive(),
+});
 
 export const campaignRunPlanSchema = z.strictObject({
   kind: z.literal("campaign-run-plan"),
@@ -123,6 +131,39 @@ const attemptExecutionResultRefSchema = z.strictObject({
   digest: digestSchema,
 });
 
+const campaignAttemptIdentityFields = {
+  campaignId: identifierSchema,
+  runId: identifierSchema,
+  attemptId: identifierSchema,
+  leaseId: digestSchema,
+  ordinal: z.number().int().positive(),
+  workWaveDigest: digestSchema,
+};
+
+export const campaignAttemptIntentSchema = z.discriminatedUnion("mode", [
+  z.strictObject({
+    kind: z.literal("campaign-attempt-intent"),
+    schemaVersion: z.literal(1),
+    ...campaignAttemptIdentityFields,
+    mode: z.literal("execute"),
+    attemptPlanDigest: digestSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("campaign-attempt-intent"),
+    schemaVersion: z.literal(1),
+    ...campaignAttemptIdentityFields,
+    mode: z.literal("cancel"),
+    reason: z.literal("campaign-finder-attempt-limit"),
+  }),
+]);
+
+export const campaignAttemptCompletionSchema = z.strictObject({
+  kind: z.literal("campaign-attempt-completion"),
+  schemaVersion: z.literal(1),
+  ...campaignAttemptIdentityFields,
+  result: attemptExecutionResultRefSchema,
+});
+
 const campaignRunIdentityFields = {
   runId: identifierSchema,
   campaignId: identifierSchema,
@@ -169,6 +210,24 @@ export type CampaignRunCompletionInput = z.infer<
 export type CampaignRunRecord = z.infer<typeof campaignRunRecordSchema>;
 export type CampaignRunRecordRef = z.infer<typeof campaignRunRecordRefSchema>;
 export type IterationDecision = z.infer<typeof iterationDecisionSchema>;
+export type FinderAttemptMaterialization = z.infer<
+  typeof finderAttemptMaterializationSchema
+>;
+export type CampaignAttemptIntent = z.infer<typeof campaignAttemptIntentSchema>;
+export type CampaignAttemptCompletion = z.infer<
+  typeof campaignAttemptCompletionSchema
+>;
+
+export interface CampaignAttemptRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly intent: CampaignAttemptIntent;
+  readonly completion?: {
+    readonly ledgerHead: number;
+    readonly occurredAt: string;
+    readonly value: CampaignAttemptCompletion;
+  };
+}
 
 export interface CampaignRunRecordView {
   readonly ledgerHead: number;
@@ -184,6 +243,7 @@ export interface AttemptPlanMaterializationInput {
     readonly maxWallTimeMs: number;
     readonly maxModelTokens: number;
   };
+  readonly attemptOrdinal: number;
   readonly targetSnapshot: TargetSnapshotRef;
   readonly surfaceMap: SurfaceMap;
   readonly wave: WorkWavePlan;
@@ -192,7 +252,9 @@ export interface AttemptPlanMaterializationInput {
 }
 
 export interface AttemptPlanMaterializer {
-  materialize(input: AttemptPlanMaterializationInput): Promise<AttemptPlan>;
+  materialize(
+    input: AttemptPlanMaterializationInput,
+  ): Promise<FinderAttemptMaterialization>;
 }
 
 export interface CampaignExecutionDependencies {

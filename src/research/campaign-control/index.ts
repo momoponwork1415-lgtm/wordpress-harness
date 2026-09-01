@@ -27,6 +27,8 @@ import { surfaceMapSchema } from "../source-mapping/contracts.js";
 import { openVerification } from "../verification/index.js";
 import {
   campaignRunPlanSchema,
+  finderAttemptMaterializationSchema,
+  type CampaignAttemptIntent,
   type CampaignExecutionDependencies,
   type CampaignRunPlan,
   type IterationDecision,
@@ -62,6 +64,48 @@ function finderResultRef(
     leaseId: value.leaseId,
     digest: sha256Digest(value),
   };
+}
+
+function campaignAttemptId(
+  runId: string,
+  leaseId: string,
+  ordinal: number,
+): string {
+  return `attempt:${sha256Digest({ runId, leaseId, ordinal }).slice("sha256:".length)}`;
+}
+
+async function readFinderResult(
+  dependencies: CampaignExecutionDependencies,
+  refValue: AttemptExecutionResultRef,
+): Promise<FinderAttemptResult> {
+  const ref = attemptExecutionResultRefSchema.parse(refValue);
+  const artifact = await dependencies.artifactStore.readJson(ref.digest);
+  if (sha256Digest(artifact) !== ref.digest) {
+    throw new Error(`Finder Attempt artifact digest mismatch: ${ref.digest}`);
+  }
+  const value = finderAttemptResultSchema.parse(artifact);
+  if (value.attemptId !== ref.attemptId || value.leaseId !== ref.leaseId) {
+    throw new Error(`Finder Attempt artifact ref mismatch: ${ref.attemptId}`);
+  }
+  return value;
+}
+
+async function completeCampaignAttempt(
+  record: ResearchRecord,
+  intent: CampaignAttemptIntent,
+  ref: AttemptExecutionResultRef,
+): Promise<void> {
+  await record.recordCampaignAttemptCompletion({
+    kind: "campaign-attempt-completion",
+    schemaVersion: 1,
+    campaignId: intent.campaignId,
+    runId: intent.runId,
+    attemptId: intent.attemptId,
+    leaseId: intent.leaseId,
+    ordinal: intent.ordinal,
+    workWaveDigest: intent.workWaveDigest,
+    result: ref,
+  });
 }
 
 function iterationDecision(
@@ -144,53 +188,144 @@ async function executeRun(
   const focusAreas = new Map(
     wave.focusAreas.map((focusArea) => [focusArea.id, focusArea]),
   );
-  const selectedLeaseIds = new Set(
-    wave.leases
-      .slice(0, plan.budget.maxFinderAttempts)
-      .map((lease) => lease.id),
+  let recordedAttempts = await record.listCampaignAttempts(
+    plan.campaignId,
+    plan.runId,
   );
-  const terminalResults = await Promise.all(
-    wave.leases.map(async (lease, index) => {
-      if (!selectedLeaseIds.has(lease.id)) {
-        const value = finderAttemptResultSchema.parse({
-          kind: "finder-attempt-result",
-          schemaVersion: 1,
-          attemptId: `${plan.runId}:cancelled:${index}`,
-          leaseId: lease.id,
-          status: "cancelled",
-          reason: "campaign-finder-attempt-limit",
-        });
-        await dependencies.artifactStore.putJson(value);
-        return { value, ref: finderResultRef(value) };
-      }
-      const focusArea = focusAreas.get(lease.focusAreaId);
-      if (focusArea === undefined) {
-        throw new Error(`Work Lease has no Focus Area: ${lease.id}`);
-      }
-      const attemptPlan = attemptPlanSchema.parse(
-        await dependencies.attemptPlanMaterializer.materialize({
-          run: {
-            runId: plan.runId,
-            finder: plan.finder,
-            maxWallTimeMs: plan.budget.maxWallTimeMs,
-            maxModelTokens: plan.budget.maxModelTokens,
-          },
-          targetSnapshot: preparation.input.targetSnapshot,
-          surfaceMap,
-          wave,
-          focusArea,
-          lease,
-        }),
-      );
-      if (
-        attemptPlan.leaseId !== lease.id ||
-        attemptPlan.target.id !== preparation.input.targetSnapshot.id ||
-        attemptPlan.target.digest !== preparation.input.targetSnapshot.digest ||
-        attemptPlan.budget.maxWallTimeMs > lease.budget.maxWallTimeMs
-      ) {
-        throw new Error(`Attempt Plan is not bound to Work Lease: ${lease.id}`);
-      }
+  for (const attempt of recordedAttempts) {
+    if (attempt.completion !== undefined) continue;
+    const value = finderAttemptResultSchema.parse({
+      kind: "finder-attempt-result",
+      schemaVersion: 1,
+      attemptId: attempt.intent.attemptId,
+      leaseId: attempt.intent.leaseId,
+      status: "orphaned",
+      reason: "orphaned-execution-requires-fresh-attempt",
+    });
+    const digest = await dependencies.artifactStore.putJson(value);
+    await completeCampaignAttempt(record, attempt.intent, {
+      ...finderResultRef(value),
+      digest,
+    });
+  }
+  recordedAttempts = await record.listCampaignAttempts(
+    plan.campaignId,
+    plan.runId,
+  );
+  let usedExecutions = recordedAttempts.filter(
+    (attempt) => attempt.intent.mode === "execute",
+  ).length;
+  const scheduled: {
+    readonly intent: Extract<CampaignAttemptIntent, { mode: "execute" }>;
+    readonly attemptPlan: ReturnType<typeof attemptPlanSchema.parse>;
+  }[] = [];
+
+  for (const lease of wave.leases) {
+    const prior = recordedAttempts.filter(
+      (attempt) => attempt.intent.leaseId === lease.id,
+    );
+    const latest = prior.at(-1);
+    const latestValue =
+      latest?.completion === undefined
+        ? undefined
+        : await readFinderResult(dependencies, latest.completion.value.result);
+    if (latestValue !== undefined && latestValue.status !== "orphaned") {
+      continue;
+    }
+    const ordinal = (latest?.intent.ordinal ?? 0) + 1;
+    const attemptId = campaignAttemptId(plan.runId, lease.id, ordinal);
+    if (usedExecutions >= plan.budget.maxFinderAttempts) {
+      if (latestValue?.status === "orphaned") continue;
+      const intent: CampaignAttemptIntent = {
+        kind: "campaign-attempt-intent",
+        schemaVersion: 1,
+        campaignId: plan.campaignId,
+        runId: plan.runId,
+        attemptId,
+        leaseId: lease.id,
+        ordinal,
+        workWaveDigest: wave.ref.digest,
+        mode: "cancel",
+        reason: "campaign-finder-attempt-limit",
+      };
+      await record.recordCampaignAttemptStart(intent);
+      const value = finderAttemptResultSchema.parse({
+        kind: "finder-attempt-result",
+        schemaVersion: 1,
+        attemptId,
+        leaseId: lease.id,
+        status: "cancelled",
+        reason: "campaign-finder-attempt-limit",
+      });
+      const digest = await dependencies.artifactStore.putJson(value);
+      await completeCampaignAttempt(record, intent, {
+        ...finderResultRef(value),
+        digest,
+      });
+      continue;
+    }
+
+    const focusArea = focusAreas.get(lease.focusAreaId);
+    if (focusArea === undefined) {
+      throw new Error(`Work Lease has no Focus Area: ${lease.id}`);
+    }
+    const materialized = finderAttemptMaterializationSchema.parse(
+      await dependencies.attemptPlanMaterializer.materialize({
+        run: {
+          runId: plan.runId,
+          finder: plan.finder,
+          maxWallTimeMs: plan.budget.maxWallTimeMs,
+          maxModelTokens: plan.budget.maxModelTokens,
+        },
+        attemptOrdinal: ordinal,
+        targetSnapshot: preparation.input.targetSnapshot,
+        surfaceMap,
+        wave,
+        focusArea,
+        lease,
+      }),
+    );
+    const attemptPlan = attemptPlanSchema.parse({
+      kind: "attempt-plan",
+      schemaVersion: 1,
+      attemptId,
+      leaseId: lease.id,
+      role: "finder",
+      target: {
+        id: preparation.input.targetSnapshot.id,
+        digest: preparation.input.targetSnapshot.digest,
+      },
+      modelProfile: materialized.modelProfile,
+      prompt: materialized.prompt,
+      budget: {
+        maxWallTimeMs: lease.budget.maxWallTimeMs,
+        maxOutputBytes: materialized.maxOutputBytes,
+      },
+    });
+    const attemptPlanDigest =
       await dependencies.artifactStore.putJson(attemptPlan);
+    const intent = {
+      kind: "campaign-attempt-intent" as const,
+      schemaVersion: 1 as const,
+      campaignId: plan.campaignId,
+      runId: plan.runId,
+      attemptId,
+      leaseId: lease.id,
+      ordinal,
+      workWaveDigest: wave.ref.digest,
+      mode: "execute" as const,
+      attemptPlanDigest,
+    };
+    const started = await record.recordCampaignAttemptStart(intent);
+    if (started.disposition !== "started") {
+      throw new Error(`Fresh Attempt intent is already occupied: ${attemptId}`);
+    }
+    scheduled.push({ intent, attemptPlan });
+    usedExecutions += 1;
+  }
+
+  const settled = await Promise.allSettled(
+    scheduled.map(async ({ intent, attemptPlan }) => {
       const executed = await dependencies.modelExecution.run(attemptPlan);
       const value = finderAttemptResultSchema.parse(executed.value);
       const ref = attemptExecutionResultRefSchema.parse(executed.ref);
@@ -200,15 +335,48 @@ async function executeRun(
         ref.digest !== storedDigest ||
         ref.attemptId !== value.attemptId ||
         ref.leaseId !== value.leaseId ||
-        value.leaseId !== lease.id
+        value.attemptId !== attemptPlan.attemptId ||
+        value.leaseId !== attemptPlan.leaseId
       ) {
         throw new Error(
-          `Finder result is not bound to Work Lease: ${lease.id}`,
+          `Finder result is not bound to Work Lease: ${attemptPlan.leaseId}`,
         );
       }
-      return { value, ref };
+      await completeCampaignAttempt(record, intent, ref);
     }),
   );
+  const rejected = settled.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (rejected !== undefined) throw rejected.reason;
+
+  recordedAttempts = await record.listCampaignAttempts(
+    plan.campaignId,
+    plan.runId,
+  );
+  const allAttemptRefs: AttemptExecutionResultRef[] = [];
+  const latestByLease = new Map<
+    string,
+    { value: FinderAttemptResult; ref: AttemptExecutionResultRef }
+  >();
+  for (const attempt of recordedAttempts) {
+    if (attempt.completion === undefined) {
+      throw new Error(
+        `Attempt is still in progress: ${attempt.intent.attemptId}`,
+      );
+    }
+    const ref = attempt.completion.value.result;
+    const value = await readFinderResult(dependencies, ref);
+    allAttemptRefs.push(ref);
+    latestByLease.set(attempt.intent.leaseId, { value, ref });
+  }
+  const terminalResults = wave.leases.map((lease) => {
+    const result = latestByLease.get(lease.id);
+    if (result === undefined) {
+      throw new Error(`Work Lease has no terminal Attempt: ${lease.id}`);
+    }
+    return result;
+  });
   terminalResults.sort((left, right) =>
     compareText(left.ref.leaseId, right.ref.leaseId),
   );
@@ -295,7 +463,7 @@ async function executeRun(
     campaignId: plan.campaignId,
     planDigest,
     workWave: wave.ref,
-    attempts: terminalResults.map((result) => result.ref),
+    attempts: allAttemptRefs,
     verifications: verificationRefs,
     decision,
   });

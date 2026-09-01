@@ -166,16 +166,9 @@ function finder(
 
 function materializer(): AttemptPlanMaterializer {
   return {
-    materialize: async ({ lease, run, targetSnapshot }) => ({
-      kind: "attempt-plan",
+    materialize: async () => ({
+      kind: "finder-attempt-materialization",
       schemaVersion: 1,
-      attemptId: `${run.runId}:finder:${lease.id.slice(-12)}`,
-      leaseId: lease.id,
-      role: "finder",
-      target: {
-        id: targetSnapshot.id,
-        digest: targetSnapshot.digest,
-      },
       modelProfile: {
         provider: "anthropic",
         model: "claude-opus-5",
@@ -185,10 +178,7 @@ function materializer(): AttemptPlanMaterializer {
         eligibilityReceiptDigest: digest("e"),
       },
       prompt: "Inspect the bounded source slice without external tools.",
-      budget: {
-        maxWallTimeMs: lease.budget.maxWallTimeMs,
-        maxOutputBytes: 1_000_000,
-      },
+      maxOutputBytes: 1_000_000,
     }),
   };
 }
@@ -266,142 +256,159 @@ function lab(artifacts: JsonArtifactStore): LabControl {
   };
 }
 
-describe("CampaignRunner.run", () => {
-  it("records one finite wave through a Finding and replays the terminal run", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "campaign-run-"));
-    const databasePath = join(directory, "research.sqlite");
-    const artifacts = openFileJsonArtifactStore(join(directory, "artifacts"));
-    const map = surfaceMap();
-    const policy = explorationPolicy();
-    const mapRef: SurfaceMapRef = {
-      kind: "surface-map",
-      schemaVersion: 1,
-      revisionKind: "initial",
-      targetSnapshotId: map.targetSnapshot.id,
-      mappingProfileId: map.mappingProfile.id,
-      digest: await artifacts.putJson(map),
-      summary: map.summary,
-    };
-    const policyRef: ExplorationPolicyRef = {
-      kind: "exploration-policy",
-      schemaVersion: 1,
-      id: policy.id,
-      digest: await artifacts.putJson(policy),
-    };
-    const candidate = hypothesis(map.nodes[0]!.id);
-    const input = {
-      ...createCampaignInput(),
-      targetSnapshot: {
-        id: "brizy-2.8.11",
-        pluginSlug: "brizy",
-        version: "2.8.11",
-        digest: digest("1"),
+async function openScenario(
+  directory: string,
+  modelExecution: (
+    artifacts: JsonArtifactStore,
+    candidate: SourceBoundHypothesis,
+  ) => ModelExecution,
+  maxFinderAttempts = 2,
+) {
+  const databasePath = join(directory, "research.sqlite");
+  const artifacts = openFileJsonArtifactStore(join(directory, "artifacts"));
+  const map = surfaceMap();
+  const policy = explorationPolicy();
+  const mapRef: SurfaceMapRef = {
+    kind: "surface-map",
+    schemaVersion: 1,
+    revisionKind: "initial",
+    targetSnapshotId: map.targetSnapshot.id,
+    mappingProfileId: map.mappingProfile.id,
+    digest: await artifacts.putJson(map),
+    summary: map.summary,
+  };
+  const policyRef: ExplorationPolicyRef = {
+    kind: "exploration-policy",
+    schemaVersion: 1,
+    id: policy.id,
+    digest: await artifacts.putJson(policy),
+  };
+  const candidate = hypothesis(map.nodes[0]!.id);
+  const input = {
+    ...createCampaignInput(),
+    targetSnapshot: {
+      id: "brizy-2.8.11",
+      pluginSlug: "brizy",
+      version: "2.8.11",
+      digest: digest("1"),
+    },
+    runtimeProfile: {
+      id: "gvisor-wordpress-v1",
+      digest: digest("3"),
+    },
+    promptSet: { id: "research-prompts-v1", digest: digest("7") },
+    modelProfiles: [
+      { id: "opus-finder-v1", digest: digest("6") },
+      { id: "opus-verifier-v1", digest: digest("8") },
+    ],
+    experimentRegistry: {
+      id: "stored-xss-browser-v1",
+      digest: digest("9"),
+    },
+  };
+  const plan: CampaignRunPlan = {
+    kind: "campaign-run-plan",
+    schemaVersion: 1,
+    runId: "run-brizy-2-8-11-a",
+    campaignId: input.campaignId,
+    preparationDigest: sha256Digest(input),
+    surfaceMap: mapRef,
+    explorationPolicy: policyRef,
+    finder: {
+      modelProfile: {
+        kind: "model-profile",
+        schemaVersion: 1,
+        id: "opus-finder-v1",
+        family: "claude",
+        digest: digest("6"),
       },
-      runtimeProfile: {
-        id: "gvisor-wordpress-v1",
-        digest: digest("3"),
+      promptSet: {
+        kind: "prompt-set",
+        schemaVersion: 1,
+        id: "research-prompts-v1",
+        digest: digest("7"),
       },
-      promptSet: { id: "research-prompts-v1", digest: digest("7") },
-      modelProfiles: [
-        { id: "opus-finder-v1", digest: digest("6") },
-        { id: "opus-verifier-v1", digest: digest("8") },
-      ],
+    },
+    verification: {
+      labBaseline: {
+        kind: "lab-baseline",
+        schemaVersion: 1,
+        id: "brizy-2-8-11-baseline",
+        digest: digest("2"),
+        targetSnapshotDigest: digest("1"),
+        runtimeProfileDigest: digest("3"),
+        setupPlanDigest: digest("4"),
+        configurationDigest: digest("5"),
+      },
+      verifierModelProfile: {
+        kind: "model-profile",
+        schemaVersion: 1,
+        id: "opus-verifier-v1",
+        family: "claude",
+        digest: digest("8"),
+      },
+      promptSet: {
+        kind: "prompt-set",
+        schemaVersion: 1,
+        id: "research-prompts-v1",
+        digest: digest("7"),
+      },
+      verificationPolicy: {
+        kind: "verification-policy",
+        schemaVersion: 1,
+        id: "stored-xss-independent-v1",
+        digest: digest("f"),
+      },
       experimentRegistry: {
+        kind: "experiment-registry",
+        schemaVersion: 1,
         id: "stored-xss-browser-v1",
         digest: digest("9"),
       },
-    };
-    const plan: CampaignRunPlan = {
-      kind: "campaign-run-plan",
-      schemaVersion: 1,
-      runId: "run-brizy-2-8-11-a",
-      campaignId: input.campaignId,
-      preparationDigest: sha256Digest(input),
-      surfaceMap: mapRef,
-      explorationPolicy: policyRef,
-      finder: {
-        modelProfile: {
-          kind: "model-profile",
-          schemaVersion: 1,
-          id: "opus-finder-v1",
-          family: "claude",
-          digest: digest("6"),
-        },
-        promptSet: {
-          kind: "prompt-set",
-          schemaVersion: 1,
-          id: "research-prompts-v1",
-          digest: digest("7"),
-        },
-      },
+    },
+    budget: {
+      maxWallTimeMs: 300_000,
+      maxModelTokens: 30_000,
+      maxFinderAttempts,
       verification: {
-        labBaseline: {
-          kind: "lab-baseline",
-          schemaVersion: 1,
-          id: "brizy-2-8-11-baseline",
-          digest: digest("2"),
-          targetSnapshotDigest: digest("1"),
-          runtimeProfileDigest: digest("3"),
-          setupPlanDigest: digest("4"),
-          configurationDigest: digest("5"),
-        },
-        verifierModelProfile: {
-          kind: "model-profile",
-          schemaVersion: 1,
-          id: "opus-verifier-v1",
-          family: "claude",
-          digest: digest("8"),
-        },
-        promptSet: {
-          kind: "prompt-set",
-          schemaVersion: 1,
-          id: "research-prompts-v1",
-          digest: digest("7"),
-        },
-        verificationPolicy: {
-          kind: "verification-policy",
-          schemaVersion: 1,
-          id: "stored-xss-independent-v1",
-          digest: digest("f"),
-        },
-        experimentRegistry: {
-          kind: "experiment-registry",
-          schemaVersion: 1,
-          id: "stored-xss-browser-v1",
-          digest: digest("9"),
-        },
+        maxVerifierAttempts: 1,
+        maxExperiments: 2,
+        maxWallTimeMs: 120_000,
       },
-      budget: {
-        maxWallTimeMs: 300_000,
-        maxModelTokens: 30_000,
-        maxFinderAttempts: 2,
-        verification: {
-          maxVerifierAttempts: 1,
-          maxExperiments: 2,
-          maxWallTimeMs: 120_000,
-        },
-      },
-      iterationPolicy: {
-        kind: "iteration-policy",
-        schemaVersion: 1,
-        id: "first-closed-slice-v1",
-        digest: digest("0"),
-      },
-    };
-    const first = openResearch({
+    },
+    iterationPolicy: {
+      kind: "iteration-policy",
+      schemaVersion: 1,
+      id: "first-closed-slice-v1",
+      digest: digest("0"),
+    },
+  };
+  const research = openResearch({
+    databasePath,
+    clock: () => new Date(fixedNow),
+    campaignExecution: {
+      artifactStore: artifacts,
+      attemptPlanMaterializer: materializer(),
+      modelExecution: modelExecution(artifacts, candidate),
+      independentVerifier: verifier(),
+      labControl: lab(artifacts),
+    },
+  });
+  await research.runner.prepare(input);
+  return { artifacts, candidate, databasePath, input, plan, research };
+}
+
+describe("CampaignRunner.run", () => {
+  it("records one finite wave through a Finding and replays the terminal run", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "campaign-run-"));
+    const {
       databasePath,
-      clock: () => new Date(fixedNow),
-      campaignExecution: {
-        artifactStore: artifacts,
-        attemptPlanMaterializer: materializer(),
-        modelExecution: finder(artifacts, candidate),
-        independentVerifier: verifier(),
-        labControl: lab(artifacts),
-      },
-    });
+      input,
+      plan,
+      research: first,
+    } = await openScenario(directory, finder);
 
     try {
-      await first.runner.prepare(input);
       const terminalRef = await first.runner.run(plan);
       const terminal = await first.reader.inspect(input.campaignId, {
         kind: "run",
@@ -442,6 +449,68 @@ describe("CampaignRunner.run", () => {
         await expect(reopened.runner.run(plan)).resolves.toEqual(terminalRef);
       } finally {
         reopened.close();
+      }
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("records orphaned processes and spends only remaining budget on a fresh Attempt", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "campaign-recovery-"));
+    const scenario = await openScenario(
+      directory,
+      () => ({
+        run: async () => {
+          throw new Error("simulated-process-loss");
+        },
+      }),
+      3,
+    );
+
+    try {
+      await expect(scenario.research.runner.run(scenario.plan)).rejects.toThrow(
+        "simulated-process-loss",
+      );
+      scenario.research.close();
+
+      let freshExecutions = 0;
+      const recoveredFinder = finder(scenario.artifacts, scenario.candidate);
+      const recovered = openResearch({
+        databasePath: scenario.databasePath,
+        clock: () => new Date(fixedNow),
+        campaignExecution: {
+          artifactStore: scenario.artifacts,
+          attemptPlanMaterializer: materializer(),
+          modelExecution: {
+            run: async (plan) => {
+              freshExecutions += 1;
+              return recoveredFinder.run(plan);
+            },
+          },
+          independentVerifier: verifier(),
+          labControl: lab(scenario.artifacts),
+        },
+      });
+
+      try {
+        const ref = await recovered.runner.run(scenario.plan);
+        const view = await recovered.reader.inspect(scenario.input.campaignId, {
+          kind: "run",
+          runId: scenario.plan.runId,
+        });
+
+        expect({ freshExecutions, ref, view }).toMatchObject({
+          freshExecutions: 1,
+          ref: { decision: "await-calibration" },
+          view: {
+            value: {
+              attempts: [{}, {}, {}],
+              verifications: [{ outcome: "finding" }],
+            },
+          },
+        });
+      } finally {
+        recovered.close();
       }
     } finally {
       await rm(directory, { force: true, recursive: true });

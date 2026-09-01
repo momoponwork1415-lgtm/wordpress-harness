@@ -1,5 +1,8 @@
 import type { NewCampaignInput } from "../contracts.js";
 import type {
+  CampaignAttemptCompletion,
+  CampaignAttemptIntent,
+  CampaignAttemptRecordView,
   CampaignRunCompletionInput,
   CampaignRunPlan,
   CampaignRunRecordView,
@@ -37,6 +40,16 @@ export interface ResearchRecord {
     campaignId: string,
     runId: string,
   ): Promise<CampaignRunRecordView | undefined>;
+  recordCampaignAttemptStart(
+    intent: CampaignAttemptIntent,
+  ): Promise<RecordCampaignAttemptStartResult>;
+  recordCampaignAttemptCompletion(
+    completion: CampaignAttemptCompletion,
+  ): Promise<CampaignAttemptRecordView>;
+  listCampaignAttempts(
+    campaignId: string,
+    runId: string,
+  ): Promise<readonly CampaignAttemptRecordView[]>;
   recordVerificationStart(
     plan: VerificationPlan,
   ): Promise<RecordVerificationStartResult>;
@@ -49,6 +62,20 @@ export interface ResearchRecord {
   ): Promise<VerificationRecordView | undefined>;
   close(): void;
 }
+
+export type RecordCampaignAttemptStartResult =
+  | {
+      readonly disposition: "started" | "in-progress";
+      readonly attempt: CampaignAttemptRecordView;
+    }
+  | {
+      readonly disposition: "completed";
+      readonly attempt: CampaignAttemptRecordView & {
+        readonly completion: NonNullable<
+          CampaignAttemptRecordView["completion"]
+        >;
+      };
+    };
 
 export type RecordCampaignRunStartResult =
   | {

@@ -17,19 +17,26 @@ export type {
 export type {
   AttemptPlanMaterializationInput,
   AttemptPlanMaterializer,
+  CampaignAttemptCompletion,
+  CampaignAttemptIntent,
+  CampaignAttemptRecordView,
   CampaignExecutionDependencies,
   CampaignRunCompletionInput,
   CampaignRunPlan,
   CampaignRunRecord,
   CampaignRunRecordRef,
   CampaignRunRecordView,
+  FinderAttemptMaterialization,
   IterationDecision,
 } from "./campaign-control/contracts.js";
 export {
   CampaignRunConflictError,
+  campaignAttemptCompletionSchema,
+  campaignAttemptIntentSchema,
   campaignRunPlanSchema,
   campaignRunRecordRefSchema,
   campaignRunRecordSchema,
+  finderAttemptMaterializationSchema,
   iterationDecisionSchema,
 } from "./campaign-control/contracts.js";
 export {
