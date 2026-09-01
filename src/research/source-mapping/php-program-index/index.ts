@@ -1,11 +1,12 @@
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { delimiter, dirname, join, resolve } from "node:path";
+import { delimiter, dirname, resolve } from "node:path";
 
 import { z } from "zod";
 
-import { canonicalJson, sha256Digest } from "./canonical-json.js";
+import {
+  openFileJsonArtifactStore,
+  type JsonArtifactStore,
+} from "../../research-record/index.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const identifierSchema = z
@@ -222,15 +223,28 @@ function summarizeIndex(index: PhpProgramIndex): PhpProgramIndexRef["summary"] {
   };
 }
 
+function summariesMatch(
+  left: PhpProgramIndexRef["summary"],
+  right: PhpProgramIndexRef["summary"],
+): boolean {
+  return (
+    left.files === right.files &&
+    left.symbols === right.symbols &&
+    left.calls === right.calls &&
+    left.wordpressFacts === right.wordpressFacts &&
+    left.diagnostics === right.diagnostics
+  );
+}
+
 class PhpSourceAnalysisImplementation implements PhpSourceAnalysis {
-  readonly #artifactDirectory: string;
+  readonly #artifacts: JsonArtifactStore;
   readonly #helperPath: string;
   readonly #phpBinary: string;
   readonly #timeoutMs: number;
   readonly #maxOutputBytes: number;
 
   constructor(options: OpenPhpSourceAnalysisOptions) {
-    this.#artifactDirectory = resolve(options.artifactDirectory);
+    this.#artifacts = openFileJsonArtifactStore(options.artifactDirectory);
     this.#helperPath = resolve(options.helperPath);
     this.#phpBinary = options.phpBinary ?? "php";
     this.#timeoutMs = options.timeoutMs ?? 30_000;
@@ -281,8 +295,7 @@ class PhpSourceAnalysisImplementation implements PhpSourceAnalysis {
       throw new Error("PHP Program Index helper returned mismatched identity");
     }
 
-    const digest = sha256Digest(index);
-    await this.#writeArtifact(digest, canonicalJson(index));
+    const digest = await this.#artifacts.putJson(index);
 
     return {
       kind: "php-program-index",
@@ -296,19 +309,12 @@ class PhpSourceAnalysisImplementation implements PhpSourceAnalysis {
 
   async read(ref: PhpProgramIndexRef): Promise<PhpProgramIndex> {
     const parsedRef = phpProgramIndexRefSchema.parse(ref);
-    const path = this.#artifactPath(parsedRef.digest);
-    const content = await readFile(path, "utf8");
-    const value: unknown = JSON.parse(content);
+    const value = await this.#artifacts.readJson(parsedRef.digest);
     const index = phpProgramIndexSchema.parse(value);
-    if (sha256Digest(index) !== parsedRef.digest) {
-      throw new Error(
-        `PHP Program Index artifact digest mismatch: ${parsedRef.digest}`,
-      );
-    }
     if (
       index.targetSnapshot.id !== parsedRef.targetSnapshotId ||
       index.analysisProfile.id !== parsedRef.analysisProfileId ||
-      canonicalJson(summarizeIndex(index)) !== canonicalJson(parsedRef.summary)
+      !summariesMatch(summarizeIndex(index), parsedRef.summary)
     ) {
       throw new Error(
         "PHP Program Index reference identity does not match artifact",
@@ -411,25 +417,6 @@ class PhpSourceAnalysisImplementation implements PhpSourceAnalysis {
       });
       child.stdin.end(`${JSON.stringify(request)}\n`);
     });
-  }
-
-  async #writeArtifact(digest: string, content: string): Promise<void> {
-    await mkdir(this.#artifactDirectory, { mode: 0o700, recursive: true });
-    const destination = this.#artifactPath(digest);
-    const temporary = join(
-      this.#artifactDirectory,
-      `.${digest.slice("sha256:".length)}.${process.pid}.${randomUUID()}.tmp`,
-    );
-    await writeFile(temporary, `${content}\n`, { mode: 0o600 });
-    await rename(temporary, destination);
-  }
-
-  #artifactPath(digest: string): string {
-    const parsedDigest = digestSchema.parse(digest);
-    return join(
-      this.#artifactDirectory,
-      `${parsedDigest.slice("sha256:".length)}.json`,
-    );
   }
 }
 

@@ -2,7 +2,7 @@
 
 Status: confirmed internal seam; context-public test surface superseded by `source-mapping-seam.md`, 2026-09-01
 
-PHP Source Analysisの内部interfaceは、固定Target SnapshotとAnalysis Profileからcontent-addressed `PHP Program Index`を作り、同じmoduleからruntime-validated indexを読む形である。Source Mapping実装前の既存codeでは一時的にResearch rootから公開されているが、最終的なcontext-public test surfaceではない。
+PHP Source Analysisの内部interfaceは、固定Target SnapshotとAnalysis Profileからcontent-addressed `PHP Program Index`を作り、同じmoduleからruntime-validated indexを読む形である。実装は`source-mapping/php-program-index`に置き、Research contextの公開Interfaceからは公開しない。
 
 ```ts
 interface PhpSourceAnalysis {

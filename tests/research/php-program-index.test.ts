@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { openPhpSourceAnalysis } from "../../src/research/index.js";
+import { openPhpSourceAnalysis } from "../../src/research/source-mapping/php-program-index/index.js";
 
 const fixtureDirectory = fileURLToPath(
   new URL("../fixtures/php-plugin", import.meta.url),

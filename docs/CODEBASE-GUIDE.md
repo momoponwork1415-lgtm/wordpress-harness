@@ -12,7 +12,7 @@ Status: living map, 2026-09-01
 2. 設計原則は`confine -> constrain -> focus -> motivate -> parallelize -> hypothesize -> verify -> record -> prioritize -> iterate`である。
 3. 結果の流れは`Target Intelligence -> Research -> Human OS`であり、context間ではversioned handoffだけを渡す。
 4. Researchの第一階層は`Campaign Control`、`Source Understanding`、`Exploration`、`Verification`、`Model Execution`、`Research Record`の6 Moduleである。
-5. 現在のproduction codeが提供する主な公開入口は`openResearch`と`openPhpSourceAnalysis`の2つである。
+5. Research contextの公開入口は`openResearch`だけであり、`openPhpSourceAnalysis`はSource Mapping内部のInterfaceである。
 
 個別のschema field、SQLite table、provider command、108件のADR、内部関数は暗記しない。変更対象から必要な正本へ辿る。
 
@@ -29,11 +29,11 @@ Status: living map, 2026-09-01
 
 | Capability | Status | Public Interface | Implementation | Behavior Test | Canonical Design |
 | --- | --- | --- | --- | --- | --- |
-| Campaign preparation and read-only inspection | implemented | `openResearch` -> `ResearchModule.runner` / `reader` | [`src/research/index.ts`](../src/research/index.ts), [`contracts.ts`](../src/research/contracts.ts), [`sqlite-research.ts`](../src/research/sqlite-research.ts), [`canonical-json.ts`](../src/research/canonical-json.ts) | [`campaign-prepare.test.ts`](../tests/research/campaign-prepare.test.ts), [`ledger-compatibility.test.ts`](../tests/research/ledger-compatibility.test.ts) | [Initial implementation seams](design/initial-implementation-seams.md) |
-| Content-addressed PHP Program Index | implemented | `openPhpSourceAnalysis` -> `PhpSourceAnalysis.analyze` | [`php-program-index.ts`](../src/research/php-program-index.ts), [`tools/php-program-index`](../tools/php-program-index) | [`php-program-index.test.ts`](../tests/research/php-program-index.test.ts) | [PHP Program Index seam](design/php-program-index-seam.md) |
+| Campaign preparation and read-only inspection | implemented | `openResearch` -> `ResearchModule.runner` / `reader` | [`src/research/index.ts`](../src/research/index.ts), [`open-research.ts`](../src/research/open-research.ts), [`campaign-control`](../src/research/campaign-control/index.ts), [`research-record`](../src/research/research-record/index.ts) | [`campaign-prepare.test.ts`](../tests/research/campaign-prepare.test.ts), [`ledger-compatibility.test.ts`](../tests/research/ledger-compatibility.test.ts), [`context-interface.test.ts`](../tests/research/context-interface.test.ts) | [Initial implementation seams](design/initial-implementation-seams.md) |
+| Content-addressed PHP Program Index | implemented, internal | `openPhpSourceAnalysis` -> `PhpSourceAnalysis.analyze` | [`source-mapping/php-program-index`](../src/research/source-mapping/php-program-index/index.ts), [`file-json-artifact-store.ts`](../src/research/research-record/file-json-artifact-store.ts), [`tools/php-program-index`](../tools/php-program-index) | [`php-program-index.test.ts`](../tests/research/php-program-index.test.ts) | [PHP Program Index seam](design/php-program-index-seam.md) |
 | Command-line adapter | implemented | `runCli` and `wordpress-harness` executable | [`src/cli.ts`](../src/cli.ts) | [`campaign-cli.test.ts`](../tests/cli/campaign-cli.test.ts) | [ADR 0053](adr/0053-start-with-a-cli-interface.md), [ADR 0054](adr/0054-keep-the-cli-as-a-thin-adapter.md) |
 
-`src/research/`は初期vertical sliceの配置をまだ保持している。これは直ちに「汚いコード」を意味しないが、acceptedな6 Module ownershipとの対応がfile treeから読み取りにくい。次の実装作業は[Issue #1](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/1)で、behaviorを変えずにこの対応を明示する。
+`src/research/index.ts`はcontext外へCampaign contractと`openResearch`だけを公開する。`open-research.ts`がcomposition rootとなり、Campaign lifecycleは`campaign-control/`、append/replay/CASは`research-record/`、PHP Program Indexは`source-mapping/`の内部に置く。未実装Moduleのfolderを先回りで作らず、behaviorを追加するIssueで一つずつ増やす。
 
 ## 設計上の現在地
 

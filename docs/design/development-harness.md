@@ -138,6 +138,6 @@ Model ExecutionでOS固有のprocess cleanup failureが観測された場合は�
 3. 一つのUbuntu GitHub Actions jobを追加し、fresh checkoutで同じgateを実行するようにした。
 4. Module MapとCodebase Guideを人間向けの段階的な入口にした。
 
-次のproduction sliceはIssue #1である。Module treeとCodebase Guideの対応を同じ変更で更新する。以後は、実際に人間が迷った経路だけをGuideへ追加し、file単位の自動wikiへ拡張しない。
+最初のproduction sliceでResearchのModule treeとCodebase Guideを同じ変更として整列した。以後は、実際に人間が迷った経路だけをGuideへ追加し、file単位の自動wikiへ拡張しない。
 
 この順序はproduction moduleの設計gateを置き換えない。Development Harnessがgreenでも、未承認のproduction seamを実装してよいことにはならない。

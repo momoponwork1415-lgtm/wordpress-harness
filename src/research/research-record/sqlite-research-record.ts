@@ -1,18 +1,18 @@
 import Database from "better-sqlite3";
 import { z } from "zod";
 
-import { canonicalJson, sha256Digest } from "./canonical-json.js";
 import {
-  CampaignPreparationConflictError,
   LedgerIntegrityError,
   UnsupportedLedgerSchemaError,
   newCampaignInputSchema,
-  type CampaignView,
   type NewCampaignInput,
-  type OpenResearchOptions,
-  type SubjectRef,
-  type SubjectView,
-  type ResearchModule,
+} from "../contracts.js";
+import { canonicalJson, sha256Digest } from "./canonical-json.js";
+import type {
+  OpenResearchRecordOptions,
+  PreparationRecord,
+  RecordPreparationResult,
+  ResearchRecord,
 } from "./contracts.js";
 
 const campaignPreparedPayloadSchema = z.strictObject({
@@ -31,11 +31,11 @@ const storedEventRowSchema = z.strictObject({
 type StoredEventRow = z.infer<typeof storedEventRowSchema>;
 type CampaignPreparedPayload = z.infer<typeof campaignPreparedPayloadSchema>;
 
-class SqliteResearch {
+class SqliteResearchRecord implements ResearchRecord {
   readonly #database: Database.Database;
   readonly #clock: () => Date;
 
-  constructor(options: OpenResearchOptions) {
+  constructor(options: OpenResearchRecordOptions) {
     this.#database = new Database(options.databasePath);
     this.#clock = options.clock ?? (() => new Date());
     this.#database.pragma("journal_mode = WAL");
@@ -54,26 +54,21 @@ class SqliteResearch {
     `);
   }
 
-  async prepare(input: NewCampaignInput): Promise<CampaignView> {
-    const parsedInput = newCampaignInputSchema.parse(input);
-    const inputDigest = sha256Digest(parsedInput);
-
-    const transact = this.#database.transaction((): CampaignView => {
-      const existing = this.#readRows(parsedInput.campaignId);
-      if (existing.length > 0) {
-        const current = this.#project(parsedInput.campaignId, existing);
-        if (current.inputDigest !== inputDigest) {
-          throw new CampaignPreparationConflictError(parsedInput.campaignId);
-        }
-        return current;
+  async recordPreparation(
+    input: NewCampaignInput,
+  ): Promise<RecordPreparationResult> {
+    const requestedInputDigest = sha256Digest(input);
+    const transact = this.#database.transaction((): RecordPreparationResult => {
+      const existingRows = this.#readRows(input.campaignId);
+      if (existingRows.length > 0) {
+        return {
+          disposition: "occupied",
+          requestedInputDigest,
+          preparation: this.#decodePreparation(input.campaignId, existingRows),
+        };
       }
 
       const occurredAt = this.#clock().toISOString();
-      const payload = {
-        input: parsedInput,
-        inputDigest,
-      };
-
       this.#database
         .prepare(
           `INSERT INTO research_events (
@@ -86,49 +81,37 @@ class SqliteResearch {
           ) VALUES (?, ?, ?, ?, ?, ?)`,
         )
         .run(
-          parsedInput.campaignId,
+          input.campaignId,
           1,
           "campaign.prepared",
           1,
           occurredAt,
-          canonicalJson(payload),
+          canonicalJson({ input, inputDigest: requestedInputDigest }),
         );
 
       return {
-        campaignId: parsedInput.campaignId,
-        status: "prepared",
-        ledgerHead: 1,
-        preparedAt: occurredAt,
-        inputDigest,
-        targetSnapshot: parsedInput.targetSnapshot,
+        disposition: "appended",
+        requestedInputDigest,
+        preparation: {
+          campaignId: input.campaignId,
+          ledgerHead: 1,
+          occurredAt,
+          inputDigest: requestedInputDigest,
+          input,
+        },
       };
     });
 
     return transact();
   }
 
-  async read(campaignId: string): Promise<CampaignView> {
+  async readPreparation(
+    campaignId: string,
+  ): Promise<PreparationRecord | undefined> {
     const rows = this.#readRows(campaignId);
-    if (rows.length === 0) {
-      throw new Error(`Campaign not found: ${campaignId}`);
-    }
-    return this.#project(campaignId, rows);
-  }
-
-  async inspect(campaignId: string, subject: SubjectRef): Promise<SubjectView> {
-    const rows = this.#readRows(campaignId);
-    if (rows.length === 0) {
-      throw new Error(`Campaign not found: ${campaignId}`);
-    }
-    const preparation = this.#decodePreparation(campaignId, rows);
-
-    return {
-      kind: subject.kind,
-      campaignId,
-      preparedAt: preparation.event.occurred_at,
-      inputDigest: preparation.payload.inputDigest,
-      input: preparation.payload.input,
-    };
+    return rows.length === 0
+      ? undefined
+      : this.#decodePreparation(campaignId, rows);
   }
 
   close(): void {
@@ -148,26 +131,10 @@ class SqliteResearch {
     return rows.map((row) => storedEventRowSchema.parse(row));
   }
 
-  #project(campaignId: string, rows: readonly StoredEventRow[]): CampaignView {
-    const preparation = this.#decodePreparation(campaignId, rows);
-
-    return {
-      campaignId,
-      status: "prepared",
-      ledgerHead: rows.length,
-      preparedAt: preparation.event.occurred_at,
-      inputDigest: preparation.payload.inputDigest,
-      targetSnapshot: preparation.payload.input.targetSnapshot,
-    };
-  }
-
   #decodePreparation(
     campaignId: string,
     rows: readonly StoredEventRow[],
-  ): {
-    readonly event: StoredEventRow;
-    readonly payload: CampaignPreparedPayload;
-  } {
+  ): PreparationRecord {
     for (const [index, event] of rows.entries()) {
       if (event.campaign_sequence !== index + 1) {
         throw new LedgerIntegrityError(campaignId, "non-contiguous-sequence");
@@ -189,7 +156,8 @@ class SqliteResearch {
       throw new Error(`Campaign not found: ${campaignId}`);
     }
     const payloadValue: unknown = JSON.parse(first.payload_json);
-    const payload = campaignPreparedPayloadSchema.parse(payloadValue);
+    const payload: CampaignPreparedPayload =
+      campaignPreparedPayloadSchema.parse(payloadValue);
     if (payload.input.campaignId !== campaignId) {
       throw new LedgerIntegrityError(campaignId, "campaign-id-mismatch");
     }
@@ -198,26 +166,17 @@ class SqliteResearch {
     }
 
     return {
-      event: first,
-      payload,
+      campaignId,
+      ledgerHead: rows.length,
+      occurredAt: first.occurred_at,
+      inputDigest: payload.inputDigest,
+      input: payload.input,
     };
   }
 }
 
-export function openSqliteResearch(
-  options: OpenResearchOptions,
-): ResearchModule {
-  const implementation = new SqliteResearch(options);
-
-  return {
-    runner: {
-      prepare: (input) => implementation.prepare(input),
-    },
-    reader: {
-      read: (campaignId) => implementation.read(campaignId),
-      inspect: (campaignId, subject) =>
-        implementation.inspect(campaignId, subject),
-    },
-    close: () => implementation.close(),
-  };
+export function openSqliteResearchRecord(
+  options: OpenResearchRecordOptions,
+): ResearchRecord {
+  return new SqliteResearchRecord(options);
 }

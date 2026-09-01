@@ -474,27 +474,13 @@ tools/
 
 folderはownershipを示すために使い、各名詞ごとにfileを分けない。module内部は一つの深いentry pointから始め、複雑性が実測されるまでrepository/service/interfaceの層を増やさない。
 
-## Current-code gap and migration
+## Current-code alignment and remaining gaps
 
-現在のcodeは動作しているが、module mapに対して次の差分がある。
+最初のownership移行は完了している。`src/research/index.ts`はCampaign contractと`openResearch`だけを公開し、`open-research.ts`が内部moduleを組み立てる。Campaign lifecycleとprojectionは`campaign-control/`、SQLite append/replayとcanonical JSON/CASは`research-record/`、PHP Program Indexは`source-mapping/php-program-index/`が所有する。CLIは薄いadapterのままなので、次にCLI behaviorを変更する時まで`src/cli.ts`から動かさない。
 
-| Current | Gap | Migration before new behavior |
-| --- | --- | --- |
-| `src/research/index.ts` | Campaign APIとPHP Source Analysisを同じcontext-public barrelへexport | PHP APIを`source-mapping/php-program-index`のmodule barrelへ移し、Research rootから隠す |
-| `src/research/contracts.ts` | Campaign input、application interface、errorが一file | `campaign-control`へ移し、integration contractとは分離する |
-| `src/research/sqlite-research.ts` | Campaign decision、projection、SQLiteが同居 | behaviorを変えず、Campaign ControlとResearch Recordの二moduleへ段階分離する |
-| `src/research/canonical-json.ts` | context rootの汎用utilityに見える | Research Record所有のcanonical artifact/event encodingへ置く |
-| `src/cli.ts` | root直下だが薄いadapterとしては適切 | behaviorを変えず`adapters/cli`へ移すのは次にCLIを触る時だけ |
+これはfolderを完成形まで先に作る移行ではない。未実装Moduleは、それぞれacceptedなSeamと最初のbehaviorを持つIssueで追加する。次はacceptedなModel Execution seamの最小Attempt behaviorへ進み、Transport Eligibilityのoffline contract fixtureを先に作る。公式性・安全性capability probeを通過した場合だけ、最初のprovider process adapterを有効化する。
 
-全面rewriteはしない。最初の移行は既存testをgreenのまま保つmechanical refactorとし、次の順に進める。
-
-1. Research root APIとinternal module barrelを分離する。
-2. PHP Program IndexをSource Mapping内部へ移し、既存public behavior testのimportだけをmodule seamへ変える。
-3. Campaign lifecycleからResearch Recordのappend/replay/CASを分離する。
-4. ここまでのmodule boundary testと既存17 testがgreenになってから、acceptedなModel Execution seamの最小Attempt behaviorへ進む。
-5. Transport Eligibilityのoffline contract fixtureを先に作り、公式性・安全性capability probeを通過した場合だけClaude process adapterを有効化する。
-
-現行PHP Program Indexはfile digest、byte range、WordPress fact、diagnosticを保持するため`observed` factの入力として再利用できる。一方、`pluginSlug`を含む旧Target Snapshot形状、Research rootからの直接export、非PHP asset inventory、根拠状態、stable map identity、immutable revision、Context RequestはまだSource Mapping seamを満たさない。module移動をSurface Map behavior実装と混ぜず、まず公開面を狭めた後にこのseamからred-greenで追加する。
+現行PHP Program Indexはfile digest、byte range、WordPress fact、diagnosticを保持するため`observed` factの入力として再利用できる。一方、`pluginSlug`を含む旧Target Snapshot形状、非PHP asset inventory、根拠状態、stable map identity、immutable revision、Context RequestはまだSource Mapping seamを満たさない。module ownershipの移行とSurface Map behaviorを混ぜず、次のsliceからこのseamをred-greenで追加する。
 
 ## Failure semantics across modules
 
