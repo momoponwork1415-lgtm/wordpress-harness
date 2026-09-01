@@ -25,6 +25,9 @@ const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 
 const fixedNow = "2026-09-02T00:00:00.000Z";
 
+type LabScenario =
+  "broken" | "preserved" | "gvisor-unavailable" | "sibling-mismatch";
+
 interface VerificationIdentity {
   readonly campaignId: string;
   readonly verificationId: string;
@@ -183,11 +186,11 @@ function supportedStoredXssVerifier(): IndependentVerifier {
 
 function storedXssLabControl(
   artifactStore: JsonArtifactStore,
-  securityProperty: "broken" | "preserved" | "gvisor-unavailable",
+  scenario: LabScenario,
 ): LabControl {
   return {
     execute: async (experiment) => {
-      if (securityProperty === "gvisor-unavailable") {
+      if (scenario === "gvisor-unavailable") {
         throw new LabControlBlockedError("gvisor-unavailable");
       }
       const isWitness = experiment.role === "witness";
@@ -198,7 +201,13 @@ function storedXssLabControl(
         verificationId: experiment.verificationId,
         role: experiment.role,
         hypothesisDigest: experiment.hypothesisDigest,
-        bindings: experiment.bindings,
+        bindings:
+          scenario === "sibling-mismatch" && !isWitness
+            ? {
+                ...experiment.bindings,
+                configurationDigest: digest("f"),
+              }
+            : experiment.bindings,
         isolation: {
           runtime: "gvisor",
           runtimeDigest: experiment.bindings.runtimeProfileDigest,
@@ -217,7 +226,9 @@ function storedXssLabControl(
           schemaVersion: 1,
           attackerRequestAccepted: true,
           persistentStateObserved: isWitness,
-          browserCanaryExecuted: isWitness && securityProperty === "broken",
+          browserCanaryExecuted:
+            isWitness &&
+            (scenario === "broken" || scenario === "sibling-mismatch"),
         },
         artifactRefs: [],
       };
@@ -235,7 +246,7 @@ function storedXssLabControl(
 async function openVerificationFixture(
   directory: string,
   plan: VerificationPlan,
-  securityProperty: "broken" | "preserved" | "gvisor-unavailable",
+  scenario: LabScenario,
 ) {
   const databasePath = join(directory, "research.sqlite");
   const artifactStore = openFileJsonArtifactStore(
@@ -250,170 +261,155 @@ async function openVerificationFixture(
     record,
     artifactStore,
     independentVerifier: supportedStoredXssVerifier(),
-    labControl: storedXssLabControl(artifactStore, securityProperty),
+    labControl: storedXssLabControl(artifactStore, scenario),
   });
   return { databasePath, record, verification };
 }
 
+async function verifyAndReplay(plan: VerificationPlan, scenario: LabScenario) {
+  const directory = await mkdtemp(join(tmpdir(), "verification-outcome-"));
+  const { databasePath, record, verification } = await openVerificationFixture(
+    directory,
+    plan,
+    scenario,
+  );
+
+  try {
+    const ref = await verification.verify(plan);
+    record.close();
+    const reopened = openSqliteResearchRecord({ databasePath });
+    try {
+      const replayed = await reopened.readVerification(
+        plan.campaignId,
+        plan.verificationId,
+      );
+      return { ref, replayed };
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    try {
+      record.close();
+    } catch {
+      // The successful path closes before reopening the same database.
+    }
+    await rm(directory, { force: true, recursive: true });
+  }
+}
+
 describe("Verification.verify", () => {
   it("durably records a Finding after a browser Witness and fresh sibling Causal Control", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "verification-finding-"));
     const plan = verificationPlan();
-    const { databasePath, record, verification } =
-      await openVerificationFixture(directory, plan, "broken");
-
-    try {
-      const ref = await verification.verify(plan);
-      record.close();
-
-      const reopened = openSqliteResearchRecord({ databasePath });
-      try {
-        const replayed = await reopened.readVerification(
-          plan.campaignId,
-          plan.verificationId,
-        );
-
-        expect({ ref, replayed }).toMatchObject({
-          ref: {
-            kind: "verification-record",
-            schemaVersion: 1,
-            verificationId: plan.verificationId,
-            outcome: "finding",
+    await expect(verifyAndReplay(plan, "broken")).resolves.toMatchObject({
+      ref: {
+        kind: "verification-record",
+        schemaVersion: 1,
+        verificationId: plan.verificationId,
+        outcome: "finding",
+      },
+      replayed: {
+        value: {
+          kind: "verification-record",
+          schemaVersion: 1,
+          verificationId: plan.verificationId,
+          campaignId: plan.campaignId,
+          outcome: {
+            kind: "finding",
+            causalIdentity: plan.hypothesis.causalIdentity,
           },
-          replayed: {
-            value: {
-              kind: "verification-record",
-              schemaVersion: 1,
-              verificationId: plan.verificationId,
-              campaignId: plan.campaignId,
-              outcome: {
-                kind: "finding",
-                causalIdentity: plan.hypothesis.causalIdentity,
-              },
-            },
-          },
-        });
-      } finally {
-        reopened.close();
-      }
-    } finally {
-      try {
-        record.close();
-      } catch {
-        // The successful path closes before reopening the same database.
-      }
-      await rm(directory, { force: true, recursive: true });
-    }
+        },
+      },
+    });
   });
 
   it("durably records Disproved when the same Causal Identity preserves browser integrity", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "verification-disproved-"));
     const plan = verificationPlan({
       campaignId: "campaign-verification-disproved",
       verificationId: "verification-stored-xss-disproved",
     });
-    const { databasePath, record, verification } =
-      await openVerificationFixture(directory, plan, "preserved");
-
-    try {
-      const ref = await verification.verify(plan);
-      record.close();
-
-      const reopened = openSqliteResearchRecord({ databasePath });
-      try {
-        const replayed = await reopened.readVerification(
-          plan.campaignId,
-          plan.verificationId,
-        );
-
-        expect({ ref, replayed }).toMatchObject({
-          ref: {
-            kind: "verification-record",
-            schemaVersion: 1,
-            verificationId: plan.verificationId,
-            outcome: "disproved",
+    await expect(verifyAndReplay(plan, "preserved")).resolves.toMatchObject({
+      ref: {
+        kind: "verification-record",
+        schemaVersion: 1,
+        verificationId: plan.verificationId,
+        outcome: "disproved",
+      },
+      replayed: {
+        value: {
+          kind: "verification-record",
+          schemaVersion: 1,
+          verificationId: plan.verificationId,
+          campaignId: plan.campaignId,
+          outcome: {
+            kind: "disproved",
+            reason: "security-property-preserved",
+            causalIdentity: plan.hypothesis.causalIdentity,
           },
-          replayed: {
-            value: {
-              kind: "verification-record",
-              schemaVersion: 1,
-              verificationId: plan.verificationId,
-              campaignId: plan.campaignId,
-              outcome: {
-                kind: "disproved",
-                reason: "security-property-preserved",
-                causalIdentity: plan.hypothesis.causalIdentity,
-              },
-            },
-          },
-        });
-      } finally {
-        reopened.close();
-      }
-    } finally {
-      try {
-        record.close();
-      } catch {
-        // The successful path closes before reopening the same database.
-      }
-      await rm(directory, { force: true, recursive: true });
-    }
+        },
+      },
+    });
   });
 
   it("durably records Blocked when gVisor is unavailable", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "verification-blocked-"));
     const plan = verificationPlan({
       campaignId: "campaign-verification-blocked",
       verificationId: "verification-stored-xss-blocked",
     });
-    const { databasePath, record, verification } =
-      await openVerificationFixture(directory, plan, "gvisor-unavailable");
-
-    try {
-      const ref = await verification.verify(plan);
-      record.close();
-
-      const reopened = openSqliteResearchRecord({ databasePath });
-      try {
-        const replayed = await reopened.readVerification(
-          plan.campaignId,
-          plan.verificationId,
-        );
-
-        expect({ ref, replayed }).toMatchObject({
-          ref: {
-            kind: "verification-record",
-            schemaVersion: 1,
-            verificationId: plan.verificationId,
-            outcome: "blocked",
+    await expect(
+      verifyAndReplay(plan, "gvisor-unavailable"),
+    ).resolves.toMatchObject({
+      ref: {
+        kind: "verification-record",
+        schemaVersion: 1,
+        verificationId: plan.verificationId,
+        outcome: "blocked",
+      },
+      replayed: {
+        value: {
+          kind: "verification-record",
+          schemaVersion: 1,
+          verificationId: plan.verificationId,
+          campaignId: plan.campaignId,
+          evidence: {
+            kind: "partial",
           },
-          replayed: {
-            value: {
-              kind: "verification-record",
-              schemaVersion: 1,
-              verificationId: plan.verificationId,
-              campaignId: plan.campaignId,
-              evidence: {
-                kind: "partial",
-              },
-              outcome: {
-                kind: "blocked",
-                reason: "gvisor-unavailable",
-                causalIdentity: plan.hypothesis.causalIdentity,
-              },
-            },
+          outcome: {
+            kind: "blocked",
+            reason: "gvisor-unavailable",
+            causalIdentity: plan.hypothesis.causalIdentity,
           },
-        });
-      } finally {
-        reopened.close();
-      }
-    } finally {
-      try {
-        record.close();
-      } catch {
-        // The successful path closes before reopening the same database.
-      }
-      await rm(directory, { force: true, recursive: true });
-    }
+        },
+      },
+    });
+  });
+
+  it("durably records Blocked when sibling Lab configurations differ", async () => {
+    const plan = verificationPlan({
+      campaignId: "campaign-verification-sibling-mismatch",
+      verificationId: "verification-stored-xss-sibling-mismatch",
+    });
+    await expect(
+      verifyAndReplay(plan, "sibling-mismatch"),
+    ).resolves.toMatchObject({
+      ref: {
+        kind: "verification-record",
+        schemaVersion: 1,
+        verificationId: plan.verificationId,
+        outcome: "blocked",
+      },
+      replayed: {
+        value: {
+          kind: "verification-record",
+          schemaVersion: 1,
+          verificationId: plan.verificationId,
+          campaignId: plan.campaignId,
+          outcome: {
+            kind: "blocked",
+            reason: "sibling-isolation-failed",
+            causalIdentity: plan.hypothesis.causalIdentity,
+          },
+        },
+      },
+    });
   });
 });

@@ -14,6 +14,7 @@ import {
   type ExperimentPlan,
   type OpenVerificationOptions,
   type Verification,
+  type VerificationBlockReason,
   type VerificationPlan,
   type VerificationRecordRef,
 } from "./contracts.js";
@@ -145,11 +146,64 @@ function supportsDisproved(
   );
 }
 
+function hasSiblingBindingMismatch(
+  witnessPlan: ExperimentPlan,
+  controlPlan: ExperimentPlan,
+  witness: ExperimentObservation,
+  control: ExperimentObservation,
+): boolean {
+  return (
+    canonicalJson(witness.bindings) !== canonicalJson(witnessPlan.bindings) ||
+    canonicalJson(control.bindings) !== canonicalJson(controlPlan.bindings)
+  );
+}
+
 class IndependentVerification implements Verification {
   readonly #options: OpenVerificationOptions;
 
   constructor(options: OpenVerificationOptions) {
     this.#options = options;
+  }
+
+  async #recordBlocked(
+    plan: VerificationPlan,
+    planDigest: string,
+    sourceRederivationDigest: string,
+    reason: VerificationBlockReason,
+    observations: {
+      readonly witness?: ExperimentObservationRef;
+      readonly control?: ExperimentObservationRef;
+    } = {},
+  ): Promise<VerificationRecordRef> {
+    const blocked = await this.#options.record.recordVerificationCompletion({
+      kind: "verification-completion",
+      schemaVersion: 1,
+      verificationId: plan.verificationId,
+      campaignId: plan.campaignId,
+      planDigest,
+      targetSnapshotDigest: plan.targetSnapshot.digest,
+      hypothesisDigest: plan.hypothesisDigest,
+      evidence: {
+        kind: "partial",
+        sourceRederivation: {
+          kind: "source-rederivation",
+          schemaVersion: 1,
+          digest: sourceRederivationDigest,
+        },
+        ...(observations.witness === undefined
+          ? {}
+          : { witness: observations.witness }),
+        ...(observations.control === undefined
+          ? {}
+          : { control: observations.control }),
+      },
+      outcome: {
+        kind: "blocked",
+        reason,
+        causalIdentity: plan.hypothesis.causalIdentity,
+      },
+    });
+    return blocked.ref;
   }
 
   async verify(value: VerificationPlan): Promise<VerificationRecordRef> {
@@ -200,25 +254,12 @@ class IndependentVerification implements Verification {
       );
     } catch (error) {
       if (!(error instanceof LabControlBlockedError)) throw error;
-      const blocked = await this.#options.record.recordVerificationCompletion({
-        kind: "verification-completion",
-        schemaVersion: 1,
-        verificationId: plan.verificationId,
-        campaignId: plan.campaignId,
-        planDigest: start.planDigest,
-        targetSnapshotDigest: plan.targetSnapshot.digest,
-        hypothesisDigest: plan.hypothesisDigest,
-        evidence: {
-          kind: "partial",
-          sourceRederivation: sourceRederivationRef,
-        },
-        outcome: {
-          kind: "blocked",
-          reason: error.reason,
-          causalIdentity: plan.hypothesis.causalIdentity,
-        },
-      });
-      return blocked.ref;
+      return this.#recordBlocked(
+        plan,
+        start.planDigest,
+        rederivationDigest,
+        error.reason,
+      );
     }
     const witness = await readObservation(
       this.#options.artifactStore,
@@ -248,7 +289,18 @@ class IndependentVerification implements Verification {
           }
         : undefined;
     if (outcome === undefined) {
-      throw new Error("Verification evidence does not satisfy Finding gates");
+      if (
+        hasSiblingBindingMismatch(witnessPlan, controlPlan, witness, control)
+      ) {
+        return this.#recordBlocked(
+          plan,
+          start.planDigest,
+          rederivationDigest,
+          "sibling-isolation-failed",
+          { witness: witnessRef, control: controlRef },
+        );
+      }
+      throw new Error("Verification evidence is inconclusive");
     }
 
     const completed = await this.#options.record.recordVerificationCompletion({

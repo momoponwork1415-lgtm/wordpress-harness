@@ -225,6 +225,7 @@ const partialEvidenceSchema = z.strictObject({
   kind: z.literal("partial"),
   sourceRederivation: sourceRederivationRefSchema.optional(),
   witness: experimentObservationRefSchema.optional(),
+  control: experimentObservationRefSchema.optional(),
 });
 
 const verificationIdentityFields = {
