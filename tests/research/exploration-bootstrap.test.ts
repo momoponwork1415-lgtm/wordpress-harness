@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
 import {
   openExploration,
+  type AttemptExecutionResultRef,
   type ExplorationBootstrapPolicy,
   type ExplorationPolicyRef,
+  type FinderAttemptResult,
+  type SourceBoundHypothesis,
 } from "../../src/research/exploration/index.js";
 import type {
   SurfaceMap,
@@ -223,6 +226,104 @@ function stage(map: SurfaceMap, policyValue = policy()) {
     mapRef,
     policyRef,
   };
+}
+
+function hypothesisFor(
+  anchorNodeId: string,
+  routeNodeIds: readonly string[] = [anchorNodeId],
+  rootCause = "missing-rest-authorization",
+): SourceBoundHypothesis {
+  return {
+    kind: "source-bound-hypothesis",
+    schemaVersion: 1,
+    causalIdentity: {
+      rootCause,
+      attackerControlledPrimitive: "unauthenticated-rest-request",
+      brokenSecurityProperty: "authorization",
+    },
+    attackerPremise: "unauthenticated",
+    impact: "account-takeover",
+    route: {
+      anchorNodeId,
+      nodeIds: [...routeNodeIds],
+      relationIds: [],
+    },
+    unknowns: [
+      {
+        claim: "callback permits a password-reset-link disclosure",
+        requiredEvidence: "trace the callback response and stored identity",
+      },
+    ],
+    falsifier: "the route requires an administrator-only capability",
+    nextExperiment: "verify the route as an unauthenticated principal",
+  };
+}
+
+function finderResult(
+  attemptId: string,
+  leaseId: string,
+  hypotheses: readonly SourceBoundHypothesis[],
+): { value: FinderAttemptResult; ref: AttemptExecutionResultRef } {
+  const value: FinderAttemptResult = {
+    kind: "finder-attempt-result",
+    schemaVersion: 1,
+    attemptId,
+    leaseId,
+    status: "completed",
+    output: {
+      kind: "finder-output",
+      schemaVersion: 1,
+      leaseId,
+      hypotheses: [...hypotheses],
+    },
+  };
+  return {
+    value,
+    ref: {
+      kind: "attempt-execution-result",
+      schemaVersion: 1,
+      attemptId,
+      leaseId,
+      digest: sha256Digest(value),
+    },
+  };
+}
+
+type BoundFinderResult = ReturnType<typeof finderResult>;
+
+function terminalResult(attemptId: string, leaseId: string): BoundFinderResult {
+  const value: FinderAttemptResult = {
+    kind: "finder-attempt-result",
+    schemaVersion: 1,
+    attemptId,
+    leaseId,
+    status: "cancelled",
+    reason: "development-fixture-not-run",
+  };
+  return {
+    value,
+    ref: {
+      kind: "attempt-execution-result",
+      schemaVersion: 1,
+      attemptId,
+      leaseId,
+      digest: sha256Digest(value),
+    },
+  };
+}
+
+function completeWaveResults(
+  leaseIds: readonly string[],
+  selected: readonly BoundFinderResult[],
+): BoundFinderResult[] {
+  const selectedByLease = new Map(
+    selected.map((result) => [result.value.leaseId, result]),
+  );
+  return leaseIds.map(
+    (leaseId, index) =>
+      selectedByLease.get(leaseId) ??
+      terminalResult(`attempt-cancelled-${index}`, leaseId),
+  );
 }
 
 describe("Exploration bootstrap", () => {
@@ -469,5 +570,240 @@ describe("Exploration bootstrap", () => {
         needs: ["relation-endpoint"],
       },
     });
+  });
+});
+
+describe("Exploration Finder result ingestion", () => {
+  it("preserves one source-bound Hypothesis without majority support", () => {
+    const map = initialMap();
+    const policyValue = policy({ eligibleModelFamilies: ["claude"] });
+    const staged = stage(map, policyValue);
+    const bootstrap = staged.exploration.decide({
+      kind: "bootstrap",
+      map: staged.mapRef,
+      policy: staged.policyRef,
+    });
+    expect(bootstrap.kind).toBe("run-wave");
+    if (bootstrap.kind !== "run-wave") return;
+
+    const lease = bootstrap.plan.leases[0];
+    const anchor = map.nodes.find((node) => node.kind === "entry");
+    if (lease === undefined || anchor === undefined) {
+      throw new Error("Incomplete minority Hypothesis fixture");
+    }
+    const hypothesis = hypothesisFor(anchor.id);
+    const result = finderResult("attempt-1", lease.id, [hypothesis]);
+    const results = completeWaveResults(
+      bootstrap.plan.leases.map((candidate) => candidate.id),
+      [result],
+    );
+    const exploration = openExploration({
+      surfaceMap: { ref: staged.mapRef, value: map },
+      policy: { ref: staged.policyRef, value: policyValue },
+      waveCompletion: {
+        state: bootstrap.plan.state,
+        wave: { ref: bootstrap.plan.ref, value: bootstrap.plan },
+        results,
+      },
+    });
+
+    const decision = exploration.decide({
+      kind: "wave-completed",
+      map: staged.mapRef,
+      state: bootstrap.plan.state,
+      wave: bootstrap.plan.ref,
+      results: results.map((candidate) => candidate.ref),
+    });
+
+    expect(decision).toMatchObject({
+      kind: "verify",
+      hypotheses: [
+        {
+          id: sha256Digest({
+            causalIdentity: hypothesis.causalIdentity,
+            routeShape: {
+              nodeIds: hypothesis.route.nodeIds,
+              relationIds: hypothesis.route.relationIds,
+            },
+          }),
+          sourceResult: result.ref,
+        },
+      ],
+    });
+  });
+
+  it("preserves conflicting routes with stable ordering across result arrival", () => {
+    const map = initialMap();
+    const policyValue = policy({ eligibleModelFamilies: ["claude"] });
+    const staged = stage(map, policyValue);
+    const bootstrap = staged.exploration.decide({
+      kind: "bootstrap",
+      map: staged.mapRef,
+      policy: staged.policyRef,
+    });
+    if (bootstrap.kind !== "run-wave") {
+      throw new Error("Expected a Work Wave fixture");
+    }
+    const firstLease = bootstrap.plan.leases[0];
+    const secondLease = bootstrap.plan.leases[1];
+    const entry = map.nodes.find((node) => node.kind === "entry");
+    const sink = map.nodes.find((node) => node.kind === "sink");
+    if (
+      firstLease === undefined ||
+      secondLease === undefined ||
+      entry === undefined ||
+      sink === undefined
+    ) {
+      throw new Error("Incomplete conflicting-route fixture");
+    }
+    const first = finderResult("attempt-a", firstLease.id, [
+      hypothesisFor(entry.id, [entry.id], "shared-root-cause"),
+    ]);
+    const second = finderResult("attempt-b", secondLease.id, [
+      hypothesisFor(sink.id, [sink.id], "shared-root-cause"),
+    ]);
+    const allResults = completeWaveResults(
+      bootstrap.plan.leases.map((candidate) => candidate.id),
+      [first, second],
+    );
+    const decide = (results: readonly BoundFinderResult[]) =>
+      openExploration({
+        surfaceMap: { ref: staged.mapRef, value: map },
+        policy: { ref: staged.policyRef, value: policyValue },
+        waveCompletion: {
+          state: bootstrap.plan.state,
+          wave: { ref: bootstrap.plan.ref, value: bootstrap.plan },
+          results,
+        },
+      }).decide({
+        kind: "wave-completed",
+        map: staged.mapRef,
+        state: bootstrap.plan.state,
+        wave: bootstrap.plan.ref,
+        results: results.map((result) => result.ref),
+      });
+
+    const forward = decide(allResults);
+    const reverse = decide([...allResults].reverse());
+
+    expect(reverse).toEqual(forward);
+    expect(forward).toMatchObject({ kind: "verify" });
+    if (forward.kind !== "verify") return;
+    expect(forward.hypotheses).toHaveLength(2);
+  });
+
+  it("rejects a schema-valid Hypothesis whose anchor is absent from the Map", () => {
+    const map = initialMap();
+    const policyValue = policy({ eligibleModelFamilies: ["claude"] });
+    const staged = stage(map, policyValue);
+    const bootstrap = staged.exploration.decide({
+      kind: "bootstrap",
+      map: staged.mapRef,
+      policy: staged.policyRef,
+    });
+    if (bootstrap.kind !== "run-wave") {
+      throw new Error("Expected a Work Wave fixture");
+    }
+    const lease = bootstrap.plan.leases[0];
+    if (lease === undefined) throw new Error("Missing Work Lease fixture");
+    const absentNode = sha256Digest("absent-surface-node");
+    const result = finderResult("attempt-invalid-anchor", lease.id, [
+      hypothesisFor(absentNode),
+    ]);
+    const results = completeWaveResults(
+      bootstrap.plan.leases.map((candidate) => candidate.id),
+      [result],
+    );
+    const exploration = openExploration({
+      surfaceMap: { ref: staged.mapRef, value: map },
+      policy: { ref: staged.policyRef, value: policyValue },
+      waveCompletion: {
+        state: bootstrap.plan.state,
+        wave: { ref: bootstrap.plan.ref, value: bootstrap.plan },
+        results,
+      },
+    });
+
+    expect(
+      exploration.decide({
+        kind: "wave-completed",
+        map: staged.mapRef,
+        state: bootstrap.plan.state,
+        wave: bootstrap.plan.ref,
+        results: results.map((candidate) => candidate.ref),
+      }),
+    ).toMatchObject({
+      kind: "blocked",
+      gaps: [{ reason: "no-source-bound-hypothesis" }],
+    });
+  });
+
+  it("rejects wave completion until every Work Lease is terminal", () => {
+    const map = initialMap();
+    const policyValue = policy({ eligibleModelFamilies: ["claude"] });
+    const staged = stage(map, policyValue);
+    const bootstrap = staged.exploration.decide({
+      kind: "bootstrap",
+      map: staged.mapRef,
+      policy: staged.policyRef,
+    });
+    if (bootstrap.kind !== "run-wave") {
+      throw new Error("Expected a Work Wave fixture");
+    }
+    const lease = bootstrap.plan.leases[0];
+    if (lease === undefined) throw new Error("Missing Work Lease fixture");
+    const partial = terminalResult("attempt-only-one", lease.id);
+
+    expect(() =>
+      openExploration({
+        surfaceMap: { ref: staged.mapRef, value: map },
+        policy: { ref: staged.policyRef, value: policyValue },
+        waveCompletion: {
+          state: bootstrap.plan.state,
+          wave: { ref: bootstrap.plan.ref, value: bootstrap.plan },
+          results: [partial],
+        },
+      }),
+    ).toThrow("Work Wave completion requires one terminal result per Lease");
+  });
+
+  it("rejects a Work Wave whose content no longer matches its identity", () => {
+    const map = initialMap();
+    const policyValue = policy({ eligibleModelFamilies: ["claude"] });
+    const staged = stage(map, policyValue);
+    const bootstrap = staged.exploration.decide({
+      kind: "bootstrap",
+      map: staged.mapRef,
+      policy: staged.policyRef,
+    });
+    if (bootstrap.kind !== "run-wave") {
+      throw new Error("Expected a Work Wave fixture");
+    }
+    const firstLease = bootstrap.plan.leases[0];
+    if (firstLease === undefined) throw new Error("Missing Work Lease fixture");
+    const alteredStrategy: typeof firstLease.strategy =
+      firstLease.strategy === "wildcard" ? "invariant-review" : "wildcard";
+    const alteredPlan = {
+      ...bootstrap.plan,
+      leases: bootstrap.plan.leases.map((lease, index) =>
+        index === 0 ? { ...lease, strategy: alteredStrategy } : lease,
+      ),
+    };
+    const results = completeWaveResults(
+      bootstrap.plan.leases.map((lease) => lease.id),
+      [],
+    );
+
+    expect(() =>
+      openExploration({
+        surfaceMap: { ref: staged.mapRef, value: map },
+        policy: { ref: staged.policyRef, value: policyValue },
+        waveCompletion: {
+          state: bootstrap.plan.state,
+          wave: { ref: bootstrap.plan.ref, value: alteredPlan },
+          results,
+        },
+      }),
+    ).toThrow("Exploration Work Wave reference mismatch");
   });
 });

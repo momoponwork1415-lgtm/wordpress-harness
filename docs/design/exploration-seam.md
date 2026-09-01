@@ -1,6 +1,6 @@
 # Exploration seam
 
-Status: accepted; first bootstrap planning slice implemented, 2026-09-02
+Status: accepted; bootstrap and first Hypothesis ingestion slice implemented, 2026-09-02
 
 ## Owner and purpose
 
@@ -47,9 +47,9 @@ type ExplorationDecision =
 
 `ExplorationPolicyRef`はLane/Strategy policy、eligible Model Profile registry、ranking tuple、closure policyをdigest固定する。`decide`は同じ入力refsから同じdecisionとstable orderingを返すpure decisionである。callerはFinder role別method、`runChainSynthesizer`、`reopenFocus`、score更新、model votingを呼ばない。
 
-## Implemented bootstrap slice
+## Implemented slices
 
-現行実装は`bootstrap` inputだけを受け、CASからdecode済みのSurface Mapとversioned bootstrap policyを`openExploration`で一度束ねる。その後の`decide`はfilesystem、Research Ledger、provider process、Lab、clock、randomnessを使わないpure decisionである。binding時にMapとPolicyのcanonical digest、identity、summaryを照合する。
+現行実装は`bootstrap`と最初の`wave-completed` inputを受ける。CASからdecode済みのSurface Map、versioned bootstrap policy、必要な場合は完了したWork WaveとFinder Attempt Resultを`openExploration`で一度束ねる。その後の`decide`はfilesystem、Research Ledger、provider process、Lab、clock、randomnessを使わないpure decisionである。binding時にMap、Policy、Wave、Resultのcanonical digest、identity、summaryを照合する。
 
 最小Map gateはinventoryの存在、summary、path uniqueness、observed source anchorとinventoryのbinding、relation endpoint、gap pathを確認する。空inventoryは`blocked`、訂正可能な不整合は必要証拠を持つ`revise-map`を返し、推測したworkを作らない。
 
@@ -65,7 +65,9 @@ type ExplorationDecision =
 
 5 plugin familyのGit外characterizationでは、同じ8 Focus/9 lease policyから全Targetで有限な`run-wave`を返した。各Waveは少なくとも未登録PHP、mapping gap、sink、state、guardまたはentryを含み、Wildcardを一枠保持した。これは探索結果の質を示す評価ではなく、大規模なBrizyから小規模なWordPress File Uploadまで、Mapの大きさに比例してworkが無制限化しないことの特性確認である。
 
-現行risk basisはREST interfaceとsink presenceだけを使う粗いbootstrap分類であり、脆弱性、attacker reachability、severityを意味しない。actor、required privilege、state transitionがMapから確定しないfieldは`unresolved`のままにする。AI Finder実行、feature-level regrouping、Finder output取込、Chain Synthesis、Gap Review、map revision後の再計画は後続sliceである。
+`wave-completed`は現時点ではSource-bound Hypothesisだけを取り込む。Waveの全Work Leaseに成功・失敗・取消のいずれかのterminal Resultが一つずつ揃うまでbarrierを開かない。Finder schemaとWork Leaseを照合し、observed anchorおよび全route node/relationが入力Mapに存在する候補だけを残す。Causal Identityとroute shapeで決定的に重複排除し、支持model数を使わず一件だけのHypothesisと相反するrouteを保持する。Resultの到着順を変えても同じ順序で`verify`を返す。有効な候補がなければFindingゼロではなく`blocked: no-source-bound-hypothesis`を返す。
+
+現行risk basisはREST interfaceとsink presenceだけを使う粗いbootstrap分類であり、脆弱性、attacker reachability、severityを意味しない。actor、required privilege、state transitionがMapから確定しないfieldは`unresolved`のままにする。Route Fragment、Mapping Evidence Request、Closure Record、Chain Synthesis、Gap Review、map revision後の再計画は後続sliceである。
 
 ## Minimum map gate and incremental understanding
 

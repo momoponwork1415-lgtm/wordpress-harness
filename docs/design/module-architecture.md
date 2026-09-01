@@ -478,11 +478,11 @@ folderはownershipを示すために使い、各名詞ごとにfileを分けな�
 
 最初のownership移行は完了している。`src/research/index.ts`はCampaign contractと`openResearch`だけを公開し、`open-research.ts`が内部moduleを組み立てる。Campaign lifecycleとprojectionは`campaign-control/`、SQLite append/replayとcanonical JSON/CASは`research-record/`、PHP Program Indexは`source-mapping/php-program-index/`が所有する。CLIは薄いadapterのままなので、次にCLI behaviorを変更する時まで`src/cli.ts`から動かさない。
 
-これはfolderを完成形まで先に作る移行ではない。未実装Moduleは、それぞれacceptedなSeamと最初のbehaviorを持つIssueで追加する。Source Mappingの最初の静的sliceと、固定Surface Mapから有限Work Waveを作るExploration bootstrapまで実装した。次はFinder outputをschema検査し、多数決なしでsource-bound HypothesisまたはMapping Evidence Requestへ取り込む。Model Executionとprovider process adapterは、Issue依存上のFinder output取込が成立してから接続する。
+これはfolderを完成形まで先に作る移行ではない。未実装Moduleは、それぞれacceptedなSeamと最初のbehaviorを持つIssueで追加する。Source Mappingの最初の静的slice、固定Surface Mapから有限Work Waveを作るExploration bootstrap、Finder schemaを検査して多数決なしでSource-bound Hypothesisへ取り込む最初の`wave-completed`、tool-freeなClaude process/Opus Finder実行までを実装した。private development benchmarkでは実TargetからExplorationの`verify` decisionまで到達している。次は新しい水平moduleを増やさず、Work LeaseからAttempt Planを作るcompositionとresult receiptをCampaign Control/Research Recordへ接続し、独立Verificationまで同じ経路を延ばす。
 
 現行Source MappingはPHP Program Indexのsymbol、WordPress fact、diagnosticを`observed`として取り込み、全manifest entry、非PHP gap、stable node/relation identity、初期mapとsource-only revisionをCASへ固定する。一方、`pluginSlug`を含む旧Target Snapshot形状、Context Response、Mapper synthesis、非PHP asset relation、Knowledge由来inference、Runtime Observationはまだ完全なSource Mapping seamを満たさない。初期探索は明示gapを持つ最小Mapから始め、必要性が観測された能力を独立sliceで追加する。
 
-現行Exploration bootstrapは、Map/Policy digestを照合し、最小Map gate、stable Focus owner、category round-robin、有限lease budget、Lane/Strategy/model-familyの別軸割当、Wildcardとelevated surfaceの独立二系統をpure decisionとして実装する。ActorとPrivilegeは未解決のままであり、risk basisはRESTまたはsink presenceを示すだけでseverityではない。wave-completed以降のdecisionとFinder output decodeはまだ実装しない。
+現行Explorationは、Map/Policy digestを照合し、最小Map gate、stable Focus owner、category round-robin、有限lease budget、Lane/Strategy/model-familyの別軸割当、Wildcardとelevated surfaceの独立二系統をpure decisionとして実装する。最初の`wave-completed`はWork Wave/Result digestを照合し、Map上のobserved anchorへ結合したHypothesisをCausal Identityとroute shapeで重複排除し、支持数と到着順に依存せず`verify`へ渡す。ActorとPrivilegeは未解決のままであり、risk basisはRESTまたはsink presenceを示すだけでseverityではない。Route Fragment、Chain Synthesis、Gap Review以降はまだ実装しない。
 
 ## Failure semantics across modules
 

@@ -60,12 +60,6 @@ export const explorationBootstrapPolicySchema = z
     }
   });
 
-export const explorationDecisionInputSchema = z.strictObject({
-  kind: z.literal("bootstrap"),
-  map: surfaceMapRefSchema,
-  policy: explorationPolicyRefSchema,
-});
-
 const focusOwnerSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("surface-node"),
@@ -156,15 +150,145 @@ const workLeaseSchema = z.strictObject({
   budget: leaseBudgetSchema,
 });
 
-const workWavePlanSchema = z.strictObject({
+export const explorationStateRefSchema = z.strictObject({
+  kind: z.literal("exploration-state"),
+  schemaVersion: z.literal(1),
+  digest: digestSchema,
+  mapDigest: digestSchema,
+  policyDigest: digestSchema,
+});
+
+export const workWaveRefSchema = z.strictObject({
+  kind: z.literal("work-wave"),
+  schemaVersion: z.literal(1),
+  id: digestSchema,
+  digest: digestSchema,
+  mapDigest: digestSchema,
+});
+
+export const workWavePlanSchema = z.strictObject({
   kind: z.literal("work-wave-plan"),
   schemaVersion: z.literal(1),
   id: digestSchema,
+  ref: workWaveRefSchema,
+  state: explorationStateRefSchema,
   map: surfaceMapRefSchema,
   policy: explorationPolicyRefSchema,
   focusAreas: z.array(focusAreaSchema).min(1),
   leases: z.array(workLeaseSchema).min(1),
 });
+
+const boundedTextSchema = z.string().min(1).max(1_000);
+
+const causalIdentitySchema = z.strictObject({
+  rootCause: identifierSchema,
+  attackerControlledPrimitive: identifierSchema,
+  brokenSecurityProperty: identifierSchema,
+});
+
+export const sourceBoundHypothesisSchema = z.strictObject({
+  kind: z.literal("source-bound-hypothesis"),
+  schemaVersion: z.literal(1),
+  causalIdentity: causalIdentitySchema,
+  attackerPremise: z.enum([
+    "unauthenticated",
+    "subscriber",
+    "customer",
+    "unresolved",
+  ]),
+  impact: z.enum([
+    "arbitrary-code-execution",
+    "site-wide-compromise",
+    "account-takeover",
+    "sql-injection",
+    "stored-xss",
+    "authorization-bypass",
+    "file-write",
+    "path-traversal",
+    "other",
+  ]),
+  route: z.strictObject({
+    anchorNodeId: digestSchema,
+    nodeIds: z.array(digestSchema).min(1),
+    relationIds: z.array(digestSchema),
+  }),
+  unknowns: z
+    .array(
+      z.strictObject({
+        claim: boundedTextSchema,
+        requiredEvidence: boundedTextSchema,
+      }),
+    )
+    .min(1),
+  falsifier: boundedTextSchema,
+  nextExperiment: boundedTextSchema,
+});
+
+export const finderOutputSchema = z.strictObject({
+  kind: z.literal("finder-output"),
+  schemaVersion: z.literal(1),
+  leaseId: digestSchema,
+  hypotheses: z.array(sourceBoundHypothesisSchema),
+});
+
+export const finderAttemptResultSchema = z.discriminatedUnion("status", [
+  z.strictObject({
+    kind: z.literal("finder-attempt-result"),
+    schemaVersion: z.literal(1),
+    attemptId: identifierSchema,
+    leaseId: digestSchema,
+    status: z.literal("completed"),
+    output: finderOutputSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("finder-attempt-result"),
+    schemaVersion: z.literal(1),
+    attemptId: identifierSchema,
+    leaseId: digestSchema,
+    status: z.enum([
+      "invalid-output",
+      "policy-denied",
+      "auth-required",
+      "provider-failed",
+      "budget-exhausted",
+      "cancelled",
+      "orphaned",
+    ]),
+    reason: boundedTextSchema,
+  }),
+]);
+
+export const attemptExecutionResultRefSchema = z.strictObject({
+  kind: z.literal("attempt-execution-result"),
+  schemaVersion: z.literal(1),
+  attemptId: identifierSchema,
+  leaseId: digestSchema,
+  digest: digestSchema,
+});
+
+const hypothesisRefSchema = z.strictObject({
+  kind: z.literal("hypothesis"),
+  schemaVersion: z.literal(1),
+  id: digestSchema,
+  digest: digestSchema,
+  mapDigest: digestSchema,
+  sourceResult: attemptExecutionResultRefSchema,
+});
+
+export const explorationDecisionInputSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("bootstrap"),
+    map: surfaceMapRefSchema,
+    policy: explorationPolicyRefSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("wave-completed"),
+    map: surfaceMapRefSchema,
+    state: explorationStateRefSchema,
+    wave: workWaveRefSchema,
+    results: z.array(attemptExecutionResultRefSchema).min(1),
+  }),
+]);
 
 const mappingEvidenceRequestSchema = z.strictObject({
   kind: z.literal("mapping-evidence-request"),
@@ -179,7 +303,7 @@ const explorationGapSchema = z.strictObject({
   kind: z.literal("exploration-gap"),
   schemaVersion: z.literal(1),
   id: digestSchema,
-  reason: z.literal("empty-inventory"),
+  reason: z.enum(["empty-inventory", "no-source-bound-hypothesis"]),
   requiredEvidence: z.array(z.string().min(1)).min(1),
 });
 
@@ -193,6 +317,10 @@ export const explorationDecisionSchema = z.discriminatedUnion("kind", [
     kind: z.literal("blocked"),
     gaps: z.array(explorationGapSchema).min(1),
   }),
+  z.strictObject({
+    kind: z.literal("verify"),
+    hypotheses: z.array(hypothesisRefSchema).min(1),
+  }),
 ]);
 
 export type ExplorationBootstrapPolicy = z.infer<
@@ -205,6 +333,14 @@ export type ExplorationDecisionInput = z.infer<
 export type ExplorationDecision = z.infer<typeof explorationDecisionSchema>;
 export type FocusArea = z.infer<typeof focusAreaSchema>;
 export type WorkLease = z.infer<typeof workLeaseSchema>;
+export type WorkWavePlan = z.infer<typeof workWavePlanSchema>;
+export type WorkWaveRef = z.infer<typeof workWaveRefSchema>;
+export type ExplorationStateRef = z.infer<typeof explorationStateRefSchema>;
+export type FinderAttemptResult = z.infer<typeof finderAttemptResultSchema>;
+export type AttemptExecutionResultRef = z.infer<
+  typeof attemptExecutionResultRefSchema
+>;
+export type SourceBoundHypothesis = z.infer<typeof sourceBoundHypothesisSchema>;
 
 export interface Exploration {
   decide(input: ExplorationDecisionInput): ExplorationDecision;
@@ -218,6 +354,17 @@ export interface OpenExplorationOptions {
   readonly policy: {
     readonly ref: ExplorationPolicyRef;
     readonly value: ExplorationBootstrapPolicy;
+  };
+  readonly waveCompletion?: {
+    readonly state: ExplorationStateRef;
+    readonly wave: {
+      readonly ref: WorkWaveRef;
+      readonly value: WorkWavePlan;
+    };
+    readonly results: readonly {
+      readonly ref: AttemptExecutionResultRef;
+      readonly value: FinderAttemptResult;
+    }[];
   };
 }
 

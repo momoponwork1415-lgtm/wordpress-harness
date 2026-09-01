@@ -1,6 +1,6 @@
 # Module Map
 
-Status: living visual index, 2026-09-01
+Status: living visual index, 2026-09-02
 
 この文書は、コードの詳細を知らなくても「どのModuleが何を行い、何を受け取り、何を作るか」を把握するための機能図である。設計判断の正本は[Module architecture](module-architecture.md)、現在のsource・Testとの対応は[Codebase Guide](../CODEBASE-GUIDE.md)とする。
 
@@ -52,7 +52,7 @@ flowchart TB
 
 ## 2. Researchを支える6 Module
 
-色は2026-09-01時点のproduction実装状況を表す。黄は一部実装、灰は設計のみである。
+色は2026-09-02時点のproduction実装状況を表す。黄は一部実装、灰は設計のみである。
 
 ```mermaid
 flowchart TB
@@ -77,8 +77,8 @@ flowchart TB
 
     classDef partial fill:#fff5d6,stroke:#a87800,color:#3f2d00;
     classDef planned fill:#f2f3f5,stroke:#777,color:#333;
-    class campaign,understand,record partial;
-    class explore,verify,execution planned;
+    class campaign,understand,explore,execution,record partial;
+    class verify planned;
 ```
 
 `Campaign Control`が進行と予算を決める。`Source Understanding -> Exploration -> Verification`が証拠を強くする主経路である。`Model Execution`はAIを実行するが研究上の判断を所有しない。全Moduleの事実と判断は`Research Record`へ追記され、workerが過去の記録を書き換えることはできない。

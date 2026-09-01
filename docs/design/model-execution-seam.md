@@ -1,6 +1,6 @@
 # Model execution seam
 
-Status: accepted, 2026-09-01
+Status: accepted; first tool-free Finder slice implemented, 2026-09-02
 
 ## Owner and purpose
 
@@ -14,22 +14,36 @@ interface ModelExecution {
 }
 
 type AttemptExecutionResult =
-  | { status: "completed"; receipt: AttemptReceiptRef; output: RoleOutputRef }
-  | {
-      status:
-        | "invalid-output"
-        | "policy-denied"
-        | "auth-required"
-        | "provider-failed"
-        | "budget-exhausted"
-        | "cancelled"
-        | "orphaned";
-      receipt: AttemptReceiptRef;
-      reason: AttemptTerminationReason;
-    };
+  {
+    status:
+      | "completed"
+      | "invalid-output"
+      | "policy-denied"
+      | "auth-required"
+      | "provider-failed"
+      | "budget-exhausted"
+      | "cancelled"
+      | "orphaned";
+    ref: AttemptExecutionResultRef;
+    value: FinderAttemptResult;
+  };
 ```
 
+最初の実装はFinderだけにspecializeしているため`value`は`FinderAttemptResult`である。第二roleを接続する時にversioned `RoleOutputRef`と完全な`Attempt Receipt`へ拡張するが、それ以前に未使用のgeneric hierarchyを作らない。
+
 callerはprovider executable、argv、session ID、credential path、process ID、retry timing、transcript pathを渡さない。`start`、`resume`、`kill`、`readStdout`等を別methodとして公開せず、Segment lifecycleを`run`の背後へ隠す。
+
+## Implemented first slice
+
+現行実装はFinder role、公式Claude Code process `2.1.251`、`claude-opus-5`だけを扱う細いadapterである。`Attempt Plan`はTarget、Work Lease、model/effort、Eligibility Receipt digest、render済みprompt、wall/output budgetを固定する。Finder source contextの選択とprompt renderingはまだCampaign Controlへ統合していない。
+
+native adapterは推論前にexecutable versionと公式`auth status`を検査する。認証切れは`auth-required`として終了し、別modelへfallbackしない。provider built-in tool、Web、subagent、ambient MCP、slash command、session persistence、Chromeを無効化し、promptはargvではなくstdinへ渡す。親processだけでなくdetached process groupをwall ceiling時に終了し、`SIGTERM`後または親終了時に残った子へ`SIGKILL`を送る。wall budgetにはversion/auth probeも含める。
+
+Claude JSON envelope、実model identity、permission denial、Web request数、subagent数、Finder schema、Work Lease bindingをruntime decodeする。成功outputまたは型付きterminal resultはprivate CASへ保存し、呼出元へdigest付きrefを返す。provider errorのstderrはcredential値をredactしてprivate error artifactへ置き、公開resultにはそのdigestだけを残す。
+
+2026-09-02のprivate development benchmarkでは、oracle情報を与えず、実在するTranslatePress 3.2.5のSurface Mapから一つのWork Leaseを選び、約414 KBのsource contextをOpus 5へ渡した。独立した二回の成功実行はそれぞれ二件と一件のschema-valid Source-bound Hypothesisを返し、どちらもExplorationの`verify` decisionまで到達した。この差は候補生成の分散であり、単発runを能力評価に使わない。これはtransportと取込経路の成立確認であって、Hypothesisの正しさ、脆弱性発見、Milestone 1完了を意味しない。target source、prompt、provider outputはGitへ置かない。
+
+未実装なのは、CampaignRunnerによるcomposition、Research Ledgerへのlaunch intent/receipt、raw provider eventとusageの完全なdurability、classified retry/resume、orchestrator crash recovery、cgroup/resource ceiling、gVisor、harness-owned read/search tool、Finder以外のrole、第二providerである。これらを実装済みの安全性として扱わない。
 
 ## Attempt Plan
 

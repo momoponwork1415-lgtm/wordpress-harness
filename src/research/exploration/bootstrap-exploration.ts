@@ -4,18 +4,27 @@ import {
 } from "../research-record/canonical-json.js";
 import type { SurfaceMap } from "../source-mapping/index.js";
 import {
+  attemptExecutionResultRefSchema,
   explorationBootstrapPolicySchema,
   explorationDecisionInputSchema,
   explorationDecisionSchema,
   explorationPolicyRefSchema,
+  explorationStateRefSchema,
+  finderAttemptResultSchema,
   surfaceMapRefSchema,
   surfaceMapSchema,
+  workWavePlanSchema,
+  workWaveRefSchema,
+  type AttemptExecutionResultRef,
   type Exploration,
   type ExplorationBootstrapPolicy,
   type ExplorationDecision,
   type FocusArea,
+  type FinderAttemptResult,
   type OpenExplorationOptions,
+  type SourceBoundHypothesis,
   type WorkLease,
+  type WorkWavePlan,
 } from "./contracts.js";
 
 type SurfaceNode = SurfaceMap["nodes"][number];
@@ -25,6 +34,22 @@ function compareText(left: string, right: string): number {
   if (left < right) return -1;
   if (left > right) return 1;
   return 0;
+}
+
+function workWaveDigest(
+  value: Pick<
+    WorkWavePlan,
+    "state" | "map" | "policy" | "focusAreas" | "leases"
+  >,
+): string {
+  return sha256Digest({
+    kind: "work-wave-plan",
+    state: value.state,
+    map: value.map,
+    policy: value.policy,
+    focusAreas: value.focusAreas,
+    leases: value.leases,
+  });
 }
 
 function firstObservedPath(node: SurfaceNode): string | undefined {
@@ -313,11 +338,48 @@ function mapGateNeeds(map: SurfaceMap): string[] {
   return [...needs].sort(compareText);
 }
 
+function isSourceBound(
+  hypothesis: SourceBoundHypothesis,
+  map: SurfaceMap,
+): boolean {
+  const nodes = new Map(map.nodes.map((node) => [node.id, node]));
+  const relations = new Set(map.relations.map((relation) => relation.id));
+  const anchor = nodes.get(hypothesis.route.anchorNodeId);
+  return (
+    anchor?.evidence.kind === "observed" &&
+    hypothesis.route.nodeIds.includes(hypothesis.route.anchorNodeId) &&
+    hypothesis.route.nodeIds.every((nodeId) => nodes.has(nodeId)) &&
+    hypothesis.route.relationIds.every((relationId) =>
+      relations.has(relationId),
+    )
+  );
+}
+
+interface BoundWaveCompletion {
+  readonly state: NonNullable<
+    OpenExplorationOptions["waveCompletion"]
+  >["state"];
+  readonly wave: {
+    readonly ref: NonNullable<
+      OpenExplorationOptions["waveCompletion"]
+    >["wave"]["ref"];
+    readonly value: WorkWavePlan;
+  };
+  readonly results: ReadonlyMap<
+    string,
+    {
+      readonly ref: AttemptExecutionResultRef;
+      readonly value: FinderAttemptResult;
+    }
+  >;
+}
+
 class BootstrapExploration implements Exploration {
   readonly #mapRef;
   readonly #map;
   readonly #policyRef;
   readonly #policy;
+  readonly #waveCompletion: BoundWaveCompletion | undefined;
 
   constructor(options: OpenExplorationOptions) {
     this.#mapRef = surfaceMapRefSchema.parse(options.surfaceMap.ref);
@@ -339,14 +401,87 @@ class BootstrapExploration implements Exploration {
     ) {
       throw new Error("Exploration Policy reference mismatch");
     }
+    if (options.waveCompletion === undefined) {
+      this.#waveCompletion = undefined;
+    } else {
+      const state = explorationStateRefSchema.parse(
+        options.waveCompletion.state,
+      );
+      const waveRef = workWaveRefSchema.parse(options.waveCompletion.wave.ref);
+      const waveValue = workWavePlanSchema.parse(
+        options.waveCompletion.wave.value,
+      );
+      const expectedStateDigest = sha256Digest({
+        kind: "exploration-state",
+        map: this.#mapRef,
+        policy: this.#policyRef,
+      });
+      if (
+        canonicalJson(waveRef) !== canonicalJson(waveValue.ref) ||
+        canonicalJson(state) !== canonicalJson(waveValue.state) ||
+        canonicalJson(waveValue.map) !== canonicalJson(this.#mapRef) ||
+        canonicalJson(waveValue.policy) !== canonicalJson(this.#policyRef) ||
+        state.digest !== expectedStateDigest ||
+        state.mapDigest !== this.#mapRef.digest ||
+        state.policyDigest !== this.#policyRef.digest ||
+        waveRef.id !== waveValue.id ||
+        waveRef.digest !== workWaveDigest(waveValue) ||
+        waveValue.id !== workWaveDigest(waveValue) ||
+        waveRef.mapDigest !== this.#mapRef.digest
+      ) {
+        throw new Error("Exploration Work Wave reference mismatch");
+      }
+      const results = new Map<
+        string,
+        {
+          readonly ref: AttemptExecutionResultRef;
+          readonly value: FinderAttemptResult;
+        }
+      >();
+      const expectedLeaseIds = new Set(
+        waveValue.leases.map((candidate) => candidate.id),
+      );
+      const completedLeaseIds = new Set<string>();
+      for (const candidate of options.waveCompletion.results) {
+        const ref = attemptExecutionResultRefSchema.parse(candidate.ref);
+        const value = finderAttemptResultSchema.parse(candidate.value);
+        if (
+          sha256Digest(value) !== ref.digest ||
+          ref.attemptId !== value.attemptId ||
+          ref.leaseId !== value.leaseId ||
+          results.has(ref.digest) ||
+          !expectedLeaseIds.has(value.leaseId) ||
+          completedLeaseIds.has(value.leaseId)
+        ) {
+          throw new Error("Finder Attempt Result reference mismatch");
+        }
+        results.set(ref.digest, { ref, value });
+        completedLeaseIds.add(value.leaseId);
+      }
+      if (completedLeaseIds.size !== expectedLeaseIds.size) {
+        throw new Error(
+          "Work Wave completion requires one terminal result per Lease",
+        );
+      }
+      this.#waveCompletion = {
+        state,
+        wave: { ref: waveRef, value: waveValue },
+        results,
+      };
+    }
   }
 
   decide(input: Parameters<Exploration["decide"]>[0]): ExplorationDecision {
     const parsedInput = explorationDecisionInputSchema.parse(input);
-    if (
-      canonicalJson(parsedInput.map) !== canonicalJson(this.#mapRef) ||
-      canonicalJson(parsedInput.policy) !== canonicalJson(this.#policyRef)
-    ) {
+    if (canonicalJson(parsedInput.map) !== canonicalJson(this.#mapRef)) {
+      throw new Error(
+        "Exploration input is not bound to the configured source",
+      );
+    }
+    if (parsedInput.kind === "wave-completed") {
+      return this.#ingestWave(parsedInput);
+    }
+    if (canonicalJson(parsedInput.policy) !== canonicalJson(this.#policyRef)) {
       throw new Error(
         "Exploration input is not bound to the configured source",
       );
@@ -445,22 +580,144 @@ class BootstrapExploration implements Exploration {
       ),
     );
     leases.sort((left, right) => compareText(left.id, right.id));
+    const state = {
+      kind: "exploration-state" as const,
+      schemaVersion: 1 as const,
+      digest: sha256Digest({
+        kind: "exploration-state",
+        map: this.#mapRef,
+        policy: this.#policyRef,
+      }),
+      mapDigest: this.#mapRef.digest,
+      policyDigest: this.#policyRef.digest,
+    };
+    const planIdentity = {
+      state,
+      map: this.#mapRef,
+      policy: this.#policyRef,
+      focusAreas,
+      leases,
+    };
+    const planId = workWaveDigest(planIdentity);
+    const ref = {
+      kind: "work-wave" as const,
+      schemaVersion: 1 as const,
+      id: planId,
+      digest: planId,
+      mapDigest: this.#mapRef.digest,
+    };
     const plan = {
       kind: "work-wave-plan" as const,
       schemaVersion: 1 as const,
-      id: sha256Digest({
-        kind: "work-wave-plan",
-        map: this.#mapRef,
-        policy: this.#policyRef,
-        focusAreaIds: focusAreas.map((focus) => focus.id),
-        leaseIds: leases.map((work) => work.id),
-      }),
+      id: planId,
+      ref,
+      state,
       map: this.#mapRef,
       policy: this.#policyRef,
       focusAreas,
       leases,
     };
     return explorationDecisionSchema.parse({ kind: "run-wave", plan });
+  }
+
+  #ingestWave(
+    input: Extract<
+      Parameters<Exploration["decide"]>[0],
+      { kind: "wave-completed" }
+    >,
+  ): ExplorationDecision {
+    const completion = this.#waveCompletion;
+    if (
+      completion === undefined ||
+      canonicalJson(input.state) !== canonicalJson(completion.state) ||
+      canonicalJson(input.wave) !== canonicalJson(completion.wave.ref)
+    ) {
+      throw new Error("Exploration Wave Completion is not bound");
+    }
+    const expectedRefs = [...completion.results.values()]
+      .map((result) => result.ref)
+      .sort((left, right) => compareText(left.digest, right.digest));
+    const inputRefs = [...input.results].sort((left, right) =>
+      compareText(left.digest, right.digest),
+    );
+    if (canonicalJson(inputRefs) !== canonicalJson(expectedRefs)) {
+      throw new Error("Exploration Wave Completion result mismatch");
+    }
+
+    const leaseIds = new Set(
+      completion.wave.value.leases.map((lease) => lease.id),
+    );
+    const hypotheses = new Map<
+      string,
+      {
+        kind: "hypothesis";
+        schemaVersion: 1;
+        id: string;
+        digest: string;
+        mapDigest: string;
+        sourceResult: AttemptExecutionResultRef;
+      }
+    >();
+    for (const resultRef of inputRefs) {
+      const bound = completion.results.get(resultRef.digest);
+      if (bound === undefined || !leaseIds.has(bound.value.leaseId)) {
+        throw new Error("Finder Attempt Result is outside the Work Wave");
+      }
+      if (bound.value.status !== "completed") continue;
+      if (bound.value.output.leaseId !== bound.value.leaseId) {
+        throw new Error("Finder output is not bound to its Work Lease");
+      }
+      for (const artifact of bound.value.output.hypotheses) {
+        if (!isSourceBound(artifact, this.#map)) {
+          continue;
+        }
+        const id = sha256Digest({
+          causalIdentity: artifact.causalIdentity,
+          routeShape: {
+            nodeIds: artifact.route.nodeIds,
+            relationIds: artifact.route.relationIds,
+          },
+        });
+        const candidate = {
+          kind: "hypothesis" as const,
+          schemaVersion: 1 as const,
+          id,
+          digest: sha256Digest(artifact),
+          mapDigest: this.#mapRef.digest,
+          sourceResult: bound.ref,
+        };
+        const current = hypotheses.get(id);
+        if (
+          current === undefined ||
+          compareText(candidate.digest, current.digest) < 0
+        ) {
+          hypotheses.set(id, candidate);
+        }
+      }
+    }
+    const ordered = [...hypotheses.values()].sort((left, right) =>
+      compareText(left.id, right.id),
+    );
+    if (ordered.length > 0) {
+      return explorationDecisionSchema.parse({
+        kind: "verify",
+        hypotheses: ordered,
+      });
+    }
+    const reason = "no-source-bound-hypothesis" as const;
+    const gap = {
+      kind: "exploration-gap" as const,
+      schemaVersion: 1 as const,
+      id: sha256Digest({
+        kind: "exploration-gap",
+        mapDigest: this.#mapRef.digest,
+        waveDigest: completion.wave.ref.digest,
+        reason,
+      }),
+      reason,
+      requiredEvidence: ["source-bound-hypothesis"],
+    };
+    return explorationDecisionSchema.parse({ kind: "blocked", gaps: [gap] });
   }
 
   #focusCandidates(): FocusArea[] {
