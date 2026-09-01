@@ -1,4 +1,9 @@
 import type { NewCampaignInput } from "../contracts.js";
+import type {
+  VerificationCompletionInput,
+  VerificationPlan,
+  VerificationRecordView,
+} from "../verification/contracts.js";
 
 export interface PreparationRecord {
   readonly campaignId: string;
@@ -17,8 +22,31 @@ export interface RecordPreparationResult {
 export interface ResearchRecord {
   recordPreparation(input: NewCampaignInput): Promise<RecordPreparationResult>;
   readPreparation(campaignId: string): Promise<PreparationRecord | undefined>;
+  recordVerificationStart(
+    plan: VerificationPlan,
+  ): Promise<RecordVerificationStartResult>;
+  recordVerificationCompletion(
+    input: VerificationCompletionInput,
+  ): Promise<VerificationRecordView>;
+  readVerification(
+    campaignId: string,
+    verificationId: string,
+  ): Promise<VerificationRecordView | undefined>;
   close(): void;
 }
+
+export type RecordVerificationStartResult =
+  | {
+      readonly disposition: "started";
+      readonly planDigest: string;
+      readonly ledgerHead: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly disposition: "completed";
+      readonly planDigest: string;
+      readonly verification: VerificationRecordView;
+    };
 
 export interface OpenResearchRecordOptions {
   readonly databasePath: string;

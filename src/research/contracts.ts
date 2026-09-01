@@ -120,7 +120,9 @@ export class LedgerIntegrityError extends Error {
     | "input-digest-mismatch"
     | "campaign-id-mismatch"
     | "non-contiguous-sequence"
-    | "invalid-event-order";
+    | "invalid-event-order"
+    | "verification-plan-digest-mismatch"
+    | "verification-record-digest-mismatch";
 
   constructor(
     campaignId: string,
@@ -128,7 +130,9 @@ export class LedgerIntegrityError extends Error {
       | "input-digest-mismatch"
       | "campaign-id-mismatch"
       | "non-contiguous-sequence"
-      | "invalid-event-order",
+      | "invalid-event-order"
+      | "verification-plan-digest-mismatch"
+      | "verification-record-digest-mismatch",
   ) {
     super(`Ledger integrity check failed: ${campaignId} (${reason})`);
     this.name = "LedgerIntegrityError";

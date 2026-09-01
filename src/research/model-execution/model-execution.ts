@@ -4,7 +4,7 @@ import {
   finderOutputSchema,
   finderAttemptResultSchema,
 } from "../exploration/contracts.js";
-import { openFileJsonArtifactStore } from "../research-record/index.js";
+import { openFileJsonArtifactStore } from "../research-record/file-json-artifact-store.js";
 import {
   attemptExecutionResultRefSchema,
   attemptPlanSchema,

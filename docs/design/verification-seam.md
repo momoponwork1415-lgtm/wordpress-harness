@@ -1,6 +1,8 @@
 # Verification seam
 
-Status: proposed, awaiting user acceptance
+Status: accepted, 2026-09-02
+
+Implementation status: partial. 合成system-seam adapterを使う最初のBehavior Testでは、Stored XSSのFinding gate、private CAS write、Verification start/completion event、close/reopen replayまで実装済みである。Disproved、Blocked、実Verifier Model Execution、実gVisor Lab Control、Campaign Control compositionは未実装であり、このtracerをevidentiary Verificationへ読み替えない。
 
 ## Design target
 

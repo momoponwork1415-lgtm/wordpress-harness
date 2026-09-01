@@ -3,10 +3,8 @@ import { delimiter, dirname, resolve } from "node:path";
 
 import { z } from "zod";
 
-import {
-  openFileJsonArtifactStore,
-  type JsonArtifactStore,
-} from "../../research-record/index.js";
+import type { JsonArtifactStore } from "../../research-record/contracts.js";
+import { openFileJsonArtifactStore } from "../../research-record/file-json-artifact-store.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const identifierSchema = z

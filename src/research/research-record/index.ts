@@ -5,5 +5,6 @@ export type {
   OpenResearchRecordOptions,
   PreparationRecord,
   RecordPreparationResult,
+  RecordVerificationStartResult,
   ResearchRecord,
 } from "./contracts.js";

@@ -1,6 +1,6 @@
 import { extname } from "node:path";
 
-import { openFileJsonArtifactStore } from "../research-record/index.js";
+import { openFileJsonArtifactStore } from "../research-record/file-json-artifact-store.js";
 import {
   canonicalJson,
   sha256Digest,
