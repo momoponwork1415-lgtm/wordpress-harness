@@ -27,6 +27,8 @@ export type {
   CampaignRunRecordRef,
   CampaignRunRecordView,
   FinderAttemptMaterialization,
+  FiniteWork,
+  FiniteWorkRef,
   IterationDecision,
 } from "./campaign-control/contracts.js";
 export {
@@ -37,6 +39,8 @@ export {
   campaignRunRecordRefSchema,
   campaignRunRecordSchema,
   finderAttemptMaterializationSchema,
+  finiteWorkRefSchema,
+  finiteWorkSchema,
   iterationDecisionSchema,
 } from "./campaign-control/contracts.js";
 export {

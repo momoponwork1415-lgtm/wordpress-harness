@@ -164,4 +164,6 @@ Behavior Testは`CampaignRunner.run(plan)`と`CampaignReader.read/inspect`から
 
 並列Finderの完了順を逆転しても、Work Lease順に正規化されたterminal recordとdigestが同一になることをbehavior testで固定している。また、Verificationのtyped Blocked reasonはCampaignの`blocked-capability`まで失われない。
 
-未実装の必須境界は、未解決workの`continue-unresolved-work`判断、Verificationの各crash境界、private Calibration Review、実gVisor/browser adapterである。
+仮説なしでFinder予算が残る場合、pure Iteration Reviewは前Wave、残Attempt数、目的、停止条件を持つ有限workを作り、private CASのdigestへ固定した`continue-unresolved-work`を返す。Verificationがtyped Blockedを返した場合は探索のやり直しに置き換えず、blockerを優先する。
+
+未実装の必須境界は、`continue-unresolved-work`を次の実Waveへ消費するreconcile、Verificationの各crash境界、private Calibration Review、実gVisor/browser adapterである。

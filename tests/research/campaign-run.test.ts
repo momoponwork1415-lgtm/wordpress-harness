@@ -165,6 +165,38 @@ function finder(
   };
 }
 
+function emptyFinder(artifacts: JsonArtifactStore): ModelExecution {
+  return {
+    run: async (plan) => {
+      const value = {
+        kind: "finder-attempt-result" as const,
+        schemaVersion: 1 as const,
+        attemptId: plan.attemptId,
+        leaseId: plan.leaseId,
+        status: "completed" as const,
+        output: {
+          kind: "finder-output" as const,
+          schemaVersion: 1 as const,
+          leaseId: plan.leaseId,
+          hypotheses: [],
+        },
+      };
+      const resultDigest = await artifacts.putJson(value);
+      return {
+        status: value.status,
+        value,
+        ref: {
+          kind: "attempt-execution-result",
+          schemaVersion: 1,
+          attemptId: value.attemptId,
+          leaseId: value.leaseId,
+          digest: resultDigest,
+        },
+      };
+    },
+  };
+}
+
 function orderedFinder(
   artifacts: JsonArtifactStore,
   candidate: SourceBoundHypothesis,
@@ -614,6 +646,56 @@ describe("CampaignRunner.run", () => {
       second.research.close();
       await rm(firstDirectory, { force: true, recursive: true });
       await rm(secondDirectory, { force: true, recursive: true });
+    }
+  });
+
+  it("records finite next work when unresolved exploration still has budget", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "campaign-continue-"));
+    const scenario = await openScenario(
+      directory,
+      (artifacts) => emptyFinder(artifacts),
+      3,
+    );
+
+    try {
+      const ref = await scenario.research.runner.run(scenario.plan);
+      const view = await scenario.research.reader.inspect(
+        scenario.input.campaignId,
+        { kind: "run", runId: scenario.plan.runId },
+      );
+      expect({ ref, view }).toMatchObject({
+        ref: { decision: "continue-unresolved-work" },
+        view: {
+          value: {
+            verifications: [],
+            decision: {
+              kind: "continue-unresolved-work",
+              next: {
+                kind: "finite-work",
+                schemaVersion: 1,
+                digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+              },
+            },
+          },
+        },
+      });
+      if (view.kind !== "run") throw new Error("expected Campaign run view");
+      if (view.value.decision.kind !== "continue-unresolved-work") {
+        throw new Error("expected finite next work");
+      }
+      await expect(
+        scenario.artifacts.readJson(view.value.decision.next.digest),
+      ).resolves.toMatchObject({
+        kind: "finite-work",
+        schemaVersion: 1,
+        campaignId: scenario.input.campaignId,
+        sourceRunId: scenario.plan.runId,
+        remainingFinderAttempts: 1,
+        stopWhen: "source-bound-hypothesis-or-budget-exhausted",
+      });
+    } finally {
+      scenario.research.close();
+      await rm(directory, { force: true, recursive: true });
     }
   });
 });

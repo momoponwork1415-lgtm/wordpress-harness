@@ -24,18 +24,15 @@ import type {
   ResearchRecord,
 } from "../research-record/index.js";
 import { surfaceMapSchema } from "../source-mapping/contracts.js";
-import {
-  openVerification,
-  type VerificationRecordView,
-} from "../verification/index.js";
+import { openVerification } from "../verification/index.js";
 import {
   campaignRunPlanSchema,
   finderAttemptMaterializationSchema,
   type CampaignAttemptIntent,
   type CampaignExecutionDependencies,
   type CampaignRunPlan,
-  type IterationDecision,
 } from "./contracts.js";
+import { reviewIteration } from "./iteration-review.js";
 
 export interface CampaignControl {
   readonly runner: CampaignRunner;
@@ -109,37 +106,6 @@ async function completeCampaignAttempt(
     workWaveDigest: intent.workWaveDigest,
     result: ref,
   });
-}
-
-function iterationDecision(
-  verifications: readonly VerificationRecordView[],
-  explorationKind: "verify" | "blocked",
-): IterationDecision {
-  const conclusive = verifications.filter(
-    (verification) => verification.ref.outcome !== "blocked",
-  );
-  if (conclusive.length > 0) {
-    return {
-      kind: "await-calibration",
-      terminalVerifications: conclusive.map((verification) => verification.ref),
-    };
-  }
-  const verificationReasons = verifications.flatMap((verification) =>
-    verification.value.outcome.kind === "blocked"
-      ? [verification.value.outcome.reason]
-      : [],
-  );
-  return {
-    kind: "blocked-capability",
-    reasons:
-      verificationReasons.length > 0
-        ? [...new Set(verificationReasons)].sort(compareText)
-        : [
-            explorationKind === "blocked"
-              ? "no-source-bound-hypothesis"
-              : "unsupported-attacker-premise",
-          ],
-  };
 }
 
 async function executeRun(
@@ -472,10 +438,27 @@ async function executeRun(
       return view;
     }),
   );
-  const decision = iterationDecision(
-    verificationViews,
-    completedExploration.kind,
-  );
+  const iteration = reviewIteration({
+    campaignId: plan.campaignId,
+    runId: plan.runId,
+    mapDigest: plan.surfaceMap.digest,
+    workWaveDigest: wave.ref.digest,
+    explorationKind: completedExploration.kind,
+    maxFinderAttempts: plan.budget.maxFinderAttempts,
+    executedAttempts: usedExecutions,
+    verifications: verificationViews,
+  });
+  if (iteration.finiteWork !== null) {
+    const stored = await dependencies.artifactStore.putJson(
+      iteration.finiteWork,
+    );
+    if (
+      iteration.decision.kind !== "continue-unresolved-work" ||
+      stored !== iteration.decision.next.digest
+    ) {
+      throw new Error("Iteration Review finite work digest mismatch");
+    }
+  }
   return record.recordCampaignRunCompletion({
     kind: "campaign-run-completion",
     schemaVersion: 1,
@@ -485,7 +468,7 @@ async function executeRun(
     workWave: wave.ref,
     attempts: allAttemptRefs,
     verifications: verificationRefs,
-    decision,
+    decision: iteration.decision,
   });
 }
 

@@ -99,6 +99,24 @@ const blockedCapabilityReasonSchema = z.union([
   verificationBlockReasonSchema,
 ]);
 
+export const finiteWorkSchema = z.strictObject({
+  kind: z.literal("finite-work"),
+  schemaVersion: z.literal(1),
+  campaignId: identifierSchema,
+  sourceRunId: identifierSchema,
+  mapDigest: digestSchema,
+  predecessorWaveDigest: digestSchema,
+  remainingFinderAttempts: z.number().int().positive().max(3),
+  objective: z.literal("source-bound-hypothesis"),
+  stopWhen: z.literal("source-bound-hypothesis-or-budget-exhausted"),
+});
+
+export const finiteWorkRefSchema = z.strictObject({
+  kind: z.literal("finite-work"),
+  schemaVersion: z.literal(1),
+  digest: digestSchema,
+});
+
 export const iterationDecisionSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("await-calibration"),
@@ -106,11 +124,7 @@ export const iterationDecisionSchema = z.discriminatedUnion("kind", [
   }),
   z.strictObject({
     kind: z.literal("continue-unresolved-work"),
-    next: z.strictObject({
-      kind: z.literal("finite-work"),
-      schemaVersion: z.literal(1),
-      digest: digestSchema,
-    }),
+    next: finiteWorkRefSchema,
   }),
   z.strictObject({
     kind: z.literal("blocked-capability"),
@@ -216,6 +230,8 @@ export type IterationDecision = z.infer<typeof iterationDecisionSchema>;
 export type FinderAttemptMaterialization = z.infer<
   typeof finderAttemptMaterializationSchema
 >;
+export type FiniteWork = z.infer<typeof finiteWorkSchema>;
+export type FiniteWorkRef = z.infer<typeof finiteWorkRefSchema>;
 export type CampaignAttemptIntent = z.infer<typeof campaignAttemptIntentSchema>;
 export type CampaignAttemptCompletion = z.infer<
   typeof campaignAttemptCompletionSchema
