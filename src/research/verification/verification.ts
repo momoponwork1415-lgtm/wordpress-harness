@@ -3,6 +3,7 @@ import {
   sha256Digest,
 } from "../research-record/canonical-json.js";
 import {
+  IndependentVerifierBlockedError,
   LabControlBlockedError,
   experimentObservationRefSchema,
   experimentObservationSchema,
@@ -168,9 +169,9 @@ class IndependentVerification implements Verification {
   async #recordBlocked(
     plan: VerificationPlan,
     planDigest: string,
-    sourceRederivationDigest: string,
     reason: VerificationBlockReason,
-    observations: {
+    evidence: {
+      readonly sourceRederivationDigest?: string;
       readonly witness?: ExperimentObservationRef;
       readonly control?: ExperimentObservationRef;
     } = {},
@@ -185,17 +186,21 @@ class IndependentVerification implements Verification {
       hypothesisDigest: plan.hypothesisDigest,
       evidence: {
         kind: "partial",
-        sourceRederivation: {
-          kind: "source-rederivation",
-          schemaVersion: 1,
-          digest: sourceRederivationDigest,
-        },
-        ...(observations.witness === undefined
+        ...(evidence.sourceRederivationDigest === undefined
           ? {}
-          : { witness: observations.witness }),
-        ...(observations.control === undefined
+          : {
+              sourceRederivation: {
+                kind: "source-rederivation" as const,
+                schemaVersion: 1 as const,
+                digest: evidence.sourceRederivationDigest,
+              },
+            }),
+        ...(evidence.witness === undefined
           ? {}
-          : { control: observations.control }),
+          : { witness: evidence.witness }),
+        ...(evidence.control === undefined
+          ? {}
+          : { control: evidence.control }),
       },
       outcome: {
         kind: "blocked",
@@ -213,9 +218,15 @@ class IndependentVerification implements Verification {
       return start.verification.ref;
     }
 
-    const rederivation = sourceRederivationSchema.parse(
-      await this.#options.independentVerifier.rederive(plan),
-    );
+    let rederivationValue: unknown;
+    try {
+      rederivationValue =
+        await this.#options.independentVerifier.rederive(plan);
+    } catch (error) {
+      if (!(error instanceof IndependentVerifierBlockedError)) throw error;
+      return this.#recordBlocked(plan, start.planDigest, error.reason);
+    }
+    const rederivation = sourceRederivationSchema.parse(rederivationValue);
     if (
       rederivation.verificationId !== plan.verificationId ||
       rederivation.targetSnapshotDigest !== plan.targetSnapshot.digest ||
@@ -254,12 +265,9 @@ class IndependentVerification implements Verification {
       );
     } catch (error) {
       if (!(error instanceof LabControlBlockedError)) throw error;
-      return this.#recordBlocked(
-        plan,
-        start.planDigest,
-        rederivationDigest,
-        error.reason,
-      );
+      return this.#recordBlocked(plan, start.planDigest, error.reason, {
+        sourceRederivationDigest: rederivationDigest,
+      });
     }
     const witness = await readObservation(
       this.#options.artifactStore,
@@ -295,9 +303,12 @@ class IndependentVerification implements Verification {
         return this.#recordBlocked(
           plan,
           start.planDigest,
-          rederivationDigest,
           "sibling-isolation-failed",
-          { witness: witnessRef, control: controlRef },
+          {
+            sourceRederivationDigest: rederivationDigest,
+            witness: witnessRef,
+            control: controlRef,
+          },
         );
       }
       throw new Error("Verification evidence is inconclusive");

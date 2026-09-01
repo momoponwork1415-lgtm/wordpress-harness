@@ -359,3 +359,13 @@ export class LabControlBlockedError extends Error {
     this.reason = reason;
   }
 }
+
+export class IndependentVerifierBlockedError extends Error {
+  readonly reason: VerificationBlockReason;
+
+  constructor(reason: VerificationBlockReason) {
+    super(`Independent Verifier blocked Verification: ${reason}`);
+    this.name = "IndependentVerifierBlockedError";
+    this.reason = reason;
+  }
+}

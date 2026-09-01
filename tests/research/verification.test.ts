@@ -12,6 +12,7 @@ import {
 } from "../../src/research/research-record/index.js";
 import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
 import {
+  IndependentVerifierBlockedError,
   LabControlBlockedError,
   openVerification,
   type ExperimentObservation,
@@ -30,7 +31,8 @@ type LabScenario =
   | "preserved"
   | "gvisor-unavailable"
   | "sibling-mismatch"
-  | "artifact-mismatch";
+  | "artifact-mismatch"
+  | "verifier-unavailable";
 
 interface VerificationIdentity {
   readonly campaignId: string;
@@ -271,7 +273,14 @@ async function openVerificationFixture(
   const verification = openVerification({
     record,
     artifactStore,
-    independentVerifier: supportedStoredXssVerifier(),
+    independentVerifier:
+      scenario === "verifier-unavailable"
+        ? {
+            rederive: async () => {
+              throw new IndependentVerifierBlockedError("verifier-unavailable");
+            },
+          }
+        : supportedStoredXssVerifier(),
     labControl: storedXssLabControl(artifactStore, scenario),
   });
   return { databasePath, record, verification };
@@ -444,5 +453,38 @@ describe("Verification.verify", () => {
       record.close();
       await rm(directory, { force: true, recursive: true });
     }
+  });
+
+  it("durably records Blocked when the independent Verifier is unavailable", async () => {
+    const plan = verificationPlan({
+      campaignId: "campaign-verifier-unavailable",
+      verificationId: "verification-verifier-unavailable",
+    });
+    await expect(
+      verifyAndReplay(plan, "verifier-unavailable"),
+    ).resolves.toMatchObject({
+      ref: {
+        kind: "verification-record",
+        schemaVersion: 1,
+        verificationId: plan.verificationId,
+        outcome: "blocked",
+      },
+      replayed: {
+        value: {
+          kind: "verification-record",
+          schemaVersion: 1,
+          verificationId: plan.verificationId,
+          campaignId: plan.campaignId,
+          evidence: {
+            kind: "partial",
+          },
+          outcome: {
+            kind: "blocked",
+            reason: "verifier-unavailable",
+            causalIdentity: plan.hypothesis.causalIdentity,
+          },
+        },
+      },
+    });
   });
 });

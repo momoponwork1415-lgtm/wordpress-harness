@@ -57,7 +57,7 @@ Surface Map
 
 これは探索の主要境界を一度貫通するが、製品のclosed loopではない。Work Leaseからsource contextとAttempt Planを作るcompositionはdevelopment runnerにあり、CampaignRunner、Research Ledger、Verification Lab、Witness、Causal Control、Finding/Blocked record、次iterationはまだ接続していない。次の実装は新しい水平moduleを増やすより、この経路をCampaign ControlとResearch Recordへ接続し、Brizy Boundary Pairの独立Verificationまで一段ずつ延ばす。
 
-Verification内部の最初のtracerは、合成source re-derivationとdeterministic Lab Control adapterから、Stored XSSのgVisor/no-fallback binding、fresh sibling、browser Witness、Causal Control、normal-function条件を検査し、Finding、同じCausal Identityに限定したDisproved、またはgVisor unavailable・sibling configuration mismatchのBlockedをprivate CASとResearch Ledgerへdurable writeしてclose/reopen後にreplayできる。これは[Verification Behavior Test](../tests/research/verification.test.ts)で保護するが、実gVisor、WordPress、browserを使うevidentiary runではなく、上記の製品closed loop完了を意味しない。
+Verification内部の最初のtracerは、合成source re-derivationとdeterministic Lab Control adapterから、Stored XSSのgVisor/no-fallback binding、fresh sibling、browser Witness、Causal Control、normal-function条件を検査し、Finding、同じCausal Identityに限定したDisproved、またはVerifier/gVisor unavailable・sibling configuration mismatchのBlockedをprivate CASとResearch Ledgerへdurable writeしてclose/reopen後にreplayできる。これは[Verification Behavior Test](../tests/research/verification.test.ts)で保護するが、実gVisor、WordPress、browserを使うevidentiary runではなく、上記の製品closed loop完了を意味しない。
 
 ## 設計上の現在地
 
@@ -66,7 +66,7 @@ Verification内部の最初のtracerは、合成source re-derivationとdetermini
 | Campaign Control | partial | prepare、read、inspect、deterministic replay。closed-loop `run(plan)`はproposed | [Campaign execution seam](design/campaign-execution-seam.md) |
 | Source Understanding | partial | PHP Program Index、静的initial/source revision、asset inventory、根拠状態、coverage gap | [Source mapping seam](design/source-mapping-seam.md) |
 | Exploration | partial | bootstrap Map gate、Focus Area、有限Work Wave、Lane/Strategy/model-family割当、Source-bound Hypothesis取込 | [Exploration seam](design/exploration-seam.md) |
-| Verification | partial | `verify(plan)`、Stored XSS Finding/Disproved、gVisor/sibling Blocked、typed Witness/Control、durable outcome replay | [Verification seam](design/verification-seam.md) |
+| Verification | partial | `verify(plan)`、Stored XSS Finding/Disproved、Verifier/gVisor/sibling Blocked、typed Witness/Control、durable outcome replay | [Verification seam](design/verification-seam.md) |
 | Model Execution | partial | Finder schema、tool-free Claude process、version/auth probe、budget/process-group終了、policy監査、private result CAS | [Model execution seam](design/model-execution-seam.md) |
 | Research Record | partial | single-writer SQLite Ledger、canonical digest、Campaign preparation、Verification start/completion replay | [Initial implementation seams](design/initial-implementation-seams.md) |
 | Target Intelligence | not implemented | manual intake設計のみ | [Target intake seam](design/target-intake-seam.md) |

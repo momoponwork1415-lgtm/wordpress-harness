@@ -1,4 +1,7 @@
-export { LabControlBlockedError } from "./contracts.js";
+export {
+  IndependentVerifierBlockedError,
+  LabControlBlockedError,
+} from "./contracts.js";
 export { openVerification } from "./verification.js";
 export type {
   ExperimentObservation,
