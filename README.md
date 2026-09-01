@@ -10,11 +10,15 @@ WordPressプラグインのsource reviewを、LLMの探索力と独立した実�
 
 ## Start here
 
-- [Development rules](AGENTS.md)
-- [Context map](CONTEXT-MAP.md)
-- [Domain language](CONTEXT.md)
-- [日本語用語早見表](docs/JAPANESE-GLOSSARY.md)
+- [Module Map — コードを読まずに機能と現在地を把握する](docs/design/module-map.md)
+- [Codebase Guide — 現在のInterface・実装・Test・設計の対応](docs/CODEBASE-GUIDE.md)
 - [Architecture overview diagram](docs/design/architecture-overview.md)
+- [Development rules](AGENTS.md)
+
+詳細が必要になったら、Codebase Guideから変更対象のSeamへ進みます。用語は[Context map](CONTEXT-MAP.md)、[Domain language](CONTEXT.md)、[日本語用語早見表](docs/JAPANESE-GLOSSARY.md)を正本とします。
+
+## Design and research references
+
 - [Architecture](docs/design/architecture.md)
 - [Module architecture](docs/design/module-architecture.md)
 - [Proposed development harness](docs/design/development-harness.md)
@@ -23,6 +27,7 @@ WordPressプラグインのsource reviewを、LLMの探索力と独立した実�
 - [Design Baseline v0.1](docs/design/baseline-v0.1.md)
 - [Design references](docs/REFERENCES.md)
 - [Research synthesis](docs/research/agentic-source-review-ten-verbs.md)
+- [AI-navigable codebase and development-harness research](docs/research/ai-navigable-codebase-specification-reference.md)
 - [Codex Security development-harness reference](docs/research/codex-security-development-harness-reference.md)
 - [daroo researcher reference](docs/research/daroo-researcher-reference.md)
 - [Why the ten verbs are control properties](docs/adr/0001-ten-verbs-as-control-properties.md)

@@ -146,4 +146,4 @@ flowchart TB
 
 `Campaign Control`（調査進行制御）はdomain policy、予算、永続化した意図を所有する。AI workerは`Tool Gateway`（ハーネス用ツール窓口）以外を操作できず、provider credential、container socket、host path、Research Ledger writerへ到達できない。FinderはTargetのread/search/graphと隔離scratchだけを使い、runtime操作はできない。VerificationだけがHypothesisに拘束したtyped Experimentを使う。
 
-詳細なmodule ownershipは[Module architecture](module-architecture.md)、探索は[Exploration seam](exploration-seam.md)、AI実行は[Model execution seam](model-execution-seam.md)、setupは[Campaign setup seam](campaign-setup-seam.md)、対象理解は[Source mapping seam](source-mapping-seam.md)を正本とする。
+コード詳細なしで各Moduleの機能を確認する場合は[Module Map](module-map.md)を入口にする。詳細なmodule ownershipは[Module architecture](module-architecture.md)、探索は[Exploration seam](exploration-seam.md)、AI実行は[Model execution seam](model-execution-seam.md)、setupは[Campaign setup seam](campaign-setup-seam.md)、対象理解は[Source mapping seam](source-mapping-seam.md)を正本とする。

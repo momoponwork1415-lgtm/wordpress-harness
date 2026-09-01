@@ -1,0 +1,77 @@
+# Codebase Guide
+
+Status: living map, 2026-09-01
+
+この文書は、コードを一行ずつ記憶せずに、現在の実装と設計上の置き場所を15分程度で再構成するための索引である。詳細仕様を複製せず、正本となる設計、公開Interface、実装、Testを結び付ける。
+
+## 頭に残すもの
+
+次の5点だけを長期記憶の対象にする。
+
+1. North Starは、oracle-freeな実戦Campaignで未知のRCEまたは同等のsite-wide compromiseを発見し、独立Verificationで実証すること。
+2. 設計原則は`confine -> constrain -> focus -> motivate -> parallelize -> hypothesize -> verify -> record -> prioritize -> iterate`である。
+3. 結果の流れは`Target Intelligence -> Research -> Human OS`であり、context間ではversioned handoffだけを渡す。
+4. Researchの第一階層は`Campaign Control`、`Source Understanding`、`Exploration`、`Verification`、`Model Execution`、`Research Record`の6 Moduleである。
+5. 現在のproduction codeが提供する主な公開入口は`openResearch`と`openPhpSourceAnalysis`の2つである。
+
+個別のschema field、SQLite table、provider command、108件のADR、内部関数は暗記しない。変更対象から必要な正本へ辿る。
+
+## 15分で現在地を戻す
+
+1. [Module Map](design/module-map.md)で各Moduleの機能、入出力、現在の実装状況を確認する。
+2. この文書の「現在の実装」と「設計上の現在地」を読む。
+3. [アーキテクチャ概要](design/architecture-overview.md)の3枚の図で全体、探索loop、信頼領域を確認する。
+4. 作業中のGitHub Issueから、変更するModuleのSeam文書とTestを一つずつ開く。
+
+通常の実装変更で[Module architecture](design/module-architecture.md)全体や全ADRを通読する必要はない。新しいModule ownershipを決める場合だけ該当節へ進み、意外な判断の理由が必要な場合だけSeamから直接linkされたADRを読む。
+
+## 現在の実装
+
+| Capability | Status | Public Interface | Implementation | Behavior Test | Canonical Design |
+| --- | --- | --- | --- | --- | --- |
+| Campaign preparation and read-only inspection | implemented | `openResearch` -> `ResearchModule.runner` / `reader` | [`src/research/index.ts`](../src/research/index.ts), [`contracts.ts`](../src/research/contracts.ts), [`sqlite-research.ts`](../src/research/sqlite-research.ts), [`canonical-json.ts`](../src/research/canonical-json.ts) | [`campaign-prepare.test.ts`](../tests/research/campaign-prepare.test.ts), [`ledger-compatibility.test.ts`](../tests/research/ledger-compatibility.test.ts) | [Initial implementation seams](design/initial-implementation-seams.md) |
+| Content-addressed PHP Program Index | implemented | `openPhpSourceAnalysis` -> `PhpSourceAnalysis.analyze` | [`php-program-index.ts`](../src/research/php-program-index.ts), [`tools/php-program-index`](../tools/php-program-index) | [`php-program-index.test.ts`](../tests/research/php-program-index.test.ts) | [PHP Program Index seam](design/php-program-index-seam.md) |
+| Command-line adapter | implemented | `runCli` and `wordpress-harness` executable | [`src/cli.ts`](../src/cli.ts) | [`campaign-cli.test.ts`](../tests/cli/campaign-cli.test.ts) | [ADR 0053](adr/0053-start-with-a-cli-interface.md), [ADR 0054](adr/0054-keep-the-cli-as-a-thin-adapter.md) |
+
+`src/research/`は初期vertical sliceの配置をまだ保持している。これは直ちに「汚いコード」を意味しないが、acceptedな6 Module ownershipとの対応がfile treeから読み取りにくい。次の実装作業は[Issue #1](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/1)で、behaviorを変えずにこの対応を明示する。
+
+## 設計上の現在地
+
+| Module | Production Status | 現在存在する土台 | 次に読む文書 |
+| --- | --- | --- | --- |
+| Campaign Control | partial | prepare、read、inspect、deterministic replay | [Initial implementation seams](design/initial-implementation-seams.md) |
+| Source Understanding | partial | PHP Program Index | [Source mapping seam](design/source-mapping-seam.md) |
+| Exploration | not implemented | accepted Seamと実装Issueのみ | [Exploration seam](design/exploration-seam.md) |
+| Verification | not implemented | architecture上のownershipとevidence規則のみ | [Module architecture](design/module-architecture.md#verification) |
+| Model Execution | not implemented | accepted transport設計のみ | [Model execution seam](design/model-execution-seam.md) |
+| Research Record | foundation only | single-writer SQLite Ledger、canonical digest、replay | [Initial implementation seams](design/initial-implementation-seams.md) |
+| Target Intelligence | not implemented | manual intake設計のみ | [Target intake seam](design/target-intake-seam.md) |
+| Human OS | not implemented | handoff ownershipのみ | [Module architecture](design/module-architecture.md#human-os-modules) |
+
+Milestoneの順序と完了条件は[Roadmap](design/roadmap.md)、実装Issueの依存順は[Issue #8](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/8)を正本とする。
+
+## 情報の正本
+
+| 知りたいこと | 正本 | ここへ置かないもの |
+| --- | --- | --- |
+| 用語の意味と関係 | 各contextの`CONTEXT.md`と[Context Map](../CONTEXT-MAP.md) | file path、class名、実装手順 |
+| systemの制約と大きなflow | [Architecture](design/architecture.md) | 現在の実装進捗 |
+| Module ownershipと許可依存 | [Module architecture](design/module-architecture.md) | Issueの作業手順 |
+| 公開Interface、不変条件、failure、受入scenario | 各Seam文書 | 内部helperの一覧 |
+| 現在の実装場所とstatus | このCodebase Guide | 詳細仕様の再記述 |
+| 実行可能なbehavior | 公開Interfaceから観測するTest | private methodや内部call順 |
+| hard-to-reverseな判断の理由 | ADR | 作業メモ、容易に変えられる選択 |
+| 今回変更する範囲 | GitHub Issue | 長期domain definition |
+| coding agentの開発規則 | [`AGENTS.md`](../AGENTS.md) | 製品architectureの再記述 |
+
+同じ事実を複数文書で保守しない。概要文書は正本へlinkし、詳細をコピーしない。
+
+## 変更するときの経路
+
+1. GitHub Issueで一つの観測可能なbehaviorと対象Moduleを確認する。
+2. この文書から該当Seamと既存Public Interfaceを開く。
+3. Testを先に読み、外から観測できる現在のbehaviorを確認する。
+4. Interface、Module ownership、実装status、主要pathのいずれかが変わる場合は、codeと同じ変更でこの表を更新する。
+5. domain termが変わる場合だけ`CONTEXT.md`、hard-to-reverseな判断が生じる場合だけADRを更新する。
+
+Module内部のhelper追加、局所的なrefactor、private file移動を一件ずつこの表へ記録しない。人間が追う単位はfileではなく、安定したInterfaceを持つModuleである。

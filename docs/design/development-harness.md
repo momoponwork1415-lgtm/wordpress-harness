@@ -6,7 +6,7 @@ Status: proposed, 2026-09-01
 
 Development Harnessは、productionのResearch Harnessを作る人間とcoding agentが、同じ規則、同じcommand、同じ観測可能な合格条件で変更を検査するための開発用仕組みである。製品のCampaign、Model Execution、Verification Lab、Research Ledgerには含めない。
 
-この設計では、`openai/codex-security`を製品architectureの第4設計参照にせず、TypeScript security toolを継続開発するためのリファレンス実装としてだけ比較する。調査結果は[Codex Security development-harness reference](../research/codex-security-development-harness-reference.md)に分けて記録する。
+この設計では、`openai/codex-security`を製品architectureの第4設計参照にせず、TypeScript security toolを継続開発するためのリファレンス実装としてだけ比較する。調査結果は[Codex Security development-harness reference](../research/codex-security-development-harness-reference.md)に分けて記録する。人間がAI開発のcodebaseを把握し続ける方法と、他repositoryのHarness比較は[AI-navigable codebase specification reference](../research/ai-navigable-codebase-specification-reference.md)に記録する。
 
 ## One small interface
 
@@ -21,7 +21,7 @@ pnpm test -- <test-path>   # red-green中のfocused test
 
 依存脆弱性databaseの取得、live credential、model login、container registry、WordPress.org、Wordfence API等のnetwork依存checkを`pnpm check`へ入れない。offline gateを外部障害で不安定にせず、networkを必要とするsecurity checkは別の明示commandまたはscheduled CIが必要になった時点で設計する。
 
-## Four parts
+## Five parts
 
 ### 1. Developer Contract
 
@@ -74,6 +74,22 @@ coverage percentageは当初gateにしない。重要なinterface scenarioの欠
 
 Action dependencyはtagだけでなくfull commit SHAへ固定し、対応するrelease versionをcommentに残す。job timeoutとconcurrency cancellationを設定する。CI専用のtest分岐、変更fileだけのskip、sharding、cache tuningは最初に入れない。
 
+### 5. Human Comprehension Map
+
+[Module Map](module-map.md)をコード詳細なしで機能を理解する視覚的な入口、[Codebase Guide](../CODEBASE-GUIDE.md)を現在の実装を短時間で再構成する索引とする。Guideは詳細仕様を再記述せず、次だけをModule単位で結び付ける。
+
+- production status
+- public Interface
+- 主な実装場所
+- Interfaceから観測するBehavior Test
+- 正本となるSeam文書
+
+読む順序は`Module Map -> Codebase Guide -> current Issue -> one Seam -> Behavior Test`とし、Module architecture全体と全ADRの通読を通常作業の前提にしない。ADRは理由を調べる索引の末端であり、記憶対象ではない。
+
+Interface、ownership、status、主なpath、Testの対応が変わるproduction変更ではGuideも同じ変更で更新する。`docs:check`は少なくともGuide内のrepository pathとrelative linkが存在することを検査する。semanticなModule対応は自動生成せずreviewで確認する。file一覧から生成した巨大なwikiは、重要度を表現できず人間の入口を再び増やすため採用しない。
+
+Issueは今回の変更範囲と受入条件を所有する一時的な仕様であり、長期的なdomain definitionやModule contractを複製しない。Issueで決まった長期事実は、codeへ入る同じ変更で`CONTEXT.md`、Seam、またはADRのうち一つの正本へ反映する。
+
 ## Current baseline
 
 既に次が存在する。
@@ -82,9 +98,10 @@ Action dependencyはtagだけでなくfull commit SHAへ固定し、対応する
 - `pnpm check`によるtypecheck、17 behavior tests、build
 - real temporary SQLite、filesystem、PHP helperを使うtest
 - architecture、TDD、security、Git運用を定めた`AGENTS.md`
+- 現在のInterface、実装、Test、Seamを結ぶ`Codebase Guide`
 - local hookによるgitleaks、test、Trivy
 
-不足しているのは、format gate、repository-owned docs check、versioned GitHub CIである。local hookは開発機固有であり、fresh cloneの合格条件には数えない。また現行Trivy hookは結果にかかわらずpushを継続するため、blocking security gateとは呼ばない。
+不足しているのは、format gate、repository-owned docs check、versioned GitHub CIである。Codebase Guideは現時点では人間が保守するliving mapであり、path/link driftの自動検査はdocs checkの実装後に有効になる。local hookは開発機固有であり、fresh cloneの合格条件には数えない。また現行Trivy hookは結果にかかわらずpushを継続するため、blocking security gateとは呼ばない。
 
 ## Deferred until observed need
 
@@ -112,8 +129,9 @@ Model ExecutionでOS固有のprocess cleanup failureが観測された場合は�
 ## First implementation slices
 
 1. Developer Contractへpublic CLI互換性、合成fixture、推測上の防御を増やさない規則を不足分だけ追記する。
-2. Prettierとrepository-owned `docs:check`を追加し、`pnpm check`から実行する。
+2. Prettierとrepository-owned `docs:check`を追加し、`pnpm check`から実行する。Codebase Guide内のrepository linkも検査する。
 3. 一つのUbuntu GitHub Actions jobを追加し、fresh checkoutで同じgateを実行する。
-4. 実装Issue #1を開始し、実際のfailureからDevelopment Harnessを追加改善する。
+4. 実装Issue #1を開始し、Module treeとCodebase Guideの対応を同じ変更で更新する。
+5. 実際に人間が迷った経路だけをGuideへ追加し、file単位の自動wikiへ拡張しない。
 
 この順序はproduction moduleの設計gateを置き換えない。Development Harnessがgreenでも、未承認のproduction seamを実装してよいことにはならない。

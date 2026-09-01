@@ -5,7 +5,7 @@
 ## Mission and required reading
 
 - North Starは、oracle-freeなprospective CampaignでRCEまたは同等のsite-wide compromiseへ至る未知routeを発見し、独立VerificationとHuman Confirmationまで到達すること。
-- 作業前に[CONTEXT-MAP.md](CONTEXT-MAP.md)、変更対象contextの`CONTEXT.md`、[architecture](docs/design/architecture.md)、関連ADRを読む。
+- 作業前に[Codebase Guide](docs/CODEBASE-GUIDE.md)から現在の実装、対象Module、公開Interface、Test、正本となるSeamを特定する。変更対象contextの`CONTEXT.md`とSeamを読み、system全体の判断が必要な場合だけ[architecture](docs/design/architecture.md)、理由の確認が必要な場合だけSeamから直接linkされたADRを読む。全ADRの通読を前提にしない。
 - 設計を正当化する外部資料は[docs/REFERENCES.md](docs/REFERENCES.md)の3件だけとする。Codex文書やtool文書は開発手順の参考であり、第4の設計参照資料ではない。
 - `CONTEXT.md`、code、Issueでは英語のdomain termとcode identifierを正式語として使う。user向け説明は日本語で書き、必要に応じて「正式語（日本語の意味）」を併記し、[日本語用語早見表](docs/JAPANESE-GLOSSARY.md)から意味を確認できるようにする。
 - Mermaid図の箱には短い正式語だけを置き、長い日本語説明、制約、例は図の直下へ出す。GitHub上で文字が見切れる長さのlabelを作らない。
@@ -28,6 +28,7 @@
 - North Starへ直接寄与する探索、Source Mapping、Verificationを優先する。UI、notification、multi-user、運用自動化は、安全隔離とevidence integrityに必要な最小限を除き、実戦で観測した故障をissue化して直す。
 - hard-to-reverse、文脈なしでは意外、実在するtrade-offの3条件を満たす判断だけADRにする。既存ADRの歴史を書き換えず、新しいADRでsupersedeする。
 - domain termが変わったら該当`CONTEXT.md`と[日本語用語早見表](docs/JAPANESE-GLOSSARY.md)を同じ変更で更新する。`CONTEXT.md`へ実装詳細を置かない。
+- Module ownership、公開Interface、production status、主要な実装pathまたはBehavior Testの対応が変わったら[Codebase Guide](docs/CODEBASE-GUIDE.md)を同じ変更で更新する。Guideへ内部helperや詳細仕様を複製しない。
 - 外部入力、event、artifact、prompt、Model Profileはversionとprovenanceを持ち、runtime schemaでdecodeする。
 - clock、ID、randomness、provider response順をdomain判断へ暗黙に混ぜない。再現可能な入力とstable orderingを使う。
 - deterministic source fact、model推論、未解決gapを同じ真偽値へ潰さない。modelは観測済みfactを変更できず、追加relationはsourceまたは版付きKnowledgeの根拠を持つ。未解決のcode identifierは既存Evidence Route schemaと同じ`unknown`を使う。
