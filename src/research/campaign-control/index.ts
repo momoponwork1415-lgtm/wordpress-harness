@@ -24,7 +24,10 @@ import type {
   ResearchRecord,
 } from "../research-record/index.js";
 import { surfaceMapSchema } from "../source-mapping/contracts.js";
-import { openVerification } from "../verification/index.js";
+import {
+  openVerification,
+  type VerificationRecordView,
+} from "../verification/index.js";
 import {
   campaignRunPlanSchema,
   finderAttemptMaterializationSchema,
@@ -109,30 +112,33 @@ async function completeCampaignAttempt(
 }
 
 function iterationDecision(
-  verifications: readonly {
-    readonly kind: "verification-record";
-    readonly schemaVersion: 1;
-    readonly verificationId: string;
-    readonly digest: string;
-    readonly outcome: "finding" | "disproved" | "blocked";
-  }[],
+  verifications: readonly VerificationRecordView[],
   explorationKind: "verify" | "blocked",
 ): IterationDecision {
-  if (
-    verifications.some((verification) => verification.outcome !== "blocked")
-  ) {
+  const conclusive = verifications.filter(
+    (verification) => verification.ref.outcome !== "blocked",
+  );
+  if (conclusive.length > 0) {
     return {
       kind: "await-calibration",
-      terminalVerifications: [...verifications],
+      terminalVerifications: conclusive.map((verification) => verification.ref),
     };
   }
+  const verificationReasons = verifications.flatMap((verification) =>
+    verification.value.outcome.kind === "blocked"
+      ? [verification.value.outcome.reason]
+      : [],
+  );
   return {
     kind: "blocked-capability",
-    reasons: [
-      explorationKind === "blocked"
-        ? "no-source-bound-hypothesis"
-        : "verification-blocked",
-    ],
+    reasons:
+      verificationReasons.length > 0
+        ? [...new Set(verificationReasons)].sort(compareText)
+        : [
+            explorationKind === "blocked"
+              ? "no-source-bound-hypothesis"
+              : "unsupported-attacker-premise",
+          ],
   };
 }
 
@@ -452,8 +458,22 @@ async function executeRun(
   verificationRefs.sort((left, right) =>
     compareText(left.verificationId, right.verificationId),
   );
+  const verificationViews = await Promise.all(
+    verificationRefs.map(async (ref) => {
+      const view = await record.readVerification(
+        plan.campaignId,
+        ref.verificationId,
+      );
+      if (view === undefined) {
+        throw new Error(
+          `Verification record is missing: ${ref.verificationId}`,
+        );
+      }
+      return view;
+    }),
+  );
   const decision = iterationDecision(
-    verificationRefs,
+    verificationViews,
     completedExploration.kind,
   );
   return record.recordCampaignRunCompletion({

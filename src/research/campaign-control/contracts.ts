@@ -18,6 +18,7 @@ import {
 } from "../source-mapping/contracts.js";
 import {
   labBaselineRefSchema,
+  verificationBlockReasonSchema,
   verificationRecordRefSchema,
   type IndependentVerifier,
   type LabControl,
@@ -89,11 +90,13 @@ export const campaignRunPlanSchema = z.strictObject({
   calibrationContext: calibrationContextRefSchema.optional(),
 });
 
-const blockedCapabilityReasonSchema = z.enum([
-  "mapping-incomplete",
-  "no-source-bound-hypothesis",
-  "unsupported-attacker-premise",
-  "verification-blocked",
+const blockedCapabilityReasonSchema = z.union([
+  z.enum([
+    "mapping-incomplete",
+    "no-source-bound-hypothesis",
+    "unsupported-attacker-premise",
+  ]),
+  verificationBlockReasonSchema,
 ]);
 
 export const iterationDecisionSchema = z.discriminatedUnion("kind", [

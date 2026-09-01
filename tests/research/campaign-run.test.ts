@@ -27,6 +27,7 @@ import type {
   IndependentVerifier,
   LabControl,
 } from "../../src/research/verification/index.js";
+import { LabControlBlockedError } from "../../src/research/verification/index.js";
 import type {
   ExplorationBootstrapPolicy,
   ExplorationPolicyRef,
@@ -164,6 +165,37 @@ function finder(
   };
 }
 
+function orderedFinder(
+  artifacts: JsonArtifactStore,
+  candidate: SourceBoundHypothesis,
+  order: "forward" | "reverse",
+): ModelExecution {
+  const pending: {
+    readonly plan: Parameters<ModelExecution["run"]>[0];
+    readonly resolve: (result: AttemptExecutionResult) => void;
+    readonly reject: (error: unknown) => void;
+  }[] = [];
+  return {
+    run: (plan) =>
+      new Promise((resolve, reject) => {
+        pending.push({ plan, resolve, reject });
+        if (pending.length !== 2) return;
+        const scheduled =
+          order === "forward" ? pending : [...pending].reverse();
+        void (async () => {
+          for (const item of scheduled) {
+            try {
+              const result = await finder(artifacts, candidate).run(item.plan);
+              item.resolve(result);
+            } catch (error) {
+              item.reject(error);
+            }
+          }
+        })();
+      }),
+  };
+}
+
 function materializer(): AttemptPlanMaterializer {
   return {
     materialize: async () => ({
@@ -263,6 +295,7 @@ async function openScenario(
     candidate: SourceBoundHypothesis,
   ) => ModelExecution,
   maxFinderAttempts = 2,
+  labControl: (artifacts: JsonArtifactStore) => LabControl = lab,
 ) {
   const databasePath = join(directory, "research.sqlite");
   const artifacts = openFileJsonArtifactStore(join(directory, "artifacts"));
@@ -391,7 +424,7 @@ async function openScenario(
       attemptPlanMaterializer: materializer(),
       modelExecution: modelExecution(artifacts, candidate),
       independentVerifier: verifier(),
-      labControl: lab(artifacts),
+      labControl: labControl(artifacts),
     },
   });
   await research.runner.prepare(input);
@@ -514,6 +547,73 @@ describe("CampaignRunner.run", () => {
       }
     } finally {
       await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("preserves gVisor unavailability as the Campaign stop reason", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "campaign-gvisor-blocked-"));
+    const scenario = await openScenario(directory, finder, 2, () => ({
+      execute: async () => {
+        throw new LabControlBlockedError("gvisor-unavailable");
+      },
+    }));
+
+    try {
+      const ref = await scenario.research.runner.run(scenario.plan);
+      const view = await scenario.research.reader.inspect(
+        scenario.input.campaignId,
+        { kind: "run", runId: scenario.plan.runId },
+      );
+
+      expect({ ref, view }).toMatchObject({
+        ref: { decision: "blocked-capability" },
+        view: {
+          value: {
+            verifications: [{ outcome: "blocked" }],
+            decision: {
+              kind: "blocked-capability",
+              reasons: ["gvisor-unavailable"],
+            },
+          },
+        },
+      });
+    } finally {
+      scenario.research.close();
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("produces the same terminal digest when Finder completion order reverses", async () => {
+    const firstDirectory = await mkdtemp(join(tmpdir(), "campaign-order-a-"));
+    const secondDirectory = await mkdtemp(join(tmpdir(), "campaign-order-b-"));
+    const first = await openScenario(firstDirectory, (artifacts, candidate) =>
+      orderedFinder(artifacts, candidate, "forward"),
+    );
+    const second = await openScenario(secondDirectory, (artifacts, candidate) =>
+      orderedFinder(artifacts, candidate, "reverse"),
+    );
+
+    try {
+      const firstRef = await first.research.runner.run(first.plan);
+      const secondRef = await second.research.runner.run(second.plan);
+      const firstView = await first.research.reader.inspect(
+        first.input.campaignId,
+        { kind: "run", runId: first.plan.runId },
+      );
+      const secondView = await second.research.reader.inspect(
+        second.input.campaignId,
+        { kind: "run", runId: second.plan.runId },
+      );
+
+      expect({ secondRef, secondView }).toEqual({
+        secondRef: firstRef,
+        secondView: firstView,
+      });
+    } finally {
+      first.research.close();
+      second.research.close();
+      await rm(firstDirectory, { force: true, recursive: true });
+      await rm(secondDirectory, { force: true, recursive: true });
     }
   });
 });
