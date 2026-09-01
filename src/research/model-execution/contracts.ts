@@ -39,6 +39,7 @@ export const attemptPlanSchema = z.strictObject({
   budget: z.strictObject({
     maxWallTimeMs: z.number().int().positive(),
     maxOutputBytes: z.number().int().positive(),
+    maxHypotheses: z.number().int().positive().max(32),
   }),
 });
 

@@ -35,11 +35,11 @@ callerはprovider executable、argv、session ID、credential path、process ID�
 
 ## Implemented first slice
 
-現行実装はFinder role、公式Claude Code process `2.1.251`、`claude-opus-5`だけを扱う細いadapterである。`Attempt Plan`はTarget、Work Lease、model/effort、Eligibility Receipt digest、render済みprompt、wall/output budgetを固定する。Finder source contextの選択とprompt renderingはまだCampaign Controlへ統合していない。
+現行実装はFinder role、公式Claude Code process `2.1.251`、`claude-opus-5`だけを扱う細いadapterである。`Attempt Plan`はTarget、Work Lease、model/effort、Eligibility Receipt digest、render済みprompt、wall/output budgetを固定する。Campaign Controlのproduction materializerが固定Surface Map、PHP Program Index、Focus Area、Work Leaseからoracle-free source contextを決定的に選択し、実ファイルdigestを再検査してpromptをrenderする。実Opusを伴う`CampaignRunner.run`へのcompositionはまだ未完了である。
 
 native adapterは推論前にexecutable versionと公式`auth status`を検査する。認証切れは`auth-required`として終了し、別modelへfallbackしない。provider built-in tool、Web、subagent、ambient MCP、slash command、session persistence、Chromeを無効化し、promptはargvではなくstdinへ渡す。親processだけでなくdetached process groupをwall ceiling時に終了し、`SIGTERM`後または親終了時に残った子へ`SIGKILL`を送る。wall budgetにはversion/auth probeも含める。
 
-Claude JSON envelope、実model identity、permission denial、Web request数、subagent数は一つのdecoderでruntime decodeする。FinderはさらにFinder schemaとWork Lease bindingを、Independent Verifierは検証identityとsource evidence bindingを各Moduleで検査する。Finderの成功outputまたは型付きterminal resultはprivate CASへ保存し、呼出元へdigest付きrefを返す。provider errorのstderrはcredential値をredactしてprivate error artifactへ置き、公開resultにはそのdigestだけを残す。
+Claude JSON envelope、実model identity、permission denial、Web request数、subagent数は一つのdecoderでruntime decodeする。FinderはさらにFinder schema、Work Lease binding、Lease固有の`maxHypotheses`を、Independent Verifierは検証identityとsource evidence bindingを各Moduleで検査する。Finderの成功outputまたは型付きterminal resultはprivate CASへ保存し、呼出元へdigest付きrefを返す。provider errorのstderrはcredential値をredactしてprivate error artifactへ置き、公開resultにはそのdigestだけを残す。
 
 2026-09-02のprivate development benchmarkでは、oracle情報を与えず、実在するTranslatePress 3.2.5のSurface Mapから一つのWork Leaseを選び、約414 KBのsource contextをOpus 5へ渡した。独立した二回の成功実行はそれぞれ二件と一件のschema-valid Source-bound Hypothesisを返し、どちらもExplorationの`verify` decisionまで到達した。この差は候補生成の分散であり、単発runを能力評価に使わない。これはtransportと取込経路の成立確認であって、Hypothesisの正しさ、脆弱性発見、Milestone 1完了を意味しない。target source、prompt、provider outputはGitへ置かない。
 

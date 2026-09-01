@@ -1,6 +1,6 @@
 # Campaign execution seam
 
-Status: accepted on 2026-09-02; implementation in progress
+Status: accepted on 2026-09-02; closed-loop behavior and production Finder materialization implemented
 
 ## Design target
 
@@ -160,10 +160,12 @@ Behavior Testは`CampaignRunner.run(plan)`と`CampaignReader.read/inspect`から
 
 ## Implementation status
 
-最初のbehavior sliceは実装済みである。`CampaignRunner.run`はCASに固定されたSurface MapとExploration Policyを検査し、有限Work Waveを作り、最大3 Attemptの上限内でFinderを実行し、source-bound Hypothesisだけを独立Verificationへ渡す。Attempt PlanはCampaign ControlがTarget、Lease、予算へ結び付け、private CAS保存、Ledger intent、外部process、terminal receiptの順で進む。中断後のin-progress processは`orphaned`へ確定し、残予算がある場合だけfresh Attempt IDで置き換える。FindingまたはDisprovedは`await-calibration`を伴うterminal Campaign RunとしてResearch Ledgerへ記録され、close/reopen後の再実行はproviderやLabを再起動せず同じrefを返す。
+最初のbehavior sliceは実装済みである。`CampaignRunner.run`はCASに固定されたSurface MapとExploration Policyを検査し、有限Work Waveを作り、最大3 Attemptの上限内でFinderを実行し、source-bound Hypothesisだけを独立Verificationへ渡す。Attempt PlanはCampaign ControlがTarget、Lease、予算へ結び付け、private CAS保存、Ledger intent、外部process、terminal receiptの順で進む。production tool-free materializerは固定Surface Map、PHP Program Index、Focus Area、Work Leaseからsource sliceを決定的に作り、実ファイルのregular-file/realpath/size/SHA-256を再検査する。seed fileを先頭に、希少な共有WordPress hook、文字列参照されたPHP template、Map relation、二段のcall neighborを上限内で選び、workerへadvisory、CVE、patch、Case role、期待結果を渡さない。Leaseの`maxHypotheses`はprompt上の依頼だけでなくrole output schemaの配列上限として強制し、超過outputを`completed`にしない。中断後のin-progress processは`orphaned`へ確定し、残予算がある場合だけfresh Attempt IDで置き換える。FindingまたはDisprovedは`await-calibration`を伴うterminal Campaign RunとしてResearch Ledgerへ記録され、close/reopen後の再実行はproviderやLabを再起動せず同じrefを返す。
 
 並列Finderの完了順を逆転しても、Work Lease順に正規化されたterminal recordとdigestが同一になることをbehavior testで固定している。また、Verificationのtyped Blocked reasonはCampaignの`blocked-capability`まで失われない。
 
 仮説なしでFinder予算が残る場合、pure Iteration Reviewは前Wave、残Attempt数、目的、停止条件を持つ有限workを作り、private CASのdigestへ固定した`continue-unresolved-work`を返す。Verificationがtyped Blockedを返した場合は探索のやり直しに置き換えず、blockerを優先する。
 
-未実装の必須境界は、`continue-unresolved-work`を次の実Waveへ消費するreconcile、Verificationの各crash境界、private Calibration Review、実gVisor/browser adapterである。
+Git外のBrizy 2.8.11/2.8.12 snapshotでは、同じproduction materializerで各3 Leaseを外部modelなしに構築し、source入力が設定上限内に収まり、2.8.11のstate-chain Leaseが保存側、unauthenticated form側、管理画面templateを同時に含むことを確認した。これはsource選択とbindingのcharacterizationであり、脆弱性発見またはpatched negativeの実証ではない。
+
+未実装の必須境界は、`continue-unresolved-work`を次の実Waveへ消費するreconcile、Verificationの各crash境界、private Calibration Review、実Opus Finder・Independent Verifier・gVisor/browserを連結したCampaign runである。

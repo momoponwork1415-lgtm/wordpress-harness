@@ -15,6 +15,33 @@ import {
 const leaseId = sha256Digest("finder-lease");
 const anchorNodeId = sha256Digest("entry-node");
 
+function candidateHypothesis() {
+  return {
+    kind: "source-bound-hypothesis" as const,
+    schemaVersion: 1 as const,
+    causalIdentity: {
+      rootCause: "missing-authorization",
+      attackerControlledPrimitive: "unauthenticated-request",
+      brokenSecurityProperty: "authorization",
+    },
+    attackerPremise: "unauthenticated" as const,
+    impact: "account-takeover" as const,
+    route: {
+      anchorNodeId,
+      nodeIds: [anchorNodeId],
+      relationIds: [],
+    },
+    unknowns: [
+      {
+        claim: "the callback discloses a reset link",
+        requiredEvidence: "trace the callback response",
+      },
+    ],
+    falsifier: "the callback requires an administrator capability",
+    nextExperiment: "reproduce as an unauthenticated principal",
+  };
+}
+
 function attemptPlan(): AttemptPlan {
   return {
     kind: "attempt-plan",
@@ -38,6 +65,7 @@ function attemptPlan(): AttemptPlan {
     budget: {
       maxWallTimeMs: 60_000,
       maxOutputBytes: 1_000_000,
+      maxHypotheses: 1,
     },
   };
 }
@@ -176,32 +204,7 @@ describe("ModelExecution.run", () => {
       kind: "finder-output",
       schemaVersion: 1,
       leaseId,
-      hypotheses: [
-        {
-          kind: "source-bound-hypothesis",
-          schemaVersion: 1,
-          causalIdentity: {
-            rootCause: "missing-authorization",
-            attackerControlledPrimitive: "unauthenticated-request",
-            brokenSecurityProperty: "authorization",
-          },
-          attackerPremise: "unauthenticated",
-          impact: "account-takeover",
-          route: {
-            anchorNodeId,
-            nodeIds: [anchorNodeId],
-            relationIds: [],
-          },
-          unknowns: [
-            {
-              claim: "the callback discloses a reset link",
-              requiredEvidence: "trace the callback response",
-            },
-          ],
-          falsifier: "the callback requires an administrator capability",
-          nextExperiment: "reproduce as an unauthenticated principal",
-        },
-      ],
+      hypotheses: [candidateHypothesis()],
     };
     const execution = openModelExecution({
       artifactDirectory: directory,
@@ -239,6 +242,29 @@ describe("ModelExecution.run", () => {
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
+  });
+
+  it("rejects output exceeding the Work Lease hypothesis ceiling", async () => {
+    const output = {
+      kind: "finder-output",
+      schemaVersion: 1,
+      leaseId,
+      hypotheses: [candidateHypothesis(), candidateHypothesis()],
+    };
+
+    await expect(
+      runWithProcess({
+        execute: async () => ({
+          kind: "exited",
+          exitCode: 0,
+          stdout: JSON.stringify(providerEnvelope(output)),
+          stderr: "",
+        }),
+      }),
+    ).resolves.toMatchObject({
+      status: "invalid-output",
+      value: { reason: "invalid-finder-output" },
+    });
   });
 
   it("runs the pinned native Claude process behind the same interface", async () => {
@@ -357,7 +383,11 @@ fi
       try {
         const plan = {
           ...attemptPlan(),
-          budget: { maxWallTimeMs: 100, maxOutputBytes: 1_000_000 },
+          budget: {
+            maxWallTimeMs: 100,
+            maxOutputBytes: 1_000_000,
+            maxHypotheses: 1,
+          },
         };
         const result = await execution.run(plan);
         const observedProcessIds = (await readFile(processIdsPath, "utf8"))

@@ -26,7 +26,12 @@ class FirstFinderModelExecution implements ModelExecution {
 
   async run(planInput: AttemptPlan): Promise<AttemptExecutionResult> {
     const plan = attemptPlanSchema.parse(planInput);
-    const outputJsonSchema = z.toJSONSchema(finderOutputSchema);
+    const boundedFinderOutputSchema = finderOutputSchema.extend({
+      hypotheses: finderOutputSchema.shape.hypotheses.max(
+        plan.budget.maxHypotheses,
+      ),
+    });
+    const outputJsonSchema = z.toJSONSchema(boundedFinderOutputSchema);
     delete outputJsonSchema.$schema;
     let processResult;
     try {
@@ -80,7 +85,7 @@ class FirstFinderModelExecution implements ModelExecution {
       return this.#terminal(plan, "policy-denied", envelope.reason);
     }
 
-    const decoded = finderOutputSchema.safeParse(envelope.output);
+    const decoded = boundedFinderOutputSchema.safeParse(envelope.output);
     if (!decoded.success || decoded.data.leaseId !== plan.leaseId) {
       return this.#terminal(plan, "invalid-output", "invalid-finder-output");
     }

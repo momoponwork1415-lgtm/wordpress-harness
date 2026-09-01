@@ -272,6 +272,7 @@ async function executeRun(
       budget: {
         maxWallTimeMs: lease.budget.maxWallTimeMs,
         maxOutputBytes: materialized.maxOutputBytes,
+        maxHypotheses: lease.budget.maxHypotheses,
       },
     });
     const attemptPlanDigest =

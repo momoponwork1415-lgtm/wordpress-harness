@@ -27,7 +27,10 @@ export interface OpenClaudeStructuredProcessOptions {
 export interface ClaudeStructuredProcessRequest {
   readonly modelProfile: ModelProcessRequest["plan"]["modelProfile"];
   readonly prompt: string;
-  readonly budget: ModelProcessRequest["plan"]["budget"];
+  readonly budget: {
+    readonly maxWallTimeMs: number;
+    readonly maxOutputBytes: number;
+  };
   readonly outputJsonSchema: object;
 }
 
