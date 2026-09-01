@@ -87,7 +87,7 @@ Researchを理解・操作するときは、次の6moduleだけを第一階層�
 | --- | --- | --- |
 | 調査進行制御 | Campaign Control | Campaign lifecycle、budget、有限Work Wave、停止・再開 |
 | 対象理解 | Source Understanding | Target Workspace、Lab Baseline Builder、Source Mapping、PHP Program Index、Mapper |
-| 脆弱性仮説の探索 | Exploration | Focus Area、探索順、重複排除、Iteration Review |
+| 脆弱性仮説の探索 | Exploration | Focus Area、Strategy Portfolio、Chain Synthesis、探索順、重複排除、Gap Review、Iteration Review |
 | 独立検証 | Verification | 成立証拠、因果対照実験、反証レビュー、検証環境制御、Review Packaging |
 | AI実行管理 | Model Execution | Claude/GPT/Grok/GLM adapter、session、retry、usage、transcript |
 | 研究記録 | Research Record | Research Ledger、CAS、replay、参照整合性 |
@@ -232,7 +232,7 @@ Verificationは完成済みLab Baseline refだけを受け取り、Experimentご
 
 ### Source Mapping
 
-Target Snapshotから脆弱性主張を含まないSurface Map revisionを作るdeep moduleである。内部にdeterministic PHP Source Analysis、asset inventory、evidence grading、context selection、Mapper Attempt、revision mergeを持ち、callerへparser version、AST traversal、prompt分割、file分類、cross-file synthesis順を漏らさない。
+Target Snapshotから脆弱性主張を含まないSurface Map revisionを作るdeep moduleである。内部にdeterministic PHP Source Analysis、asset inventory、evidence grading、context selection、Mapper Attempt、必要なruntime revisionだけで行う低影響なRuntime Observation、revision mergeを持ち、callerへparser version、AST traversal、prompt分割、file分類、cross-file synthesis順、Lab handleを漏らさない。
 
 ```ts
 build(input: SurfaceMappingInput): Promise<SurfaceMapRef>;
@@ -244,19 +244,27 @@ nodeとrelationはTarget Snapshot digest、file digest、byte range、kind、端
 
 Mapperの初期promptはstable orderingで選んだgraph近傍とsource sliceだけを持つ。同一Targetの追加readも、anchor、理由、用途を持つContext Requestとして記録する。Agentへ全repositoryを無条件にprompt投入したりphysical host pathを渡したりしない。WordPress Coreとframework semanticsはTargetのsource factにせず、digest固定したKnowledge Capsuleに由来する`inferred` evidenceとして区別する。
 
+dynamic registration、callback、dispatch、state transitionを静的に確定できず、Explorationから情報利得の高いMapping Evidence Requestが返った場合、Source Mappingは版付きRuntime Observation Planをfresh Lab Baseline cloneで実行できる。これはSource Mapping内部のdriven seamであり、Finderへruntime、HTTP、browser、shellを渡さない。Observation Recordは次のMap revisionの根拠になれるが、WitnessまたはFinding evidenceにはならない。
+
 既存Surface Mapを更新する時はpredecessor refを持つ新revisionを作り、旧revisionを変更しない。Source MappingはFocus Areaを決めず、Exploration ControlがMapのsurface ownership anchorから重複しないFocus Areaを作る。vulnerability classはExploration Laneに使えてもsurface ownership keyにはしない。acceptedなinterface、failure semantics、test surfaceは[Source mapping seam](source-mapping-seam.md)に固定し、詳細な判断は[ADR 0103](../adr/0103-build-evidence-graded-surface-map-revisions.md)に記録する。
 
 ### Exploration Control
 
-何を次に調べるかを所有するpure decision moduleである。Surface MapからFocus Areaを作り、三Exploration Laneを含む有限Work Waveを計画し、Attemptのrole outputをHypothesis、Closure Record、Context Requestへdecodeしてdeduplicateする。
+何をどの異質な方法で次に調べるかを所有するpure decision moduleである。最小条件を満たすSurface MapからFocus Areaを作り、三Exploration Laneと五Exploration Strategyを別軸で組み合わせた有限Work Waveを計画する。Attempt outputのdecodeとdedup、minority routeの保持、Work Wave barrier後のChain Synthesis、独立Gap Review、closureまたは再開判断までを一つのinterfaceへ隠す。
 
 ```ts
-plan(state: ExplorationState): WorkWavePlan;
-accept(state: ExplorationState, attempt: AttemptExecutionResult): ExplorationDelta;
-rank(state: ExplorationState): OrderedWork;
+decide(input: ExplorationDecisionInput): ExplorationDecision;
 ```
 
-`AttemptExecutionResult`はdurable receipt refとprovider非依存のterminal status/outputを持つ。Exploration Controlはrole固有schemaでoutputをdecodeするが、raw stream、session ID、provider eventを受け取らない。providerを起動せず、arrival order、model confidence、programme rewardだけでpriorityを変えない。Work Wave内の結果は全Attempt terminal後にstable Work Lease ID順でfoldする。
+`ExplorationDecision`は`run-wave | revise-map | verify | review-gaps | close | blocked`のいずれかで、Campaign Controlが実行すべき次の有限workだけを返す。`AttemptExecutionResult`はdurable receipt refとprovider非依存のterminal status/outputを持つ。Exploration Controlはrole固有schemaでoutputをdecodeするが、raw stream、session ID、provider eventを受け取らない。providerを起動せず、arrival order、model confidence、programme reward、model多数決だけでpriorityまたは採否を変えない。
+
+LaneはFrontier、Primitive、Coverageという探索目的、Strategyはentry順方向、sink逆方向、state-chain、権限・security invariant、Wildcardという探索方法である。共通Finder roleとOutput Schemaを保ち、vulnerability class別moduleまたはagent hierarchyを作らない。eligibleなWork Waveには非ゼロのWildcard枠を置き、高リスクsurfaceとFrontier候補だけを可能な限り異なるmodel family・Strategyで重ねる。具体的な枠数と比率は実戦で調整する。
+
+Finderは別Finderのconversation、scratch、進行中outputを読まない。Work Wave内の結果は全Attempt terminal後にstable Work Lease ID順でfoldし、型付きRoute Fragment、Hypothesis、state transitionからChain Synthesisを行う。一つのmodelだけが出したsource-bound Hypothesisを捨てず、相反する支持・反証routeをconsensusで潰さない。criticはfalsifierまたは不足証拠を追加できるが拒否権を持たない。
+
+探索は全source解析完了を待たず、inventory、stable surface anchors、根拠状態、明示gapを持つ最小Surface Mapから開始する。追加sourceまたはdynamic relationが必要ならMapping Evidence Requestを返し、Map revision後の次decisionで再開する。Semgrep等のmatchはHypothesis Seedに留め、blind fuzzingはsource-bound Hypothesis後のVerification Experimentへ送る。
+
+Closure Recordが揃っても同じFinderの自己申告では閉じない。freshなGap Reviewerが未所有surface、unknown relation、未追跡state、未解析assetを確認し、独立した二回のgap passで新しいsurface、Hypothesis、priority変化がない場合だけCoverage Closureを提案する。新しいMap revisionまたはRoute Fragmentがclosure前提を変えた場合だけ、該当Focus Areaを再開する。acceptedなinterface、failure semantics、test surfaceは[Exploration seam](exploration-seam.md)に固定し、Strategyは[ADR 0106](../adr/0106-run-a-versioned-exploration-strategy-portfolio.md)、chain統合は[ADR 0107](../adr/0107-synthesize-cross-focus-chains-at-wave-barriers.md)に記録する。
 
 ### Model Execution
 
@@ -316,7 +324,7 @@ terminal Work Waveのpositive/negative/blocked evidenceを安定順でfoldし、
 review(input: IterationReviewInput): IterationDecision;
 ```
 
-raw transcriptをglobal Knowledgeへ昇格せず、LessonとRuleはそれぞれpromotion gateを通す。Exploration Controlが一件のAttemptを受理する責務と、Iteration ReviewがWave全体から次の方針を決める責務を分ける。
+raw transcriptをglobal Knowledgeへ昇格せず、LessonとRuleはそれぞれpromotion gateを通す。Exploration ControlがWave内のHypothesis、Chain Synthesis、closureを判断する責務と、Iteration ReviewがCampaign横断で次版のpolicy、Knowledge、rule候補を決める責務を分ける。
 
 Iteration Reviewは改善候補を試験投入版として作れるが、現Campaignへ適用しない。通常のpromptまたはpriority変更は小さなDevelopment smokeの後、次の少数実戦Campaignだけでcanary適用する。static rule、global Knowledge、誤検出除外policyは自己強化riskが高いため、小さなSealed Evaluationも通過する。
 
@@ -347,19 +355,19 @@ Research Recordはdomain判断をしない。たとえばAttemptをretryすべ�
 
 ## Ten-control ownership
 
-10動詞はphase名ではなく横断controlだが、実装責任が宙に浮かないようprimary ownerを定める。
+10動詞はプロジェクト最上位の設計原則であり、phase名ではなく横断controlとして実装する。実装責任が宙に浮かないようprimary ownerを定める。
 
 | Control | Primary owner | Collaborating module | Observable output |
 | --- | --- | --- | --- |
 | confine | Target Workspace / 検証環境制御 | Model Execution | Workspace/Lab receipt、denied capability |
 | constrain | Campaign Control | Model Execution / Verification | fixed budget/policy、terminal reason |
-| focus | Exploration Control | Source Mapping | Surface Map、Focus Plan、coverage gap |
+| focus | Exploration Control | Source Mapping | Surface Map、Focus Plan、Strategy Portfolio、coverage gap |
 | motivate | Exploration Control | Model Execution | goalとsuccess evidenceを持つAttempt Plan |
 | parallelize | Exploration Control | Campaign Control | non-overlapping Work Waveとbarrier |
-| hypothesize | Exploration Control | Model Execution | schema-valid HypothesisとClosure Record |
+| hypothesize | Exploration Control | Model Execution / Source Mapping | schema-valid Hypothesis、Chain Synthesis、Mapping Evidence Request |
 | verify | Verification | 検証環境制御 / Model Execution | Verification Record、成立証拠、因果対照実験 |
 | record | Research Record | 全Research module | append receipt、artifact ref、replay view |
-| prioritize | Exploration Control | Iteration Review | deterministic Ordered Work |
+| prioritize | Exploration Control | Iteration Review | deterministic Ordered Work、minority routeの保持 |
 | iterate | Iteration Review | Campaign Control | next plan、Lesson/Rule Proposal、stop reason |
 
 `record`のsemantic contentは各owner moduleが決め、Research Recordはdurabilityとintegrityを所有する。`constrain`や`confine`をmodel promptのお願いだけで実装済みとみなさない。
@@ -391,8 +399,8 @@ Wordfence vulnerability feed、advisory、CVEとの既知重複照合はFinding�
 | Target Snapshot | Target Workspace | Research Record | Human Review Packetのfixed identityだけ |
 | 環境依存スナップショット | Target Workspace | Research Record | Human Review Packetに必要なprerequisite identityだけ |
 | Setup Plan / Setup Receipt / Lab Baseline | Lab Baseline Builder | Research Record / private CAS | Verificationへsealed baseline refだけ |
-| PHP Program Index / Surface Map revision | Source Mapping | Research Record / private CAS | context外へ出さない |
-| Focus/Lease/Hypothesis/Closure | Exploration Control | Research Record | context外へ出さない |
+| PHP Program Index / Runtime Observation / Surface Map revision | Source Mapping | Research Record / private CAS | context外へ出さない |
+| Focus/Strategy/Lease/Hypothesis/Route Fragment/Closure/Gap Review | Exploration Control | Research Record | context外へ出さない |
 | Transport Eligibility / Attempt / Segment / transcript | Model Execution | Research Record / private CAS | context外へraw recordまたはprovider sessionを出さない |
 | Provider authentication state | Model Execution | Provider Credential Store | context外へsecret値を出さず、Research Recordへopaque auth receiptだけ |
 | Experiment evidence / Verification Record / Finding | Verification | Research Record | Human Review Packetへ固定された最小証拠だけ |
@@ -422,6 +430,7 @@ execution modules -> Research Record public seam
 - Human OSからResearch Ledger table、provider adapter、隔離検証環境handle
 - CLI/web/remote controlからSQLite、provider CLI、PHP helper、container runtime
 - Model ExecutionからExploration priority、Finding promotion、Campaign stop policy
+- FinderまたはExploration ControlからLab handle、HTTP/browser、arbitrary shell
 - 検証環境制御からHypothesis mutationまたはHuman Review
 - PHP Source Analysisからtarget autoload、WordPress bootstrap、target Composer script
 
@@ -492,9 +501,11 @@ folderはownershipを示すために使い、各名詞ごとにfileを分けな�
 - Target intake/acquisition failure: `deferred`または`rejected`のterminalな受入記録をTarget Intelligence側へ残し、Research Campaignを作らない。
 - Lab setup failure: Setup Receiptとsanitized evidenceを残し、Campaignをセットアップ阻害の未完了状態にする。Intakeをrejectedへ変えず、hostまたはplain Dockerへfallbackしない。
 - parse diagnostic: PHP Program IndexとSurface Mapのgapとして残し、target全体の解析成功へ読み替えない。
+- Runtime Observation failure: dynamic relationをfalseまたはDisprovedへ変えず、reason付きunknownとして次のMap revisionへ残す。
 - provider transient failure: 同一Attempt内だけでbounded Segment resume候補とする。別model/transportへfallbackしない。
 - provider terminal failureまたはbudget exhaustion: Attemptをterminalにし、CampaignをCompletedへ読み替えない。
 - inconclusive preflightまたは未選択Verification: Hypothesisを消さず検証待ち行列へ残し、Campaign停止時は未完了と記録する。
+- minorityまたはconflicting Hypothesis: model多数決やcritic verdictで消さず、source bindingを満たす限り別routeとして保持する。
 - artifact write failure: 参照eventをappendせず、partial artifactを昇格しない。
 - unknown event/schema: projectionを止め、既存stateを変更しない。
 - gVisor/Lab failure: evidentiary Observationを返さず、Findingへ昇格しない。
@@ -511,7 +522,10 @@ folderはownershipを示すために使い、各名詞ごとにfileを分けな�
 6. Remote Controlから直接`claude --resume`、SQLite更新、vendor送信はできない。
 7. 将来ClaudeからCodexへprofileを追加しても、Exploration、Verification、Human OSはprovider event形式を知らない。
 8. RCE Experimentがfile writeまで成功しても、nonce付きExecution Canaryが観測されなければRCE Findingへ昇格しない。
+9. 一つのFinderだけがcross-request chainを示しても、source-boundなら多数決で消えずVerification候補へ残る。
+10. dynamic callbackはFinderへruntime権限を与えずRuntime ObservationでMap revisionへ入り、そのrecord単独ではFindingにならない。
+11. Gap Reviewerが未所有surfaceを見つけたCampaignはCoverage Closureにならず、次の有限Work Waveを作る。
 
 ## Design approval gate
 
-この文書は2026-09-01にacceptedとなった。まずcurrent-code gapの1〜3をbehavior-preserving refactorとして別commitにする。Model Executionのpublic seamは[Model execution seam](model-execution-seam.md)としてacceptedだが、Opus transportのproduction codeは明示的な実装指示、red test、Transport Eligibility probeの順を満たすまで実装しない。
+この文書は2026-09-01にacceptedとなった。まずcurrent-code gapの1〜3をbehavior-preserving refactorとして別commitにする。Model Executionのpublic seamは[Model execution seam](model-execution-seam.md)、Explorationのpublic seamは[Exploration seam](exploration-seam.md)としてacceptedだが、production codeは明示的な実装指示と各seamからのred testを満たすまで実装しない。

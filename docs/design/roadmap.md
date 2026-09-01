@@ -4,6 +4,8 @@ Status: accepted design sequence, 2026-09-01
 
 North Starは、oracle-freeのprospective CampaignでRCEまたは同等のsite-wide compromiseへ至る未知routeを発見し、独立VerificationとHuman Confirmationまで到達する`Frontier Discovery Capability`である。各Milestoneはその能力へ至る段階であり、公開Caseの再発見だけを最終成果としない。
 
+開発資源は探索、Source Mapping、Verificationへ優先配分する。Remote Control、UI、notification、multi-user、保守運用は、安全隔離とevidence integrityに必要な最小限だけ先に作り、それ以外は実戦投入で観測した故障をissue化して改善する。探索能力の完成前に周辺運用の網羅性を追わない。
+
 ## Milestone 1 — one closed loop
 
 Transport Eligibilityを通過したOpus候補のModel ProfileとClaude process adapter一つを使い、gVisor上のBrizy 2.8.11/2.8.12 Boundary Pairをend-to-endで完走する。公式性またはcredential/tool隔離を確認できない場合は別transportへ逃げず、このMilestoneを停止して設計を再評価する。
@@ -13,6 +15,7 @@ Transport Eligibilityを通過したOpus候補のModel ProfileとClaude process 
 - PHPを骨格にJavaScript・template・SQL・configuration・bundled vendor assetを必要に応じて結ぶ、根拠状態付きimmutable Surface Map revisions
 - observed factをmodelが変更せず、dynamic relationは根拠付きinferredまたは未解決gapとして保持するbounded Mapper synthesis
 - Focus Areas、parallel Finder、Hypothesis deduplication
+- 共通Finder schemaと一つ以上のversioned Exploration Strategyを通す、後続Strategy Portfolio互換の探索artifact
 - evidence state付きEvidence Routeによるmulti-file・cross-request chain表現
 - Frontier、Primitive、Coverageの三Exploration Laneを持つdeterministic Work Wave
 - independent Verifier、browser Witness、sibling Causal Control、Skeptic
@@ -49,11 +52,20 @@ Milestone 1の一つのBoundary Pairでresearch loopと安全機構が閉じた�
 - Canonical ConfigurationはUTC・en_USを基準とし、別localeや設定は根拠付きConfiguration Variantの別Setup Plan・別baselineとして扱う
 - 外部serviceはlocal emulator、record/replay、live External Dependency Grantの順で選び、live接続はCampaign専用の非production research accountだけを使う
 - Campaign開始後は自律実行するが、候補の自動選定と次Campaignの自動開始はMilestone 3まで行わない
+- 全source解析完了を待たず、inventory、stable surface anchors、根拠状態、明示gapを持つ最小Surface Mapから探索を開始し、Context Requestとmap revisionを反復する
+- Focus AreaごとにFeature、Actor、Privilege、State Transition、security invariantを型付きbriefへ固定する
+- Frontier・Primitive・CoverageというLaneと、entry順方向・sink逆方向・state-chain・権限/invariant・WildcardというStrategyを別軸で組み合わせる
+- eligibleなWork Waveには非ゼロのWildcard枠を置き、高リスクsurfaceとFrontier候補だけを異なるmodel family・Strategyで独立に重ねる
+- Finder同士を会話させず、terminalなWork WaveのRoute Fragment、Hypothesis、state transitionだけをstable orderでChain Synthesisへ渡す
+- 一つのmodelだけが提示したsource-bound routeを多数決で捨てず、相反するrouteは決定的PreflightまたはVerificationまで別artifactとして保持する
+- dynamic registration等はSource Mappingの低影響Runtime Observationでfresh Lab cloneから観測し、Finderへruntime権限を渡さず、ObservationをWitnessに使わない
+- Closure Record後に独立Gap Reviewerが未所有surface、unknown relation、未追跡state、未解析assetを確認し、二回のgap passを通るまでCoverage Closureにしない
 - 初期はactive Campaignを1件に限定し、Campaign内の重複しないWork Leaseだけを並列実行する
 - 予算枠はwall time、Attempt数、Work Wave数、concurrencyを強制し、少なくとも1件の完全検証予約をDiscoveryから保護する
 - provider usage、token、subscriptionの推定金額は比較telemetryとして保存し、取得できない金額をhard ceilingにしない
 - 公式transport、用途、version固定、credential isolation、built-in tool無効化を確認したTransport Eligibility Receiptがある候補だけを有効化する。consumer subscription認証を独自APIへ転用しない
 - 全workerはharness所有のrole別read/search/graph/scratch toolだけを使い、provider組込みshell・web・plugin・hookを無効にする。ExperimentはVerifierと必要なSkepticだけへ渡す
+- Semgrep等のmatchはHypothesis Seedとして同じsource bindingとVerificationを通し、source-bound routeのない全面fuzzing、embedding/vector database、vulnerability class別agentは実測gapが出るまで導入しない
 - Opus候補から開始し、GPT、Grok、GLM候補はTransport Eligibility、共通contract test、一つの小さなBoundary Pair smoke testを通過したものから実戦roleへ追加する
 - モデル比較は実戦Campaignの既知重複を除いたverified unique Findings、誤昇格、coverage closure、cost、wall time、varianceを安定した条件で記録する
 - Stored XSS、SQL injection、account takeover、RCE等のtyped Experiment adapterは実戦Hypothesisとcoverage gapの優先度に応じて一つずつ追加する

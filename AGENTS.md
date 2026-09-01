@@ -11,10 +11,12 @@
 
 ## Architecture
 
+- 最上位の設計原則は`confine -> constrain -> focus -> motivate -> parallelize -> hypothesize -> verify -> record -> prioritize -> iterate`の10語とする。各原則は所有module、永続artifact、観測可能なgateへ具体化する。
 - 初期systemはstrict TypeScriptのmodular monolithとし、`Target Intelligence -> Research -> Human OS`をprimary result flowとする。feedbackは公開contractを介し、context内部への逆向き依存を作らない。
 - context間では不変かつversionedなcontractだけを渡す。別contextのstorage、内部module、provider objectを直接参照しない。
 - `Target Intelligence`は選定と取得を所有し、oracleを除いた`Target Intake Packet`だけを`Research`へ渡す。
 - `Research`は探索だけでなく、独立Verification、記録、優先順位付け、反復を所有する。Verificationを任意の後処理にしない。
+- ExplorationはLaneで目的、Strategyで方法を分け、独立Finderの型付き成果物だけをWave barrier後にChain Synthesisする。worker間chat、model多数決、vulnerability class別agentを探索多様性の根拠にしない。
 - `Human OS`は人間のreviewと判断を所有する。Researchの事実を変更せず、digest固定した`Human Review Packet`への判断を追記する。
 - CLI、将来のweb UI、remote controlはadapterであり、domain policyまたはlifecycleを所有しない。
 - moduleは小さなinterfaceの背後に複雑さを隠す。二つ目の現実のadapterがない段階で汎用portやrepository abstractionを作らない。
@@ -22,6 +24,7 @@
 ## Change discipline
 
 - 一回の変更は一つの観測可能なbehaviorまたは一つの明確な文書判断へ絞る。将来用のframeworkや未使用の設定を先回りして追加しない。
+- North Starへ直接寄与する探索、Source Mapping、Verificationを優先する。UI、notification、multi-user、運用自動化は、安全隔離とevidence integrityに必要な最小限を除き、実戦で観測した故障をissue化して直す。
 - hard-to-reverse、文脈なしでは意外、実在するtrade-offの3条件を満たす判断だけADRにする。既存ADRの歴史を書き換えず、新しいADRでsupersedeする。
 - domain termが変わったら該当`CONTEXT.md`を同じ変更で更新する。`CONTEXT.md`へ実装詳細を置かない。
 - 外部入力、event、artifact、prompt、Model Profileはversionとprovenanceを持ち、runtime schemaでdecodeする。
@@ -43,7 +46,7 @@
 - expected valueはspecification、固定fixture、worked example等の独立した根拠から作り、implementationと同じ計算をtest内で再実装しない。
 - mockはprovider CLI、clock、filesystem等のsystem seamだけに使う。所有する内部moduleはmockせず、可能ならreal local substituteを使う。
 - refactorはgreenになったsliceのreview段階で行い、behavior変更と混ぜない。
-- Ledger replay、crash境界、unknown event version、stable work ordering、Boundary Pairのpositive/negative/controlは回帰testを必須とする。
+- Ledger replay、crash境界、unknown event version、stable work ordering、minority Hypothesis保持、Boundary Pairのpositive/negative/controlは回帰testを必須とする。
 
 ## TypeScript and PHP
 
@@ -60,6 +63,7 @@
 - Campaign setupは版付き・型付きSetup Planの許可操作だけをgVisor内で実行する。model提案を実行権限にせず、任意shell、任意PHP、未固定dependency downloadをSetup Planへ許可しない。
 - model transportは公式配布・公式認証・固定version・安全性probeを満たすものだけを有効化し、consumer OAuthやsubscription keyを独自APIへ転用しない。
 - provider組込みshell、web、plugin、hook、ambient MCPをworkerへ公開しない。source read/search、隔離scratch計算、typed Experimentはharness所有のrole別tool manifestからだけ提供する。
+- FinderへWordPress runtime、HTTP/browser、network、任意shellを渡さない。静的に解けないmapping relationはSource Mapping内部の型付きRuntime Observationだけをfresh Lab cloneで観測し、Finding用Witnessと混同しない。
 - provider credentialをmodel-visibleなfilesystem、environment、tool、prompt、transcriptへ置かない。tool subprocessから認証状態を隔離できないtransportはproduction不適格とする。
 - egressはdefault-denyとし、外部serviceはlocal emulator、record/replay、`External Dependency Grant`の順で検討する。
 - credential、token、private target、transcript、PoC、成立証拠（Witness）をGitへcommitしない。secret値をLedger、prompt、artifact metadataへ残さない。
@@ -71,5 +75,5 @@
 
 - userの未関連変更を保持する。private campaign dataや生成物をstageしない。
 - implementation commit前に、変更scopeに応じたtest、typecheck、lintを実行する。commandが未整備なら、その不足を隠さずhand-offへ記録する。
-- reviewでは、oracle leakage、context ownership違反、Research事実のmutation、Verification bypass、raw transcript handoff、非決定的replay、危険なtarget execution、grantなしegressをblockerとして扱う。
+- reviewでは、oracle leakage、context ownership違反、Research事実のmutation、Verification bypass、raw transcript handoff、非決定的replay、model多数決によるsource-bound route消失、Runtime ObservationのWitness化、危険なtarget execution、grantなしegressをblockerとして扱う。
 - safe pathは、sanitized immutable handoff、append-only record、fresh Verification、typed Experiment、explicit grant、human decisionの分離である。

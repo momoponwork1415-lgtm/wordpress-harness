@@ -1,10 +1,10 @@
 # WordPress Harness
 
-WordPressプラグインのsource reviewを、LLMの探索力と独立した実証を組み合わせて反復するresearch harnessです。目指すのは、既知脆弱性のoracleなしにRCEまたは同等のsite-wide compromiseへ至る未知routeを発見・実証できる能力です。SQL injection、Stored XSS、account takeoverも独立した重要Findingおよび重大routeの構成要素として扱います。設計の中心は、Wordfence Argusが示した10動詞です。
+WordPressプラグインのsource reviewを、LLMの探索力と独立した実証を組み合わせて反復するresearch harnessです。目指すのは、既知脆弱性のoracleなしにRCEまたは同等のsite-wide compromiseへ至る未知routeを発見・実証できる能力です。SQL injection、Stored XSS、account takeoverも独立した重要Findingおよび重大routeの構成要素として扱います。最上位の設計原則は、Wordfence Argusが示した10動詞です。
 
 > confine, constrain, focus, motivate, parallelize, hypothesize, verify, record, prioritize, iterate
 
-これらを標語ではなく、実行時に観測できる制御として実装します。Discoveryが作るものは未確認の`Hypothesis`であり、cleanな環境で独立Verificationを通過したものだけを`Finding`と呼びます。
+これらを標語や10段の固定pipelineではなく、所有module、永続artifact、実行時に観測できるgateを持つcontrol propertyとして実装します。Discoveryが作るものは未確認の`Hypothesis`であり、cleanな環境で独立Verificationを通過したものだけを`Finding`と呼びます。
 
 現在は再設計の初期段階です。解析対象として`custom-facebook-feed` 4.12.0と取得時のmetadataが置かれています。旧`whitebox-harness`からcodeやcontractを移植せず、まず最小の研究ループを確立します。旧repositoryの探索系譜は`wp2shell` promptに始まりますが、新しい設計判断の参照資料は保存した3記事に限定します。
 
@@ -16,6 +16,7 @@ WordPressプラグインのsource reviewを、LLMの探索力と独立した実�
 - [Architecture overview diagram](docs/design/architecture-overview.md)
 - [Architecture](docs/design/architecture.md)
 - [Module architecture](docs/design/module-architecture.md)
+- [Exploration seam](docs/design/exploration-seam.md)
 - [Capability-first roadmap](docs/design/roadmap.md)
 - [Design Baseline v0.1](docs/design/baseline-v0.1.md)
 - [Design references](docs/REFERENCES.md)

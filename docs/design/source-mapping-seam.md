@@ -20,17 +20,24 @@ type SurfaceMappingInput =
       predecessor: SurfaceMapRef;
       acceptedContext: readonly ContextResponseRef[];
       profile: MappingProfileRef;
+    }
+  | {
+      kind: "runtime-revision";
+      predecessor: SurfaceMapRef;
+      baseline: LabBaselineRef;
+      requests: readonly MappingEvidenceRequestRef[];
+      profile: MappingProfileRef;
     };
 ```
 
-`MappingProfileRef`はPHP analysis profile、asset classification policy、Knowledge Capsule refs、Mapper用Model Profile、context ceiling、schema versionをdigest固定する。callerはparser、file list、prompt chunk、model session、host path、node merge順を渡さない。
+`MappingProfileRef`はPHP analysis profile、asset classification policy、Knowledge Capsule refs、Mapper用Model Profile、context ceiling、Runtime Observation policyとbudget、schema versionをdigest固定する。callerはparser、file list、prompt chunk、model session、host path、node merge順、Lab handleを渡さない。
 
 ## Interface invariants
 
-- Surface MapはTarget Snapshot、Mapping Profile、predecessor、accepted Context Responseのdigestへ結び付き、同じ入力から同じcanonical refへ収束する。
+- Surface MapはTarget Snapshot、Mapping Profile、predecessor、accepted Context Response、実行したRuntime Observationのdigestへ結び付き、同じ入力から同じcanonical refへ収束する。`runtime-revision`だけがLab Baselineを入力に持つ。
 - revisionはpredecessorを変更せず、新しいnode、relation、gap、coverage observationを追記またはsuperseding claimとして表す。過去claimを削除しない。
 - Surface Mapは攻撃面を表すが、脆弱性の存在、severity、Finding昇格を判断しない。
-- PHP Program Indexのschema-validなfactを`observed`として扱い、model outputで変更、削除、source range移動を行わない。
+- PHP Program Indexのschema-validなfactとpolicy適合したRuntime Observationを`observed`として扱い、model outputで変更、削除、evidence anchor移動を行わない。
 - `inferred`はsource anchorまたはKnowledge Capsule fact refを必須とし、根拠を持たないmodel relationを受理しない。
 - `unknown`は候補、分からない理由、必要な次の証拠を持つ未解決状態であり、call edgeまたはreachability factとして扱わない。
 - stable identityはarrival order、model wording、line number、host path、random IDへ依存しない。
@@ -40,7 +47,10 @@ type SurfaceMappingInput =
 
 ```ts
 type EvidenceState =
-  | { kind: "observed"; sourceAnchors: readonly SourceAnchorRef[] }
+  | {
+      kind: "observed";
+      evidence: readonly (SourceAnchorRef | RuntimeObservationRecordRef)[];
+    }
   | {
       kind: "inferred";
       premises: readonly EvidenceRef[];
@@ -54,7 +64,7 @@ type EvidenceState =
     };
 ```
 
-source anchorはTarget Snapshot digest、relative path、file digest、byte rangeを持つ。line/columnは人間表示用でありidentityにしない。node identityはanchored subjectとkind、relation identityはcanonicalな端点、relation kind、claimをdigest化する。根拠状態またはpremiseが変わる場合は既存identityを上書きせず新claimとして結ぶ。
+source anchorはTarget Snapshot digest、relative path、file digest、byte rangeを持つ。Runtime Observation RecordはLab Baseline、Plan、request、観測対象、結果、上限、cleanup receiptをdigest固定する。line/columnは人間表示用でありidentityにしない。node identityはanchored subjectとkind、relation identityはcanonicalな端点、relation kind、claimをdigest化する。根拠状態またはpremiseが変わる場合は既存identityを上書きせず新claimとして結ぶ。
 
 ## Source and asset coverage
 
@@ -74,6 +84,14 @@ Mapperが追加sourceを必要とする場合は、anchor、理由、用途、�
 
 WordPress Coreまたはframework semanticsはversioned Knowledge Capsuleから選び、そこから導くrelationを`inferred: knowledge`とする。Target固有sourceから同じrelationを直接確認できた場合も、observed claimを別に追加して由来を失わない。
 
+## Runtime Observation
+
+static sourceとKnowledge Capsuleだけではdynamic hook、callback、registration、dispatch、state transitionを一意に確定できず、Explorationが情報利得の高いMapping Evidence Requestを返した場合だけRuntime Observationを検討する。Source Mappingはrequestを、許可操作、固定request、観測対象、客観的成功条件、resource ceiling、cleanupを持つ版付きPlanへ変換する。
+
+Planはsealed Lab Baselineのfresh cloneで実行する。Source Mapping内部の`RuntimeObservationPort`だけがdeterministic test adapterまたはgVisor production adapterへ到達し、context-public interface、Mapper、Finder、Campaign ControlへLab、HTTP、browser、shellを公開しない。任意payload、権限境界の突破、外部egress、Target変更、unbounded request生成を許可しない。
+
+Runtime ObservationはMapのregistration、dispatch、state relationを支持または反証できるが、security propertyの破壊を試さず、Witness、Causal Control、Finding evidenceとして再利用しない。Observation failureはrelationの不成立ではなく、reason付き`unknown`またはmapping gapとして次revisionへ残す。詳細は[ADR 0108](../adr/0108-observe-dynamic-mapping-with-typed-lab-plans.md)に記録する。
+
 ## Focus handoff
 
 Source Mappingは脆弱性class、priority、worker割当を決めない。Surface Mapはentry、trust transition、state、sink、file/feature ownershipを示すstable surface anchorsを公開し、Exploration Controlが各anchorを一つのFocus Areaだけに所有させる。SQL injectionやStored XSS等のclassは複数surfaceを横断するExploration Laneであり、Focus Areaの所有keyではない。
@@ -82,12 +100,13 @@ Source Mappingは脆弱性class、priority、worker割当を決めない。Surfa
 
 - parseまたはname-resolution diagnosticはrecoverableなobserved factと同じrevisionにcoverage gapとして残す。
 - Mapper failure、context ceiling、未対応assetは既存observed factを失わせず、reason付きgapを持つSurface Mapを返す。
+- Runtime Observationのpolicy拒否、timeout、Lab failureは対象relationをfalseにせず、必要証拠とfailure reasonを持つ`unknown`として残す。
 - Target identity、file digest、predecessor、Knowledge CapsuleまたはPHP Program Indexの不一致、unknown schema、artifact corruptionは安全側にbuildを拒否し、partial revisionを公開しない。
 - source anchorが一件も成立しなくてもmanifest inventoryとgapを持つMapを返せるが、Coverage Closureまたは「解析成功」を意味しない。
 
 ## Test surface
 
-behavior testは`build(input)`が返すSurfaceMapRefと、そのrefからResearch Record経由で読めるimmutable viewだけを観測する。PHP parser visitor、file traversal順、prompt chunk数、model call count、内部merge functionを直接assertしない。production PHP helperとdeterministic Mapper test adapterはSource Mapping内部seamに置き、context-publicなparserまたはmapper portにしない。
+behavior testは`build(input)`が返すSurfaceMapRefと、そのrefからResearch Record経由で読めるimmutable viewだけを観測する。PHP parser visitor、file traversal順、prompt chunk数、model call count、内部merge function、gVisor commandを直接assertしない。production PHP helper、deterministic Mapper test adapter、Runtime Observationのdeterministic/production adapterはSource Mapping内部seamに置き、context-publicなparser、mapper、Lab portにしない。
 
 ## Acceptance scenarios
 
@@ -101,3 +120,6 @@ behavior testは`build(input)`が返すSurfaceMapRefと、そのrefからResearc
 8. Mapperの追加file要求はContext RequestとContext Responseを経た次revisionへ入り、元revisionは同じdigestを保つ。
 9. parse errorのある一fileが存在しても、他fileのobserved factとdiagnostic gapを持つMapを返す。
 10. Exploration Controlはsurface anchorを重複所有しないFocus Areaへ分割でき、vulnerability classを所有keyにしない。
+11. dynamic callbackのRuntime Observationはfresh Lab cloneと固定Planを持ち、次revisionのobserved runtime evidenceになる。
+12. 同じObservationをWitnessとしてFindingへ渡そうとすると拒否される。
+13. Observationがtimeoutしてもcallback不存在とは判定されず、reason付きunknownが残る。
