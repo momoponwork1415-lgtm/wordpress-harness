@@ -30,6 +30,7 @@ type LabScenario =
   | "broken"
   | "preserved"
   | "gvisor-unavailable"
+  | "control-gvisor-unavailable"
   | "sibling-mismatch"
   | "artifact-mismatch"
   | "verifier-unavailable"
@@ -204,6 +205,9 @@ function storedXssLabControl(
         throw new LabControlBlockedError("gvisor-unavailable");
       }
       const isWitness = experiment.role === "witness";
+      if (scenario === "control-gvisor-unavailable" && !isWitness) {
+        throw new LabControlBlockedError("gvisor-unavailable");
+      }
       const observation: ExperimentObservation = {
         kind: "experiment-observation",
         schemaVersion: 1,
@@ -418,6 +422,31 @@ describe("Verification.verify", () => {
         },
       },
     });
+  });
+
+  it("preserves the completed Witness when the sibling Control is blocked", async () => {
+    const plan = verificationPlan({
+      campaignId: "campaign-verification-control-blocked",
+      verificationId: "verification-stored-xss-control-blocked",
+    });
+    const result = await verifyAndReplay(plan, "control-gvisor-unavailable");
+    expect(result).toMatchObject({
+      ref: { outcome: "blocked" },
+      replayed: {
+        value: {
+          evidence: {
+            kind: "partial",
+            sourceRederivation: {},
+            witness: {
+              kind: "experiment-observation",
+              schemaVersion: 1,
+            },
+          },
+          outcome: { kind: "blocked", reason: "gvisor-unavailable" },
+        },
+      },
+    });
+    expect(result.replayed?.value.evidence).not.toHaveProperty("control");
   });
 
   it("durably records Blocked when sibling Lab configurations differ", async () => {

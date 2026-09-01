@@ -2,7 +2,7 @@
 
 Status: accepted, 2026-09-02
 
-Implementation status: partial. 合成system-seam adapterを使うBehavior Testでは、Stored XSSのFinding gate、同じCausal Identityに限定したDisproved、VerifierまたはgVisor unavailable、budget exhausted、sibling configuration/identity mismatch、non-hermetic fallback、evidence incompleteのBlocked、artifact digest mismatchのread rejection、private CAS write、Verification start/completion event、close/reopen replayまで実装済みである。実Verifier Model Execution、実gVisor Lab Control、Campaign Control compositionは未実装であり、このtracerをevidentiary Verificationへ読み替えない。
+Implementation status: partial. 合成system-seam adapterを使うBehavior Testでは、Stored XSSのFinding gate、同じCausal Identityに限定したDisproved、VerifierまたはgVisor unavailable、budget exhausted、sibling configuration/identity mismatch、non-hermetic fallback、evidence incompleteのBlocked、artifact digest mismatchのread rejection、private CAS write、Verification start/completion event、close/reopen replayまで実装済みである。Witness完了後にControlがtyped Blockedとなった場合は、完了済みWitness refをpartial evidenceとして保持する。Campaign Control compositionは実装済みだが、実Verifier Model Executionと実gVisor Lab Controlは未実装であり、このtracerをevidentiary Verificationへ読み替えない。
 
 ## Design target
 

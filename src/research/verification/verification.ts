@@ -294,11 +294,18 @@ class IndependentVerification implements Verification {
       "control",
     );
     let witnessRef: ExperimentObservationRef;
-    let controlRef: ExperimentObservationRef;
     try {
       witnessRef = experimentObservationRefSchema.parse(
         await this.#options.labControl.execute(witnessPlan),
       );
+    } catch (error) {
+      if (!(error instanceof LabControlBlockedError)) throw error;
+      return this.#recordBlocked(plan, start.planDigest, error.reason, {
+        sourceRederivationDigest: rederivationDigest,
+      });
+    }
+    let controlRef: ExperimentObservationRef;
+    try {
       controlRef = experimentObservationRefSchema.parse(
         await this.#options.labControl.execute(controlPlan),
       );
@@ -306,6 +313,7 @@ class IndependentVerification implements Verification {
       if (!(error instanceof LabControlBlockedError)) throw error;
       return this.#recordBlocked(plan, start.planDigest, error.reason, {
         sourceRederivationDigest: rederivationDigest,
+        witness: witnessRef,
       });
     }
     const witness = await readObservation(
