@@ -14,6 +14,7 @@ WordPressプラグインのsource reviewを、LLMの探索力と独立した実�
 - [Context map](CONTEXT-MAP.md)
 - [Domain language](CONTEXT.md)
 - [Architecture](docs/design/architecture.md)
+- [Module architecture](docs/design/module-architecture.md)
 - [Capability-first roadmap](docs/design/roadmap.md)
 - [Design Baseline v0.1](docs/design/baseline-v0.1.md)
 - [Design references](docs/REFERENCES.md)

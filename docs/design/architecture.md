@@ -117,6 +117,8 @@ flowchart TB
 
 ## Research deep modules and seams
 
+context内部のmodule ownership、許可・禁止依存、record ownership、target source layoutは[Module architecture](module-architecture.md)に固定する。
+
 外部から見えるcommand interfaceは一つに保ち、queryをread-only readerへ分ける。
 
 ```text

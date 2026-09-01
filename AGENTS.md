@@ -26,6 +26,13 @@
 - 外部入力、event、artifact、prompt、Model Profileはversionとprovenanceを持ち、runtime schemaでdecodeする。
 - clock、ID、randomness、provider response順をdomain判断へ暗黙に混ぜない。再現可能な入力とstable orderingを使う。
 
+## Design gate
+
+- 新しいmoduleまたはMilestoneのproduction codeへ入る前に、owner context、公開seam、所有state/artifact、許可依存、禁止依存、failure semantics、受入scenarioを設計文書へ`proposed`として記録する。
+- roadmapまたは高水準architectureへの同意を、個別module設計への同意と読み替えない。userが設計を確認して`accepted`となるまでproduction codeを書かない。
+- 設計を提示した同じturnで、明示的な実装指示なしにproduction codeへ進まない。mechanical scaffold、調査fixture、文書だけはこのgateの対象外とする。
+- 既存codeがacceptedなmodule mapと一致しない場合は、次の機能を足す前に差分と移行順を示す。互換性を保つ段階的refactorを優先し、全面rewriteを既定にしない。
+
 ## Test-driven development
 
 - 新しいbehaviorはred -> greenを一つのvertical sliceずつ進める。mechanical change、文書、test/build scaffoldを除き、先に失敗するtestを作る。
