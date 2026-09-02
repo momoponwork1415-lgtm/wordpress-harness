@@ -62,6 +62,8 @@ Initial Context -----> Finder Attempt
 
 この提案に含まれる判断を、すべて「外部harnessが採用しているから必要」とは扱わない。根拠の強さと反証条件を分ける。
 
+各判断の一次資料、直接precedent、本harnessへのadaptation、未検証部分は、[Evidence-guided Finder loopの設計根拠](../research/evidence-guided-finder-loop-design-evidence.md)のtraceability matrixを正本とする。要約すると、bounded source retrievalはOpenAnt、Codex Security、Anthropic、code-navigation操作はOpenAntとLSP、AI overlayとdeterministic factの分離はOpenAnt、provenanceとdigest-bound receiptはW3C PROV、NIST、in-toto、Bazel、情報不足を陰性へ丸めない状態はOpenAnt、Codex Security、SARIFを先例にする。正確なGateway interface、schema、budgetは本harnessのadaptationまたは未検証の選択として残す。
+
 | Decision | Evidence | Current confidence | What could change it |
 | --- | --- | --- | --- |
 | 固定Analysis Unitを探索境界にしない | private benchmarkの反復失敗と、Codex Security、Anthropic、OpenAntの局所source展開 | high | toolなし固定contextが複数のunseen Targetでも同等以上のContext Reachを示す |
@@ -222,4 +224,4 @@ Source toolあり/なしのablationを先に行い、その後にPrompt wording�
 
 この文書はproposedである。受理後、`SourceEvidenceGateway`のsource queryとreceiptを一つずつred-greenで追加し、既存`ModelExecution.run(plan)`と`CampaignRunner.run(plan)`の公開seamを保つ。最初のsliceではRoute Fragment synthesis、Map revisionの自動消費、Gap Review、multi-providerを同時実装しない。
 
-設計根拠は[wp2shell由来Promptの責務分解](../research/wp2shell-prompt-decomposition.md)、[10動詞による再設計メモ](../research/agentic-source-review-ten-verbs.md)、[外部実装とのcontext retrieval比較](../research/surface-map-context-retrieval-bottleneck.md)、[Model execution seam](model-execution-seam.md)、[Exploration seam](exploration-seam.md)に置く。
+設計根拠は[wp2shell由来Promptの責務分解](../research/wp2shell-prompt-decomposition.md)、[10動詞による再設計メモ](../research/agentic-source-review-ten-verbs.md)、[外部実装とのcontext retrieval比較](../research/surface-map-context-retrieval-bottleneck.md)、[判断別の設計根拠](../research/evidence-guided-finder-loop-design-evidence.md)、[Model execution seam](model-execution-seam.md)、[Exploration seam](exploration-seam.md)に置く。

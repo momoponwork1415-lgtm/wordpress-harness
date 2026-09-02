@@ -38,6 +38,7 @@
 ## Design gate
 
 - 新しいmoduleまたはMilestoneのproduction codeへ入る前に、owner context、公開seam、所有state/artifact、許可依存、禁止依存、failure semantics、受入scenarioを設計文書へ`proposed`として記録する。
+- production設計の重要なbehaviorは、一次資料で確認したreference implementation、公開標準またはsecurity invariant、再現可能なlocal experimentの少なくとも一つへ結び付ける。設計文書は、外部資料が直接支持する部分、本harnessへのadaptation、まだ未検証の選択を分ける。根拠がない新規案は`accepted`にせず、反証条件を持つprototypeまたはablationを先に行う。可逆な内部helper、命名、機械的refactorへ形式的な出典を要求しない。
 - roadmapまたは高水準architectureへの同意を、個別module設計への同意と読み替えない。userが設計を確認して`accepted`となるまでproduction codeを書かない。
 - 設計を提示した同じturnで、明示的な実装指示なしにproduction codeへ進まない。mechanical scaffold、調査fixture、文書だけはこのgateの対象外とする。
 - 既存codeがacceptedなmodule mapと一致しない場合は、次の機能を足す前に差分と移行順を示す。互換性を保つ段階的refactorを優先し、全面rewriteを既定にしない。
