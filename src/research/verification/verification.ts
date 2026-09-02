@@ -73,7 +73,7 @@ async function readObservation(
   return observation;
 }
 
-function isBoundStoredXssPair(
+function isBoundExperimentPair(
   plan: VerificationPlan,
   witnessPlan: ExperimentPlan,
   controlPlan: ExperimentPlan,
@@ -81,8 +81,19 @@ function isBoundStoredXssPair(
   control: ExperimentObservation,
 ): boolean {
   const commonBinding = canonicalJson(witnessPlan.bindings);
+  const mechanismMatchesImpact =
+    (plan.hypothesis.impact === "stored-xss" &&
+      witnessPlan.mechanism.kind === "stored-xss-browser" &&
+      controlPlan.mechanism.kind === "stored-xss-browser" &&
+      witness.result.kind === "stored-xss-browser" &&
+      control.result.kind === "stored-xss-browser") ||
+    (plan.hypothesis.impact === "sql-injection" &&
+      witnessPlan.mechanism.kind === "sql-injection-database" &&
+      controlPlan.mechanism.kind === "sql-injection-database" &&
+      witness.result.kind === "sql-injection-database" &&
+      control.result.kind === "sql-injection-database");
   return (
-    plan.hypothesis.impact === "stored-xss" &&
+    mechanismMatchesImpact &&
     witness.experimentId === witnessPlan.experimentId &&
     control.experimentId === controlPlan.experimentId &&
     witness.verificationId === plan.verificationId &&
@@ -107,13 +118,11 @@ function isBoundStoredXssPair(
     witness.causalFactor.id === witnessPlan.mechanism.causalFactor &&
     control.causalFactor.id === witnessPlan.mechanism.causalFactor &&
     witness.causalFactor.state === "present" &&
-    control.causalFactor.state === "removed" &&
-    witness.result.kind === "stored-xss-browser" &&
-    control.result.kind === "stored-xss-browser"
+    control.causalFactor.state === "removed"
   );
 }
 
-function hasCompleteStoredXssEvidence(
+function hasCompleteExperimentEvidence(
   plan: VerificationPlan,
   witnessPlan: ExperimentPlan,
   controlPlan: ExperimentPlan,
@@ -121,12 +130,53 @@ function hasCompleteStoredXssEvidence(
   control: ExperimentObservation,
 ): boolean {
   return (
-    isBoundStoredXssPair(plan, witnessPlan, controlPlan, witness, control) &&
+    isBoundExperimentPair(plan, witnessPlan, controlPlan, witness, control) &&
     witness.normalFunction === "preserved" &&
     control.normalFunction === "preserved" &&
     witness.result.attackerRequestAccepted &&
     control.result.attackerRequestAccepted
   );
+}
+
+type MechanismEvidenceState = "finding" | "disproved" | "inconclusive";
+
+function mechanismEvidenceState(
+  witness: ExperimentObservation,
+  control: ExperimentObservation,
+): MechanismEvidenceState {
+  if (
+    witness.result.kind === "stored-xss-browser" &&
+    control.result.kind === "stored-xss-browser"
+  ) {
+    if (
+      witness.result.persistentStateObserved &&
+      witness.result.browserCanaryExecuted &&
+      !control.result.persistentStateObserved &&
+      !control.result.browserCanaryExecuted
+    ) {
+      return "finding";
+    }
+    return !witness.result.browserCanaryExecuted &&
+      !control.result.browserCanaryExecuted
+      ? "disproved"
+      : "inconclusive";
+  }
+  if (
+    witness.result.kind === "sql-injection-database" &&
+    control.result.kind === "sql-injection-database"
+  ) {
+    if (
+      witness.result.databaseReadbackCanaryObserved &&
+      !control.result.databaseReadbackCanaryObserved
+    ) {
+      return "finding";
+    }
+    return !witness.result.databaseReadbackCanaryObserved &&
+      !control.result.databaseReadbackCanaryObserved
+      ? "disproved"
+      : "inconclusive";
+  }
+  return "inconclusive";
 }
 
 function supportsFinding(
@@ -137,20 +187,19 @@ function supportsFinding(
   witness: ExperimentObservation,
   control: ExperimentObservation,
 ): boolean {
-  return (
-    rederivation.status === "supported" &&
-    hasCompleteStoredXssEvidence(
+  if (
+    rederivation.status !== "supported" ||
+    !hasCompleteExperimentEvidence(
       plan,
       witnessPlan,
       controlPlan,
       witness,
       control,
-    ) &&
-    witness.result.persistentStateObserved &&
-    witness.result.browserCanaryExecuted &&
-    !control.result.persistentStateObserved &&
-    !control.result.browserCanaryExecuted
-  );
+    )
+  ) {
+    return false;
+  }
+  return mechanismEvidenceState(witness, control) === "finding";
 }
 
 function supportsDisproved(
@@ -160,17 +209,18 @@ function supportsDisproved(
   witness: ExperimentObservation,
   control: ExperimentObservation,
 ): boolean {
-  return (
-    hasCompleteStoredXssEvidence(
+  if (
+    !hasCompleteExperimentEvidence(
       plan,
       witnessPlan,
       controlPlan,
       witness,
       control,
-    ) &&
-    !witness.result.browserCanaryExecuted &&
-    !control.result.browserCanaryExecuted
-  );
+    )
+  ) {
+    return false;
+  }
+  return mechanismEvidenceState(witness, control) === "disproved";
 }
 
 function hasSiblingIsolationFailure(
@@ -375,7 +425,7 @@ class IndependentVerification implements Verification {
         );
       }
       if (
-        isBoundStoredXssPair(plan, witnessPlan, controlPlan, witness, control)
+        isBoundExperimentPair(plan, witnessPlan, controlPlan, witness, control)
       ) {
         return this.#recordBlocked(
           plan,

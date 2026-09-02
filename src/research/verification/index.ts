@@ -5,6 +5,7 @@ export {
 export { openVerification } from "./verification.js";
 export { openClaudeIndependentVerifier } from "./claude-independent-verifier.js";
 export { openGvisorStoredXssLabControl } from "./gvisor-stored-xss-lab.js";
+export { openGvisorSqlInjectionLabControl } from "./gvisor-sql-injection-lab.js";
 export { openNativeLabProcessRunner } from "./native-lab-process.js";
 export type {
   LabProcessRequest,
@@ -12,6 +13,7 @@ export type {
   LabProcessRunner,
   OpenGvisorStoredXssLabControlOptions,
 } from "./gvisor-stored-xss-lab.js";
+export type { OpenGvisorSqlInjectionLabControlOptions } from "./gvisor-sql-injection-lab.js";
 export type { OpenNativeLabProcessRunnerOptions } from "./native-lab-process.js";
 export type { OpenClaudeIndependentVerifierOptions } from "./claude-independent-verifier.js";
 export type {

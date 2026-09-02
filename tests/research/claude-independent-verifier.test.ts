@@ -185,6 +185,33 @@ function plan(nodeId: string): VerificationPlan {
   };
 }
 
+function sqlInjectionPlan(nodeId: string): VerificationPlan {
+  const base = plan(nodeId);
+  const hypothesis = {
+    ...base.hypothesis,
+    causalIdentity: {
+      rootCause: "request-controlled-identifiers-enter-query-structure",
+      attackerControlledPrimitive: "unauthenticated-fields-array",
+      brokenSecurityProperty: "sql-query-structure-integrity",
+    },
+    impact: "sql-injection" as const,
+    unknowns: [
+      {
+        claim: "the database-only canary is returned to the attacker",
+        requiredEvidence: "fresh database readback and sibling control",
+      },
+    ],
+    falsifier: "the requested identifiers are restricted to known fields",
+    nextExperiment:
+      "compare database canary readback with the structure-changing value removed",
+  };
+  return {
+    ...base,
+    hypothesis,
+    hypothesisDigest: sha256Digest(hypothesis),
+  };
+}
+
 function providerEnvelope(output: unknown, model = "claude-opus-5"): string {
   return JSON.stringify({
     type: "result",
@@ -211,6 +238,7 @@ async function createFixture(
     request: ClaudeStructuredProcessRequest,
     context: FixtureContext,
   ) => ReturnType<ClaudeStructuredProcess["execute"]>,
+  makePlan: (nodeId: string) => VerificationPlan = plan,
 ): Promise<{
   readonly cleanup: () => Promise<void>;
   readonly context: FixtureContext;
@@ -233,7 +261,7 @@ async function createFixture(
     join(directory, "includes-excluded.php"),
     join(sourceDirectory, "includes", "excluded.php"),
   );
-  const inputPlan = plan(surfaceMap.nodeId);
+  const inputPlan = makePlan(surfaceMap.nodeId);
   const context = { plan: inputPlan, routeContent };
   const process: ClaudeStructuredProcess = {
     execute: (request) => execute(request, context),
@@ -265,6 +293,184 @@ async function createFixture(
 }
 
 describe("ClaudeIndependentVerifier.rederive", () => {
+  it("does not treat a suffix inside a different path as requested evidence", async () => {
+    let observedPrompt = "";
+    const fixture = await createFixture(
+      async (request, context) => {
+        observedPrompt = request.prompt;
+        return {
+          kind: "exited",
+          exitCode: 0,
+          stderr: "",
+          stdout: providerEnvelope({
+            kind: "source-rederivation",
+            schemaVersion: 1,
+            verificationId: context.plan.verificationId,
+            targetSnapshotDigest: context.plan.targetSnapshot.digest,
+            hypothesisDigest: context.plan.hypothesisDigest,
+            status: "supported",
+            sourceEvidence: [
+              {
+                path: "includes/route.php",
+                fileDigest: fileDigest(context.routeContent),
+                startLine: 1,
+                endLine: 3,
+              },
+            ],
+            experiment: {
+              kind: "stored-xss-browser",
+              schemaVersion: 1,
+              adapterVersion: "stored-xss-browser@v1",
+              causalFactor: "attacker-controlled-stored-value",
+              successCriterion: "privileged-browser-execution-canary",
+            },
+          }),
+        };
+      },
+      (nodeId) => {
+        const base = plan(nodeId);
+        const hypothesis = {
+          ...base.hypothesis,
+          unknowns: [
+            {
+              claim: "the route reaches its renderer",
+              requiredEvidence:
+                "Inspect shadow-includes/excluded.php if it exists",
+            },
+          ],
+        };
+        return {
+          ...base,
+          hypothesis,
+          hypothesisDigest: sha256Digest(hypothesis),
+        };
+      },
+    );
+
+    try {
+      await expect(
+        fixture.verifier.rederive(fixture.context.plan),
+      ).resolves.toMatchObject({ status: "supported" });
+      expect(observedPrompt).not.toContain("EXCLUDED_SECRET_MARKER");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("adds only inventory-bound PHP paths explicitly requested as missing evidence", async () => {
+    let observedPrompt = "";
+    const fixture = await createFixture(
+      async (request, context) => {
+        observedPrompt = request.prompt;
+        return {
+          kind: "exited",
+          exitCode: 0,
+          stderr: "",
+          stdout: providerEnvelope({
+            kind: "source-rederivation",
+            schemaVersion: 1,
+            verificationId: context.plan.verificationId,
+            targetSnapshotDigest: context.plan.targetSnapshot.digest,
+            hypothesisDigest: context.plan.hypothesisDigest,
+            status: "supported",
+            sourceEvidence: [
+              {
+                path: "includes/route.php",
+                fileDigest: fileDigest(context.routeContent),
+                startLine: 1,
+                endLine: 3,
+              },
+            ],
+            experiment: {
+              kind: "stored-xss-browser",
+              schemaVersion: 1,
+              adapterVersion: "stored-xss-browser@v1",
+              causalFactor: "attacker-controlled-stored-value",
+              successCriterion: "privileged-browser-execution-canary",
+            },
+          }),
+        };
+      },
+      (nodeId) => {
+        const base = plan(nodeId);
+        const hypothesis = {
+          ...base.hypothesis,
+          unknowns: [
+            {
+              claim: "the route reaches its renderer",
+              requiredEvidence:
+                "Inspect includes/excluded.php from the admitted Target inventory",
+            },
+          ],
+        };
+        return {
+          ...base,
+          hypothesis,
+          hypothesisDigest: sha256Digest(hypothesis),
+        };
+      },
+    );
+
+    try {
+      await expect(
+        fixture.verifier.rederive(fixture.context.plan),
+      ).resolves.toMatchObject({ status: "supported" });
+      expect(observedPrompt).toContain("includes/excluded.php");
+      expect(observedPrompt).toContain("EXCLUDED_SECRET_MARKER");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("independently re-derives a SQLi database-readback experiment from bound source", async () => {
+    let observedPrompt = "";
+    const fixture = await createFixture(async (request, context) => {
+      observedPrompt = request.prompt;
+      return {
+        kind: "exited",
+        exitCode: 0,
+        stderr: "",
+        stdout: providerEnvelope({
+          kind: "source-rederivation",
+          schemaVersion: 1,
+          verificationId: context.plan.verificationId,
+          targetSnapshotDigest: context.plan.targetSnapshot.digest,
+          hypothesisDigest: context.plan.hypothesisDigest,
+          status: "supported",
+          sourceEvidence: [
+            {
+              path: "includes/route.php",
+              fileDigest: fileDigest(context.routeContent),
+              startLine: 1,
+              endLine: 3,
+            },
+          ],
+          experiment: {
+            kind: "sql-injection-database",
+            schemaVersion: 1,
+            adapterVersion: "sql-injection-database@v1",
+            causalFactor: "request-controlled-query-structure",
+            successCriterion: "database-readback-canary",
+          },
+        }),
+      };
+    }, sqlInjectionPlan);
+    const inputPlan = fixture.context.plan;
+
+    try {
+      await expect(fixture.verifier.rederive(inputPlan)).resolves.toMatchObject(
+        {
+          status: "supported",
+          experiment: { kind: "sql-injection-database" },
+        },
+      );
+      expect(observedPrompt).toContain("database-readback");
+      expect(observedPrompt).not.toContain("stored-XSS browser experiment");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("re-derives from only the source files bound to the hypothesis route", async () => {
     let observedRequest: ClaudeStructuredProcessRequest | undefined;
     const fixture = await createFixture(async (request, context) => {

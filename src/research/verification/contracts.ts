@@ -99,6 +99,19 @@ const storedXssExperimentMechanismSchema = z.strictObject({
   successCriterion: z.literal("privileged-browser-execution-canary"),
 });
 
+const sqlInjectionExperimentMechanismSchema = z.strictObject({
+  kind: z.literal("sql-injection-database"),
+  schemaVersion: z.literal(1),
+  adapterVersion: z.literal("sql-injection-database@v1"),
+  causalFactor: identifierSchema,
+  successCriterion: z.literal("database-readback-canary"),
+});
+
+const experimentMechanismSchema = z.discriminatedUnion("kind", [
+  storedXssExperimentMechanismSchema,
+  sqlInjectionExperimentMechanismSchema,
+]);
+
 const sourceRederivationBaseShape = {
   kind: z.literal("source-rederivation"),
   schemaVersion: z.literal(1),
@@ -106,7 +119,7 @@ const sourceRederivationBaseShape = {
   targetSnapshotDigest: digestSchema,
   hypothesisDigest: digestSchema,
   sourceEvidence: z.array(sourceEvidenceSchema).min(1),
-  experiment: storedXssExperimentMechanismSchema,
+  experiment: experimentMechanismSchema,
 };
 
 export const sourceRederivationSchema = z.discriminatedUnion("status", [
@@ -127,22 +140,37 @@ const experimentBindingsSchema = z.strictObject({
   runtimeProfileDigest: digestSchema,
   setupPlanDigest: digestSchema,
   configurationDigest: digestSchema,
-  adapterVersion: z.literal("stored-xss-browser@v1"),
+  adapterVersion: z.enum([
+    "stored-xss-browser@v1",
+    "sql-injection-database@v1",
+  ]),
 });
 
-export const experimentPlanSchema = z.strictObject({
-  kind: z.literal("experiment-plan"),
-  schemaVersion: z.literal(1),
-  experimentId: digestSchema,
-  verificationId: identifierSchema,
-  role: z.enum(["witness", "control"]),
-  siblingGroupId: digestSchema,
-  hypothesisDigest: digestSchema,
-  bindings: experimentBindingsSchema,
-  mechanism: storedXssExperimentMechanismSchema.extend({
-    causalFactorState: z.enum(["present", "removed"]),
-  }),
-});
+export const experimentPlanSchema = z
+  .strictObject({
+    kind: z.literal("experiment-plan"),
+    schemaVersion: z.literal(1),
+    experimentId: digestSchema,
+    verificationId: identifierSchema,
+    role: z.enum(["witness", "control"]),
+    siblingGroupId: digestSchema,
+    hypothesisDigest: digestSchema,
+    bindings: experimentBindingsSchema,
+    mechanism: experimentMechanismSchema.and(
+      z.strictObject({
+        causalFactorState: z.enum(["present", "removed"]),
+      }),
+    ),
+  })
+  .superRefine((plan, context) => {
+    if (plan.bindings.adapterVersion !== plan.mechanism.adapterVersion) {
+      context.addIssue({
+        code: "custom",
+        path: ["bindings", "adapterVersion"],
+        message: "Experiment binding does not match the mechanism adapter",
+      });
+    }
+  });
 
 const storedXssObservationSchema = z.strictObject({
   kind: z.literal("stored-xss-browser"),
@@ -152,30 +180,56 @@ const storedXssObservationSchema = z.strictObject({
   browserCanaryExecuted: z.boolean(),
 });
 
-export const experimentObservationSchema = z.strictObject({
-  kind: z.literal("experiment-observation"),
+const sqlInjectionObservationSchema = z.strictObject({
+  kind: z.literal("sql-injection-database"),
   schemaVersion: z.literal(1),
-  experimentId: digestSchema,
-  verificationId: identifierSchema,
-  role: z.enum(["witness", "control"]),
-  hypothesisDigest: digestSchema,
-  bindings: experimentBindingsSchema,
-  isolation: z.strictObject({
-    runtime: z.literal("gvisor"),
-    runtimeDigest: digestSchema,
-    siblingGroupId: digestSchema,
-    labId: identifierSchema,
-    fresh: z.boolean(),
-    fallbackUsed: z.boolean(),
-  }),
-  causalFactor: z.strictObject({
-    id: identifierSchema,
-    state: z.enum(["present", "removed"]),
-  }),
-  normalFunction: z.enum(["preserved", "broken", "unknown"]),
-  result: storedXssObservationSchema,
-  artifactRefs: z.array(digestSchema),
+  attackerRequestAccepted: z.boolean(),
+  databaseReadbackCanaryObserved: z.boolean(),
 });
+
+const experimentResultSchema = z.discriminatedUnion("kind", [
+  storedXssObservationSchema,
+  sqlInjectionObservationSchema,
+]);
+
+export const experimentObservationSchema = z
+  .strictObject({
+    kind: z.literal("experiment-observation"),
+    schemaVersion: z.literal(1),
+    experimentId: digestSchema,
+    verificationId: identifierSchema,
+    role: z.enum(["witness", "control"]),
+    hypothesisDigest: digestSchema,
+    bindings: experimentBindingsSchema,
+    isolation: z.strictObject({
+      runtime: z.literal("gvisor"),
+      runtimeDigest: digestSchema,
+      siblingGroupId: digestSchema,
+      labId: identifierSchema,
+      fresh: z.boolean(),
+      fallbackUsed: z.boolean(),
+    }),
+    causalFactor: z.strictObject({
+      id: identifierSchema,
+      state: z.enum(["present", "removed"]),
+    }),
+    normalFunction: z.enum(["preserved", "broken", "unknown"]),
+    result: experimentResultSchema,
+    artifactRefs: z.array(digestSchema),
+  })
+  .superRefine((observation, context) => {
+    const expectedAdapter =
+      observation.result.kind === "stored-xss-browser"
+        ? "stored-xss-browser@v1"
+        : "sql-injection-database@v1";
+    if (observation.bindings.adapterVersion !== expectedAdapter) {
+      context.addIssue({
+        code: "custom",
+        path: ["bindings", "adapterVersion"],
+        message: "Experiment binding does not match the observation result",
+      });
+    }
+  });
 
 export const experimentObservationRefSchema = z.strictObject({
   kind: z.literal("experiment-observation"),

@@ -18,6 +18,7 @@ import {
   type ExperimentObservation,
   type IndependentVerifier,
   type LabControl,
+  type SourceRederivation,
   type VerificationPlan,
 } from "../../src/research/verification/index.js";
 import { createCampaignInput } from "../fixtures/campaign.js";
@@ -132,6 +133,36 @@ function verificationPlan(
   };
 }
 
+function sqlInjectionVerificationPlan(): VerificationPlan {
+  const base = verificationPlan({
+    campaignId: "campaign-verification-sqli-positive",
+    verificationId: "verification-sqli-positive",
+  });
+  const hypothesis = {
+    ...base.hypothesis,
+    causalIdentity: {
+      rootCause: "request-controlled-identifiers-enter-query-structure",
+      attackerControlledPrimitive: "unauthenticated-fields-array",
+      brokenSecurityProperty: "sql-query-structure-integrity",
+    },
+    impact: "sql-injection" as const,
+    unknowns: [
+      {
+        claim: "the database-only canary is returned to the attacker",
+        requiredEvidence: "a fresh database readback observation",
+      },
+    ],
+    falsifier: "the requested identifiers are restricted to known fields",
+    nextExperiment:
+      "compare database canary readback with the structure-changing value removed",
+  };
+  return {
+    ...base,
+    hypothesis,
+    hypothesisDigest: sha256Digest(hypothesis),
+  };
+}
+
 async function prepareCampaign(
   record: ResearchRecord,
   plan: VerificationPlan,
@@ -222,6 +253,146 @@ function sourceFalsifiedStoredXssVerifier(): IndependentVerifier {
       },
     }),
   };
+}
+
+function supportedSqlInjectionVerifier(): IndependentVerifier {
+  return {
+    rederive: async (input) => ({
+      kind: "source-rederivation",
+      schemaVersion: 1,
+      verificationId: input.verificationId,
+      targetSnapshotDigest: input.targetSnapshot.digest,
+      hypothesisDigest: input.hypothesisDigest,
+      status: "supported",
+      sourceEvidence: [
+        {
+          path: "includes/database.php",
+          fileDigest: digest("c"),
+          startLine: 80,
+          endLine: 140,
+        },
+      ],
+      experiment: {
+        kind: "sql-injection-database",
+        schemaVersion: 1,
+        adapterVersion: "sql-injection-database@v1",
+        causalFactor: "request-controlled-query-structure",
+        successCriterion: "database-readback-canary",
+      },
+    }),
+  };
+}
+
+function sourceFalsifiedSqlInjectionVerifier(): IndependentVerifier {
+  return {
+    rederive: async (input) => {
+      const supported = (await supportedSqlInjectionVerifier().rederive(
+        input,
+      )) as SourceRederivation;
+      return {
+        ...supported,
+        status: "source-falsified",
+        falsifiedCondition: input.hypothesis.falsifier,
+      };
+    },
+  };
+}
+
+function sqlInjectionLabControl(
+  artifactStore: JsonArtifactStore,
+  databaseCanaryObserved = true,
+): LabControl {
+  return {
+    execute: async (experiment) => {
+      const isWitness = experiment.role === "witness";
+      const observation = {
+        kind: "experiment-observation",
+        schemaVersion: 1,
+        experimentId: experiment.experimentId,
+        verificationId: experiment.verificationId,
+        role: experiment.role,
+        hypothesisDigest: experiment.hypothesisDigest,
+        bindings: experiment.bindings,
+        isolation: {
+          runtime: "gvisor",
+          runtimeDigest: experiment.bindings.runtimeProfileDigest,
+          siblingGroupId: experiment.siblingGroupId,
+          labId: isWitness ? "lab-sqli-witness-a" : "lab-sqli-control-a",
+          fresh: true,
+          fallbackUsed: false,
+        },
+        causalFactor: {
+          id: experiment.mechanism.causalFactor,
+          state: isWitness ? "present" : "removed",
+        },
+        normalFunction: "preserved",
+        result: {
+          kind: "sql-injection-database",
+          schemaVersion: 1,
+          attackerRequestAccepted: true,
+          databaseReadbackCanaryObserved: isWitness && databaseCanaryObserved,
+        },
+        artifactRefs: [],
+      };
+      const observationDigest = await artifactStore.putJson(observation);
+      return {
+        kind: "experiment-observation",
+        schemaVersion: 1,
+        experimentId: experiment.experimentId,
+        digest: observationDigest,
+      };
+    },
+  };
+}
+
+async function verifySqlInjectionAndReplay(
+  plan: VerificationPlan,
+  options: {
+    readonly independentVerifier: IndependentVerifier;
+    readonly databaseCanaryObserved: boolean;
+  },
+) {
+  const directory = await mkdtemp(join(tmpdir(), "verification-sqli-"));
+  const databasePath = join(directory, "research.sqlite");
+  const artifactStore = openFileJsonArtifactStore(
+    join(directory, "private-artifacts"),
+  );
+  const record = openSqliteResearchRecord({
+    databasePath,
+    clock: () => new Date(fixedNow),
+  });
+  await prepareCampaign(record, plan);
+  const verification = openVerification({
+    record,
+    artifactStore,
+    independentVerifier: options.independentVerifier,
+    labControl: sqlInjectionLabControl(
+      artifactStore,
+      options.databaseCanaryObserved,
+    ),
+  });
+
+  try {
+    const ref = await verification.verify(plan);
+    record.close();
+    const reopened = openSqliteResearchRecord({ databasePath });
+    try {
+      const replayed = await reopened.readVerification(
+        plan.campaignId,
+        plan.verificationId,
+      );
+      return { ref, replayed };
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    try {
+      record.close();
+    } catch {
+      // The successful path closes before replaying the same database.
+    }
+    await rm(directory, { force: true, recursive: true });
+  }
 }
 
 function storedXssLabControl(
@@ -374,6 +545,49 @@ async function verifyAndReplay(
 }
 
 describe("Verification.verify", () => {
+  it("durably records a Finding after a database readback Witness and fresh sibling Causal Control", async () => {
+    const plan = sqlInjectionVerificationPlan();
+    await expect(
+      verifySqlInjectionAndReplay(plan, {
+        databaseCanaryObserved: true,
+        independentVerifier: supportedSqlInjectionVerifier(),
+      }),
+    ).resolves.toMatchObject({
+      ref: { outcome: "finding" },
+      replayed: {
+        value: {
+          outcome: {
+            kind: "finding",
+            causalIdentity: plan.hypothesis.causalIdentity,
+          },
+          evidence: { kind: "experiment-pair" },
+        },
+      },
+    });
+  });
+
+  it("durably records Disproved for the same SQLi Causal Identity when the patched source and fresh sibling labs preserve query integrity", async () => {
+    const plan = sqlInjectionVerificationPlan();
+    await expect(
+      verifySqlInjectionAndReplay(plan, {
+        databaseCanaryObserved: false,
+        independentVerifier: sourceFalsifiedSqlInjectionVerifier(),
+      }),
+    ).resolves.toMatchObject({
+      ref: { outcome: "disproved" },
+      replayed: {
+        value: {
+          outcome: {
+            kind: "disproved",
+            reason: "security-property-preserved",
+            causalIdentity: plan.hypothesis.causalIdentity,
+          },
+          evidence: { kind: "experiment-pair" },
+        },
+      },
+    });
+  });
+
   it("durably records a Finding after a browser Witness and fresh sibling Causal Control", async () => {
     const plan = verificationPlan();
     await expect(verifyAndReplay(plan, "broken")).resolves.toMatchObject({
