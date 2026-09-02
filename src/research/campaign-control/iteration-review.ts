@@ -3,6 +3,7 @@ import type { VerificationRecordView } from "../verification/index.js";
 import {
   finiteWorkSchema,
   iterationDecisionSchema,
+  type CalibrationReviewResult,
   type FiniteWork,
   type IterationDecision,
 } from "./contracts.js";
@@ -16,6 +17,7 @@ interface IterationReviewInput {
   readonly maxFinderAttempts: number;
   readonly executedAttempts: number;
   readonly verifications: readonly VerificationRecordView[];
+  readonly calibrationReview?: CalibrationReviewResult;
 }
 
 export type IterationReviewResult = {
@@ -34,6 +36,15 @@ export function reviewIteration(
     (verification) => verification.ref.outcome !== "blocked",
   );
   if (conclusive.length > 0) {
+    if (input.calibrationReview?.kind === "complete") {
+      return {
+        decision: iterationDecisionSchema.parse({
+          kind: "stop-boundary-pair-complete",
+          evidence: input.calibrationReview.evidence,
+        }),
+        finiteWork: null,
+      };
+    }
     return {
       decision: iterationDecisionSchema.parse({
         kind: "await-calibration",

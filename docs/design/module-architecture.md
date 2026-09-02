@@ -92,7 +92,7 @@ Researchを理解・操作するときは、次の6moduleだけを第一階層�
 | AI実行管理 | Model Execution | Claude/GPT/Grok/GLM adapter、session、retry、usage、transcript |
 | 研究記録 | Research Record | Research Ledger、CAS、replay、参照整合性 |
 
-通常の運用者はprovider CLI、PHP parser、container、SQLite eventを直接操作しない。調査進行制御の`prepare / advance / requestStop`とread-only queryだけを使う。
+通常の運用者はprovider CLI、PHP parser、container、SQLite eventを直接操作しない。調査進行制御の`prepare / run`とread-only queryだけを使う。
 
 ## Integration Contracts
 
@@ -164,8 +164,7 @@ Research contextの外から呼べるapplication APIは次に限定する。
 ```ts
 interface CampaignRunner {
   prepare(input: NewCampaignInput): Promise<PreparedCampaign>;
-  advance(campaignId: CampaignId, until: AdvanceUntil): Promise<CampaignView>;
-  requestStop(campaignId: CampaignId, reason: StopReason): Promise<StopReceipt>;
+  run(plan: CampaignRunPlan): Promise<CampaignRunRecordRef>;
 }
 
 interface CampaignReader {
@@ -174,21 +173,22 @@ interface CampaignReader {
 }
 ```
 
-`advance`はLedgerをreplayし、必要な有限workを決め、durable receiptまで進めるreconcilerである。CLIやremote controlへ`runMapper`、`spawnAgent`、`resumeClaude`、`appendEvent`を公開しない。
+`run`はLedgerをreplayし、固定PlanをterminalなIteration Decisionまで進めるreconcilerである。CLIやremote controlへ`runMapper`、`spawnAgent`、`resumeClaude`、`appendEvent`を公開しない。現行sliceは一つの有限Work Waveを閉じ、到達形では`continue-unresolved-work`を内部消費して人間の追加指示なしに反復する。
 
 ## Research modules
 
 ### Campaign Control
 
-Campaign lifecycleと一回の`advance`でどこまで進めるかを所有する。Ledger replay、budget reservation、Work Wave barrier、crash recoveryを調整するが、provider eventやPHP ASTを解釈しない。
+Campaign lifecycleと一回の`run`でどこまで進めるかを所有する。Ledger replay、budget reservation、Work Wave barrier、crash recoveryを調整するが、provider eventやPHP ASTを解釈しない。
 
 ```text
-prepare / advance / requestStop
+prepare / run
     -> replay state
-    -> ask one decision module for the next finite action
-    -> invoke the owning execution module
-    -> durably record its typed result
-    -> return a projection
+    -> build one finite Work Wave
+    -> invoke owning execution modules
+    -> durably record typed terminal evidence
+    -> fold one Iteration Decision
+    -> return an immutable run ref
 ```
 
 Campaign Controlをgod moduleにしない。Focus分割はExploration Control、provider retryはModel Execution、Finding昇格はVerificationが決める。
@@ -325,6 +325,8 @@ review(input: IterationReviewInput): IterationDecision;
 ```
 
 raw transcriptをglobal Knowledgeへ昇格せず、LessonとRuleはそれぞれpromotion gateを通す。Exploration ControlがWave内のHypothesis、Chain Synthesis、closureを判断する責務と、Iteration ReviewがCampaign横断で次版のpolicy、Knowledge、rule候補を決める責務を分ける。
+
+Development Boundary Pairでは、private Calibration Reviewがpositive Finding、同じCausal Identityのpatched Disproved、benign functional control、oracle-free negativeの非昇格をterminal refsだけから判定し、Boundary Pair Evidenceを返せる。これはIteration Reviewへ渡すprivate system seamであり、Exploration、Verification、model judgeの代替ではない。patched negativeを二つのoracle分離経路で評価する理由は[ADR 0109](../adr/0109-test-patched-snapshots-through-two-oracle-separated-paths.md)に固定する。
 
 Iteration Reviewは改善候補を試験投入版として作れるが、現Campaignへ適用しない。通常のpromptまたはpriority変更は小さなDevelopment smokeの後、次の少数実戦Campaignだけでcanary適用する。static rule、global Knowledge、誤検出除外policyは自己強化riskが高いため、小さなSealed Evaluationも通過する。
 
@@ -478,7 +480,7 @@ folderはownershipを示すために使い、各名詞ごとにfileを分けな�
 
 最初のownership移行は完了している。`src/research/index.ts`はCampaign contractと`openResearch`だけを公開し、`open-research.ts`が内部moduleを組み立てる。Campaign lifecycleとprojectionは`campaign-control/`、SQLite append/replayとcanonical JSON/CASは`research-record/`、PHP Program Indexは`source-mapping/php-program-index/`が所有する。CLIは薄いadapterのままなので、次にCLI behaviorを変更する時まで`src/cli.ts`から動かさない。
 
-これはfolderを完成形まで先に作る移行ではない。未実装Moduleは、それぞれacceptedなSeamと最初のbehaviorを持つIssueで追加する。Source Mappingの最初の静的slice、固定Surface Mapから有限Work Waveを作るExploration bootstrap、Finder schemaを検査して多数決なしでSource-bound Hypothesisへ取り込む最初の`wave-completed`、tool-freeなClaude process/Opus Finder実行までを実装した。private development benchmarkでは実TargetからExplorationの`verify` decisionまで到達している。次は新しい水平moduleを増やさず、Work LeaseからAttempt Planを作るcompositionとresult receiptをCampaign Control/Research Recordへ接続し、独立Verificationまで同じ経路を延ばす。
+これはfolderを完成形まで先に作る移行ではない。未実装Moduleは、それぞれacceptedなSeamと最初のbehaviorを持つIssueで追加する。Source Mappingの静的slice、固定Surface Mapから有限Work Waveを作るExploration bootstrap、tool-freeなClaude process/Opus Finder、source-bound Hypothesis ingestion、独立Verification、gVisor Witness/Control、Iteration Decision、Research Ledger replayを一つの`CampaignRunner.run`へ接続した。opaque Calibration Review receiptとVerification crash recoveryもBehavior Testで固定している。実TargetのBrizy positiveはFindingまで到達し、Closure Gateにはprovider復旧後の同一Causal Identity patched DisprovedとBoundary Pair Evidenceが残る。
 
 現行Source MappingはPHP Program Indexのsymbol、WordPress fact、diagnosticを`observed`として取り込み、全manifest entry、非PHP gap、stable node/relation identity、初期mapとsource-only revisionをCASへ固定する。一方、`pluginSlug`を含む旧Target Snapshot形状、Context Response、Mapper synthesis、非PHP asset relation、Knowledge由来inference、Runtime Observationはまだ完全なSource Mapping seamを満たさない。初期探索は明示gapを持つ最小Mapから始め、必要性が観測された能力を独立sliceで追加する。
 

@@ -4,7 +4,7 @@ Status: confirmed objective, 2026-09-02
 
 ## Goal
 
-Brizy 2.8.11（既知positive）と2.8.12（actual patched negative）のprivate Development Boundary Pairを使い、Finderへ既知脆弱性のoracleを渡さず、固定入力から独立Verificationと次iterationまでを一つの公開入口で自律実行できる最初のproduction-quality closed vertical sliceを完成させる。その後、同じproduction経路をユーザー提供の公開Findingとdaroo由来のholdout Caseへ通し、一つのBrizy routeを再生するだけでなくStored XSS、SQL injection、account takeoverへ転用できることを確認する。
+Brizy 2.8.11（既知positive）と2.8.12（actual patched negative）のprivate Development Boundary Pairを使い、Finderへ既知脆弱性のoracleを渡さず、固定入力から独立Verificationと次iterationまでを一つの公開入口で自律実行できる最初のproduction-quality closed vertical sliceを完成させる。
 
 ```text
 Target Snapshot + Surface Map
@@ -18,14 +18,11 @@ Target Snapshot + Surface Map
   -> Iteration Decision
 ```
 
-このGoalは二つのgateを順に通す。
-
-1. `Closure Gate`: Brizyだけでresearch lifecycle、安全隔離、証拠、記録、replayを閉じる。
-2. `Transfer Gate`: Interfaceを変えず、Case固有分岐を追加せず、追加mechanismとholdout plugin familyへ転用する。
+このGoalの完了条件は`Closure Gate`一つである。Brizyだけでresearch lifecycle、安全隔離、証拠、記録、replayを閉じる。Interfaceを変えない追加Caseへの転用は、閉路完成後の独立した`Transfer Plan`として扱い、このGoalを水平framework実装で遅らせない。
 
 このGoalは早期実戦投入のための小さな能力校正であり、使い捨てprototypeではない。半年から一年以上保守できるstrict TypeScriptのModule、versioned runtime schema、決定的replay、private artifact分離を維持する。大規模なmodel比較または全portfolio benchmarkは要求しない。
 
-Closure Gateは既存Milestone 1の定義を維持する。Transfer Gateはその後に同じactive Goal内で行う小さな校正であり、Brizy閉路の実装中にSQLiやATOの水平frameworkを先行させない。
+これは既存Milestone 1と[ADR 0071](../adr/0071-gate-milestone-one-on-one-complete-boundary-pair.md)の境界を維持する。SQL injection、account takeover、他provider、全cohort評価はこのGoalへ含めない。
 
 ## Fixed Boundary Pair
 
@@ -41,7 +38,9 @@ Mapper、Finder、VerifierへCase role、CVE、advisory、affected version、pat
 
 2.8.12のDisprovedは、固定HypothesisとCausal Identityについて必要条件またはsecurity-property破壊が成立しなかったという限定的結論である。plugin全体に脆弱性がないという結論へ拡張しない。
 
-## Transfer Cohorts
+## Post-goal Transfer Plan
+
+以下はClosure Gateを通したproduction経路の次期移植候補であり、このGoalのDefinition of Doneではない。Case情報を残す一方、未実装mechanismやholdout評価を現在の完了判定へ混ぜない。
 
 ### User-provided Development Cohort
 
@@ -93,10 +92,6 @@ holdoutをfreezeした後は、そのCase固有のprompt、rule、Knowledge、pr
 13. crash境界、unknown event version、artifact digest不一致、budget exhaustion、gVisor unavailable、sibling不成立を安全側のtyped outcomeまたはread rejectionとしてBehavior Testで保護する。
 14. `pnpm check`、secret scan、GitHub CIが成功し、Codebase Guide、Module図、Seam文書が実装と一致する。
 15. private Target、prompt、transcript、payload、credential、未公開Findingをcommitせず、検査済みcommitを`main`へpushする。
-16. TranslatePress Stored XSS、Simply Schedule Appointments SQL injection、TranslatePress account takeoverの各Boundary Pairを同じResearch公開Interfaceから実行し、最大3回の独立Finder Attempt以内に期待Causal Identityと一致するSource-bound Hypothesisを作り、positiveだけをFindingへ昇格する。
-17. `stored-xss-browser@v1`、`sql-injection-database@v1`、`account-takeover-password-reset@v1`を同じVerification Interfaceのmechanism固有typed Experimentとして実装し、genericな`success`またはproof文字列へ平坦化しない。
-18. 固定したdaroo holdoutのStored XSS一件とSQL injection一件を、Case固有調整なしで最大3回の独立Finder Attempt以内に発見・独立検証する。patched negativeとbenign controlからfalse Findingを生成しない。
-19. user-provided Development Cohortとdaroo holdoutの結果をagentic discovery、Verification、false promotion、Attempt数、wall time、Blocked reasonに分けて記録し、単一成功またはmodel self-verdictを能力合格にしない。
 
 ## Required evidence
 
@@ -112,7 +107,6 @@ holdoutをfreezeした後は、そのCase固有のprompt、rule、Knowledge、pr
 | replay | close/reopen Behavior Testと同一view digest |
 | safety | gVisor identity、no-fallback receipt、secret scan |
 | maintainability | accepted Seam、strict TypeScript gate、Codebase Guide同期 |
-| transfer capability | user-provided 4 Caseのpaired run receiptsとdaroo holdout 2 Caseのfrozen grader results |
 | delivery | `pnpm check` output、pushed commit、successful GitHub CI run |
 
 ## Explicit non-goals
@@ -122,7 +116,7 @@ holdoutをfreezeした後は、そのCase固有のprompt、rule、Knowledge、pr
 - Claude以外のprovider adapterまたはprovider fallback
 - RCE、file、deserialization、authorization専用Experiment adapter
 - WordPress theme、WordPress Core、WordPress外の一般化framework
-- 選定した6 Case以外へ未使用の抽象化、完全なbenchmark suite、大規模model比較
+- Brizy以外のCaseへ未使用の抽象化、完全なbenchmark suite、大規模model比較
 - plain Docker、host target execution、手動でのFinding昇格
 
 ## Checkpoints
@@ -131,8 +125,7 @@ holdoutをfreezeした後は、そのCase固有のprompt、rule、Knowledge、pr
 2. 合成fixtureで`Finding | Disproved | Blocked`とsibling invariantをred-greenする。
 3. Research LedgerへoutcomeとIteration Decisionを接続し、close/reopen replayをred-greenする。
 4. gVisor Runtime Profileとsealed Brizy Lab Baselineをprivate環境で成立させる。
-5. private 2.8.11 positive、2.8.12 patched negative、benign controlを同じ公開閉路から実行する。
-6. 同じInterfaceへSQL injectionとaccount takeoverのtyped Experimentを一つずつ実Target駆動で追加する。
-7. user-provided Development Cohortの残り3件をpaired executionする。
-8. daroo holdoutのStored XSS一件とSQL injection一件を凍結し、Case固有調整なしで実行する。
-9. 全gate、文書同期、secret scan、push、CI成功を確認する。
+5. private 2.8.11 positiveと2.8.12 patched negativeを同じoracle-free `CampaignRunner.run`へ通し、positiveだけがFindingになることを確認する。positiveで確定したCausal Identityはprivate graderから同じVerification seamへ直接渡し、2.8.12のDisprovedとbenign controlを確認する。既知Hypothesisをnegative Finderへ渡さない。
+6. 全gate、文書同期、secret scan、push、CI成功を確認する。
+
+Closure Gate完了後は、上のPost-goal Transfer Planを別Goalとして開始する。順序はmechanismを一つずつ実Target駆動で追加し、Development Cohort、freeze済みdaroo holdoutの順とする。

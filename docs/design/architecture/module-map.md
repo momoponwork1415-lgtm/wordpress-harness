@@ -77,8 +77,7 @@ flowchart TB
 
     classDef partial fill:#fff5d6,stroke:#a87800,color:#3f2d00;
     classDef planned fill:#f2f3f5,stroke:#777,color:#333;
-    class campaign,understand,explore,execution,record partial;
-    class verify planned;
+    class campaign,understand,explore,verify,execution,record partial;
 ```
 
 `Campaign Control`が進行と予算を決める。`Source Understanding -> Exploration -> Verification`が証拠を強くする主経路である。`Model Execution`はAIを実行するが研究上の判断を所有しない。全Moduleの事実と判断は`Research Record`へ追記され、workerが過去の記録を書き換えることはできない。
@@ -119,6 +118,33 @@ sequenceDiagram
 ```
 
 この図は概念上の主経路であり、厳密なcall順ではない。実行中は`Campaign Control`が各段階をreconcileし、`Model Execution`が必要なAI Attemptを動かす。すべての重要な遷移は先に`Research Record`へ固定してから外部副作用を進める。
+
+### Development Boundary Pairの閉じ方
+
+```mermaid
+flowchart TB
+    positive["Positive Campaign"]
+    negative["Patched Campaign"]
+    pterm[("Finding ref")]
+    nterm[("Disproved ref")]
+    calibration["Private Calibration<br/>Review"]
+    receipt[("Boundary Pair<br/>Evidence ref")]
+    iteration{"Iteration Review"}
+    await["await-calibration"]
+    stop["stop-boundary-pair-complete"]
+
+    positive --> pterm --> calibration
+    negative --> nterm --> calibration
+    calibration -->|"不足・不一致"| iteration --> await
+    calibration -->|"同一Identity + 正常機能 + 隔離成立"| receipt --> iteration --> stop
+
+    classDef module fill:#edf4ff,stroke:#3767a6,color:#172b4d;
+    classDef artifact fill:#fff5d6,stroke:#a87800,color:#3f2d00;
+    class positive,negative,calibration,iteration module;
+    class pterm,nterm,receipt,await,stop artifact;
+```
+
+private Calibration Reviewは探索agentではなくDevelopment Boundary Pair専用のsystem seamである。Case roleや既知payloadをFinderへ返さず、完成済みterminal refだけを比較する。patched Targetへ正例Hypothesisを当てる作業もFinderではなくprivate graderから同じVerification seamへ入れる。単一のFinding、意味が近いだけの異なるCausal Identity、negative Campaignからのfalse promotion、機能破壊によるnegative、plain Docker fallbackのいずれでも完了receiptを作らない。
 
 ## 5. 詳細を読むとき
 

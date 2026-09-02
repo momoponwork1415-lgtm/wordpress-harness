@@ -166,7 +166,13 @@ flowchart TB
     ingest["Source-bound Ingestion"]
     verify["Independent Verification"]
     record[("Research Record")]
-    decision["Iteration Decision"]
+    calibration["Private Calibration<br/>Review"]
+    decision{"Iteration Decision"}
+
+    await["await-calibration"]
+    stop["stop-boundary-pair-complete"]
+    continue["continue-unresolved-work"]
+    blocked["blocked-capability"]
 
     nextwave["Next Wave Reconcile"]
     synthesis["Chain Synthesis"]
@@ -174,8 +180,14 @@ flowchart TB
     closure["Coverage Closure"]
     multimodel["GLM / Grok / GPT /<br/>将来のModel Profiles"]
 
-    current --> finders --> ingest --> verify --> record --> decision
-    decision -. "未実装" .-> nextwave
+    current --> finders --> ingest --> verify --> record
+    record -. "Boundary Pairのみ" .-> calibration --> decision
+    record --> decision
+    decision --> await
+    decision --> stop
+    decision --> continue
+    decision --> blocked
+    continue -. "自動消費は次slice" .-> nextwave
     ingest -. "未実装" .-> synthesis
     synthesis -. "未実装" .-> gaps
     gaps -. "未実装" .-> closure
@@ -184,12 +196,14 @@ flowchart TB
     classDef done fill:#e9f7ed,stroke:#337a46,color:#173d22;
     classDef partial fill:#fff5d6,stroke:#a87800,color:#3f2d00;
     classDef planned fill:#f2f3f5,stroke:#777,color:#333;
-    class current,finders,ingest,verify,record done;
-    class decision partial;
+    class current,finders,ingest,verify,record,decision,await,continue,blocked done;
+    class calibration,stop partial;
     class nextwave,synthesis,gaps,closure,multimodel planned;
 ```
 
-2026-09-02時点で、Brizy 2.8.11の手動較正経路は同じCausal Identityについて`Finding`、2.8.12は`Disproved`を実Opus再導出とfresh gVisor experiment pairで記録した。oracle-free Campaignでは最大3 Finderを実行するproduction compositionまで動作している。これは探索エンジンの最初の垂直スライスであり、複数Wave、Chain Synthesis、Gap Review、multi-provider探索まで完成したことは意味しない。
+2026-09-02時点で、Brizy 2.8.11のoracle-free Campaignは最大3 Finderから`Finding`まで到達した。2.8.12の過去の手動較正経路は`Disproved`を記録したが、正例とCausal Identity表現が一致しないためprivate Calibration Reviewは`pending`に保つ。同一Identityへ拘束した再検証はprovider unavailableで`Blocked`となり、誤って`Disproved`またはBoundary Pair完了へ昇格していない。合成Behavior Testではopaque receiptから`stop-boundary-pair-complete`まで動作する。実Targetで残るのはprovider復旧後の同一Identity negativeと完了receiptである。
+
+旧whitebox-harnessと同じく、到達形ではCampaign投入後に人間の追加指示なしで反復する。新設計はその自律性を削らず、進行、上限、resume、停止判定をroot agentの巨大Promptから`Campaign Control`と型付きrecordへ移す。現行sliceは一つの有限Waveと次Decisionまでを自律実行するが、`continue-unresolved-work`を次Waveへ自動消費する部分はまだ未実装である。
 
 図中のOpusは現在接続済みのModel Profileを表し、FinderまたはVerifierの型を意味しない。Target固定、Focus、tool manifest、出力schema、仮説取込、独立検証はprovider非依存である。Claude固有`high`は現在の開発baselineに限り、安価なeligible Profileで各gateを再現できることをハーネス能力として評価する。
 

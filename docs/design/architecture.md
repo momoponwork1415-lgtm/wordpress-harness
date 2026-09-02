@@ -12,7 +12,7 @@ Status: Design Baseline v0.1, 2026-09-01
 - Mandiant AVDH: threat modelからentry point、context enrichment、hypothesis generation、independent validation、human expert validationへ進む構造と、language/framework/vulnerability知識の階層
 - Anthropic reference harness: search spaceの明示的partition、DiscoveryとVerificationの分離、executable witness、clean sandbox、反復がraw parallelismより重要という実務則
 
-この初期設計では、旧`whitebox-harness`のcontract、queue、case、programme、submission subsystemを移植しない。旧版から維持するのは、固定sourceに結び付けること、Discoveryの主張をVerificationで再導出すること、privateな証拠を公開codeから分離すること、の三原則だけである。
+この初期設計では、旧`whitebox-harness`のcontract、queue、case、programme、submission subsystemをそのまま移植しない。旧版から維持するのは、Campaign開始後に人間の追加指示なしで探索・仮説更新・検証・次反復・停止まで進む完全自律性、固定sourceへの拘束、Discovery主張の独立Verification、private証拠の公開codeからの分離である。自律性の実装場所はroot agentの巨大Promptではなく、Campaign Control、有限Work Lease、Research Ledger、typed Iteration Decisionへ移す。
 
 ## Context architecture
 
@@ -26,7 +26,9 @@ Research            <-- Evidence Request ----- Human OS
 
 - **Target Intelligence**: ecosystem observation、eligibility、ranking、source acquisitionを所有する。Oracle FactをResearchから隔離する。
 - **Research**: Surface Map、Discovery、Verification、Research Ledger、priority、iterationを所有する。Findingまでは機械系の独立検証で作る。
-- **Human OS**: review queue、独立した人間再現、Review Disposition、Evidence Request、External Action Authorizationを所有する。UIではなくdecision systemである。
+- **Human OS**: review queue、独立した人間再現、Review Disposition、Evidence Request、External Action Authorizationを所有する。UIではなくdecision systemであり、Research Campaignの途中進行を承認する必須gateではない。
+
+Target IntakeからCampaignを開始した後、Researchは原則として人間介入なしにterminalな停止理由まで進む。Human OSは確認または外部提出を行う下流contextであり、応答がなくてもResearchの探索loop、negative evidence記録、予算停止を妨げない。
 
 Target IntelligenceはWordfence programme対象内の候補を外部提出価値のため優先するが、それを技術的Researchのhard gateにしない。選定の主要因は潜在impact、Permitted Attackerから到達し得る攻撃面、利用規模、現行安定版と更新状況、取得可能性とする。報奨金額とmodel confidenceは使わない。既知脆弱性の履歴を使う場合も、将来の低比重な脆弱性履歴集計に限り、元のOracle Factと集計値のどちらもResearchへ渡さない。詳細は[ADR 0095](../adr/0095-prioritize-targets-by-non-oracle-research-value.md)に記録する。
 
@@ -142,13 +144,12 @@ context内部のmodule ownership、許可・禁止依存、record ownership、ta
 外部から見えるcommand interfaceは一つに保ち、queryをread-only readerへ分ける。
 
 ```text
-CampaignRunner.prepare(NewCampaignInput)        -> PreparedCampaign
-CampaignRunner.advance(CampaignId, AdvanceUntil) -> CampaignView
-CampaignRunner.requestStop(CampaignId, Reason)   -> StopReceipt
-CampaignReader.read | inspect(...)               -> View
+CampaignRunner.prepare(NewCampaignInput) -> PreparedCampaign
+CampaignRunner.run(CampaignRunPlan)       -> CampaignRunRecordRef
+CampaignReader.read | inspect(...)        -> View
 ```
 
-CampaignRunnerはResearch Ledgerをreplayし、次の有限workだけを決めるevent-sourced reconcilerである。`advance`は新規開始、通常継続、crash resumeに同じ経路を使う。CLIの`start`はSetupの`prepare`後に`advance`を呼び、`resume`は同じ`advance`だけを呼ぶ。詳細は[ADR 0058](../adr/0058-drive-campaigns-through-an-event-sourced-reconciler.md)に記録する。
+CampaignRunnerはResearch Ledgerをreplayし、固定PlanをterminalなIteration Decisionまで進めるevent-sourced reconcilerである。`run`は新規開始、通常継続、crash resumeに同じ経路を使い、phase別commandをcallerへ公開しない。現行production sliceは一つの有限Work Waveと次Decisionまでを一回の`run`で閉じる。到達形では`continue-unresolved-work`を内部で次Waveへ消費し、人間の追加入力なしにbudgetまたはclosureまで反復する。reconcilerの由来は[ADR 0058](../adr/0058-drive-campaigns-through-an-event-sourced-reconciler.md)、現在のpublic APIは[Campaign execution seam](campaign-execution-seam.md)と[ADR 0110](../adr/0110-expose-plan-bound-run-instead-of-incremental-advance.md)に記録する。
 
 callerがworker数、prompt順、provider session、artifact file名を知る必要はない。CampaignRunnerのimplementationが次のmoduleを所有する。
 

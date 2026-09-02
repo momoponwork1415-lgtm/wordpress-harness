@@ -27,6 +27,7 @@ import { surfaceMapSchema } from "../source-mapping/contracts.js";
 import { openVerification } from "../verification/index.js";
 import {
   campaignRunPlanSchema,
+  calibrationReviewResultSchema,
   finderAttemptMaterializationSchema,
   type CampaignAttemptIntent,
   type CampaignExecutionDependencies,
@@ -439,6 +440,31 @@ async function executeRun(
       return view;
     }),
   );
+  const conclusiveVerificationRefs = verificationViews
+    .filter((view) => view.ref.outcome !== "blocked")
+    .map((view) => view.ref);
+  const calibrationReview =
+    plan.calibrationContext !== undefined &&
+    dependencies.calibrationReview !== undefined &&
+    conclusiveVerificationRefs.length > 0
+      ? calibrationReviewResultSchema.parse(
+          await dependencies.calibrationReview.review({
+            calibrationContext: plan.calibrationContext,
+            campaign: {
+              campaignId: plan.campaignId,
+              runId: plan.runId,
+            },
+            terminalVerifications: conclusiveVerificationRefs,
+          }),
+        )
+      : undefined;
+  if (
+    calibrationReview?.kind === "complete" &&
+    calibrationReview.evidence.calibrationContextDigest !==
+      plan.calibrationContext?.digest
+  ) {
+    throw new Error("Calibration Review targets a different context");
+  }
   const iteration = reviewIteration({
     campaignId: plan.campaignId,
     runId: plan.runId,
@@ -448,6 +474,7 @@ async function executeRun(
     maxFinderAttempts: plan.budget.maxFinderAttempts,
     executedAttempts: usedExecutions,
     verifications: verificationViews,
+    ...(calibrationReview === undefined ? {} : { calibrationReview }),
   });
   if (iteration.finiteWork !== null) {
     const stored = await dependencies.artifactStore.putJson(

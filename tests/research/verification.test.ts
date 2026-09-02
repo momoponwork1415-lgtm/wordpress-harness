@@ -398,6 +398,197 @@ describe("Verification.verify", () => {
     });
   });
 
+  it("restarts source re-derivation and the sibling pair after a crash before Witness", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "verification-recovery-"));
+    const databasePath = join(directory, "research.sqlite");
+    const artifactStore = openFileJsonArtifactStore(
+      join(directory, "private-artifacts"),
+    );
+    const plan = verificationPlan({
+      campaignId: "campaign-recovery-before-witness",
+      verificationId: "verification-recovery-before-witness",
+    });
+    const firstRecord = openSqliteResearchRecord({ databasePath });
+    await prepareCampaign(firstRecord, plan);
+    let firstRederivations = 0;
+    const firstVerification = openVerification({
+      record: firstRecord,
+      artifactStore,
+      independentVerifier: {
+        rederive: async (input) => {
+          firstRederivations += 1;
+          return supportedStoredXssVerifier().rederive(input);
+        },
+      },
+      labControl: {
+        execute: async () => {
+          throw new Error("simulated process crash before Witness");
+        },
+      },
+    });
+
+    try {
+      await expect(firstVerification.verify(plan)).rejects.toThrow(
+        "simulated process crash before Witness",
+      );
+    } finally {
+      firstRecord.close();
+    }
+
+    const resumedRecord = openSqliteResearchRecord({ databasePath });
+    let resumedRederivations = 0;
+    const resumedRoles: string[] = [];
+    const resumedLab = storedXssLabControl(artifactStore, "broken");
+    const resumedVerification = openVerification({
+      record: resumedRecord,
+      artifactStore,
+      independentVerifier: {
+        rederive: async (input) => {
+          resumedRederivations += 1;
+          return supportedStoredXssVerifier().rederive(input);
+        },
+      },
+      labControl: {
+        execute: async (experiment) => {
+          resumedRoles.push(experiment.role);
+          return resumedLab.execute(experiment);
+        },
+      },
+    });
+
+    try {
+      await expect(resumedVerification.verify(plan)).resolves.toMatchObject({
+        outcome: "finding",
+      });
+      await expect(
+        resumedRecord.readVerification(plan.campaignId, plan.verificationId),
+      ).resolves.toMatchObject({ value: { outcome: { kind: "finding" } } });
+      expect({
+        firstRederivations,
+        resumedRederivations,
+        resumedRoles,
+      }).toEqual({
+        firstRederivations: 1,
+        resumedRederivations: 1,
+        resumedRoles: ["witness", "control"],
+      });
+    } finally {
+      resumedRecord.close();
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("discards a partial Witness and runs a fresh sibling pair after recovery", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "verification-recovery-"));
+    const databasePath = join(directory, "research.sqlite");
+    const artifactStore = openFileJsonArtifactStore(
+      join(directory, "private-artifacts"),
+    );
+    const plan = verificationPlan({
+      campaignId: "campaign-recovery-after-witness",
+      verificationId: "verification-recovery-after-witness",
+    });
+    const firstRecord = openSqliteResearchRecord({ databasePath });
+    await prepareCampaign(firstRecord, plan);
+    const firstLab = storedXssLabControl(artifactStore, "broken");
+    const firstRoles: string[] = [];
+    const firstVerification = openVerification({
+      record: firstRecord,
+      artifactStore,
+      independentVerifier: supportedStoredXssVerifier(),
+      labControl: {
+        execute: async (experiment) => {
+          firstRoles.push(experiment.role);
+          if (experiment.role === "control") {
+            throw new Error("simulated process crash before Control");
+          }
+          return firstLab.execute(experiment);
+        },
+      },
+    });
+
+    try {
+      await expect(firstVerification.verify(plan)).rejects.toThrow(
+        "simulated process crash before Control",
+      );
+    } finally {
+      firstRecord.close();
+    }
+
+    const resumedRecord = openSqliteResearchRecord({ databasePath });
+    const resumedLab = storedXssLabControl(artifactStore, "broken");
+    const resumedRoles: string[] = [];
+    const resumedVerification = openVerification({
+      record: resumedRecord,
+      artifactStore,
+      independentVerifier: supportedStoredXssVerifier(),
+      labControl: {
+        execute: async (experiment) => {
+          resumedRoles.push(experiment.role);
+          return resumedLab.execute(experiment);
+        },
+      },
+    });
+
+    try {
+      await expect(resumedVerification.verify(plan)).resolves.toMatchObject({
+        outcome: "finding",
+      });
+      expect({ firstRoles, resumedRoles }).toEqual({
+        firstRoles: ["witness", "control"],
+        resumedRoles: ["witness", "control"],
+      });
+    } finally {
+      resumedRecord.close();
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("replays a completed Verification without calling external adapters", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "verification-replay-"));
+    const databasePath = join(directory, "research.sqlite");
+    const artifactStore = openFileJsonArtifactStore(
+      join(directory, "private-artifacts"),
+    );
+    const plan = verificationPlan({
+      campaignId: "campaign-completed-replay",
+      verificationId: "verification-completed-replay",
+    });
+    const firstRecord = openSqliteResearchRecord({ databasePath });
+    await prepareCampaign(firstRecord, plan);
+    const firstVerification = openVerification({
+      record: firstRecord,
+      artifactStore,
+      independentVerifier: supportedStoredXssVerifier(),
+      labControl: storedXssLabControl(artifactStore, "broken"),
+    });
+    const firstRef = await firstVerification.verify(plan);
+    firstRecord.close();
+
+    const replayRecord = openSqliteResearchRecord({ databasePath });
+    const replayVerification = openVerification({
+      record: replayRecord,
+      artifactStore,
+      independentVerifier: {
+        rederive: async () => {
+          throw new Error("completed Verification called the Verifier");
+        },
+      },
+      labControl: {
+        execute: async () => {
+          throw new Error("completed Verification called the Lab");
+        },
+      },
+    });
+
+    try {
+      await expect(replayVerification.verify(plan)).resolves.toEqual(firstRef);
+    } finally {
+      replayRecord.close();
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("durably records Disproved when the same Causal Identity preserves browser integrity", async () => {
     const plan = verificationPlan({
       campaignId: "campaign-verification-disproved",

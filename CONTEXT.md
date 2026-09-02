@@ -116,6 +116,18 @@ _Avoid_: Main workload、Proof of capability、Large benchmark suite
 同じCausal Identityについて、vulnerable Snapshotのpositive、actual patched Snapshotのnegative、通常機能が保たれるbenign controlを人間再現したbenchmark Case。
 _Avoid_: Version pair、Synthetic negative
 
+**Calibration Context**:
+Boundary PairのCase role、期待条件、評価対象をResearch workerから隔離して固定したprivate評価条件。
+_Avoid_: Finder hint、Campaign Policy、Known-vulnerability prompt
+
+**Calibration Review**:
+同じCausal Identityのpositive Finding、patched Disproved、正常機能維持、oracle-free negativeの非昇格が揃ったかを判定するprivate評価。脆弱性の探索またはFindingのVerificationではない。
+_Avoid_: Verification、Finder review、Model judge
+
+**Boundary Pair Evidence**:
+Calibration Reviewの全条件が成立したことをterminalなResearch evidenceへ結び付けた不変の評価記録。
+_Avoid_: Benchmark score、Finding、Calibration log
+
 **Sealed Evaluation Cohort**:
 高リスクな研究policyまたはKnowledgeの昇格時だけ実行し、日常の調整loopからoracleを隔離する小さな未使用Case集合。
 _Avoid_: Development Cohort、Demo cases
@@ -163,6 +175,10 @@ _Avoid_: Prompt、Agent assignment
 **Work Wave**:
 開始前にWork Leaseと予算を固定した有限の並列作業集合。全Attemptがterminalになった後、結果を安定順で次の判断へ反映する。
 _Avoid_: Open-ended swarm、Arrival-order batch
+
+**Iteration Decision**:
+一つのWork Waveのterminal evidenceから、有限の次作業、能力阻害、評価待ち、またはCampaign停止のいずれかを確定した研究判断。
+_Avoid_: Agent suggestion、Next prompt、Unrecorded scheduler state
 
 **Exploration Lane**:
 探索portfolioの偏りを防ぐためFocus AreaまたはWork Leaseへ付ける目的区分。worker role、model identity、Verification Queueではない。

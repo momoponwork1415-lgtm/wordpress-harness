@@ -328,6 +328,9 @@ async function openScenario(
   ) => ModelExecution,
   maxFinderAttempts = 2,
   labControl: (artifacts: JsonArtifactStore) => LabControl = lab,
+  calibrationReview?: {
+    review(input: unknown): Promise<unknown>;
+  },
 ) {
   const databasePath = join(directory, "research.sqlite");
   const artifacts = openFileJsonArtifactStore(join(directory, "artifacts"));
@@ -447,6 +450,16 @@ async function openScenario(
       id: "first-closed-slice-v1",
       digest: digest("0"),
     },
+    ...(calibrationReview === undefined
+      ? {}
+      : {
+          calibrationContext: {
+            kind: "calibration-context" as const,
+            schemaVersion: 1 as const,
+            id: "private-brizy-boundary-pair-v1",
+            digest: digest("a"),
+          },
+        }),
   };
   const research = openResearch({
     databasePath,
@@ -457,6 +470,7 @@ async function openScenario(
       modelExecution: modelExecution(artifacts, candidate),
       independentVerifier: verifier(),
       labControl: labControl(artifacts),
+      ...(calibrationReview === undefined ? {} : { calibrationReview }),
     },
   });
   await research.runner.prepare(input);
@@ -516,6 +530,140 @@ describe("CampaignRunner.run", () => {
         reopened.close();
       }
     } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("records Boundary Pair completion from an opaque private Calibration Review", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "campaign-calibration-"));
+    let reviewInput: unknown;
+    const scenario = await openScenario(directory, finder, 2, lab, {
+      review: async (input) => {
+        reviewInput = input;
+        return {
+          kind: "complete",
+          schemaVersion: 1,
+          evidence: {
+            kind: "boundary-pair-evidence",
+            schemaVersion: 1,
+            calibrationContextDigest: digest("a"),
+            digest: digest("b"),
+          },
+        };
+      },
+    });
+
+    try {
+      const ref = await scenario.research.runner.run(scenario.plan);
+      const view = await scenario.research.reader.inspect(
+        scenario.input.campaignId,
+        { kind: "run", runId: scenario.plan.runId },
+      );
+
+      expect({ ref, view }).toMatchObject({
+        ref: { decision: "stop-boundary-pair-complete" },
+        view: {
+          value: {
+            decision: {
+              kind: "stop-boundary-pair-complete",
+              evidence: {
+                kind: "boundary-pair-evidence",
+                schemaVersion: 1,
+                calibrationContextDigest: digest("a"),
+                digest: digest("b"),
+              },
+            },
+          },
+        },
+      });
+      expect(reviewInput).toEqual({
+        calibrationContext: {
+          kind: "calibration-context",
+          schemaVersion: 1,
+          id: "private-brizy-boundary-pair-v1",
+          digest: digest("a"),
+        },
+        campaign: {
+          campaignId: scenario.input.campaignId,
+          runId: scenario.plan.runId,
+        },
+        terminalVerifications: [
+          expect.objectContaining({
+            kind: "verification-record",
+            schemaVersion: 1,
+            outcome: "finding",
+          }),
+        ],
+      });
+    } finally {
+      scenario.research.close();
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects Calibration Review evidence bound to another private context", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "campaign-calibration-"));
+    const scenario = await openScenario(directory, finder, 2, lab, {
+      review: async () => ({
+        kind: "complete",
+        schemaVersion: 1,
+        evidence: {
+          kind: "boundary-pair-evidence",
+          schemaVersion: 1,
+          calibrationContextDigest: digest("c"),
+          digest: digest("b"),
+        },
+      }),
+    });
+
+    try {
+      await expect(scenario.research.runner.run(scenario.plan)).rejects.toThrow(
+        "Calibration Review targets a different context",
+      );
+      await expect(
+        scenario.research.reader.inspect(scenario.input.campaignId, {
+          kind: "run",
+          runId: scenario.plan.runId,
+        }),
+      ).rejects.toThrow("Campaign run not found");
+    } finally {
+      scenario.research.close();
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("does not close a Boundary Pair without a conclusive current Verification", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "campaign-calibration-"));
+    let reviewCalls = 0;
+    const scenario = await openScenario(
+      directory,
+      (artifacts) => emptyFinder(artifacts),
+      3,
+      lab,
+      {
+        review: async () => {
+          reviewCalls += 1;
+          return {
+            kind: "complete",
+            schemaVersion: 1,
+            evidence: {
+              kind: "boundary-pair-evidence",
+              schemaVersion: 1,
+              calibrationContextDigest: digest("a"),
+              digest: digest("b"),
+            },
+          };
+        },
+      },
+    );
+
+    try {
+      await expect(
+        scenario.research.runner.run(scenario.plan),
+      ).resolves.toMatchObject({ decision: "continue-unresolved-work" });
+      expect(reviewCalls).toBe(0);
+    } finally {
+      scenario.research.close();
       await rm(directory, { force: true, recursive: true });
     }
   });

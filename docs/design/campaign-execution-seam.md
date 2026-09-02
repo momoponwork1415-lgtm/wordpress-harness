@@ -1,12 +1,14 @@
 # Campaign execution seam
 
-Status: accepted on 2026-09-02; closed-loop behavior and production Finder materialization implemented
+Status: accepted on 2026-09-02; one-Wave closed-loop behavior, production Finder materialization, crash recovery, and Calibration Review seam implemented
 
 ## Design target
 
 Researchの`Campaign Control`が、一つの固定Target Snapshotについて、Surface Mapから有限Work Wave、Finder、独立Verification、Research Ledger、次のIteration Decisionまでを自律的に前進させる。callerへphase別command、provider session、Lab handle、Finder output、未記録の中間stateを公開しない。
 
-既存の`Campaign`は一つの主対象Target Snapshotを所有するという不変条件を維持する。Brizyのvulnerable positive、patched negative、benign functional controlは別Campaignとして同じproduction経路を通し、private Calibration Reviewだけが複数のterminal run refを比較する。二つのTarget Snapshotを一Campaignへ混ぜない。
+既存の`Campaign`は一つの主対象Target Snapshotを所有するという不変条件を維持する。Brizyのvulnerable positiveとpatched negativeは別Campaignとして同じoracle-free production経路を通し、private Calibration Reviewだけが複数のterminal run refを比較する。二つのTarget Snapshotを一Campaignへ混ぜない。
+
+patched negativeのFinderへ既知Hypothesisを渡して再発見を要求しない。oracle-free negative Campaignはfalse Findingがないことを示す。別にprivate graderがpositiveで確定したCausal Identityを、Finderを経由せず同じVerification seamからpatched Target Snapshotへ拘束してDisprovedとbenign functional controlを得る。Calibration Reviewはpositive Finding、patched Disproved、oracle-free negative Campaignの三つのterminal証拠を照合する。Case role、既知route、payloadはworker-visible inputへ戻さない。理由は[ADR 0109](../adr/0109-test-patched-snapshots-through-two-oracle-separated-paths.md)に固定する。
 
 ## Context-public Interface
 
@@ -105,7 +107,7 @@ type IterationDecisionV1 =
 - `continue-unresolved-work`: budget内に、情報利得と停止条件を持つ次の有限workが残る。
 - `blocked-capability`: gVisor、baseline、provider、browser、evidence等の不足により、固定Plan内で支持も反証も安全に進められない。
 
-`stop-boundary-pair-complete`は単一CampaignのFindingだけでは返さない。Calibration Reviewは同じ`CampaignRunner.run`を通った複数のterminal run refだけを比較し、advisoryや期待payloadをResearch判断へ持ち込まない。
+`stop-boundary-pair-complete`は単一CampaignのFindingだけでは返さない。Calibration Reviewはproduction Campaignのterminal run refとprivate graderが同じVerification seamで作ったpatched terminal refだけを比較し、advisoryや期待payloadをResearch判断へ持ち込まない。
 
 ## Durability and crash recovery
 
@@ -168,6 +170,8 @@ Behavior Testは`CampaignRunner.run(plan)`と`CampaignReader.read/inspect`から
 
 Git外のBrizy 2.8.11/2.8.12 snapshotでは、同じproduction materializerで各3 Leaseを外部modelなしに構築し、source入力が設定上限内に収まり、2.8.11のstate-chain Leaseが保存側、unauthenticated form側、管理画面templateを同時に含むことを確認した。これはsource選択とbindingのcharacterizationであり、脆弱性発見またはpatched negativeの実証ではない。
 
-private Brizy 2.8.11では、実Opus Finder・Independent Verifier・gVisor/browserを同じ`CampaignRunner.run`へ連結し、oracle-freeな3 FinderからFinding、`await-calibration`、Ledger replayまで到達した。2.8.12の手動較正経路は同じ最新構成でDisprovedになり、oracle-free Campaignは3 FinderからHypothesisを得ずFindingへ誤昇格しなかった。
+private Brizy 2.8.11では、実Opus Finder・Independent Verifier・gVisor/browserを同じ`CampaignRunner.run`へ連結し、oracle-freeな3 FinderからFinding、`await-calibration`、Ledger replayまで到達した。2.8.12の過去の手動較正経路は同じ最新構成でDisprovedになり、oracle-free Campaignは3 FinderからHypothesisを得ずFindingへ誤昇格しなかった。ただし過去二runのCausal Identity表現が一致しないため、private Calibration Reviewは安全側に`pending`を返す。2.8.11で確定したIdentityへ2.8.12を拘束した再検証は、provider unavailableによりBlockedであり、Boundary Pairの完了証拠には使わない。
 
-未実装の必須境界は、`continue-unresolved-work`を次の実Waveへ消費するreconcile、Verificationの各crash境界、複数のterminal runを比較するprivate Calibration Reviewである。
+Calibration Reviewはopaque Contextとterminal Verification refsだけを受けるsystem seamとして実装し、context digestが違う完了証拠を拒否する。合成Behavior Testでは正しいprivate receiptだけが`stop-boundary-pair-complete`を記録する。Verificationは、再導出後・Witness前とWitness後・Control前のprocess crashからclose/reopenすると、古い途中成果を採用せずfresh verifierとfresh sibling pairを再実行する。完成済みVerificationは外部adapterを呼ばず同じrefをreplayする。
+
+Closure Gateに残る実証は、provider復旧後に同一Causal Identityの2.8.12 Disprovedを作り、private Calibration Reviewを`complete`へ進め、同じproduction入口の`stop-boundary-pair-complete`を実レシートで確認することである。`continue-unresolved-work`を次の実Waveへ自動消費するreconcileは、完全自律の到達形には必要だが、一つの有限Waveと次Iteration Decisionまでを閉じる現在のClosure Gateには含めず、次のvertical sliceへ送る。

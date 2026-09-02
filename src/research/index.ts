@@ -20,6 +20,10 @@ export type {
   CampaignAttemptCompletion,
   CampaignAttemptIntent,
   CampaignAttemptRecordView,
+  CalibrationReview,
+  CalibrationReviewInput,
+  CalibrationReviewResult,
+  BoundaryPairEvidenceRef,
   CampaignExecutionDependencies,
   CampaignRunCompletionInput,
   CampaignRunPlan,
@@ -33,6 +37,8 @@ export type {
 } from "./campaign-control/contracts.js";
 export {
   CampaignRunConflictError,
+  boundaryPairEvidenceRefSchema,
+  calibrationReviewResultSchema,
   campaignAttemptCompletionSchema,
   campaignAttemptIntentSchema,
   campaignRunPlanSchema,

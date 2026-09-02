@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0110
 ---
 
 # Drive Campaigns through an event-sourced reconciler

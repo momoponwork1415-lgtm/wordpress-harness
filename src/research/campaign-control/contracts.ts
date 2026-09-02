@@ -22,6 +22,7 @@ import {
   verificationRecordRefSchema,
   type IndependentVerifier,
   type LabControl,
+  type VerificationRecordRef,
 } from "../verification/contracts.js";
 
 const identifierSchema = z
@@ -48,6 +49,25 @@ const verificationPolicyRefSchema = immutableRef("verification-policy");
 const experimentRegistryRefSchema = immutableRef("experiment-registry");
 const iterationPolicyRefSchema = immutableRef("iteration-policy");
 const calibrationContextRefSchema = immutableRef("calibration-context");
+
+export const boundaryPairEvidenceRefSchema = z.strictObject({
+  kind: z.literal("boundary-pair-evidence"),
+  schemaVersion: z.literal(1),
+  calibrationContextDigest: digestSchema,
+  digest: digestSchema,
+});
+
+export const calibrationReviewResultSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("pending"),
+    schemaVersion: z.literal(1),
+  }),
+  z.strictObject({
+    kind: z.literal("complete"),
+    schemaVersion: z.literal(1),
+    evidence: boundaryPairEvidenceRefSchema,
+  }),
+]);
 
 export const finderAttemptMaterializationSchema = z.strictObject({
   kind: z.literal("finder-attempt-materialization"),
@@ -125,6 +145,10 @@ export const iterationDecisionSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("continue-unresolved-work"),
     next: finiteWorkRefSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("stop-boundary-pair-complete"),
+    evidence: boundaryPairEvidenceRefSchema,
   }),
   z.strictObject({
     kind: z.literal("blocked-capability"),
@@ -216,6 +240,7 @@ export const campaignRunRecordRefSchema = z.strictObject({
   decision: z.enum([
     "await-calibration",
     "continue-unresolved-work",
+    "stop-boundary-pair-complete",
     "blocked-capability",
   ]),
 });
@@ -227,6 +252,12 @@ export type CampaignRunCompletionInput = z.infer<
 export type CampaignRunRecord = z.infer<typeof campaignRunRecordSchema>;
 export type CampaignRunRecordRef = z.infer<typeof campaignRunRecordRefSchema>;
 export type IterationDecision = z.infer<typeof iterationDecisionSchema>;
+export type BoundaryPairEvidenceRef = z.infer<
+  typeof boundaryPairEvidenceRefSchema
+>;
+export type CalibrationReviewResult = z.infer<
+  typeof calibrationReviewResultSchema
+>;
 export type FinderAttemptMaterialization = z.infer<
   typeof finderAttemptMaterializationSchema
 >;
@@ -276,12 +307,28 @@ export interface AttemptPlanMaterializer {
   ): Promise<FinderAttemptMaterialization>;
 }
 
+export interface CalibrationReviewInput {
+  readonly calibrationContext: NonNullable<
+    CampaignRunPlan["calibrationContext"]
+  >;
+  readonly campaign: {
+    readonly campaignId: string;
+    readonly runId: string;
+  };
+  readonly terminalVerifications: readonly VerificationRecordRef[];
+}
+
+export interface CalibrationReview {
+  review(input: CalibrationReviewInput): Promise<unknown>;
+}
+
 export interface CampaignExecutionDependencies {
   readonly artifactStore: JsonArtifactStore;
   readonly attemptPlanMaterializer: AttemptPlanMaterializer;
   readonly modelExecution: ModelExecution;
   readonly independentVerifier: IndependentVerifier;
   readonly labControl: LabControl;
+  readonly calibrationReview?: CalibrationReview;
 }
 
 export class CampaignRunConflictError extends Error {

@@ -108,6 +108,7 @@
 | Focus Area | 探索領域 |
 | Work Lease | 作業割当 |
 | Work Wave | 作業ウェーブ |
+| Iteration Decision | 反復判断。次の有限作業、阻害、評価待ち、停止を決めた記録 |
 | Exploration Lane | 探索レーン。何のために調べるか |
 | Frontier Lane | 重大侵害レーン |
 | Primitive Lane | 攻撃要素レーン |
@@ -165,6 +166,9 @@
 | Wordfence Eligibility Snapshot | Wordfence適格性スナップショット |
 | Development Cohort | 開発用評価群 |
 | Boundary Pair | 境界ペア |
+| Calibration Context | 校正条件。探索担当から隔離した非公開の評価条件 |
+| Calibration Review | 校正判定。境界ペアの成立条件を終端証拠から判定する工程 |
+| Boundary Pair Evidence | 境界ペア成立証拠 |
 | Sealed Evaluation Cohort | 封印評価群 |
 | Prospective Campaign | 実戦キャンペーン |
 | Permitted Attacker | 対象攻撃者 |
