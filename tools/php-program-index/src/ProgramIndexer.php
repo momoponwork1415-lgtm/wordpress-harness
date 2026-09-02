@@ -84,7 +84,7 @@ final class ProgramIndexer
             'schemaVersion' => 1,
             'generator' => [
                 'name' => 'wordpress-harness/php-program-index',
-                'version' => '0.2.0',
+                'version' => '0.3.0',
                 'phpParserVersion' => ltrim(
                     InstalledVersions::getPrettyVersion('nikic/php-parser') ?? 'unknown',
                     'v',

@@ -31,6 +31,146 @@ const helperPath = fileURLToPath(
 );
 
 describe("PHP Source Analysis", () => {
+  it("keeps a trait $this REST callback unresolved", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordpress-php-rest-trait-"),
+    );
+    const sourceDirectory = join(directory, "source");
+    await mkdir(sourceDirectory);
+    await writeFile(
+      join(sourceDirectory, "trait-controller.php"),
+      `<?php
+
+trait Shared_REST_Controller
+{
+    public function register_routes(): void
+    {
+        register_rest_route('example/v1', '/items', [
+            'methods' => 'GET',
+            'callback' => [$this, 'get_items'],
+        ]);
+    }
+}
+`,
+    );
+    const analysis = openPhpSourceAnalysis({
+      artifactDirectory: join(directory, "artifacts"),
+      helperPath,
+      phpBinary: "/usr/bin/php",
+    });
+
+    try {
+      const ref = await analysis.analyze({
+        targetSnapshot: {
+          id: "trait-rest-plugin-1.0.0",
+          pluginSlug: "trait-rest-plugin",
+          version: "1.0.0",
+          digest: `sha256:${"0".repeat(64)}`,
+        },
+        sourceDirectory,
+        profile: {
+          id: "wordpress-php-8.3-v1",
+          phpVersion: "8.3",
+        },
+      });
+      const index = await analysis.read(ref);
+      const route = index.files[0]?.wordpressFacts.find(
+        (fact) => fact.kind === "route-registration",
+      );
+
+      expect(route).toMatchObject({
+        kind: "route-registration",
+        callback: null,
+      });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("indexes each nested REST endpoint with its class callback", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "wordpress-php-rest-"));
+    const sourceDirectory = join(directory, "source");
+    await mkdir(sourceDirectory);
+    await writeFile(
+      join(sourceDirectory, "controller.php"),
+      `<?php
+
+final class Example_REST_Controller
+{
+    public function register_routes(): void
+    {
+        $namespace = 'example/v1';
+        $base = 'items';
+        register_rest_route($namespace, '/' . $base, [
+            [
+                'methods' => 'GET',
+                'callback' => [$this, 'get_items'],
+                'permission_callback' => [$this, 'get_items_permissions_check'],
+            ],
+            [
+                'methods' => 'POST',
+                'callback' => [$this, 'create_item'],
+                'permission_callback' => [$this, 'create_item_permissions_check'],
+            ],
+        ]);
+    }
+
+    public function get_items(): void {}
+    public function create_item(): void {}
+    public function get_items_permissions_check(): bool { return true; }
+    public function create_item_permissions_check(): bool { return false; }
+}
+`,
+    );
+    const analysis = openPhpSourceAnalysis({
+      artifactDirectory: join(directory, "artifacts"),
+      helperPath,
+      phpBinary: "/usr/bin/php",
+    });
+
+    try {
+      const ref = await analysis.analyze({
+        targetSnapshot: {
+          id: "nested-rest-plugin-1.0.0",
+          pluginSlug: "nested-rest-plugin",
+          version: "1.0.0",
+          digest: `sha256:${"0".repeat(64)}`,
+        },
+        sourceDirectory,
+        profile: {
+          id: "wordpress-php-8.3-v1",
+          phpVersion: "8.3",
+        },
+      });
+      const index = await analysis.read(ref);
+      const routeFacts = index.files[0]?.wordpressFacts.flatMap((fact) =>
+        fact.kind === "route-registration"
+          ? [
+              {
+                callback: fact.callback,
+                permissionCallback: fact.permissionCallback,
+              },
+            ]
+          : [],
+      );
+
+      expect(routeFacts).toEqual([
+        {
+          callback: "Example_REST_Controller::get_items",
+          permissionCallback:
+            "Example_REST_Controller::get_items_permissions_check",
+        },
+        {
+          callback: "Example_REST_Controller::create_item",
+          permissionCallback:
+            "Example_REST_Controller::create_item_permissions_check",
+        },
+      ]);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("records high-risk database, filesystem, and code execution sinks", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordpress-php-sink-"));
     const analysis = openPhpSourceAnalysis({
@@ -352,7 +492,7 @@ describe("PHP Source Analysis", () => {
         },
         generator: {
           name: "wordpress-harness/php-program-index",
-          version: "0.2.0",
+          version: "0.3.0",
           phpParserVersion: "5.8.0",
         },
         targetSnapshot: {

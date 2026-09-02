@@ -21,8 +21,8 @@ final class IndexVisitor extends NodeVisitorAbstract
     /** @var list<array<string, mixed>> */
     private array $wordpressFacts = [];
 
-    /** @var list<string> */
-    private array $classStack = [];
+    /** @var list<array{name: string, canResolveThis: bool}> */
+    private array $classScopeStack = [];
 
     /** @var list<string> */
     private array $callableStack = [];
@@ -41,10 +41,12 @@ final class IndexVisitor extends NodeVisitorAbstract
                     'name' => $name,
                     'range' => $this->range($node),
                 ];
-                $this->classStack[] = $name;
-            } else {
-                $this->classStack[] = 'anonymous-class@' . $node->getStartLine();
             }
+            $this->classScopeStack[] = [
+                'name' => $name ?? 'anonymous-class@' . $node->getStartLine(),
+                'canResolveThis' => $name !== null
+                    && ($node instanceof Stmt\Class_ || $node instanceof Stmt\Enum_),
+            ];
         } elseif ($node instanceof Stmt\Function_) {
             $name = $this->declarationName($node) ?? $node->name->toString();
             $this->symbols[] = [
@@ -54,7 +56,7 @@ final class IndexVisitor extends NodeVisitorAbstract
             ];
             $this->callableStack[] = $name;
         } elseif ($node instanceof Stmt\ClassMethod) {
-            $class = $this->last($this->classStack) ?? 'unknown-class';
+            $class = $this->currentClassScope()['name'] ?? 'unknown-class';
             $name = $class . '::' . $node->name->toString();
             $this->symbols[] = [
                 'kind' => 'method',
@@ -95,7 +97,7 @@ final class IndexVisitor extends NodeVisitorAbstract
             || $node instanceof Stmt\Trait_
             || $node instanceof Stmt\Enum_
         ) {
-            array_pop($this->classStack);
+            array_pop($this->classScopeStack);
         }
 
         return null;
@@ -170,18 +172,24 @@ final class IndexVisitor extends NodeVisitorAbstract
         }
 
         $options = $call->getArgs()[2]->value ?? null;
-        $this->wordpressFacts[] = [
-            'kind' => 'route-registration',
-            'namespace' => $this->stringArgument($call, 0),
-            'route' => $this->stringArgument($call, 1),
-            'callback' => $options instanceof Expr\Array_
-                ? $this->arrayCallable($options, 'callback')
-                : null,
-            'permissionCallback' => $options instanceof Expr\Array_
-                ? $this->arrayCallable($options, 'permission_callback')
-                : null,
-            'range' => $this->range($call),
-        ];
+        $endpoints = $options instanceof Expr\Array_ ? $this->routeEndpoints($options) : [];
+        if ($endpoints === []) {
+            $endpoints = [null];
+        }
+        foreach ($endpoints as $endpoint) {
+            $this->wordpressFacts[] = [
+                'kind' => 'route-registration',
+                'namespace' => $this->stringArgument($call, 0),
+                'route' => $this->stringArgument($call, 1),
+                'callback' => $endpoint instanceof Expr\Array_
+                    ? $this->arrayCallable($endpoint, 'callback')
+                    : null,
+                'permissionCallback' => $endpoint instanceof Expr\Array_
+                    ? $this->arrayCallable($endpoint, 'permission_callback')
+                    : null,
+                'range' => $this->range($call),
+            ];
+        }
     }
 
     private function recordSecurityFact(Node $node): void
@@ -341,6 +349,35 @@ final class IndexVisitor extends NodeVisitorAbstract
         return null;
     }
 
+    /** @return list<Expr\Array_> */
+    private function routeEndpoints(Expr\Array_ $options): array
+    {
+        if ($this->hasArrayKey($options, 'callback')) {
+            return [$options];
+        }
+        $endpoints = [];
+        foreach ($options->items as $item) {
+            if ($item?->value instanceof Expr\Array_
+                && $this->hasArrayKey($item->value, 'callback')
+            ) {
+                $endpoints[] = $item->value;
+            }
+        }
+        return $endpoints;
+    }
+
+    private function hasArrayKey(Expr\Array_ $array, string $key): bool
+    {
+        foreach ($array->items as $item) {
+            if ($item?->key instanceof Node\Scalar\String_
+                && $item->key->value === $key
+            ) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private function callableValue(Expr $value): ?string
     {
         if ($value instanceof Node\Scalar\String_) {
@@ -352,7 +389,14 @@ final class IndexVisitor extends NodeVisitorAbstract
         if ($value instanceof Expr\Array_ && count($value->items) === 2) {
             $first = $value->items[0]?->value;
             $second = $value->items[1]?->value;
-            $class = $first instanceof Node\Scalar\String_ ? $first->value : null;
+            $scope = $this->currentClassScope();
+            $class = match (true) {
+                $first instanceof Node\Scalar\String_ => $first->value,
+                $first instanceof Expr\Variable
+                    && $first->name === 'this'
+                    && ($scope['canResolveThis'] ?? false) === true => $scope['name'],
+                default => null,
+            };
             $method = $second instanceof Node\Scalar\String_ ? $second->value : null;
             return $class !== null && $method !== null ? $class . '::' . $method : null;
         }
@@ -401,6 +445,13 @@ final class IndexVisitor extends NodeVisitorAbstract
     {
         $value = end($values);
         return $value === false ? null : $value;
+    }
+
+    /** @return array{name: string, canResolveThis: bool}|null */
+    private function currentClassScope(): ?array
+    {
+        $scope = end($this->classScopeStack);
+        return $scope === false ? null : $scope;
     }
 
     /**

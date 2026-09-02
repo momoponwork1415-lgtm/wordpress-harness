@@ -190,7 +190,7 @@ export const phpProgramIndexSchema = z.strictObject({
   schemaVersion: z.literal(1),
   generator: z.strictObject({
     name: z.literal("wordpress-harness/php-program-index"),
-    version: z.enum(["0.1.0", "0.2.0"]),
+    version: z.enum(["0.1.0", "0.2.0", "0.3.0"]),
     phpParserVersion: z.string().min(1),
   }),
   targetSnapshot: z.strictObject({
