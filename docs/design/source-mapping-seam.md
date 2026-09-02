@@ -172,6 +172,8 @@ Source Mappingは脆弱性class、priority、worker割当を決めない。Surfa
 
 FinderへMap全体または全sourceを一括投入しない。Explorationが選んだFocus Areaに対し、Mapの関連subgraph、根拠状態、source slice、coverage gapを持つbounded contextを決定的にmaterializeする。Finderが不足producer、consumer、guard、assetを特定した場合は最大回数とbyte budgetを持つContext Requestを返し、回答は進行中Mapを書き換えず次revisionまたは次Attemptへ入る。
 
+このbounded contextを`Analysis Unit@v1`として明示する。一つのUnitはTarget、Surface Map、PHP Program Index、Focus Area、Work Leaseへ結び付き、実際に採用したpath、file digest、line range、byte量と選択理由をstable orderで持つ。directedなsink/source/state/guard StrategyではMap relationとcall neighborを弱いliteral/shared-hook候補より先にする。`wildcard`は同じsinkでもliteral、共有hook、directed候補から除いたnode-kind別Surface Map標本を先にし、既知のcall近傍と相関し過ぎないcontextを作る。UnitはPromptの一部としてprivate Attempt Planへ固定するが、選択理由はcontext取得の由来にすぎず、完全call graph、reachability証明、Findingではない。外部へ新しいResearch Interfaceを増やさず、既存`AttemptPlanMaterializer.materialize`をBehavior Testのseamにする。この内部設計は2026-09-02にacceptedとなった。
+
 Source Mappingが報告するのはInventory CoverageとMapping Coverageである。Exploration Coverage、Verification Coverage、Finding数をMapの品質へ混ぜず、単一のcoverage percentageへ潰さない。全file inventory、digest、path uniqueness、schema bindingが欠ける場合はbuildまたはMinimum Map Gateを閉じる。一方、意味relation、dynamic dispatch、非PHP assetが不足する場合はunknownまたはgapとしてfail openし、Coverage Laneの有限workへ変換できるようにする。
 
 ## Data handling

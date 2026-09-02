@@ -99,10 +99,16 @@ flowchart TB
     wave[("Finite Work Wave")]
     budget{"Campaign Budget<br/>最大3実行"}
 
+    subgraph units["Leaseごとの固定入力"]
+        u1["Analysis Unit A<br/>Focus + Strategy + Source"]
+        u2["Analysis Unit B<br/>Focus + Strategy + Source"]
+        u3["Analysis Unit C<br/>Focus + Strategy + Source"]
+    end
+
     subgraph independent["Fresh Contexts — 会話・共有scratchなし"]
-        f1["Finder A<br/>Focus + Strategy"]
-        f2["Finder B<br/>Focus + Strategy"]
-        f3["Finder C<br/>Focus + Strategy"]
+        f1["Finder A"]
+        f2["Finder B"]
+        f3["Finder C"]
     end
 
     r1[("Typed Result A")]
@@ -111,26 +117,50 @@ flowchart TB
     barrier{"Work Wave Barrier"}
 
     wave --> budget
-    budget --> f1
-    budget --> f2
-    budget --> f3
+    budget --> u1 --> f1
+    budget --> u2 --> f2
+    budget --> u3 --> f3
     f1 --> r1 --> barrier
     f2 --> r2 --> barrier
     f3 --> r3 --> barrier
 
     classDef done fill:#e9f7ed,stroke:#337a46,color:#173d22;
     classDef boundary fill:#fff5d6,stroke:#a87800,color:#3f2d00;
-    class wave,budget,f1,f2,f3,r1,r2,r3 done;
+    class wave,budget,u1,u2,u3,f1,f2,f3,r1,r2,r3 done;
     class barrier boundary;
 ```
 
 現在のproduction pathは一つのWaveから安定順で最大3 Attemptを選び、`Promise.allSettled`で並列実行する。各Finderは次だけを受け取る。
 
 - 自分のFocus Area、Lane、Strategy、上限
-- Surface MapとPHP Program Indexから決定的に選んだsource slice
+- Surface MapとPHP Program Indexから決定的に作った`Analysis Unit@v1`
 - source-bound Hypothesisを返すためのversioned schema
 
-現行のtool-free materializerは、Focus ownerのobserved anchorをseedにし、`seed -> 希少な共有hook一件 -> seed内のliteral PHP参照 -> 残りの共有hook -> Map relation二段 -> call neighbor二段`の順でpathを追加する。private closed sliceの上限は8 files、source全体650 KB、単一file 220 KBである。各fileはTarget manifestのsizeとSHA-256を再検査し、上限を越えるfileはobserved anchor周辺だけをrenderする。実装は[finder-attempt-materializer.ts](../../../src/research/campaign-control/finder-attempt-materializer.ts)を参照する。
+現行のtool-free materializerは、Focus ownerのobserved anchorをseedにする。directed Strategyは`Map relation -> call neighbor -> literal参照 -> 共有hook`の順、`wildcard`は`共有hook -> literal参照 -> directed候補を除いたSurface Map標本 -> relation/call fallback`の順でpathを選ぶ。標本はnode kindをround-robinし、同じkind内ではseedとのdirectory近接とpath順で決める。private closed sliceの上限は8 files、source全体650 KB、単一file 220 KBである。各fileはTarget manifestのsizeとSHA-256を再検査し、上限を越えるfileはobserved anchor周辺だけをrenderする。
+
+### Analysis Unitの作り方
+
+```mermaid
+flowchart TB
+    assignment["Focus Area + Work Lease"]
+    seed["Observed Seed"]
+    choose{"Strategy"}
+    directed["Directed<br/>relation / callを優先"]
+    wildcard["Wildcard<br/>literal / surface標本を優先"]
+    bind{"Digest・範囲・上限を検査"}
+    unit[("Analysis Unit@v1")]
+    prompt["Private Attempt Plan"]
+
+    assignment --> seed --> choose
+    choose --> directed --> bind
+    choose --> wildcard --> bind
+    bind --> unit --> prompt
+
+    classDef done fill:#e9f7ed,stroke:#337a46,color:#173d22;
+    class assignment,seed,choose,directed,wildcard,bind,unit,prompt done;
+```
+
+UnitはTarget、Map、Program Index、Focus、Leaseのdigestと、実際に採用したpath、file digest、line range、byte量、選択理由を持つ。同じsinkへ二つのLeaseを重ねても、directedとwildcardが同じsource集合へ収束しにくい。選択理由は「なぜcontextへ入れたか」の記録であり、sourceからsinkへの到達証拠ではない。実装は[finder-attempt-materializer.ts](../../../src/research/campaign-control/finder-attempt-materializer.ts)、外から観測する仕様は[finder-attempt-materializer.test.ts](../../../tests/research/finder-attempt-materializer.test.ts)を参照する。
 
 この順序は再現可能だが、動的property call、service locator、組立てcallback、fileをまたぐstate identityを静的call neighborだけで接続できない。Finderが不足producerやentryを特定しても追加取得できないため、acceptedな到達形では固定seedを小さくし、path・Lease・byte・turn budgetをharnessが検査する`read / search / symbol / graph` toolへ置き換える。shell、web、runtime、Target writeは追加しない。
 
@@ -266,7 +296,7 @@ flowchart TB
 | 実行主体 | 読めるもの | 作るもの | 禁止するもの |
 | --- | --- | --- | --- |
 | Mapper | Target Snapshot、静的解析結果 | Surface Map revision | Finding判定、攻撃実験 |
-| Finder | 自分の有限source slice、Focus、Strategy | 型付きHypothesis等 | runtime、browser、network、他Finderの会話 |
+| Finder | 自分のAnalysis Unit、Focus、Strategy | 型付きHypothesis等 | runtime、browser、network、他Finderの会話 |
 | Chain Synthesizer（設計のみ） | barrier後の型付きroute | chain Hypothesis、Frontier Gap | raw transcript、多数決による破棄 |
 | Independent Verifier | 固定Target、最小Hypothesis | source再導出、Experiment | Finder sessionの再利用 |
 | Lab Control | 型付きExperiment、固定baseline | sanitized observation | Hypothesis/Findingの判断、plain Docker fallback |
@@ -278,7 +308,7 @@ flowchart TB
 src/research/
 ├── source-mapping/       # Surface MapとPHP Program Index
 ├── exploration/          # Focus、Lane、Strategy、Wave、仮説取込
-├── campaign-control/     # source slice、並列Attempt、Verification接続
+├── campaign-control/     # Analysis Unit、並列Attempt、Verification接続
 ├── model-execution/      # Claude processとFinder schema
 ├── verification/         # 独立再導出、gVisor Witness/Control
 └── research-record/      # append-only Ledgerとprivate CAS ref

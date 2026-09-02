@@ -103,6 +103,7 @@
 | Map Delta Proposal | 地図差分提案。AI Mapperが出す未検査の追加候補 |
 | Map Delta Receipt | 地図差分検査記録。候補ごとの受理・拒否を残す記録 |
 | PHP Program Index | PHPプログラム索引 |
+| Analysis Unit | 解析単位（Finderへ渡す有限context） |
 | Context Request | 文脈要求 |
 | Context Response | 文脈応答 |
 | Mapping Evidence Request | 地図根拠要求 |

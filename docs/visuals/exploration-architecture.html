@@ -468,7 +468,7 @@
         <div class="status-row">
           <div class="status done">
             <b>Implemented</b>
-            3並列、Wave barrier、独立Verification、Ledger replay
+            Analysis Unit、3並列、独立Verification、Ledger replay
           </div>
           <div class="status partial">
             <b>Partial</b>
@@ -573,7 +573,7 @@
             <strong>Decide</strong><span>有限Work Waveを作成</span>
           </div>
           <div class="step">
-            <strong>Materialize</strong><span>LeaseごとのAttempt Plan</span>
+            <strong>Materialize</strong><span>LeaseごとのAnalysis Unit</span>
           </div>
           <div class="step">
             <strong>Record intent</strong><span>外部processより先に記録</span>
@@ -612,16 +612,16 @@
           </article>
           <div class="workers">
             <div class="worker">
-              <strong>Finder A</strong
-              ><span>fresh context<br />own source view</span>
+              <strong>Analysis Unit A</strong
+              ><span>Focus + Strategy + Source<br />↓ Finder A</span>
             </div>
             <div class="worker">
-              <strong>Finder B</strong
-              ><span>fresh context<br />own source view</span>
+              <strong>Analysis Unit B</strong
+              ><span>Focus + Strategy + Source<br />↓ Finder B</span>
             </div>
             <div class="worker">
-              <strong>Finder C</strong
-              ><span>fresh context<br />own source view</span>
+              <strong>Analysis Unit C</strong
+              ><span>Focus + Strategy + Source<br />↓ Finder C</span>
             </div>
           </div>
           <article class="card">
@@ -642,20 +642,22 @@
         <p class="eyebrow">04 / Finder Context</p>
         <h2>今回見直す中心</h2>
         <p class="section-copy">
-          3並列schedulerではなく、各Finderへ何を見せるかが現在の主なbottleneck。acceptedな設計へ段階的に置換する。
+          3並列schedulerではなく、各Finderへ何を見せるかが現在の主なbottleneck。固定入力をAnalysis
+          Unitとして記録し、不足時だけbounded toolへ拡張する。
         </p>
         <div class="surface compare">
           <article class="card current">
-            <span class="tag partial">current tracer</span>
-            <h3>Tool-free source slice</h3>
+            <span class="tag done">implemented now</span>
+            <h3>Analysis Unit@v1</h3>
             <div class="mini-flow">
-              <div>単一Focus nodeを選ぶ</div>
-              <div>call neighborを先回りして選ぶ</div>
-              <div>最大8 files / 650 KBをpromptへ埋める</div>
-              <div>一つのmodel実行でHypothesisを返す</div>
+              <div>Focus + Leaseからobserved seedを固定</div>
+              <div>Directed: relation / call近傍を優先</div>
+              <div>Wildcard: literal / 広いSurface標本を優先</div>
+              <div>path、digest、range、byte、理由を固定</div>
+              <div>最大8 files / 650 KBでAttempt Planへ格納</div>
             </div>
             <p class="small">
-              弱点: 孤立file、vendor code、入口とsinkの分断、不要な大context。
+              境界: 選択理由は取得由来であり、到達可能性や脆弱性の証明ではない。
             </p>
           </article>
           <div class="arrow">→</div>
@@ -674,6 +676,11 @@
             </p>
           </article>
         </div>
+        <p class="callout">
+          Brizy 2.8.11 / 2.8.12では、同じsinkへ重ねた
+          <code>wildcard</code> と <code>sink-backward</code>
+          が別の8-file集合になった。前者はnode-kind別標本、後者はcall近傍を読む。
+        </p>
       </section>
 
       <section>
@@ -792,7 +799,7 @@
           <div class="file">
             <code
               >src/research/campaign-control/finder-attempt-materializer.ts</code
-            ><span>現行tool-free source sliceの選択</span>
+            ><span>Analysis Unitの選択・digest・範囲・上限</span>
           </div>
           <div class="file">
             <code>src/research/campaign-control/index.ts</code
@@ -813,6 +820,10 @@
           <div class="file">
             <code>tests/research/campaign-run.test.ts</code
             ><span>3並列を含む閉路のBehavior Test</span>
+          </div>
+          <div class="file">
+            <code>tests/research/finder-attempt-materializer.test.ts</code
+            ><span>戦略別Analysis Unitとsource bindingの仕様</span>
           </div>
         </div>
       </section>

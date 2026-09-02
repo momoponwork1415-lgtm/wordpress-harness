@@ -172,6 +172,10 @@ _Avoid_: Mapper output、Confidence report、Validation log
 固定Target Snapshotを実行せずに構文解析して得た、file digest、source range、symbol、call relation、WordPress registration、guard、source、storage、sink、parse diagnosticを持つcanonicalでversionedなJSON artifact。
 _Avoid_: Parser object、Raw AST dump、Surface Map
 
+**Analysis Unit**:
+一つのFocus AreaとWork Leaseに対し、固定Surface MapとPHP Program Indexから決定的に選び、実際に渡すsource range、関連node、選択理由、上限をTarget digestへ結び付けた版付きの有限context。call graphの完全性、到達可能性、脆弱性を主張しない。
+_Avoid_: Prompt chunk、Complete call graph、Focus Area
+
 **Focus Area**:
 Surface Mapから切り出した、所有範囲と完了条件が重複しない探索領域。
 _Avoid_: Agent task、Vulnerability class

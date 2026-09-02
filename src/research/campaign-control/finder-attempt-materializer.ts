@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
+import { z } from "zod";
+
 import { attemptPlanSchema } from "../model-execution/contracts.js";
 import {
   canonicalJson,
@@ -63,9 +65,79 @@ export interface OpenToolFreeFinderAttemptMaterializerOptions {
 
 interface SelectedSource {
   readonly path: string;
+  readonly fileDigest: string;
   readonly text: string;
   readonly ranges: readonly (readonly [number, number])[];
+  readonly reason: AnalysisUnitSelectionReason;
 }
+
+const analysisUnitSelectionReasonSchema = z.enum([
+  "focus-seed",
+  "surface-relation",
+  "call-neighbor",
+  "literal-reference",
+  "shared-hook",
+  "surface-sample",
+]);
+
+type AnalysisUnitSelectionReason = z.infer<
+  typeof analysisUnitSelectionReasonSchema
+>;
+
+interface CandidatePath {
+  readonly path: string;
+  readonly reason: AnalysisUnitSelectionReason;
+}
+
+const analysisUnitSchema = z.strictObject({
+  kind: z.literal("analysis-unit"),
+  schemaVersion: z.literal(1),
+  id: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  target: z.strictObject({
+    id: z.string().min(1),
+    digest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  }),
+  surfaceMapDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  phpProgramIndexDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  focusAreaId: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  leaseId: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  strategy: workWavePlanSchema.shape.leases.element.shape.strategy,
+  seed: z.strictObject({
+    path: z.string().min(1),
+    line: z.number().int().positive(),
+    nodeId: z
+      .string()
+      .regex(/^sha256:[a-f0-9]{64}$/)
+      .nullable(),
+  }),
+  sources: z
+    .array(
+      z.strictObject({
+        path: z.string().min(1),
+        fileDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+        ranges: z
+          .array(
+            z.tuple([z.number().int().positive(), z.number().int().positive()]),
+          )
+          .min(1),
+        bytes: z.number().int().positive(),
+        reason: analysisUnitSelectionReasonSchema,
+      }),
+    )
+    .min(1),
+  nodeIds: z.array(z.string().regex(/^sha256:[a-f0-9]{64}$/)),
+  limits: z.strictObject({
+    maxFiles: z.number().int().positive(),
+    maxSourceBytes: z.number().int().positive(),
+    maxFileBytes: z.number().int().positive(),
+  }),
+  actual: z.strictObject({
+    files: z.number().int().positive(),
+    sourceBytes: z.number().int().positive(),
+  }),
+});
+
+type AnalysisUnit = z.infer<typeof analysisUnitSchema>;
 
 function compareText(left: string, right: string): number {
   if (left < right) return -1;
@@ -179,31 +251,41 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
       seed.path,
       seed.line,
       Math.min(this.#maxFileBytes, remainingBytes),
+      "focus-seed",
     );
     const sources: SelectedSource[] = [seedSource];
     remainingBytes -= Buffer.byteLength(seedSource.text);
     const selectedPaths = this.#selectPaths(
+      bound.focusArea,
+      bound.lease.strategy,
       seed.path,
       seed.line,
       seed.nodeId,
       seedSource.text,
     );
-    for (const path of selectedPaths.slice(1)) {
+    for (const selection of selectedPaths.slice(1)) {
       if (sources.length >= this.#maxFiles || remainingBytes <= 0) break;
       const source = await this.#readSource(
         canonicalRoot,
-        path,
-        seed.path === path ? seed.line : undefined,
+        selection.path,
+        seed.path === selection.path ? seed.line : undefined,
         Math.min(this.#maxFileBytes, remainingBytes),
+        selection.reason,
       );
       sources.push(source);
       remainingBytes -= Buffer.byteLength(source.text);
     }
+    const analysisUnit = this.#buildAnalysisUnit(
+      input,
+      seed,
+      sources,
+      this.#includedNodes(sources),
+    );
     return finderAttemptMaterializationSchema.parse({
       kind: "finder-attempt-materialization",
       schemaVersion: 1,
       modelProfile: this.#modelProfile.execution,
-      prompt: this.#renderPrompt(input, sources),
+      prompt: this.#renderPrompt(input, sources, analysisUnit),
       maxOutputBytes: this.#maxOutputBytes,
     });
   }
@@ -323,26 +405,29 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
   }
 
   #selectPaths(
+    focus: AttemptPlanMaterializationInput["focusArea"],
+    strategy: AttemptPlanMaterializationInput["lease"]["strategy"],
     seedPath: string,
     seedLine: number,
     seedNodeId: string | undefined,
     seedText: string,
-  ): string[] {
-    const ordered = [seedPath];
-    const selected = new Set(ordered);
-    const add = (paths: readonly string[]): void => {
+  ): CandidatePath[] {
+    const ordered: CandidatePath[] = [{ path: seedPath, reason: "focus-seed" }];
+    const selected = new Set([seedPath]);
+    const add = (
+      paths: readonly string[],
+      reason: AnalysisUnitSelectionReason,
+    ): void => {
       for (const path of paths) {
         if (selected.has(path)) continue;
         selected.add(path);
-        ordered.push(path);
+        ordered.push({ path, reason });
       }
     };
     const sharedHookPaths = this.#sharedHookPaths(seedPath);
-    add(sharedHookPaths.slice(0, 1));
-    add(this.#literalReferencePaths(seedText));
-    add(sharedHookPaths.slice(1));
+    const relationPaths: string[] = [];
     if (seedNodeId !== undefined) {
-      const relationPaths = new Set<string>();
+      const relatedPaths = new Set<string>();
       let frontier = new Set([seedNodeId]);
       const visited = new Set(frontier);
       for (let depth = 0; depth < 2; depth += 1) {
@@ -361,14 +446,42 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
           for (const anchor of observedAnchors(
             this.#map.nodes.find((node) => node.id === nodeId),
           )) {
-            relationPaths.add(anchor.path);
+            relatedPaths.add(anchor.path);
           }
         }
         frontier = next;
       }
-      add([...relationPaths].sort(compareText));
+      relationPaths.push(...[...relatedPaths].sort(compareText));
     }
-    add(this.#callNeighborPaths(seedPath, seedLine));
+    const callNeighborPaths = this.#callNeighborPaths(seedPath, seedLine);
+    const literalReferencePaths = this.#literalReferencePaths(seedText);
+    const surfaceSamplePaths = this.#surfaceSamplePaths(seedPath, [
+      ...relationPaths,
+      ...callNeighborPaths,
+    ]);
+    const routeFocused =
+      strategy !== "wildcard" &&
+      focus.owner.kind === "surface-node" &&
+      ["source", "guard", "state", "sink"].includes(focus.owner.nodeKind);
+    if (routeFocused) {
+      add(relationPaths, "surface-relation");
+      add(callNeighborPaths, "call-neighbor");
+      add(literalReferencePaths, "literal-reference");
+      add(sharedHookPaths, "shared-hook");
+    } else if (strategy === "wildcard") {
+      add(sharedHookPaths.slice(0, 1), "shared-hook");
+      add(literalReferencePaths, "literal-reference");
+      add(surfaceSamplePaths, "surface-sample");
+      add(sharedHookPaths.slice(1), "shared-hook");
+      add(relationPaths, "surface-relation");
+      add(callNeighborPaths, "call-neighbor");
+    } else {
+      add(sharedHookPaths.slice(0, 1), "shared-hook");
+      add(literalReferencePaths, "literal-reference");
+      add(sharedHookPaths.slice(1), "shared-hook");
+      add(relationPaths, "surface-relation");
+      add(callNeighborPaths, "call-neighbor");
+    }
     return ordered.slice(0, this.#maxFiles);
   }
 
@@ -436,6 +549,66 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
     return paths;
   }
 
+  #surfaceSamplePaths(
+    seedPath: string,
+    excludedPaths: readonly string[],
+  ): string[] {
+    const excluded = new Set([seedPath, ...excludedPaths]);
+    const kinds: readonly SurfaceNode["kind"][] = [
+      "entry",
+      "source",
+      "guard",
+      "state",
+      "sink",
+      "symbol",
+    ];
+    const seedDirectory = seedPath.split("/").slice(0, -1);
+    const proximity = (path: string): number => {
+      const directory = path.split("/").slice(0, -1);
+      let common = 0;
+      while (
+        common < seedDirectory.length &&
+        common < directory.length &&
+        seedDirectory[common] === directory[common]
+      ) {
+        common += 1;
+      }
+      return common;
+    };
+    const pathsByKind = new Map<SurfaceNode["kind"], string[]>();
+    for (const kind of kinds) {
+      const paths = new Set<string>();
+      for (const node of this.#map.nodes) {
+        if (node.kind !== kind) continue;
+        for (const anchor of observedAnchors(node)) {
+          if (!excluded.has(anchor.path)) paths.add(anchor.path);
+        }
+      }
+      pathsByKind.set(
+        kind,
+        [...paths].sort(
+          (left, right) =>
+            proximity(right) - proximity(left) || compareText(left, right),
+        ),
+      );
+    }
+    const result: string[] = [];
+    const selected = new Set<string>();
+    let found = true;
+    for (let index = 0; found; index += 1) {
+      found = false;
+      for (const kind of kinds) {
+        const path = pathsByKind.get(kind)?.[index];
+        if (path === undefined) continue;
+        found = true;
+        if (selected.has(path)) continue;
+        selected.add(path);
+        result.push(path);
+      }
+    }
+    return result;
+  }
+
   #callNeighborPaths(seedPath: string, seedLine: number): string[] {
     const seedFile = this.#programIndex.files.find(
       (file) => file.path === seedPath,
@@ -491,6 +664,7 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
     path: string,
     seedLine: number | undefined,
     byteLimit: number,
+    reason: AnalysisUnitSelectionReason,
   ): Promise<SelectedSource> {
     const entry = this.#map.inventory.find(
       (candidate) => candidate.path === path,
@@ -532,7 +706,11 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
     } catch {
       throw new Error(`Finder source is not valid UTF-8: ${path}`);
     }
-    return this.#renderSource(path, content, seedLine, byteLimit);
+    return {
+      ...this.#renderSource(path, content, seedLine, byteLimit),
+      fileDigest: entry.digest,
+      reason,
+    };
   }
 
   #renderSource(
@@ -540,7 +718,7 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
     content: string,
     seedLine: number | undefined,
     byteLimit: number,
-  ): SelectedSource {
+  ): Pick<SelectedSource, "path" | "text" | "ranges"> {
     const lines = content.split("\n");
     const numbered = (start: number, end: number): string =>
       lines
@@ -605,17 +783,9 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
   #renderPrompt(
     input: AttemptPlanMaterializationInput,
     sources: readonly SelectedSource[],
+    analysisUnit: AnalysisUnit,
   ): string {
-    const includedNodes = this.#map.nodes.filter((node) =>
-      observedAnchors(node).some((anchor) => {
-        const source = sources.find(
-          (candidate) => candidate.path === anchor.path,
-        );
-        return (
-          source !== undefined && lineInRanges(anchor.startLine, source.ranges)
-        );
-      }),
-    );
+    const includedNodes = this.#includedNodes(sources);
     const nodeIds = new Set(includedNodes.map((node) => node.id));
     const includedRelations = this.#map.relations.filter(
       (relation) =>
@@ -629,6 +799,7 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
       "- You have no tools, network, runtime, advisory, CVE, patch, expected outcome, or vulnerability oracle.",
       "- Inspect only the supplied source and Surface Map excerpt.",
       "- Do not claim a vulnerability from a sink or pattern alone.",
+      "- Selection reasons describe context retrieval, not reachability evidence.",
       "- Each hypothesis must state a permitted attacker premise, broken security property, causal source route, concrete falsifier, missing evidence, and next independent experiment.",
       "- Reference only node and relation IDs in the supplied excerpt; anchorNodeId must be an observed node.",
       `- Return at most ${input.lease.budget.maxHypotheses} hypotheses. If evidence is insufficient, return an empty hypotheses array. Precision is more important than producing a result.`,
@@ -639,6 +810,7 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
         lease: input.lease,
         promptSet: this.#promptSet,
       })}`,
+      `Analysis Unit:\n${canonicalJson(analysisUnit)}`,
       `Surface Map excerpt:\n${canonicalJson({
         nodes: includedNodes,
         relations: includedRelations,
@@ -650,6 +822,67 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
         )
         .join("\n")}`,
     ].join("\n\n");
+  }
+
+  #includedNodes(sources: readonly SelectedSource[]): SurfaceNode[] {
+    return this.#map.nodes.filter((node) =>
+      observedAnchors(node).some((anchor) => {
+        const source = sources.find(
+          (candidate) => candidate.path === anchor.path,
+        );
+        return (
+          source !== undefined && lineInRanges(anchor.startLine, source.ranges)
+        );
+      }),
+    );
+  }
+
+  #buildAnalysisUnit(
+    input: AttemptPlanMaterializationInput,
+    seed: {
+      readonly path: string;
+      readonly line: number;
+      readonly nodeId?: string;
+    },
+    sources: readonly SelectedSource[],
+    includedNodes: readonly SurfaceNode[],
+  ): AnalysisUnit {
+    const value = {
+      kind: "analysis-unit" as const,
+      schemaVersion: 1 as const,
+      target: this.#map.targetSnapshot,
+      surfaceMapDigest: this.#mapRef.digest,
+      phpProgramIndexDigest: this.#programIndexRef.digest,
+      focusAreaId: input.focusArea.id,
+      leaseId: input.lease.id,
+      strategy: input.lease.strategy,
+      seed: {
+        path: seed.path,
+        line: seed.line,
+        nodeId: seed.nodeId ?? null,
+      },
+      sources: sources.map((source) => ({
+        path: source.path,
+        fileDigest: source.fileDigest,
+        ranges: source.ranges,
+        bytes: Buffer.byteLength(source.text),
+        reason: source.reason,
+      })),
+      nodeIds: includedNodes.map((node) => node.id).sort(compareText),
+      limits: {
+        maxFiles: this.#maxFiles,
+        maxSourceBytes: this.#maxSourceBytes,
+        maxFileBytes: this.#maxFileBytes,
+      },
+      actual: {
+        files: sources.length,
+        sourceBytes: sources.reduce(
+          (total, source) => total + Buffer.byteLength(source.text),
+          0,
+        ),
+      },
+    };
+    return analysisUnitSchema.parse({ ...value, id: sha256Digest(value) });
   }
 }
 

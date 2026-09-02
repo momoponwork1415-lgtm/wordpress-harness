@@ -82,7 +82,7 @@ Campaign ControlはFocus Area分割、Finder出力の真偽、provider retry分�
 
 ## Attempt Plan materialization
 
-Work LeaseからAttempt Planを作る処理はCampaign Control implementation内部へ置く。Target SnapshotとSurface Mapから、Leaseが所有するFocus Areaに必要なsource slice、observed relation、unknown、Strategy、budgetだけを決定的にrenderする。
+Work LeaseからAttempt Planを作る処理はCampaign Control implementation内部へ置く。Target Snapshot、Surface Map、PHP Program Indexから、Leaseが所有するFocus Areaに必要なsource range、observed relation、unknown、Strategy、budgetを`Analysis Unit@v1`として決定的にrenderする。Unitは実際に渡すpath、file digest、range、byte量、選択理由を持つが、選択理由をreachability evidenceとして扱わない。
 
 Finderへprovider組込みweb、shell、filesystem、subagent、ambient MCPを渡さない。最初のclosed sliceは既存のtool-free Claude processを使う。harness-owned read/search toolは別のaccepted Model Execution sliceで追加するまで、未実装の安全性として扱う。
 
@@ -162,13 +162,13 @@ Behavior Testは`CampaignRunner.run(plan)`と`CampaignReader.read/inspect`から
 
 ## Implementation status
 
-最初のbehavior sliceは実装済みである。`CampaignRunner.run`はCASに固定されたSurface MapとExploration Policyを検査し、有限Work Waveを作り、最大3 Attemptの上限内でFinderを実行し、source-bound Hypothesisだけを独立Verificationへ渡す。Attempt PlanはCampaign ControlがTarget、Lease、予算へ結び付け、private CAS保存、Ledger intent、外部process、terminal receiptの順で進む。production tool-free materializerは固定Surface Map、PHP Program Index、Focus Area、Work Leaseからsource sliceを決定的に作り、実ファイルのregular-file/realpath/size/SHA-256を再検査する。seed fileを先頭に、希少な共有WordPress hook、文字列参照されたPHP template、Map relation、二段のcall neighborを上限内で選び、workerへadvisory、CVE、patch、Case role、期待結果を渡さない。Leaseの`maxHypotheses`はprompt上の依頼だけでなくrole output schemaの配列上限として強制し、超過outputを`completed`にしない。中断後のin-progress processは`orphaned`へ確定し、残予算がある場合だけfresh Attempt IDで置き換える。FindingまたはDisprovedは`await-calibration`を伴うterminal Campaign RunとしてResearch Ledgerへ記録され、close/reopen後の再実行はproviderやLabを再起動せず同じrefを返す。
+最初のbehavior sliceは実装済みである。`CampaignRunner.run`はCASに固定されたSurface MapとExploration Policyを検査し、有限Work Waveを作り、最大3 Attemptの上限内でFinderを実行し、source-bound Hypothesisだけを独立Verificationへ渡す。Attempt PlanはCampaign ControlがTarget、Lease、予算へ結び付け、private CAS保存、Ledger intent、外部process、terminal receiptの順で進む。production tool-free materializerは固定Surface Map、PHP Program Index、Focus Area、Work Leaseから`Analysis Unit@v1`を決定的に作り、実ファイルのregular-file/realpath/size/SHA-256を再検査する。Unitは採用source rangeと選択理由を持つ。directed StrategyはMap/call近傍を優先し、`wildcard`は共有hook、literal参照、directed候補から除いたnode-kind別Surface Map標本を先にしてcontext相関を下げる。workerへadvisory、CVE、patch、Case role、期待結果を渡さない。Leaseの`maxHypotheses`はprompt上の依頼だけでなくrole output schemaの配列上限として強制し、超過outputを`completed`にしない。中断後のin-progress processは`orphaned`へ確定し、残予算がある場合だけfresh Attempt IDで置き換える。FindingまたはDisprovedは`await-calibration`を伴うterminal Campaign RunとしてResearch Ledgerへ記録され、close/reopen後の再実行はproviderやLabを再起動せず同じrefを返す。
 
 並列Finderの完了順を逆転しても、Work Lease順に正規化されたterminal recordとdigestが同一になることをbehavior testで固定している。また、Verificationのtyped Blocked reasonはCampaignの`blocked-capability`まで失われない。
 
 仮説なしでFinder予算が残る場合、pure Iteration Reviewは前Wave、残Attempt数、目的、停止条件を持つ有限workを作り、private CASのdigestへ固定した`continue-unresolved-work`を返す。Verificationがtyped Blockedを返した場合は探索のやり直しに置き換えず、blockerを優先する。
 
-Git外のBrizy 2.8.11/2.8.12 snapshotでは、同じproduction materializerで各3 Leaseを外部modelなしに構築し、source入力が設定上限内に収まり、2.8.11のstate-chain Leaseが保存側、unauthenticated form側、管理画面templateを同時に含むことを確認した。これはsource選択とbindingのcharacterizationであり、脆弱性発見またはpatched negativeの実証ではない。
+Git外のBrizy 2.8.11/2.8.12 snapshotでは、同じproduction materializerで各3 Leaseを外部modelなしに構築し、全Unitが8 files、650 KB以下へ収まることを確認した。同じsink Focusへ重ねた`wildcard`と`sink-backward`でも、前者は広いSurface Map標本、後者はcall近傍を選び、両版で別のsource集合になった。これはsource選択とbindingのcharacterizationであり、脆弱性発見またはpatched negativeの実証ではない。
 
 private Brizy 2.8.11では、実Opus Finder・Independent Verifier・gVisor/browserを同じ`CampaignRunner.run`へ連結し、oracle-freeな3 FinderからFindingまで到達した。2.8.12のoracle-free Campaignは3 FinderからHypothesisを得ずFindingへ誤昇格しなかった。private graderは固定positiveのCausal Identityを2.8.12へ拘束し、実Opus再導出とfresh gVisor Witness/Controlから同じIdentityのDisprovedを記録した。active CampaignのFindingはmodel生成文言ではなくCalibration Fingerprintで固定positiveへ照合し、Calibration Reviewは`complete`となった。
 
