@@ -60,6 +60,10 @@ _Avoid_: Model、Provider config
 一つのWork Leaseを一つのModel Profileで実行するために、固定入力、role、Prompt Set、許可tool、出力schema、予算をdigestへ結び付けた不変の計画。
 _Avoid_: CLI command、Prompt、Mutable job
 
+**Source Tool Policy**:
+一つのTarget Snapshotに対してworkerへ公開できるsource queryの種類と、一回の走査・応答上限をversionとdigestへ固定した制約。Attempt全体のquery上限はAttempt Planが固定する。
+_Avoid_: Provider tool setting、Shell permission、Prompt instruction
+
 **Attempt Receipt**:
 一つのAttemptについて、実行計画、全Segment、終了状態、usage、schema検査済みoutput、private transcript参照を結び付けた不変の記録。
 _Avoid_: Process log、Model answer、Session file
@@ -95,6 +99,14 @@ _Avoid_: Programme scope、Blocklist、Model confidence
 **Wordfence Eligibility Snapshot**:
 取得時点のWordfence Bug Bounty Programの対象asset、vulnerability class、attacker role、active installation threshold、researcher tier、除外条件をsource URLとcontent digestへ固定した外部programme規則。Target選定とFinding後の提出適格性に使い、技術的真偽を決めない。
 _Avoid_: Finding policy、Current web page、Research scope
+
+**Source Evidence Query**:
+一つのFinder Attemptが同じTarget Snapshot内のdefinition、usage、caller、callee、wrapper、guard、stateまたはsource rangeを追うために行う、Source Tool Policyへ拘束された一時的な読み取り。Surface Mapを変更しない。
+_Avoid_: Context Request、Mapping Evidence Request、Provider filesystem tool
+
+**Tool Receipt**:
+一つのSource Evidence Queryについて、Attempt、Work Lease、Target Snapshot、Source Tool Policy、request、許可判断、走査量、truncation、result digestを結び付けた不変の記録。
+_Avoid_: Model transcript、Source Map relation、Finding evidence
 
 **Context Request**:
 workerがSurface Map、HypothesisまたはFocus Areaを閉じるために必要と判断した追加source slice、dependency sourceまたはartifactを、根拠anchor、理由、用途付きで要求する記録。

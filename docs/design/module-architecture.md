@@ -86,10 +86,10 @@ Researchを理解・操作するときは、次の6moduleだけを第一階層�
 | 第一階層のmodule | Code上の名称 | 内部へ隠すもの |
 | --- | --- | --- |
 | 調査進行制御 | Campaign Control | Campaign lifecycle、budget、有限Work Wave、停止・再開 |
-| 対象理解 | Source Understanding | Target Workspace、Lab Baseline Builder、Source Mapping、PHP Program Index、Mapper |
+| 対象理解 | Source Understanding | Target Workspace、Lab Baseline Builder、Source Mapping、PHP Program Index、Source Evidence Gateway、Mapper |
 | 脆弱性仮説の探索 | Exploration | Focus Area、Strategy Portfolio、Chain Synthesis、探索順、重複排除、Gap Review、Iteration Review |
 | 独立検証 | Verification | 成立証拠、因果対照実験、反証レビュー、検証環境制御、Review Packaging |
-| AI実行管理 | Model Execution | Claude/GPT/Grok/GLM adapter、session、retry、usage、transcript |
+| AI実行管理 | Model Execution | Claude/GPT/Grok/GLM adapter、Attempt/tool binding、session、retry、usage、Tool Receipt、transcript |
 | 研究記録 | Research Record | Research Ledger、CAS、replay、参照整合性 |
 
 通常の運用者はprovider CLI、PHP parser、container、SQLite eventを直接操作しない。調査進行制御の`prepare / run`とread-only queryだけを使う。

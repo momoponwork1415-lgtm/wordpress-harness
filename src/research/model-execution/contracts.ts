@@ -6,6 +6,12 @@ import {
   type AttemptExecutionResultRef,
   type FinderAttemptResult,
 } from "../exploration/contracts.js";
+import {
+  sourceToolPolicyRefSchema,
+  type SourceEvidenceGateway,
+  type SourceEvidenceReceipt,
+  type SourceEvidenceToolRequest,
+} from "../source-mapping/source-evidence-contracts.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const identifierSchema = z
@@ -43,10 +49,12 @@ export const attemptPlanSchema = z.strictObject({
     .string()
     .min(1)
     .max(4 * 1024 * 1024),
+  sourceToolPolicy: sourceToolPolicyRefSchema.optional(),
   budget: z.strictObject({
     maxWallTimeMs: z.number().int().positive(),
     maxOutputBytes: z.number().int().positive(),
     maxHypotheses: z.number().int().positive().max(32),
+    maxSourceQueries: z.number().int().positive().optional(),
   }),
 });
 
@@ -94,6 +102,11 @@ export interface StructuredModelExecution {
 export interface ModelProcessRequest {
   readonly plan: AttemptPlan;
   readonly outputJsonSchema: object;
+  readonly sourceEvidence?: AttemptSourceEvidence;
+}
+
+export interface AttemptSourceEvidence {
+  query(request: SourceEvidenceToolRequest): Promise<SourceEvidenceReceipt>;
 }
 
 export type ModelProcessResult =
@@ -123,6 +136,7 @@ export interface ModelProcess {
 export interface OpenModelExecutionOptions {
   readonly artifactDirectory: string;
   readonly process: ModelProcess;
+  readonly sourceEvidenceGateway?: SourceEvidenceGateway;
 }
 
 export { attemptExecutionResultRefSchema, finderAttemptResultSchema };

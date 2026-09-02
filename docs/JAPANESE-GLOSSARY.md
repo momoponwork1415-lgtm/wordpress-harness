@@ -81,6 +81,7 @@
 | Follow-up Campaign | 後続キャンペーン |
 | Model Profile | モデルプロファイル |
 | Attempt Plan | 実行計画 |
+| Source Tool Policy | ソース取得方針 |
 | Attempt | 実行試行 |
 | Segment | 実行区間 |
 | Attempt Receipt | 実行記録 |
@@ -104,6 +105,8 @@
 | Map Delta Receipt | 地図差分検査記録。候補ごとの受理・拒否を残す記録 |
 | PHP Program Index | PHPプログラム索引 |
 | Analysis Unit | 解析単位（Finderへ渡す有限context） |
+| Source Evidence Query | ソース根拠問い合わせ |
+| Tool Receipt | ツール実行記録 |
 | Context Request | 文脈要求 |
 | Context Response | 文脈応答 |
 | Mapping Evidence Request | 地図根拠要求 |

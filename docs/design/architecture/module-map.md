@@ -87,10 +87,10 @@ flowchart TB
 | Module | 主な機能 | 受け取るもの | 作るもの | 所有しないもの |
 | --- | --- | --- | --- | --- |
 | [Campaign Control](../module-architecture.md#campaign-control) | Campaignを準備・前進・停止・再開し、有限のWork Waveと予算を管理する | Target Snapshot、Campaign Spec、operator command | Work Lease、停止理由、現在状態 | 脆弱性の真偽、provider固有処理 |
-| [Source Understanding](../source-mapping-seam.md) | pluginの攻撃面、guard、data flow、未解決gapを構造化する | Target Snapshot、PHP Program Index、許可されたRuntime Observation | versioned Surface Map、Lab Baseline | Finding、探索の多数決 |
+| [Source Understanding](../source-mapping-seam.md) | pluginの攻撃面、guard、data flow、未解決gapを構造化し、固定Snapshotのsource queryを解決する | Target Snapshot、PHP Program Index、許可されたRuntime Observation、Source Evidence Query | versioned Surface Map、source response、Lab Baseline | Finding、探索の多数決、Attempt policy |
 | [Exploration](../exploration-seam.md) | Focus Areaへ多様なStrategyを適用し、routeを組み立て、coverage gapを閉じる | Surface Map、Work Lease、Strategy Portfolio | Hypothesis、Route Fragment、Gap Review | Findingへの昇格、runtimeの直接操作 |
 | [Verification](../module-architecture.md#verification) | 仮説を独立再導出し、cleanなLabで成立・不成立・未検証を確定する | Target Snapshot、最小Hypothesis、typed Experiment | Finding、Negative Result、Blocked Result、Review Packet | Finderの自己評価、raw transcriptによる証明 |
-| [Model Execution](../model-execution-seam.md) | 公式provider processを隔離実行し、timeout、retry、session、usageを管理する | Model Profile、Assignment、外部budget | normalized events、result、transcript reference | Campaign priority、Verification verdict |
+| [Model Execution](../model-execution-seam.md) | 公式provider processを隔離実行し、Attempt/tool binding、timeout、retry、session、usageを管理する | Model Profile、Assignment、外部budget、Source Tool Policy | normalized events、result、Tool Receipt、transcript reference | Campaign priority、Verification verdict、source query semantics |
 | [Research Record](../module-architecture.md#research-record) | eventとartifactをappend-onlyに保存し、再現可能なviewを構築する | versioned event、artifact、provenance | Research Ledger、CAS reference、replayed view | domain判断、provider選択 |
 
 ## 4. 一つの調査が通る道

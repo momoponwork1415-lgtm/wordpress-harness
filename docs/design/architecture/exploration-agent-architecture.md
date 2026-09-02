@@ -184,33 +184,36 @@ UnitはTarget、Map、Program Index、Focus、Leaseのdigestと、実際に採�
 
 FinderがHypothesisの`requiredEvidence`にTarget inventory内の具体的なPHP pathを挙げた場合、Independent Verifierはそのpathだけを追加sourceとして取得できる。これはFinderの主張を真と扱う処理ではない。pathの実在、PHP分類、manifest digest、file/total byte上限を再検査したうえで、Verifierが固定sourceから独立に支持または反証するためのbounded Context Responseである。
 
-### 次のaccepted design: Finderが不足sourceを追う
+### 一部実装: Finderが不足sourceを追う
 
-現行の固定Analysis Unitは最初のcontextとして残し、次のsliceではFinderが同じTarget Snapshot内を予算付きで追跡できるようにする。これはSurface MapをAI出力で上書きする処理ではない。
+現行の固定Analysis Unitは最初のcontextとして残し、Finderが同じTarget Snapshot内を予算付きで追跡できるようにする。これはSurface MapをAI出力で上書きする処理ではない。
 
 ```mermaid
 flowchart TB
     unit["Initial Context"]
-    finder["Finder Attempt"]
-    need{"More Evidence?"}
-    query["Source Query"]
-    gate{"Policy Gate"}
+    model["Model Execution"]
+    adapter{"Provider Adapter"}
+    query["Tool Request"]
+    gate{"Attempt Binding"]
+    gateway["Source Gateway"]
     receipt[("Tool Receipt")]
-    terminal[("Research Output")]
+    output[("Finder Output")]
 
-    unit --> finder --> need
-    need -->|yes| query --> gate
-    gate -->|allow| receipt --> finder
-    gate -->|deny or limit| terminal
-    need -->|no| terminal
+    unit --> model --> adapter
+    adapter -->|search / read| query --> gate --> gateway
+    gateway --> receipt --> adapter
+    adapter --> output
 
     classDef done fill:#e9f7ed,stroke:#337a46,color:#173d22;
+    classDef partial fill:#fff5d6,stroke:#a87800,color:#3f2d00;
     classDef planned fill:#f2f3f5,stroke:#777,color:#333;
-    class unit done;
-    class finder,need,query,gate,receipt,terminal planned;
+    class unit,model,query,gate,gateway,receipt,output done;
+    class adapter partial;
 ```
 
-model-visibleな操作は`read / search / symbol / graph`に限定し、任意shell、network、runtime、Target writeを追加しない。query、scope、走査量、truncation、result digestはprivate CASへ記録する。Focus Areaは「何を調べるか」の所有権であり、最初に選んだfileを越えてはならない境界ではない。
+緑の経路はdeterministic provider adapterで実装済みである。exact `search`とrange `read`は固定Manifestだけを読み、Attempt、Lease、Snapshot、Policy、query ordinalをmodelではなくModel Executionが拘束する。query、scope、走査量、truncation、result digestはprivate CASへ記録する。黄のProvider AdapterはInterfaceだけ接続済みで、公式Claude processへtoolを公開するnative bridgeは未実装である。
+
+model-visibleな到達形は`read / search / symbol / graph`に限定し、任意shell、network、runtime、Target writeを追加しない。現在動くのは`read / search`だけで、`symbol / graph`とproduction Campaign materializerは後続sliceである。Focus Areaは「何を調べるか」の所有権であり、最初に選んだfileを越えてはならない境界ではない。
 
 追加取得で解ける局所的なcaller、callee、wrapperはAttempt内の`Source Query`で追う。dynamic dispatch、cross-request state、dependency semantics等、Attempt内で決められない不足だけを`Mapping Evidence Request`として次のMap revisionへ送る。
 
@@ -226,11 +229,13 @@ flowchart TB
     output -->|unresolved semantics| mapreq
     mapreq --> revision --> wave
 
+    classDef done fill:#e9f7ed,stroke:#337a46,color:#173d22;
     classDef planned fill:#f2f3f5,stroke:#777,color:#333;
-    class local,output,mapreq,revision,wave planned;
+    class local done;
+    class output,mapreq,revision,wave planned;
 ```
 
-詳細と受入条件は[Evidence-guided Finder loop](../evidence-guided-finder-loop.md)と[ADR 0112](../../adr/0112-treat-analysis-units-as-seeds-for-bounded-source-retrieval.md)に記録する。設計はacceptedだが、図の灰色部分は未実装である。
+詳細と受入条件は[Evidence-guided Finder loop](../evidence-guided-finder-loop.md)と[ADR 0112](../../adr/0112-treat-analysis-units-as-seeds-for-bounded-source-retrieval.md)に記録する。設計はacceptedで、最初のprovider非依存tracerまで実装済みである。灰色部分とClaude native bridgeは未実装である。
 
 ### Brizy pairで確認した6 Gate
 

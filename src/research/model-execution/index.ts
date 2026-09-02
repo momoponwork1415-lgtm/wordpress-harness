@@ -8,6 +8,7 @@ export {
 export type {
   AttemptExecutionResult,
   AttemptPlan,
+  AttemptSourceEvidence,
   ModelExecution,
   ModelProcess,
   ModelProcessRequest,

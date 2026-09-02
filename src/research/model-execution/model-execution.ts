@@ -5,10 +5,12 @@ import {
   finderAttemptResultSchema,
 } from "../exploration/contracts.js";
 import { openFileJsonArtifactStore } from "../research-record/file-json-artifact-store.js";
+import { sourceEvidenceQuerySchema } from "../source-mapping/source-evidence-contracts.js";
 import {
   attemptExecutionResultRefSchema,
   attemptPlanSchema,
   type AttemptExecutionResult,
+  type AttemptSourceEvidence,
   type AttemptPlan,
   type ModelExecution,
   type OpenModelExecutionOptions,
@@ -21,10 +23,12 @@ import {
 class FirstFinderModelExecution implements ModelExecution {
   readonly #artifacts;
   readonly #process;
+  readonly #sourceEvidenceGateway;
 
   constructor(options: OpenModelExecutionOptions) {
     this.#artifacts = openFileJsonArtifactStore(options.artifactDirectory);
     this.#process = options.process;
+    this.#sourceEvidenceGateway = options.sourceEvidenceGateway;
   }
 
   async run(planInput: AttemptPlan): Promise<AttemptExecutionResult> {
@@ -36,11 +40,56 @@ class FirstFinderModelExecution implements ModelExecution {
     });
     const outputJsonSchema = z.toJSONSchema(boundedFinderOutputSchema);
     delete outputJsonSchema.$schema;
+    if (
+      plan.sourceToolPolicy !== undefined &&
+      (this.#sourceEvidenceGateway === undefined ||
+        this.#sourceEvidenceGateway.policy.id !== plan.sourceToolPolicy.id ||
+        this.#sourceEvidenceGateway.policy.digest !==
+          plan.sourceToolPolicy.digest)
+    ) {
+      return this.#terminal(
+        plan,
+        "policy-denied",
+        "source-tool-policy-mismatch",
+      );
+    }
+    if (
+      plan.sourceToolPolicy !== undefined &&
+      plan.budget.maxSourceQueries === undefined
+    ) {
+      return this.#terminal(
+        plan,
+        "policy-denied",
+        "source-tool-budget-missing",
+      );
+    }
+    const sourceEvidenceGateway = this.#sourceEvidenceGateway;
+    let sourceQueryCount = 0;
+    const sourceEvidence: AttemptSourceEvidence | undefined =
+      plan.sourceToolPolicy === undefined || sourceEvidenceGateway === undefined
+        ? undefined
+        : {
+            query: (request) =>
+              sourceEvidenceGateway.query(
+                sourceEvidenceQuerySchema.parse({
+                  ...request,
+                  attemptId: plan.attemptId,
+                  leaseId: plan.leaseId,
+                  targetSnapshot: plan.target,
+                  policy: plan.sourceToolPolicy,
+                  budget: {
+                    maxQueries: plan.budget.maxSourceQueries,
+                    queryOrdinal: (sourceQueryCount += 1),
+                  },
+                }),
+              ),
+          };
     let processResult;
     try {
       processResult = await this.#process.execute({
         plan,
         outputJsonSchema,
+        ...(sourceEvidence === undefined ? {} : { sourceEvidence }),
       });
     } catch (error: unknown) {
       return this.#terminal(

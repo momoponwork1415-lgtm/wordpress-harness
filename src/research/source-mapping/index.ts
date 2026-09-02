@@ -3,6 +3,32 @@ export { openModelMapDeltaSynthesizer } from "./model-map-delta-synthesizer.js";
 export type { OpenModelMapDeltaSynthesizerOptions } from "./model-map-delta-synthesizer.js";
 import { openStaticSourceMapping } from "./static-source-mapping.js";
 
+export { openSourceEvidenceGateway } from "./source-evidence-gateway.js";
+export type { OpenSourceEvidenceGatewayOptions } from "./source-evidence-gateway.js";
+export {
+  sourceEvidenceQuerySchema,
+  sourceEvidenceReceiptRefSchema,
+  sourceEvidenceReceiptValueSchema,
+  sourceEvidenceResponseSchema,
+  sourceRangeResponseSchema,
+  sourceSearchResponseSchema,
+  sourceToolPolicyRefSchema,
+  sourceToolPolicySchema,
+} from "./source-evidence-contracts.js";
+export type {
+  SourceEvidenceGateway,
+  SourceEvidenceQuery,
+  SourceEvidenceReceipt,
+  SourceEvidenceReceiptRef,
+  SourceEvidenceReceiptValue,
+  SourceEvidenceResponse,
+  SourceEvidenceToolRequest,
+  SourceRangeResponse,
+  SourceSearchResponse,
+  SourceToolPolicy,
+  SourceToolPolicyRef,
+} from "./source-evidence-contracts.js";
+
 export type {
   ContextResponse,
   ContextResponseRef,

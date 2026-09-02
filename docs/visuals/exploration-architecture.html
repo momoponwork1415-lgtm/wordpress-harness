@@ -482,11 +482,11 @@
           </div>
           <div class="status partial">
             <b>Partial</b>
-            Surface Map、Analysis Unit、Model portability
+            Surface Map、Source Evidence、Model portability
           </div>
           <div class="status planned">
             <b>Planned</b>
-            Target Intake、Finder Tool Gateway、Chain Synthesis
+            Target Intake、Claude Tool Bridge、Chain Synthesis
           </div>
         </div>
       </header>
@@ -537,7 +537,7 @@
             <h3>Model Execution</h3>
             <p>
               固定Attempt PlanをClaude CLIへ変換し、process終了とstructured
-              outputを検査する。
+              outputを検査する。Source queryをAttemptへ拘束する。
             </p>
           </article>
           <article class="card">
@@ -717,13 +717,15 @@
           </article>
           <div class="arrow">→</div>
           <article class="card target">
-            <span class="tag planned">accepted target</span>
-            <h3>Harness-owned Tool Gateway</h3>
+            <span class="tag partial">partial tracer</span>
+            <h3>Source Evidence Gateway</h3>
             <div class="mini-flow">
               <div>Focus + 小さいobserved seedを渡す</div>
-              <div>read / search / symbol / graphを要求</div>
-              <div>harnessがpath・lease・byte・turn budgetを検査</div>
-              <div>全request/responseをprivate CASへ記録</div>
+              <div>exact search / range readを要求</div>
+              <div>Attempt・Lease・Snapshot・Policyを拘束</div>
+              <div>path・digest・byte・query上限を検査</div>
+              <div>response / Receiptをprivate CASへ記録</div>
+              <div>次: Claude bridge + symbol / graph</div>
             </div>
             <p class="small">
               禁止: shell、web、runtime、Target write、ambient
@@ -732,6 +734,9 @@
           </article>
         </div>
         <p class="callout">
+          緑のGatewayとAttempt bindingはdeterministic provider adapterでBehavior
+          Test済み。実Target Campaignはまだtool-freeであり、Claude
+          CLIへ安全にtoolを公開するnative bridgeは未実装。<br />
           二次sourceのliteralを単純なpath順で選ぶと、一般文字列と同名のPHP
           fileがtemplateより先に入った。現在は出現回数、source内の出現順、path順で固定し、反復するtranslation
           domainより一度だけ現れるtemplate名を優先する。Verifierは<code>requiredEvidence</code>に明示されたinventory内PHP
@@ -906,7 +911,15 @@
           </div>
           <div class="file">
             <code>src/research/model-execution/model-execution.ts</code
-            ><span>Attempt Planからstructured resultまで</span>
+            ><span>Attempt binding、Source query、structured result</span>
+          </div>
+          <div class="file">
+            <code>src/research/source-mapping/source-evidence-contracts.ts</code
+            ><span>query、response、Policy、Receiptの版付きcontract</span>
+          </div>
+          <div class="file">
+            <code>src/research/source-mapping/source-evidence-gateway.ts</code
+            ><span>Manifest拘束したread/searchとCAS Receipt</span>
           </div>
           <div class="file">
             <code>src/research/model-execution/claude-process.ts</code
@@ -931,6 +944,10 @@
           <div class="file">
             <code>tests/research/finder-attempt-materializer.test.ts</code
             ><span>戦略別Analysis Unitとsource bindingの仕様</span>
+          </div>
+          <div class="file">
+            <code>tests/research/source-evidence-attempt-loop.test.ts</code
+            ><span>search → read → Finder outputとquery ceiling</span>
           </div>
         </div>
       </section>

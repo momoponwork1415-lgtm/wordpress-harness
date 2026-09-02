@@ -195,6 +195,12 @@ parallelism、budget、tool permission、persistence、resumeはPromptへ戻さ�
 
 private benchmarkの固有routeをproduction heuristic、fixture、Prompt、Git文書へ写さない。複数Targetに説明できるWordPress/PHP mechanismだけを一般化する。
 
+### Implementation status
+
+2026-09-02にprovider非依存のtracerを実装した。固定Target File Manifestに対するexact `search`とrange `read`、path/digest検査、response truncation、Attempt query ceiling、responseとTool Receiptのprivate CAS保存を、一つの`SourceEvidenceGateway.query`へ閉じた。`ModelExecution.run`はmodel-visible requestにAttempt、Lease、Target Snapshot、Source Tool Policy、query ordinalを付与し、deterministic provider adapterで`search -> read -> Finder output`を一つのAttemptとして通す。
+
+これはClaude Codeのnative tool bridgeまたはproduction Campaign接続の成立を意味しない。現行の実Target Campaignは引き続きtool-freeであり、Claude adapterへ安全にtoolを公開する処理、Attempt Plan materializer、`symbol`、`graph`、complete Attempt Receipt、Route Fragment等は後続sliceである。
+
 ## Evaluation vector
 
 単純なFinding数だけで比較しない。同じTarget Snapshot、Map revision、Focus Area、Strategy、Model Profile、effort、Prompt Set、Attempt budgetを固定し、次を観測する。
