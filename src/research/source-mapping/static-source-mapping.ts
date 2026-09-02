@@ -174,7 +174,9 @@ function factNode(
     case "source":
       return nodeFor(
         "source",
-        { kind: "request-parameter", operation: fact.operation },
+        fact.category === "request-parameter"
+          ? { kind: "request-parameter", operation: fact.operation }
+          : { kind: "request-superglobal", operation: fact.operation },
         anchor,
       );
     case "storage":
@@ -189,11 +191,38 @@ function factNode(
         anchor,
       );
     case "sink":
-      return nodeFor(
-        "sink",
-        { kind: "html-output", operation: fact.operation },
-        anchor,
-      );
+      switch (fact.category) {
+        case "html-output":
+          return nodeFor(
+            "sink",
+            { kind: "html-output", operation: fact.operation },
+            anchor,
+          );
+        case "database-query":
+          return nodeFor(
+            "sink",
+            { kind: "database-query", operation: fact.operation },
+            anchor,
+          );
+        case "filesystem-write":
+          return nodeFor(
+            "sink",
+            { kind: "filesystem-write", operation: fact.operation },
+            anchor,
+          );
+        case "code-execution":
+          return nodeFor(
+            "sink",
+            { kind: "code-execution", operation: fact.operation },
+            anchor,
+          );
+        case "process-execution":
+          return nodeFor(
+            "sink",
+            { kind: "process-execution", operation: fact.operation },
+            anchor,
+          );
+      }
   }
 }
 

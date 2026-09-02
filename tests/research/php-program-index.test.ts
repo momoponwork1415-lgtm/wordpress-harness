@@ -20,11 +20,214 @@ const fixtureDirectory = fileURLToPath(
 const syntaxErrorFixtureDirectory = fileURLToPath(
   new URL("../fixtures/php-plugin-with-syntax-error", import.meta.url),
 );
+const securitySourcesFixtureDirectory = fileURLToPath(
+  new URL("../fixtures/php-security-sources", import.meta.url),
+);
+const securitySinksFixtureDirectory = fileURLToPath(
+  new URL("../fixtures/php-security-sinks", import.meta.url),
+);
 const helperPath = fileURLToPath(
   new URL("../../tools/php-program-index/bin/index.php", import.meta.url),
 );
 
 describe("PHP Source Analysis", () => {
+  it("records high-risk database, filesystem, and code execution sinks", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "wordpress-php-sink-"));
+    const analysis = openPhpSourceAnalysis({
+      artifactDirectory: join(directory, "artifacts"),
+      helperPath,
+      phpBinary: "/usr/bin/php",
+    });
+
+    try {
+      const ref = await analysis.analyze({
+        targetSnapshot: {
+          id: "security-sinks-plugin-1.0.0",
+          pluginSlug: "security-sinks-plugin",
+          version: "1.0.0",
+          digest: `sha256:${"1".repeat(64)}`,
+        },
+        sourceDirectory: securitySinksFixtureDirectory,
+        profile: {
+          id: "wordpress-php-8.3-v1",
+          phpVersion: "8.3",
+        },
+      });
+      const index = await analysis.read(ref);
+
+      expect(index.files[0]?.wordpressFacts).toEqual([
+        ...(
+          ["query", "get_var", "get_row", "get_col", "get_results"] as const
+        ).map((operation, index) => ({
+          kind: "sink" as const,
+          category: "database-query" as const,
+          operation,
+          range: {
+            startLine: 7 + index,
+            endLine: 7 + index,
+            startOffset: expect.any(Number),
+            endOffset: expect.any(Number),
+          },
+        })),
+        {
+          kind: "sink",
+          category: "filesystem-write",
+          operation: "file_put_contents",
+          range: {
+            startLine: 16,
+            endLine: 16,
+            startOffset: expect.any(Number),
+            endOffset: expect.any(Number),
+          },
+        },
+        {
+          kind: "sink",
+          category: "code-execution",
+          operation: "eval",
+          range: {
+            startLine: 21,
+            endLine: 21,
+            startOffset: expect.any(Number),
+            endOffset: expect.any(Number),
+          },
+        },
+        ...(
+          ["include", "include_once", "require", "require_once"] as const
+        ).map((operation, index) => ({
+          kind: "sink" as const,
+          category: "code-execution" as const,
+          operation,
+          range: {
+            startLine: 26 + index,
+            endLine: 26 + index,
+            startOffset: expect.any(Number),
+            endOffset: expect.any(Number),
+          },
+        })),
+        ...(
+          [
+            "exec",
+            "system",
+            "passthru",
+            "popen",
+            "proc_open",
+            "pcntl_exec",
+            "shell_exec",
+          ] as const
+        ).map((operation, index) => ({
+          kind: "sink" as const,
+          category: "process-execution" as const,
+          operation,
+          range: {
+            startLine: 34 + index,
+            endLine: 34 + index,
+            startOffset: expect.any(Number),
+            endOffset: expect.any(Number),
+          },
+        })),
+      ]);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("records direct superglobal reads as request sources", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "wordpress-php-source-"));
+    const analysis = openPhpSourceAnalysis({
+      artifactDirectory: join(directory, "artifacts"),
+      helperPath,
+      phpBinary: "/usr/bin/php",
+    });
+
+    try {
+      const ref = await analysis.analyze({
+        targetSnapshot: {
+          id: "security-sources-plugin-1.0.0",
+          pluginSlug: "security-sources-plugin",
+          version: "1.0.0",
+          digest: `sha256:${"f".repeat(64)}`,
+        },
+        sourceDirectory: securitySourcesFixtureDirectory,
+        profile: {
+          id: "wordpress-php-8.3-v1",
+          phpVersion: "8.3",
+        },
+      });
+      const index = await analysis.read(ref);
+
+      expect(index.files[0]?.wordpressFacts).toEqual([
+        {
+          kind: "source",
+          category: "request-superglobal",
+          operation: "_GET",
+          range: {
+            startLine: 5,
+            endLine: 5,
+            startOffset: expect.any(Number),
+            endOffset: expect.any(Number),
+          },
+        },
+        {
+          kind: "source",
+          category: "request-superglobal",
+          operation: "_POST",
+          range: {
+            startLine: 6,
+            endLine: 6,
+            startOffset: expect.any(Number),
+            endOffset: expect.any(Number),
+          },
+        },
+        {
+          kind: "source",
+          category: "request-superglobal",
+          operation: "_REQUEST",
+          range: {
+            startLine: 7,
+            endLine: 7,
+            startOffset: expect.any(Number),
+            endOffset: expect.any(Number),
+          },
+        },
+        {
+          kind: "source",
+          category: "request-superglobal",
+          operation: "_COOKIE",
+          range: {
+            startLine: 8,
+            endLine: 8,
+            startOffset: expect.any(Number),
+            endOffset: expect.any(Number),
+          },
+        },
+        {
+          kind: "source",
+          category: "request-superglobal",
+          operation: "_FILES",
+          range: {
+            startLine: 9,
+            endLine: 9,
+            startOffset: expect.any(Number),
+            endOffset: expect.any(Number),
+          },
+        },
+        {
+          kind: "source",
+          category: "request-superglobal",
+          operation: "_POST",
+          range: {
+            startLine: 14,
+            endLine: 14,
+            startOffset: expect.any(Number),
+            endOffset: expect.any(Number),
+          },
+        },
+      ]);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("builds a deterministic WordPress-aware Program Index", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordpress-php-index-"));
     const analysis = openPhpSourceAnalysis({
@@ -149,7 +352,7 @@ describe("PHP Source Analysis", () => {
         },
         generator: {
           name: "wordpress-harness/php-program-index",
-          version: "0.1.0",
+          version: "0.2.0",
           phpParserVersion: "5.8.0",
         },
         targetSnapshot: {

@@ -183,6 +183,10 @@ const surfaceSubjectSchema = z.discriminatedUnion("kind", [
     operation: z.literal("get_param"),
   }),
   z.strictObject({
+    kind: z.literal("request-superglobal"),
+    operation: z.enum(["_GET", "_POST", "_REQUEST", "_COOKIE", "_FILES"]),
+  }),
+  z.strictObject({
     kind: z.literal("storage"),
     category: z.literal("option"),
     operation: z.enum(["get_option", "update_option"]),
@@ -191,6 +195,42 @@ const surfaceSubjectSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("html-output"),
     operation: z.literal("echo"),
+  }),
+  z.strictObject({
+    kind: z.literal("database-query"),
+    operation: z.enum([
+      "query",
+      "get_var",
+      "get_row",
+      "get_col",
+      "get_results",
+    ]),
+  }),
+  z.strictObject({
+    kind: z.literal("filesystem-write"),
+    operation: z.literal("file_put_contents"),
+  }),
+  z.strictObject({
+    kind: z.literal("code-execution"),
+    operation: z.enum([
+      "eval",
+      "include",
+      "include_once",
+      "require",
+      "require_once",
+    ]),
+  }),
+  z.strictObject({
+    kind: z.literal("process-execution"),
+    operation: z.enum([
+      "exec",
+      "system",
+      "passthru",
+      "shell_exec",
+      "popen",
+      "proc_open",
+      "pcntl_exec",
+    ]),
   }),
 ]);
 

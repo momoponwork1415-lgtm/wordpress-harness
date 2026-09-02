@@ -73,10 +73,17 @@ const guardFactSchema = z.strictObject({
   range: sourceRangeSchema,
 });
 
-const sourceFactSchema = z.strictObject({
+const requestParameterSourceFactSchema = z.strictObject({
   kind: z.literal("source"),
   category: z.literal("request-parameter"),
   operation: z.literal("get_param"),
+  range: sourceRangeSchema,
+});
+
+const requestSuperglobalSourceFactSchema = z.strictObject({
+  kind: z.literal("source"),
+  category: z.literal("request-superglobal"),
+  operation: z.enum(["_GET", "_POST", "_REQUEST", "_COOKIE", "_FILES"]),
   range: sourceRangeSchema,
 });
 
@@ -96,10 +103,52 @@ const updateOptionFactSchema = z.strictObject({
   range: sourceRangeSchema,
 });
 
-const sinkFactSchema = z.strictObject({
+const htmlOutputSinkFactSchema = z.strictObject({
   kind: z.literal("sink"),
   category: z.literal("html-output"),
   operation: z.literal("echo"),
+  range: sourceRangeSchema,
+});
+
+const databaseQuerySinkFactSchema = z.strictObject({
+  kind: z.literal("sink"),
+  category: z.literal("database-query"),
+  operation: z.enum(["query", "get_var", "get_row", "get_col", "get_results"]),
+  range: sourceRangeSchema,
+});
+
+const filesystemWriteSinkFactSchema = z.strictObject({
+  kind: z.literal("sink"),
+  category: z.literal("filesystem-write"),
+  operation: z.literal("file_put_contents"),
+  range: sourceRangeSchema,
+});
+
+const codeExecutionSinkFactSchema = z.strictObject({
+  kind: z.literal("sink"),
+  category: z.literal("code-execution"),
+  operation: z.enum([
+    "eval",
+    "include",
+    "include_once",
+    "require",
+    "require_once",
+  ]),
+  range: sourceRangeSchema,
+});
+
+const processExecutionSinkFactSchema = z.strictObject({
+  kind: z.literal("sink"),
+  category: z.literal("process-execution"),
+  operation: z.enum([
+    "exec",
+    "system",
+    "passthru",
+    "shell_exec",
+    "popen",
+    "proc_open",
+    "pcntl_exec",
+  ]),
   range: sourceRangeSchema,
 });
 
@@ -107,10 +156,15 @@ const wordpressFactSchema = z.union([
   hookRegistrationSchema,
   routeRegistrationSchema,
   guardFactSchema,
-  sourceFactSchema,
+  requestParameterSourceFactSchema,
+  requestSuperglobalSourceFactSchema,
   getOptionFactSchema,
   updateOptionFactSchema,
-  sinkFactSchema,
+  htmlOutputSinkFactSchema,
+  databaseQuerySinkFactSchema,
+  filesystemWriteSinkFactSchema,
+  codeExecutionSinkFactSchema,
+  processExecutionSinkFactSchema,
 ]);
 
 const fileDiagnosticSchema = z.strictObject({
@@ -136,7 +190,7 @@ export const phpProgramIndexSchema = z.strictObject({
   schemaVersion: z.literal(1),
   generator: z.strictObject({
     name: z.literal("wordpress-harness/php-program-index"),
-    version: z.literal("0.1.0"),
+    version: z.enum(["0.1.0", "0.2.0"]),
     phpParserVersion: z.string().min(1),
   }),
   targetSnapshot: z.strictObject({

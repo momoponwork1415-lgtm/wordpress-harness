@@ -112,7 +112,7 @@ Map生成後に2.8.11と2.8.12の公開patchを照合すると、`editor/forms/a
 
 全snapshotでparse diagnosticは0件だった。一方、literal callbackの名前対応率はplugin familyによって大きく異なる。これはparserの構文抽出が安定していても、単純な名前一致をsemantic dispatchまたはcoverageへ読み替えられないことを示す。
 
-現行source factは`WP_REST_Request::get_param`だけを扱うため、Simply Schedule Appointmentsの4 nodeを除き、全sampleで`source` nodeが0だった。Iptanus/WordPress File Upload 4.24.12をMap生成後に公開済みRCE oracleと照合すると、直接アクセス可能なPHP file、`$_COOKIE`由来値、dynamic `require_once`のrouteが現在のnode/relationへ現れない。[Wordfence advisory](https://www.wordfence.com/threat-intel/vulnerabilities/wordpress-plugins/wp-file-upload/wordpress-file-upload-42412-unuathenticated-remote-code-execution)
+拡張前のsource factは`WP_REST_Request::get_param`だけを扱うため、Simply Schedule Appointmentsの4 nodeを除き、全sampleで`source` nodeが0だった。Iptanus/WordPress File Upload 4.24.12をMap生成後に公開済みRCE oracleと照合すると、直接アクセス可能なPHP file、`$_COOKIE`由来値、dynamic `require_once`のrouteが当時のnode/relationへ現れなかった。[Wordfence advisory](https://www.wordfence.com/threat-intel/vulnerabilities/wordpress-plugins/wp-file-upload/wordpress-file-upload-42412-unuathenticated-remote-code-execution)
 
 このmissから、全routeを静的に完成させるのではなく、次の境界を採用する。
 
@@ -120,6 +120,20 @@ Map生成後に2.8.11と2.8.12の公開patchを照合すると、`editor/forms/a
 - callback semantics、feature ownership、cross-file/cross-request relation、persistent state、security invariantはAI Mapperが根拠付き`inferred`または`unknown`として補完する
 - Work Waveは登録済みentryだけでなく、entry relationを持たないPHP fileと未解決relationをcoverage対象にできるようにする
 - known affected symbol、payload、patch narrativeはprospective Mapper/Finderへ渡さず、出力後のmiss分析だけに使う
+
+### Security-fact expansion rerun
+
+上のmiss分類を受け、generator 0.2.0で主要request superglobal、明示的な`$wpdb` raw query、file write、code/process executionを追加した。2026-09-02に同じ固定sourceで再解析した結果は次のとおりである。Custom Facebook Feedはこの再解析集合に含めず、上の初回baselineだけを保持した。
+
+| Target Snapshot | WordPress facts | Surface nodes | source | sink | relation inferred / unknown | gaps |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Brizy 2.8.11 | 1,023 | 3,481 | 203 | 339 | 9 / 396 | 7,831 |
+| Brizy 2.8.12 | 1,025 | 3,483 | 205 | 339 | 9 / 396 | 7,831 |
+| TranslatePress 3.2.5 | 1,931 | 3,391 | 481 | 643 | 287 / 145 | 732 |
+| Simply Schedule Appointments 1.6.10.0 | 1,061 | 2,742 | 240 | 391 | 1 / 261 | 573 |
+| Iptanus/WordPress File Upload 4.24.12 | 1,060 | 1,555 | 431 | 432 | 47 / 3 | 108 |
+
+Brizy 2.8.11の203 sourceは`_GET` 35、`_POST` 38、`_REQUEST` 110、`_FILES` 20である。339 sinkには`echo` 227のほか、明示的な`$wpdb` query 78、include/require 30、`file_put_contents` 4が含まれる。Iptanusでは公開RCEのmiss分析で指摘した`$_COOKIE`と`require_once`が同一fileの独立nodeとして現れた。これらは構文上の観測点であり、同一fileにあること、件数差、operation名だけではdata flow、到達性、exploitabilityを証明しない。
 
 追加配布物のZIP SHA-256は、[TranslatePress 3.2.5](https://downloads.wordpress.org/plugin/translatepress-multilingual.3.2.5.zip)が`99f5b8ee7241115d7e4a910478f4a6ab5cdca242db50152a1301e71b34f9c56f`、[Simply Schedule Appointments 1.6.10.0](https://downloads.wordpress.org/plugin/simply-schedule-appointments.1.6.10.0.zip)が`270f432a73a6dbd22b9e986b2f450713147eb3e16bcb2f17778a6adbe0dc0f40`、[Iptanus/WordPress File Upload 4.24.12](https://downloads.wordpress.org/plugin/wp-file-upload.4.24.12.zip)が`ef84589748e27417624b088a300406eb5d5b13e0f590e4e107bb3ffda278eb9a`である。Custom Facebook Feedは既存のGit外bootstrap archiveを使い、そのSHA-256は`f7b98c1cb92b792ad05685a246bc0188ab198c53b962bbe27ebbd52ec1350d12`である。
 

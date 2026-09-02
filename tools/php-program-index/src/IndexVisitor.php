@@ -186,6 +186,32 @@ final class IndexVisitor extends NodeVisitorAbstract
 
     private function recordSecurityFact(Node $node): void
     {
+        if ($node instanceof Expr\Eval_) {
+            $this->wordpressFacts[] = [
+                'kind' => 'sink',
+                'category' => 'code-execution',
+                'operation' => 'eval',
+                'range' => $this->range($node),
+            ];
+            return;
+        }
+
+        if ($node instanceof Expr\Include_) {
+            $operation = match ($node->type) {
+                Expr\Include_::TYPE_INCLUDE => 'include',
+                Expr\Include_::TYPE_INCLUDE_ONCE => 'include_once',
+                Expr\Include_::TYPE_REQUIRE => 'require',
+                Expr\Include_::TYPE_REQUIRE_ONCE => 'require_once',
+            };
+            $this->wordpressFacts[] = [
+                'kind' => 'sink',
+                'category' => 'code-execution',
+                'operation' => $operation,
+                'range' => $this->range($node),
+            ];
+            return;
+        }
+
         if ($node instanceof Stmt\Echo_) {
             $this->wordpressFacts[] = [
                 'kind' => 'sink',
@@ -194,6 +220,36 @@ final class IndexVisitor extends NodeVisitorAbstract
                 'range' => $this->range($node),
             ];
             return;
+        }
+
+        if ($node instanceof Expr\Variable
+            && is_string($node->name)
+            && in_array($node->name, ['_GET', '_POST', '_REQUEST', '_COOKIE', '_FILES'], true)
+        ) {
+            $this->wordpressFacts[] = [
+                'kind' => 'source',
+                'category' => 'request-superglobal',
+                'operation' => $node->name,
+                'range' => $this->range($node),
+            ];
+            return;
+        }
+
+        if ($node instanceof Expr\MethodCall
+            && $node->var instanceof Expr\Variable
+            && $node->var->name === 'wpdb'
+            && $node->name instanceof Node\Identifier
+        ) {
+            $operation = strtolower($node->name->toString());
+            if (in_array($operation, ['query', 'get_var', 'get_row', 'get_col', 'get_results'], true)) {
+                $this->wordpressFacts[] = [
+                    'kind' => 'sink',
+                    'category' => 'database-query',
+                    'operation' => $operation,
+                    'range' => $this->range($node),
+                ];
+                return;
+            }
         }
 
         if ($node instanceof Expr\MethodCall
@@ -214,6 +270,26 @@ final class IndexVisitor extends NodeVisitorAbstract
         }
 
         $operation = strtolower(ltrim($node->name->toString(), '\\'));
+        if ($operation === 'file_put_contents') {
+            $this->wordpressFacts[] = [
+                'kind' => 'sink',
+                'category' => 'filesystem-write',
+                'operation' => $operation,
+                'range' => $this->range($node),
+            ];
+            return;
+        }
+
+        if (in_array($operation, ['exec', 'system', 'passthru', 'shell_exec', 'popen', 'proc_open', 'pcntl_exec'], true)) {
+            $this->wordpressFacts[] = [
+                'kind' => 'sink',
+                'category' => 'process-execution',
+                'operation' => $operation,
+                'range' => $this->range($node),
+            ];
+            return;
+        }
+
         if ($operation === 'current_user_can') {
             $this->wordpressFacts[] = [
                 'kind' => 'guard',

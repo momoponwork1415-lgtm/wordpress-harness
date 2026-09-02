@@ -74,6 +74,10 @@ Surface Map refはmanifestとPHP Program Indexの正確なartifact digestへ結�
 
 同日の5 plugin family比較では全PHPをparse diagnostic 0件で処理できた一方、callback解決率が大きく異なり、superglobal、直接request候補PHP、file/code/SQL operationが骨格に不足していることが分かった。局所的で再現可能なsource factだけを実測に基づいて追加し、全call graphやtaint engineを先回りで自作しない。cross-file/cross-request relationとsecurity invariantはMapper modelの補完対象とする。
 
+この不足に対するgenerator 0.2.0の縦切りでは、主要request superglobalと、`$wpdb` raw query、file write、code/process executionの高信号な操作をtyped observed nodeへ追加した。Brizy 2.8.11の再解析は203 source nodeと339 sink nodeを作り、sourceは`_GET` 35、`_POST` 38、`_REQUEST` 110、`_FILES` 20、sinkはSQL query 78、include/require 30、`file_put_contents` 4、`echo` 227だった。Program Index全体は1,023 facts、Surface Mapは3,481 nodesになり、parse diagnostic、registration relation、coverage gapは従来と同じだった。これは探索開始点のcoverage向上であり、source-to-sink flowまたは脆弱性成立の証明ではない。
+
+同じ規則でIptanus/WordPress File Upload 4.24.12を再解析すると、既知RCEのmiss分析で不足していた`$_COOKIE`参照と`require_once`操作がsource anchor付きnodeとして同一PHP fileに現れた。ただし両者の因果edge、attacker premise、実行可能なpathはまだMapにないため「RCEを発見した」とは扱わない。次のAnalysis UnitとMapperが、この分離された観測点をbounded context内で接続候補にする。
+
 同日の最初の実Opus 5 `high` Mapper smokeでは、Brizy 2.8.11の全Mapをpromptへ入れた実装が約305万tokenとなり、推論前に`prompt_too_long`で失敗した。この実測を受けてContext pathと1-hop relationだけのprojectorへ修正した。同じ固定Mapと40,014-byteの一file Context Responseでは380,245 msでschema-valid Proposalを返し、41 relation（control-flow 36、data-flow 4、state-flow 1）がclaim検査を通った。31件は動的hook entryから同一fileのcallback symbolへの対応であり、先頭12件のsource anchorとcallback名は整合した。ただしこれはtransport、context reach、delta compilerの成立確認であり、全41件の意味的正しさ、脆弱性発見、未知性能を証明しない。Proposal、Receipt、sourceはprivate CASに置く。
 
 ## Interface invariants

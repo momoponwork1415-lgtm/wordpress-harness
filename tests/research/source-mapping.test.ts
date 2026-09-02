@@ -317,6 +317,168 @@ describe("Source Mapping", () => {
     }
   });
 
+  it("maps a request superglobal fact to a source node", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordpress-surface-superglobal-"),
+    );
+    const artifactDirectory = join(directory, "artifacts");
+    const indexWithSuperglobal: PhpProgramIndex = {
+      ...programIndex,
+      files: [
+        {
+          ...programIndex.files[0]!,
+          wordpressFacts: [
+            ...programIndex.files[0]!.wordpressFacts,
+            {
+              kind: "source",
+              category: "request-superglobal",
+              operation: "_POST",
+              range: {
+                startLine: 25,
+                endLine: 25,
+                startOffset: 456,
+                endOffset: 477,
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    try {
+      const { artifacts, mapping } = await stageMapping(
+        artifactDirectory,
+        indexWithSuperglobal,
+        { ...baseProgramSummary, wordpressFacts: 4 },
+      );
+
+      const ref = await mapping.build({ kind: "initial", target, profile });
+      const map = decodeSurfaceMap(await artifacts.readJson(ref.digest));
+
+      expect(map.nodes).toContainEqual(
+        expect.objectContaining({
+          kind: "source",
+          subject: {
+            kind: "request-superglobal",
+            operation: "_POST",
+          },
+        }),
+      );
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("maps high-risk operation facts to typed sink nodes", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "wordpress-surface-sink-"));
+    const artifactDirectory = join(directory, "artifacts");
+    const indexWithDatabaseSink: PhpProgramIndex = {
+      ...programIndex,
+      files: [
+        {
+          ...programIndex.files[0]!,
+          wordpressFacts: [
+            ...programIndex.files[0]!.wordpressFacts,
+            {
+              kind: "sink",
+              category: "database-query",
+              operation: "get_results",
+              range: {
+                startLine: 26,
+                endLine: 26,
+                startOffset: 478,
+                endOffset: 505,
+              },
+            },
+            {
+              kind: "sink",
+              category: "filesystem-write",
+              operation: "file_put_contents",
+              range: {
+                startLine: 27,
+                endLine: 27,
+                startOffset: 506,
+                endOffset: 530,
+              },
+            },
+            {
+              kind: "sink",
+              category: "code-execution",
+              operation: "eval",
+              range: {
+                startLine: 28,
+                endLine: 28,
+                startOffset: 531,
+                endOffset: 542,
+              },
+            },
+            {
+              kind: "sink",
+              category: "process-execution",
+              operation: "shell_exec",
+              range: {
+                startLine: 29,
+                endLine: 29,
+                startOffset: 543,
+                endOffset: 565,
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    try {
+      const { artifacts, mapping } = await stageMapping(
+        artifactDirectory,
+        indexWithDatabaseSink,
+        { ...baseProgramSummary, wordpressFacts: 7 },
+      );
+
+      const ref = await mapping.build({ kind: "initial", target, profile });
+      const map = decodeSurfaceMap(await artifacts.readJson(ref.digest));
+
+      expect(map.nodes).toContainEqual(
+        expect.objectContaining({
+          kind: "sink",
+          subject: {
+            kind: "database-query",
+            operation: "get_results",
+          },
+        }),
+      );
+      expect(map.nodes).toContainEqual(
+        expect.objectContaining({
+          kind: "sink",
+          subject: {
+            kind: "process-execution",
+            operation: "shell_exec",
+          },
+        }),
+      );
+      expect(map.nodes).toContainEqual(
+        expect.objectContaining({
+          kind: "sink",
+          subject: {
+            kind: "filesystem-write",
+            operation: "file_put_contents",
+          },
+        }),
+      );
+      expect(map.nodes).toContainEqual(
+        expect.objectContaining({
+          kind: "sink",
+          subject: {
+            kind: "code-execution",
+            operation: "eval",
+          },
+        }),
+      );
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("preserves observed facts while recording a parse diagnostic gap", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordpress-surface-gap-"));
     const artifactDirectory = join(directory, "artifacts");
