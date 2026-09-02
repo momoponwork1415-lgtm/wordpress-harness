@@ -2,7 +2,7 @@
 
 Status: accepted, 2026-09-02
 
-Implementation status: partial. 合成system-seam adapterを使うBehavior Testでは、Stored XSSのFinding gate、同じCausal Identityに限定したDisproved、VerifierまたはgVisor unavailable、budget exhausted、sibling configuration/identity mismatch、non-hermetic fallback、evidence incompleteのBlocked、artifact digest mismatchのread rejection、private CAS write、Verification start/completion event、close/reopen replayまで実装済みである。Witness完了後にControlがtyped Blockedとなった場合は、完了済みWitness refをpartial evidenceとして保持する。production Claude Independent Verifierは、PlanのModel ProfileとPrompt Set、Target Snapshot、Surface Map、Hypothesis routeを固定し、routeにobserved anchorを持つ実ファイルだけをサイズとSHA-256再検査後にOpusへ渡す。tool-free provider envelope、実model identity、返却された検証identity、source path/digest/line rangeを再検査する。modelがsource supportを再導出できない場合も、必要条件の不成立を同じsource evidenceへ拘束できれば`source-falsified`、根拠が不足する場合はBlockedにする。Stored XSS専用のproduction Lab Controlは、shellを介さないDocker CLI、明示的な`runsc` preflight、local content-addressed image preflight、internal network、fresh volume、固定setup lifecycle、private fixture/browser worker、sanitized Observation、resource cleanupを実装済みである。gVisor netstackがuser-defined bridgeのDocker DNSを提供しないため、検査したcontainer IPを同一internal network内だけへ注入し、host networkを使わない。container作成前にRuntime Profile、Setup Plan、Target file manifest、review済みfixture manifest、private browser worker/input、Lab Baselineのdigestを実内容から再計算し、宣言だけのbindingを証拠として受理しない。private browser inputはread-only mountだけでgVisor内へ渡し、payloadをObservationまたはLedgerへ入れない。private Brizy 2.8.11/2.8.12では、実Opus再導出とfresh gVisor Witness/Controlにより同じCausal IdentityのFinding/Disproved境界を確認した。`runsc` unavailable時はplain Dockerへfallbackしない。Verification crash recoveryとCalibration Reviewは実装済みであり、未実装なのはStored XSS以外のproduction Experiment mechanismである。
+Implementation status: partial. Stored XSSとSQL injectionについて、同じ公開`verify` Interface、Finding gate、同じCausal Identityに限定したDisproved、typed Blocked、artifact digest検査、private CAS、Verification event、close/reopen replayまで実装済みである。production Claude Independent Verifierは、固定Target、Surface Map、Hypothesis routeに加え、Hypothesisの`requiredEvidence`が明示したinventory内PHP pathだけをbounded Context Responseとして追加できる。path tokenの両端とinventory identityを完全一致させ、分類、size、SHA-256も再検査し、Finderの主張自体は証拠にしない。Stored XSSとSQLiのLab adapterは、共通のWordPress/gVisor lifecycle Moduleを利用し、`runsc` preflight、content-addressed image、internal network、fresh volume、digest検査済みreviewed fixture pluginのactivation、private worker/input、sanitized Observation、cleanupを行う。自由なsetup argvまたは`eval-file`は受け取らない。private Brizy 2.8.11/2.8.12とAppointment Booking Calendar 1.6.9.29/1.6.10.0では、実Opus再導出とfresh gVisor Witness/Controlにより各Causal IdentityのFinding/Disproved境界を確認した。`runsc` unavailable時はplain Dockerへfallbackしない。未実装なのはaccount takeover、file、code/process execution等のproduction Experiment mechanismである。
 
 ## Design target
 
@@ -105,10 +105,10 @@ Lab ControlはgVisor、WordPress、database、browser、lab cleanupを隠すが�
 さらにmechanism固有に次を記録する。
 
 - `stored-xss-browser@v1`: attacker request、persistent-state、victim-browser execution canary
-- `sql-injection-database@v1`: attacker request、専用seed canary rowに限定したquery effect、database observation
+- `sql-injection-database@v1`: attacker request、Lab生成のdatabase-only readback canary、database observation
 - `account-takeover-password-reset@v1`: attacker-obtainable reset capability、専用Lab principalのcredential transition、authentication observation
 
-SQL injectionのWitnessは専用seed以外のdataを読み出さず、account takeoverのWitnessは使い捨てLab principal以外を操作しない。
+SQL injectionのWitnessはLab生成の固定canaryだけを読み出し、WordPress accountや実dataを証拠へ含めない。account takeoverのWitnessは使い捨てLab principal以外を操作しない。
 
 payload、cookie、credential、raw browser trace、target sourceをLedgerへ保存しない。gVisor unavailable、baseline clone不能、browser failure、non-hermetic external stateではevidentiary observationを返さない。
 
@@ -174,8 +174,9 @@ system seamだけにdeterministic adapterを使う。owned internal Moduleはmoc
 5. close/reopen後に同じVerification outcomeをreplayする。
 6. unsupported record versionまたはartifact digest不一致を推測せず拒否する。
 7. private Boundary Pairで2.8.11 Finding、2.8.12 Disproved、benign functional controlを同じInterfaceから確認する。
-8. 同じInterfaceへSQL injectionとaccount takeoverのtyped observationを一つずつ追加し、それぞれのpositive、patched negative、benign functional controlを確認する。
-9. daroo holdoutのStored XSSとSQL injectionをCase固有分岐なしで確認する。
+8. 同じInterfaceでSQL injectionのpositive、mechanism修正済みnegative、benign functional controlを確認する。
+9. account takeoverのtyped observationを追加し、同じ三条件を確認する。
+10. daroo holdoutのStored XSSとSQL injectionをCase固有分岐なしで確認する。
 
 ## Acceptance scenarios
 
@@ -190,7 +191,7 @@ system seamだけにdeterministic adapterを使う。owned internal Moduleはmoc
 
 ## First-slice limits
 
-- production Experiment adapterは実Targetの縦切り順に`stored-xss-browser@v1`、`sql-injection-database@v1`、`account-takeover-password-reset@v1`の三つだけ
+- production Experiment adapterは現在`stored-xss-browser@v1`と`sql-injection-database@v1`。次は`account-takeover-password-reset@v1`
 - production provider transportはeligible Claude process一つだけ
 - 一つのcanonical Runtime Profileと、根拠があるConfiguration Variantだけ
 - Case固有情報はprivate setup/graderへ限定し、production branchingへ入れない

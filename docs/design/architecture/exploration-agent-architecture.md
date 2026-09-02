@@ -41,7 +41,7 @@ flowchart TB
 
 Minimum Map Gateは全コードの完全理解を要求しない。ファイル一覧、実在するsource anchor、relationの結合、明示されたgapを検査し、根拠が足りなければ推測せず`Mapping Evidence Request`を返す。AI Mapperの直接出力はMapではなく`Map Delta Proposal`であり、path、digest、anchor、closed relation語彙を検査したclaimだけが新しいMap Revisionへ入る。現行の黄部分はContext pathをseedにした1-hop Map subgraphから既存node間の`flows-to`を提案する一回のstructured model実行、claim単位のDelta検査、Receipt、失敗/context-ceiling gapまでである。追加node、Conflict、Context Request、repair/continuation、tool付きMapperは未実装である。
 
-Focus候補はREST entry、hook、source、state、guard、sink、未登録PHP、mapping gapから作る。同種のsurfaceだけで最初のWaveを埋めず、route signalと探索価値でfeatureごとの候補を並べ、各featureから一件ずつ取るroundで有限件へ切る。
+Focus候補はREST entry、hook、source、state、guard、sink、未登録PHP、mapping gapから作る。同種のsurfaceだけで最初のWaveを埋めず、route signalと探索価値で候補を並べる。外部entry、server impact、database、browserは別bucketとして扱い、RCE系sinkが複数あるだけで最初の3件を使い切らない。
 
 ### 現行bootstrapの正確な選択規則
 
@@ -59,14 +59,15 @@ priority = external entry / known route
          -> coverage debt
          -> stable Focus ID
 
-portfolio = one candidate per feature in each round
+portfolio = one candidate per impact-aware bucket in each round
 
-focus limit = min(maxFocusAreas, maxLeases - 1)
+focus limit = min(maxFocusAreas, maxLeases)
 leases      = one primary Lease per selected Focus
-            + one alternate Strategy on the highest-priority elevated Focus
+            + only when capacity remains, one alternate Strategy
+              on the highest-priority elevated Focus
 ```
 
-したがって`maxLeases = 3`の現行閉路は、異なる二つのFocusと、そのうち探索価値が最上位のelevated Focusを重ねる一つのLeaseから成る。外部REST、`wp_ajax_*`、`admin_post_*`を最上位classとし、既知routeへ接続したsurface、code/process execution、file write、SQL、HTML output等を比較する。同程度ならcomponentのsurface kind数、unknown relation数、known relation数を情報利得のproxyにし、coverage debtとstable IDで決着する。
+したがって`maxLeases = 3`で外部entry、server-impact sink、database sinkが揃う場合は、三つの異なるFocusへ一件ずつ割り当てる。候補が少なくcapacityが残る場合だけ、探索価値が最上位のelevated Focusへ別Strategyを重ねる。外部REST、`wp_ajax_*`、`admin_post_*`を最上位classとし、既知routeへ接続したsurface、code/process execution、file write、SQL、HTML output等を比較する。同程度ならcomponentのsurface kind数、unknown relation数、known relation数を情報利得のproxyにし、coverage debtとstable IDで決着する。
 
 `unknown` relationを既知routeとして辿らず、架空の到達可能性を作らない。孤立した`bundled-vendor`候補も削除せず初回順位だけを下げ、Target固有entryまたはstateへ既知relationで接続していれば通常候補へ戻す。これはseverity scoreではなく、最初の有限Waveで何を調べるかを決める優先規則である。
 
@@ -145,7 +146,7 @@ flowchart TB
 - Surface MapとPHP Program Indexから決定的に作った`Analysis Unit@v1`
 - source-bound Hypothesisを返すためのversioned schema
 
-現行のtool-free materializerは、Focus ownerのobserved anchorをseedにする。directed Strategyは`Map relation -> call neighbor -> literal参照 -> 共有hook`、`entry-forward`等は`共有hook -> literal参照 -> relation/call fallback`の順で最初の候補を作る。二次sourceを実際に読めた場合、そのsourceだけに現れるliteral参照を最大1件、共有hookの別登録元を最大1件、同じfile/byte上限内で前へ昇格する。これは一段だけで止まり、昇格したsourceから再帰展開しない。literalはsource内の出現回数が少ないものを先にし、同数なら出現順、最後にpath順で決める。translation domain等の反復文字列より、一度だけ現れるtemplate名をnavigation hintとして優先するためである。
+現行のtool-free materializerは、Focus ownerのobserved anchorをseedにする。`sink-backward`は`Map relation -> 同じsink familyの近接source -> call neighbor -> literal参照 -> 共有hook`、`entry-forward`等は`共有hook -> literal参照 -> relation/call fallback`の順で最初の候補を作る。database sinkから始めた時は、同じdatabase-query familyのsourceを件数、bundled-vendor区分、directory近接、pathの安定順で比較できる。二次sourceを実際に読めた場合、そのsourceが参照するclass-like symbolの定義、低頻度literal参照、共有hookの別登録元を各最大1件、同じfile/byte上限内で前へ昇格する。これは一段だけで止まり、昇格したsourceから再帰展開しない。
 
 `wildcard`は`directed候補を除いたSurface Map標本 -> 共有hook -> literal参照 -> relation/call fallback`の順を維持し、二次展開を行わない。標本はnode kindをround-robinし、同じkind内ではseedとのdirectory近接とpath順で決める。private closed sliceの上限は8 files、source全体650 KB、単一file 220 KBである。各fileはTarget manifestのsizeとSHA-256を再検査し、上限を越えるfileはobserved anchor周辺だけをrenderする。
 
@@ -153,31 +154,35 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    assignment["Focus Area + Work Lease"]
+    assignment["Focus + Lease"]
     seed["Observed Seed"]
     choose{"Strategy"}
-    directed["Directed<br/>最初の候補を安定順へ"]
-    secondary["二次Sourceを読む"]
-    hop{"1段だけ昇格"}
-    literal["低頻度Literal<br/>最大1件"]
-    hook["共有Hook登録元<br/>最大1件"]
-    wildcard["Wildcard<br/>surface標本を優先"]
-    bind{"Digest・範囲・上限を検査"}
+    directed["Directed Candidates"]
+    secondary["Secondary Source"]
+    hop{"Depth 1"}
+    symbol["Class-like Symbol"]
+    literal["Rare Literal"]
+    hook["Shared Hook"]
+    wildcard["Wildcard Sample"]
+    bind{"Binding Gate"}
     unit[("Analysis Unit@v1")]
-    prompt["Private Attempt Plan"]
+    prompt["Attempt Plan"]
 
     assignment --> seed --> choose
     choose --> directed --> secondary --> hop
+    hop --> symbol --> bind
     hop --> literal --> bind
     hop --> hook --> bind
     choose --> wildcard --> bind
     bind --> unit --> prompt
 
     classDef done fill:#e9f7ed,stroke:#337a46,color:#173d22;
-    class assignment,seed,choose,directed,secondary,hop,literal,hook,wildcard,bind,unit,prompt done;
+    class assignment,seed,choose,directed,secondary,hop,symbol,literal,hook,wildcard,bind,unit,prompt done;
 ```
 
 UnitはTarget、Map、Program Index、Focus、Leaseのdigestと、実際に採用したpath、file digest、line range、byte量、選択理由を持つ。同じsinkへ二つのLeaseを重ねても、directedとwildcardが同じsource集合へ収束しにくい。選択理由は「なぜcontextへ入れたか」の記録であり、sourceからsinkへの到達証拠ではない。実装は[finder-attempt-materializer.ts](../../../src/research/campaign-control/finder-attempt-materializer.ts)、外から観測する仕様は[finder-attempt-materializer.test.ts](../../../tests/research/finder-attempt-materializer.test.ts)を参照する。
+
+FinderがHypothesisの`requiredEvidence`にTarget inventory内の具体的なPHP pathを挙げた場合、Independent Verifierはそのpathだけを追加sourceとして取得できる。これはFinderの主張を真と扱う処理ではない。pathの実在、PHP分類、manifest digest、file/total byte上限を再検査したうえで、Verifierが固定sourceから独立に支持または反証するためのbounded Context Responseである。
 
 ### Brizy pairで確認した6 Gate
 
@@ -192,7 +197,20 @@ UnitはTarget、Map、Program Index、Focus、Leaseのdigestと、実際に採�
 
 最初の実行では、二次sourceを読んでもそこで見つかったtemplateとhookを追わず、Finderは不足sourceを`requiredEvidence`として返した。最初の一段展開ではliteral候補をpath順にしたため、一般的な文字列と同名のPHP fileがtemplateより先に入った。最終規則はmodelの自由文や既知脆弱性を読まず、固定source中のliteral頻度、出現順、Program Indexの共有hook、inventory digestだけで同じUnitを再現する。
 
-この順序は再現可能だが、動的property call、service locator、組立てcallback、fileをまたぐstate identityを静的call neighborだけで接続できない。Finderが不足producerやentryを特定しても追加取得できないため、acceptedな到達形では固定seedを小さくし、path・Lease・byte・turn budgetをharnessが検査する`read / search / symbol / graph` toolへ置き換える。shell、web、runtime、Target writeは追加しない。
+### Appointment Booking Calendar SQLiで確認した6 Gate
+
+| Gate | このsliceの結果 | artifactから確認したこと |
+| --- | --- | --- |
+| Target Identity | pass | `1.6.9.29@r3475885`とmechanism修正済み`1.6.10.0@r3480506`をmanifestとsource digestで別Snapshotへ固定した |
+| Map Coverage | pass for slice | 749 files、2,750 nodes、271 relationsを持つMapからdatabase sinkと外部surfaceをsource anchorへ拘束した。573 gapsを残しており完全Mapとは主張しない |
+| Focus Rank | pass | 最初の3 Leaseを外部entry、server-impact sink、database sinkへ分散した |
+| Context Reach | pass after bounded response | 同sink family、class-like symbol、Finderが明示したinventory内pathから、route、model、database baseのsourceを独立Verifierへ到達させた |
+| Hypothesis Recall | pass for SQLi slice | oracle-free positive Campaignがrequest-controlled `fields`からquery structureへ至る反証可能なHypothesisを生成した |
+| Verification | pass for SQLi slice | positiveはfresh gVisor Witnessでdatabase-only canaryを観測しControlで消失、mechanism修正済みSnapshotは同じCausal IdentityでDisproved。negativeのoracle-free CampaignはFinding 0件だった |
+
+公開advisoryの版境界とactual sourceの修正点に差があったため、version labelではなくSVN revision、manifest、Snapshot digestを正本にした。Finderにはadvisory、CVE、既知file、parameter、payload、patched narrativeを渡していない。初期Mapだけで継承、service lookup、public nonce経路を完全に表現できたとは主張せず、source-bound Hypothesisが要求した追加pathを独立Verifierの上限内で再取得してContext Reachを閉じた。
+
+この順序は再現可能だが、動的property call、service locator、組立てcallback、fileをまたぐstate identityを静的call neighborだけで接続できない。現行のbounded Context Responseは独立Verification時に一回だけ補えるが、Finder自身は探索中に追加取得できない。acceptedな到達形では固定seedを小さくし、path・Lease・byte・turn budgetをharnessが検査する`read / search / symbol / graph` toolへ置き換える。shell、web、runtime、Target writeは追加しない。
 
 Finderへ既知CVE、advisory、patched narrative、期待payload、別Finderの結果を渡さない。provider組込みのweb、shell、subagent、ambient MCPも無効にする。結果の到着順は判断に使わず、全Leaseが成功・失敗・取消のterminal resultになってから安定順へ戻す。
 
@@ -207,23 +225,29 @@ flowchart TB
     premise{"Attacker Premise<br/>Resolved?"}
     verifier["Independent Verifier<br/>現在: Opus"]
     source{"Source Re-derivation"}
-    witness["Fresh gVisor Witness Lab"]
-    control["Fresh gVisor Control Lab"]
+    mechanism{"Typed Experiment"}
+    xss["Stored XSS<br/>Browser Lab"]
+    sqli["SQLi<br/>Database Lab"]
+    witness["Fresh gVisor Witness"]
+    control["Fresh gVisor Control"]
     outcome[("Finding / Disproved / Blocked")]
 
     barrier --> bind
     bind -->|"不一致"| outcome
     bind -->|"一致"| dedupe --> hypotheses --> premise
     premise -->|"未解決"| outcome
-    premise -->|"確定"| verifier --> source --> witness --> control --> outcome
+    premise -->|"確定"| verifier --> source --> mechanism
+    mechanism --> xss --> witness
+    mechanism --> sqli --> witness
+    witness --> control --> outcome
 
     classDef done fill:#e9f7ed,stroke:#337a46,color:#173d22;
-    class barrier,bind,dedupe,hypotheses,premise,verifier,source,witness,control,outcome done;
+    class barrier,bind,dedupe,hypotheses,premise,verifier,source,mechanism,xss,sqli,witness,control,outcome done;
 ```
 
 多数決は使わない。一つのFinderだけが出した候補でも、Surface Mapのobserved anchorとrouteへ拘束でき、反証可能なら残す。重複は支持数ではなくCausal Identityとroute shapeでまとめる。
 
-VerifierはFinderのsession、scratch、自己評価を読まず、固定Targetと最小Hypothesisからsourceを再導出する。現在のStored XSS経路では、Verifierが支持またはsource上の反証根拠とtyped Experimentを作り、Verification ModuleがfreshなgVisor sibling LabでWitnessとCausal Controlを順に実行する。
+VerifierはFinderのsession、scratch、自己評価を読まず、固定Targetと最小Hypothesisからsourceを再導出する。現在はStored XSSとSQL injectionについて、Verifierが支持またはsource上の反証根拠とtyped Experimentを作り、Verification ModuleがfreshなgVisor sibling LabでWitnessとCausal Controlを順に実行する。共通のWordPress Lab lifecycleは一つの内部Moduleへ閉じ、mechanism adapterはsetupとsanitized observationだけを所有する。
 
 ## 5. 実装済みの閉路と次の拡張
 
@@ -268,7 +292,7 @@ flowchart TB
     class nextwave,synthesis,gaps,closure,multimodel planned;
 ```
 
-2026-09-02時点で、Brizy 2.8.11のoracle-free Campaignは最大3 Finderから`Finding`まで到達した。private graderが同じ固定Causal Identityを2.8.12へ拘束した再検証は`Disproved`となり、oracle-free negative CampaignはFindingへ誤昇格しなかった。active Findingはmodel生成文言ではなく、Target、source anchor、Experiment protocol、Witness/Control観測から成るCalibration Fingerprintで固定positiveへ照合する。Calibration Reviewは`complete`となり、実Targetのrunは`stop-boundary-pair-complete`を記録してclose/reopen replayも一致した。
+2026-09-02時点で、Brizy Stored XSSとAppointment Booking Calendar SQLiの二つのmechanismが同じ公開Campaign/Verification Interfaceを通った。SQLiは脆弱Snapshotのoracle-free 3 Finder CampaignからFinding、mechanism修正済みSnapshotのoracle-free CampaignでFinding 0件、同じCausal Identityを拘束したprivate calibrationからDisprovedを記録した。全Finderがprovider通信で失敗したrunは`no-source-bound-hypothesis`へ丸めず、`provider-unavailable`として停止する。
 
 旧whitebox-harnessと同じく、到達形ではCampaign投入後に人間の追加指示なしで反復する。新設計はその自律性を削らず、進行、上限、resume、停止判定をroot agentの巨大Promptから`Campaign Control`と型付きrecordへ移す。現行sliceは一つの有限Waveと次Decisionまでを自律実行するが、`continue-unresolved-work`を次Waveへ自動消費する部分はまだ未実装である。
 

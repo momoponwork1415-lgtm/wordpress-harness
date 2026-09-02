@@ -41,9 +41,11 @@ callerはprovider executable、argv、session ID、credential path、process ID�
 
 ## Implemented first slice
 
-現行実装はFinder roleと、owner Module向けのstructured role bridgeを公式Claude Code process `2.1.251`へ接続する細いadapterである。productionで実測済みのProfileは`claude-opus-5`である。`Attempt Plan`はTarget、Work Lease、model/effort、Eligibility Receipt digest、render済みprompt、wall/output budgetを固定する。Campaign Controlのproduction materializerが固定Surface Map、PHP Program Index、Focus Area、Work Leaseからoracle-free source contextを決定的に選択し、実ファイルdigestを再検査してpromptをrenderする。実Opusを伴う`CampaignRunner.run`へcomposition済みであり、private Brizy 2.8.11 Campaignで3 Finderの並列実行から独立Verificationまで到達した。
+現行実装はFinder roleと、owner Module向けのstructured role bridgeを公式Claude Code process `2.1.258`へ接続する細いadapterである。productionで実測済みのProfileは`claude-opus-5`である。`Attempt Plan`はTarget、Work Lease、model/effort、Eligibility Receipt digest、render済みprompt、wall/output budgetを固定する。Campaign Controlのproduction materializerが固定Surface Map、PHP Program Index、Focus Area、Work Leaseからoracle-free source contextを決定的に選択し、実ファイルdigestを再検査してpromptをrenderする。実Opusを伴う`CampaignRunner.run`へcomposition済みであり、private Brizy Stored XSSとAppointment Booking Calendar SQLi Campaignで各3 Finderの並列実行から独立Verificationまで到達した。
 
 native adapterは推論前にexecutable versionと公式`auth status`を検査する。認証切れは`auth-required`として終了し、別modelへfallbackしない。provider built-in tool、Web、subagent、ambient MCP、slash command、session persistence、Chromeを無効化し、promptはargvではなくstdinへ渡す。親processだけでなくdetached process groupをwall ceiling時に終了し、`SIGTERM`後または親終了時に残った子へ`SIGKILL`を送る。wall budgetにはversion/auth probeも含める。
+
+Claude Codeの通常起動が成功しても、呼出元のcommand sandboxがoutbound networkを禁止していれば子processはproviderへ接続できない。この場合の`api_error`はDirect API credentialの要求ではなく、Claude CLI内部のtransport error分類である。production Campaignは公式CLIと`claude.ai` subscription認証をそのまま使い、consumer OAuth tokenを独自HTTP APIへ転用しない。全Finderが`provider-failed`でterminalになった場合、Iteration Reviewは探索結果0件へ丸めず`provider-unavailable`を記録する。
 
 現行のtool-free source sliceは、structured output、process supervision、3並列、Verification接続を最短で通すためのtracer implementationであり、acceptedなAttempt tool planeの完成形ではない。単一Focusから先回りして選ぶ固定file集合は、必要routeを含まない場合と不要な大contextを含む場合があるため、その結果だけでModel Profileの探索能力を判定しない。次の探索sliceでは公開`ModelExecution.run(plan)`を変えず、内部adapterを予算付きのharness-owned read、search、symbol、graph toolへ置き換える。
 

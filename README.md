@@ -6,7 +6,7 @@ WordPressプラグインのsource reviewを、LLMの探索力と独立した実�
 
 これらを標語や10段の固定pipelineではなく、所有module、永続artifact、実行時に観測できるgateを持つcontrol propertyとして実装します。Discoveryが作るものは未確認の`Hypothesis`であり、cleanな環境で独立Verificationを通過したものだけを`Finding`と呼びます。
 
-現在は再設計の初期段階です。解析対象として`custom-facebook-feed` 4.12.0と取得時のmetadataが置かれています。旧`whitebox-harness`からcodeやcontractを移植せず、まず最小の研究ループを確立します。旧repositoryの探索系譜は`wp2shell` promptに始まりますが、新しい設計判断の参照資料は保存した3記事に限定します。
+現在は最初のproduction-quality研究ループを閉じ、Stored XSSとSQL injectionの二つの実Target Boundary Pairで探索・独立Verification・replayを確認済みです。旧`whitebox-harness`からcodeやcontractを移植せず、`wp2shell` promptの意図を小さなModuleとversioned artifactへ分解しています。Target source、prompt、provider output、payload、未公開FindingはGit外に置きます。
 
 ## Start here
 
@@ -35,7 +35,7 @@ WordPressプラグインのsource reviewを、LLMの探索力と独立した実�
 
 ## Current implementation
 
-Milestone 1では、versioned `campaign.prepared` event、single-writer SQLite Research Ledger、deterministic replay、crash-safe prepare retry、read-only inspect、薄いCLI adapterに加え、target PHPを実行しないcontent-addressed `PHP Program Index`、根拠状態付き`Surface Map`、決定的なExploration bootstrapを実装しています。Program Indexはsymbol、call、WordPress registration、guard、request superglobal、storage、SQL/file/code/process/output operationという構文上の事実だけを返します。Surface Mapはそれらをsource anchor付き`observed` claimへ変換し、一意なliteral callback名の対応を決定論的な`inferred` relation、解けないrelationを`unknown`、非PHP assetとparse diagnosticをcoverage gapとして残します。最初のAI Mapper sliceは、制限付きstructured model実行から既存node間の`flows-to`候補だけを受け、endpoint、premise、Context Response anchorをclaim単位で検査し、Map Delta Receiptと新しい不変revisionへ保存します。model失敗は静的骨格を失わず`mapping-incomplete` gapになります。Explorationは固定した骨格から非重複Focus Areaと有限Work Waveを作り、異なるLane、Strategy、model familyとWildcard枠へ割り当てます。脆弱性の存在やFinding昇格は判定しません。Interfaceとtest対象は[Initial implementation seams](docs/design/initial-implementation-seams.md)、[PHP Program Index seam](docs/design/php-program-index-seam.md)、[Source mapping seam](docs/design/source-mapping-seam.md)、[Exploration seam](docs/design/exploration-seam.md)に記録しています。
+実装済みのclosed pathは、content-addressed `PHP Program Index`と根拠状態付き`Surface Map`からimpact-awareな最大3 Work Leaseを作り、Claude Opus 5/high Finderをfresh contextで並列実行し、source-bound Hypothesisだけを独立Verificationへ渡します。Stored XSS browserとSQLi databaseのtyped Experimentは、共通のfresh gVisor/WordPress lifecycleでWitnessとCausal Controlを比較し、`Finding | Disproved | Blocked`をSQLite Research Ledgerとprivate CASへ記録します。詳細な現在地は[Codebase Guide](docs/CODEBASE-GUIDE.md)、図は[探索エージェント構成](docs/design/architecture/exploration-agent-architecture.md)を正本への入口にしてください。
 
 ```bash
 pnpm install
@@ -65,4 +65,4 @@ PHP helperはComposer lockで`nikic/php-parser` 5.8.0へ固定しています。
 
 programme eligibility、報告書作成、vendor communication、patch生成は、DiscoveryとVerificationが実測で機能するまで対象外です。
 
-最初のStored XSS vertical sliceは最終目標ではありません。browserによる安全な成立証拠（Witness）から研究loopを成立させ、private RCE Boundary Pair、prospectiveな重大脆弱性探索へ段階的に進みます。
+Stored XSSとSQL injectionのvertical sliceは最終目標ではありません。次は同じ公開Interfaceを維持したまま探索Contextと反復能力を深め、private RCE Boundary Pair、prospectiveな重大脆弱性探索へ段階的に進みます。

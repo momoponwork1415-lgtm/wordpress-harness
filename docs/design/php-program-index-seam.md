@@ -1,6 +1,6 @@
 # PHP Program Index seam
 
-Status: confirmed internal seam; generator 0.2.0 implemented, 2026-09-02
+Status: confirmed internal seam; generator 0.3.0 implemented, 2026-09-02
 
 PHP Source Analysisの内部interfaceは、固定Target SnapshotとAnalysis Profileからcontent-addressed `PHP Program Index`を作り、同じmoduleからruntime-validated indexを読む形である。実装は`source-mapping/php-program-index`に置き、Research contextの公開Interfaceからは公開しない。
 
@@ -32,7 +32,7 @@ schema version 1のindexは次だけを持つ。
 
 indexは脆弱性、taint、reachability、severityを判定しない。dynamic nameまたは解決不能なargumentは推測せず`null`またはdiagnosticとして記録する。
 
-generator 0.2.0が局所的に分類するsecurity factは次である。
+generator 0.3.0が局所的に分類するsecurity factは次である。
 
 - request source: `WP_REST_Request::get_param`と`$_GET`、`$_POST`、`$_REQUEST`、`$_COOKIE`、`$_FILES`の各参照。添字アクセスだけでなくスーパーグローバル全体を別functionへ渡す参照も含む
 - database query sink: receiverが明示的な`$wpdb`である`query`、`get_var`、`get_row`、`get_col`、`get_results`
@@ -41,9 +41,11 @@ generator 0.2.0が局所的に分類するsecurity factは次である。
 - process execution sink: `exec`、`system`、`passthru`、`shell_exec`、`popen`、`proc_open`、`pcntl_exec`
 - HTML output sink、authorization guard、option read/write: 既存の`echo`、`current_user_can`、`get_option`、`update_option`
 
+WordPress route registrationは、単一endpoint optionsだけでなく、同じ`register_rest_route` callへ複数endpoint定義を渡すnested arrayも一件ずつ記録する。callbackがnamed classまたはenum内の`[$this, 'method']`なら、現在のscopeを使って`ClassName::method`へ限定的に解決する。traitでは実receiverがuse側classになるため`null`へ残す。anonymous class、dynamic receiver、dynamic method名も推測しない。
+
 `guard`、`source`、`storage`、`sink`は候補経路を組み立てるための構文分類である。たとえば`$wpdb->query`を記録してもSQLがattacker-controlledであるとは限らず、`require_once`には固定bootstrap pathも含まれる。`echo`を記録しても値が未escapeであることやXSSが成立することは意味しない。値の関係、到達可能性、attacker premise、sanitization、実impactはMapper、Discovery、独立Verificationが証拠付きで判断する。
 
-新しいfact規則を追加したためgenerator versionを0.2.0へ上げた。readerは既存CASの0.1.0を引き続き受理するが、新規解析は0.2.0を生成し、規則変更前後を同じgenerator identityへ潰さない。
+新しいREST endpoint規則を追加したためgenerator versionを0.3.0へ上げた。readerは既存CASの0.1.0と0.2.0を引き続き受理するが、新規解析は0.3.0を生成し、規則変更前後を同じgenerator identityへ潰さない。
 
 ## Invariants
 

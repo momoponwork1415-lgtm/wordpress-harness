@@ -74,7 +74,9 @@ Surface Map refはmanifestとPHP Program Indexの正確なartifact digestへ結�
 
 同日の5 plugin family比較では全PHPをparse diagnostic 0件で処理できた一方、callback解決率が大きく異なり、superglobal、直接request候補PHP、file/code/SQL operationが骨格に不足していることが分かった。局所的で再現可能なsource factだけを実測に基づいて追加し、全call graphやtaint engineを先回りで自作しない。cross-file/cross-request relationとsecurity invariantはMapper modelの補完対象とする。
 
-この不足に対するgenerator 0.2.0の縦切りでは、主要request superglobalと、`$wpdb` raw query、file write、code/process executionの高信号な操作をtyped observed nodeへ追加した。Brizy 2.8.11の再解析は203 source nodeと339 sink nodeを作り、sourceは`_GET` 35、`_POST` 38、`_REQUEST` 110、`_FILES` 20、sinkはSQL query 78、include/require 30、`file_put_contents` 4、`echo` 227だった。Program Index全体は1,023 facts、Surface Mapは3,481 nodesになり、parse diagnostic、registration relation、coverage gapは従来と同じだった。これは探索開始点のcoverage向上であり、source-to-sink flowまたは脆弱性成立の証明ではない。
+generator 0.2.0の縦切りでは、主要request superglobalと、`$wpdb` raw query、file write、code/process executionの高信号な操作をtyped observed nodeへ追加した。generator 0.3.0はさらに、複数endpointを持つnested REST registrationを一件ずつ展開し、`[$this, 'method']` callbackを現在のclassへ限定的に解決する。Brizy 2.8.11の0.2.0再解析は203 source nodeと339 sink nodeを作り、sourceは`_GET` 35、`_POST` 38、`_REQUEST` 110、`_FILES` 20、sinkはSQL query 78、include/require 30、`file_put_contents` 4、`echo` 227だった。これは探索開始点のcoverage向上であり、source-to-sink flowまたは脆弱性成立の証明ではない。
+
+Appointment Booking Calendarの0.3.0 characterizationでは、749 files、2,750 nodes、271 relations、573 gapsを記録した。nested REST endpointとinstance callbackを失わずdatabase sinkのAnalysis Unitへ渡せた一方、継承、service lookup、public nonceを含む完全なcross-file routeは初期Mapだけでは閉じていない。したがってこの結果はSQLiの証明ではなく、Focusと独立Verifierへ渡すobserved anchorと明示的coverage debtである。
 
 同じ規則でIptanus/WordPress File Upload 4.24.12を再解析すると、既知RCEのmiss分析で不足していた`$_COOKIE`参照と`require_once`操作がsource anchor付きnodeとして同一PHP fileに現れた。ただし両者の因果edge、attacker premise、実行可能なpathはまだMapにないため「RCEを発見した」とは扱わない。次のAnalysis UnitとMapperが、この分離された観測点をbounded context内で接続候補にする。
 

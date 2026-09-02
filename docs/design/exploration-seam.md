@@ -59,9 +59,9 @@ type ExplorationDecision =
 - observed entryを持たないindexed PHP file。直接request surfaceの可能性を安全と仮定せず、`unregistered-php-file`としてCoverage Laneへ置く
 - Surface Mapが明示したcoverage gap
 
-各候補は一つのstable owner keyだけを持つ。候補全件を一Waveへ投入せず、Policyの`maxFocusAreas`と`maxLeases`内で決定的なFocus portfolioへ切る。`observed`または`inferred` relationだけで作る既知componentを使い、Target固有の外部entry、既知routeへ接続したsurface、危険primitive、期待情報利得、coverage debt、stable identityの順で比較する。`unknown` relationを到達根拠として辿らず、孤立した`bundled-vendor`候補は削除せず初回順位だけを下げる。各feature bucketから一件ずつ選ぶroundを繰り返し、上位候補だけでsurface diversityが消えないようにする。
+各候補は一つのstable owner keyだけを持つ。候補全件を一Waveへ投入せず、Policyの`maxFocusAreas`と`maxLeases`内で決定的なFocus portfolioへ切る。`observed`または`inferred` relationだけで作る既知componentを使い、Target固有の外部entry、既知routeへ接続したsurface、危険primitive、期待情報利得、coverage debt、stable identityの順で比較する。`unknown` relationを到達根拠として辿らず、孤立した`bundled-vendor`候補は削除せず初回順位だけを下げる。外部entry、server impact、database、browserを別bucketとしてround-robinし、同じprimitive familyだけで最初のWaveが埋まらないようにする。
 
-各Focusへ一つのprimary Finder leaseを作り、entry順方向、sink逆方向、state-chain、権限・security invariant、Wildcardをfeatureに応じて割り当てる。REST entryまたはsinkをelevated candidateとして、最初の一件へ異なるStrategyと、利用可能なら異なるmodel familyの二つ目のleaseを置く。eligible familyが一つだけなら同じfamilyを黙って再利用せず、`reuse-with-exception: single-eligible-family`をplanへ残す。elevated candidateがなくても一つのFocusを独立二系統にし、WaveにWildcardを最低一枠残す。具体的modelではなくPolicyが許可したmodel family constraintだけをplanへ入れ、各leaseはwall time、model token、Hypothesis数の上限を持つ。
+各Focusへ一つのprimary Finder leaseを作り、entry順方向、sink逆方向、state-chain、権限・security invariant、Wildcardをfeatureに応じて割り当てる。異なるFocusで`maxLeases`を満たした場合は重複Leaseを作らない。capacityが残る場合だけ、REST entryまたはsinkのelevated candidateへ異なるStrategyと、利用可能なら異なるmodel familyの二つ目のleaseを置く。eligible familyが一つだけなら同じfamilyを黙って再利用せず、`reuse-with-exception: single-eligible-family`をplanへ残す。具体的modelではなくPolicyが許可したmodel family constraintだけをplanへ入れ、各leaseはwall time、model token、Hypothesis数の上限を持つ。
 
 5 plugin familyのGit外characterizationでは、同じ8 Focus/9 lease policyから全Targetで有限な`run-wave`を返した。各Waveは少なくとも未登録PHP、mapping gap、sink、state、guardまたはentryを含み、Wildcardを一枠保持した。これは探索結果の質を示す評価ではなく、大規模なBrizyから小規模なWordPress File Uploadまで、Mapの大きさに比例してworkが無制限化しないことの特性確認である。
 
@@ -78,13 +78,15 @@ private characterizationでは、stable ID順のcategory round-robinがbundled l
 1. 外部REST、`wp_ajax_*`、`admin_post_*`と、Target固有entryへ既知relationで接続したsurfaceを先にする。
 2. sink impactはcode/process execution、filesystem write、database query、HTML outputの順に扱う。ただしこの順序をseverityまたは到達可能性の証明に使わない。
 3. 同程度なら、既知componentに含まれるsurface kind数、未解決relation数、既知relation数を期待情報利得の決定的proxyにする。その後にparse diagnostic、mapping incomplete、unsupported assetというcoverage debtとstable identityを使う。model confidenceは順位へ入れない。
-4. feature別bucketから一件ずつ選び、外部entry、sink、state等の異なるseedを有限Waveへ残す。
+4. external-entry、server-impact-sink、database-sink、browser-sinkと残りのfeature bucketから一件ずつ選び、異なるimpact開始点を有限Waveへ残す。
 5. `bundled-vendor`は除外しないが、Target固有entryまたはstateへ`observed`/`inferred` relationで接続しない候補の初回順位を下げる。`unknown` relationは接続根拠にしない。
-6. 二系統目は、選ばれたelevated Focusのうち同じpriority tupleで最上位の一件へ異なるStrategyとして重ねる。
+6. Focusごとのprimary Leaseで上限に達しない場合だけ、選ばれたelevated Focusのうち同じpriority tupleで最上位の一件へ異なるStrategyを重ねる。
 
 Focus改善の評価は最終Finding数へ潰さず、Target Snapshot identity、Map anchor coverage、最初の三Leaseにおけるrelevant Focus rank、Finderが取得できたroute context、Source-bound Hypothesis、Verification outcomeの順に観測する。十分なsource contextを得た同じProfileが繰り返しrouteを作れない場合にだけeffortまたはmodel比較へ進む。
 
 Git外のBrizy 2.8.11/2.8.12 characterizationでは、両Targetとも外部AJAX entryを`entry-forward`と`wildcard`で重ね、別のcode-execution primitiveを`sink-backward`へ置く三Leaseになった。各Analysis Unitは8 files、650 KB以下で、Wildcardはdirected候補よりSurface Map標本を先にして別のsource集合を得た。`require_once`等のprimitive選択は調査開始点であって、attacker control、RCE、または脆弱性発見の証拠ではない。
+
+Git外のAppointment Booking Calendar characterizationでは、impact-aware bucketにより外部entry、server-impact sink、database sinkの三つを別Focusへ割り当てた。databaseの`sink-backward` Analysis Unitは同じdatabase-query familyのsourceを比較し、二次sourceが参照するclass-like symbol定義を一段だけ追加した。oracle-free positive Campaignはこの有限WaveからSQLi Hypothesisを生成したが、bucketまたはsource選択それ自体をreachabilityやFindingの証拠にはしていない。
 
 ## Minimum map gate and incremental understanding
 

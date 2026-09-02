@@ -478,11 +478,11 @@
         <div class="status-row">
           <div class="status done">
             <b>Implemented</b>
-            Focus Portfolio、Analysis Unit、3並列、Ledger replay
+            Focus Portfolio、3並列、Stored XSS / SQLi Verification
           </div>
           <div class="status partial">
             <b>Partial</b>
-            Surface Map、独立Verification、Stored XSS Lab
+            Surface Map、Analysis Unit、Model portability
           </div>
           <div class="status planned">
             <b>Planned</b>
@@ -571,7 +571,9 @@
         <p class="eyebrow">02 / Focus Portfolio</p>
         <h2>最初の3 Leaseへ何を入れるか</h2>
         <p class="section-copy">
-          全候補を一つのscoreへ潰さず、既知routeと探索価値でfeature別に並べる。各featureから一件ずつ選ぶので、外部entryだけ、sinkだけには偏らない。
+          全候補を一つのscoreへ潰さず、既知routeと探索価値でimpact-aware
+          bucketへ分ける。外部entry、server
+          impact、database、browserから一件ずつ選び、同種のsinkだけには偏らない。
         </p>
         <div class="surface gates">
           <div class="gate">
@@ -662,15 +664,15 @@
           <div class="workers">
             <div class="worker">
               <strong>Analysis Unit A</strong
-              ><span>Focus + Strategy + Source<br />↓ Finder A</span>
+              ><span>External Entry<br />↓ Finder A</span>
             </div>
             <div class="worker">
               <strong>Analysis Unit B</strong
-              ><span>Focus + Strategy + Source<br />↓ Finder B</span>
+              ><span>Server Impact<br />↓ Finder B</span>
             </div>
             <div class="worker">
               <strong>Analysis Unit C</strong
-              ><span>Focus + Strategy + Source<br />↓ Finder C</span>
+              ><span>Database Sink<br />↓ Finder C</span>
             </div>
           </div>
           <article class="card">
@@ -684,6 +686,7 @@
           <code>claude-opus-5 / high</code
           >。これは接続済みの開発Profileであり、Finderの型ではない。同じmodel
           familyでもFocusとStrategyは分け、同一promptの多数決にはしない。
+          全processがprovider接続に失敗した場合は、仮説0件ではなく<code>provider-unavailable</code>として停止する。
         </p>
       </section>
 
@@ -700,9 +703,10 @@
             <h3>Analysis Unit@v1</h3>
             <div class="mini-flow">
               <div>Focus + Leaseからobserved seedを固定</div>
+              <div>Sink Backward: 同じsink familyをbounded比較</div>
               <div>Directed: relation / call近傍を優先</div>
               <div>読めた二次sourceから一段だけ展開</div>
-              <div>低頻度literal 1件 + 共有hook登録元 1件</div>
+              <div>class定義 + 低頻度literal + 共有hookを各1件</div>
               <div>Wildcard: 広いSurface標本を最初に選ぶ</div>
               <div>path、digest、range、byte、理由を固定</div>
               <div>最大8 files / 650 KBでAttempt Planへ格納</div>
@@ -730,7 +734,8 @@
         <p class="callout">
           二次sourceのliteralを単純なpath順で選ぶと、一般文字列と同名のPHP
           fileがtemplateより先に入った。現在は出現回数、source内の出現順、path順で固定し、反復するtranslation
-          domainより一度だけ現れるtemplate名を優先する。model自由文や既知脆弱性はrankingへ使わない。
+          domainより一度だけ現れるtemplate名を優先する。Verifierは<code>requiredEvidence</code>に明示されたinventory内PHP
+          pathだけを追加取得できる。model自由文をreachability証拠には使わない。
         </p>
       </section>
 
@@ -751,7 +756,7 @@
           </div>
           <div class="gate pass">
             <strong>3. Focus Rank</strong
-            ><span>pass — 外部entryと危険sinkを3 Leaseへ配置</span>
+            ><span>pass — ingress / server / databaseへ3分散</span>
           </div>
           <div class="gate pass">
             <strong>4. Context Reach</strong
@@ -759,23 +764,62 @@
           </div>
           <div class="gate pass">
             <strong>5. Hypothesis Recall</strong
-            ><span>pass for slice — Stored XSSの因果routeを生成</span>
+            ><span>pass — Stored XSSとSQLiの因果routeを生成</span>
           </div>
-          <div class="gate partial">
+          <div class="gate pass">
             <strong>6. Verification</strong
-            ><span>Stored XSS pass / 他classは未実装</span>
+            ><span>Stored XSS / SQLiのBoundary Pairがpass</span>
           </div>
         </div>
         <p class="callout">
-          Brizy 2.8.11は同じoracle-free production経路から独立Verifierとfresh
-          gVisor
-          Witness/Controlを通ってFindingになった。2.8.12も同じcontext規則で調べ、Findingへ誤昇格しなかった。これはこのStored
-          XSS sliceの通過であり、plugin全体のcoverage完了ではない。
+          Brizy Stored XSSに加え、Appointment Booking Calendar
+          1.6.9.29のoracle-free Campaignも3 FinderからSQLi Findingへ到達した。
+          1.6.10.0は同じCausal
+          IdentityのcalibrationでDisprovedとなり、oracle-free negative
+          CampaignはFinding
+          0件だった。どちらもplugin全体のcoverage完了ではない。
         </p>
       </section>
 
       <section>
-        <p class="eyebrow">07 / Model Portability</p>
+        <p class="eyebrow">07 / Verification</p>
+        <h2>二つのmechanismで共通Interfaceを保つ</h2>
+        <p class="section-copy">
+          Campaignから見えるのは<code>Verification.verify(plan)</code>だけ。source再導出、typed
+          experiment、gVisor lifecycle、因果判定を内部へ閉じる。
+        </p>
+        <div class="surface flow">
+          <div class="step">
+            <strong>Bind</strong><span>TargetとHypothesis digestを検査</span>
+          </div>
+          <div class="step">
+            <strong>Re-derive</strong><span>Finderと独立にsourceを再確認</span>
+          </div>
+          <div class="step">
+            <strong>Select adapter</strong
+            ><span>Stored XSS browser / SQLi database</span>
+          </div>
+          <div class="step">
+            <strong>Open Lab</strong
+            ><span>共通gVisor / WordPress lifecycle</span>
+          </div>
+          <div class="step">
+            <strong>Compare</strong><span>fresh Witness + sibling Control</span>
+          </div>
+          <div class="step">
+            <strong>Record</strong><span>Finding / Disproved / Blocked</span>
+          </div>
+        </div>
+        <p class="callout">
+          mechanism adapterはsetupとsanitized boolean
+          Observationだけを所有する。network、volume、database、WordPress、runtime
+          preflight、cleanupは<code>gvisor-wordpress-lab.ts</code>へ集約し、case固有payloadやtarget
+          sourceをpublic recordへ出さない。
+        </p>
+      </section>
+
+      <section>
+        <p class="eyebrow">08 / Model Portability</p>
         <h2>Modelを替えても探索契約は替えない</h2>
         <p class="section-copy">
           Provider固有なのはtransportとeffort。Focus、tool権限、Hypothesis、Verificationは共通のままにする。
@@ -833,7 +877,7 @@
       </section>
 
       <section>
-        <p class="eyebrow">08 / Read the Code</p>
+        <p class="eyebrow">09 / Read the Code</p>
         <h2>図から実装へ辿る</h2>
         <p class="section-copy">
           上から順に読むと、設計、判断、入力作成、外部実行、検証を混同しにくい。
@@ -871,6 +915,14 @@
           <div class="file">
             <code>src/research/verification/verification.ts</code
             ><span>Finding / Disproved / Blockedの判定</span>
+          </div>
+          <div class="file">
+            <code>src/research/verification/gvisor-wordpress-lab.ts</code
+            ><span>mechanism共通のfresh gVisor / WordPress lifecycle</span>
+          </div>
+          <div class="file">
+            <code>src/research/verification/gvisor-sql-injection-lab.ts</code
+            ><span>SQLi setup、worker binding、sanitized observation</span>
           </div>
           <div class="file">
             <code>tests/research/campaign-run.test.ts</code
