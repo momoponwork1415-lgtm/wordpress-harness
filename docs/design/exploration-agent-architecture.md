@@ -34,6 +34,27 @@ Minimum Map Gateは全コードの完全理解を要求しない。ファイル�
 
 Focus候補はREST entry、hook、source、state、guard、sink、未登録PHP、mapping gapから作る。同種のsurfaceだけで最初のWaveを埋めず、categoryをround-robinして有限件へ切る。
 
+### 現行bootstrapの正確な選択規則
+
+```text
+candidates = every non-symbol Surface Map node
+           + every PHP file without an entry in the same file
+           + every mapping gap
+
+category order = REST -> sink -> state -> source
+               -> unregistered PHP -> gap -> guard -> hook
+
+focus limit = min(maxFocusAreas, maxLeases - 1)
+leases      = one primary Lease per selected Focus
+            + one alternate Strategy on the first elevated Focus
+```
+
+したがって`maxLeases = 3`の現行閉路は、異なる二つのFocusと、そのうち最初のelevated Focusを重ねる一つのLeaseから成る。category内は意味的な到達可能性ではなくstable Focus ID順である。また、entry nodeと同じfileにないPHPはcallable libraryやbundled dependencyであっても最初は`unregistered-php-file`候補になる。
+
+この規則は有限性と再現性を証明するbootstrapとしては機能するが、探索価値の順位としては粗い。private characterizationではbundled debug sinkへの重複割当、relationを持たない単独template、数KBの補助fileが上位になる例を観測した。次のcorrection sliceは公開Interfaceと三並列を変えず、Target固有entry/stateからの到達根拠、異なるroute seed、expected information gain、coverage debtを使って内部順位を置き換える。bundled dependencyは一律除外せず、Target固有codeから接続根拠がある場合に上位へ戻す。
+
+実装は[bootstrap-exploration.ts](../../src/research/exploration/bootstrap-exploration.ts)、外から観測する回帰仕様は[exploration-bootstrap.test.ts](../../tests/research/exploration-bootstrap.test.ts)を参照する。
+
 ## 2. LaneとStrategyを別々に割り当てる
 
 ```mermaid
@@ -100,6 +121,10 @@ flowchart TB
 - 自分のFocus Area、Lane、Strategy、上限
 - Surface MapとPHP Program Indexから決定的に選んだsource slice
 - source-bound Hypothesisを返すためのversioned schema
+
+現行のtool-free materializerは、Focus ownerのobserved anchorをseedにし、`seed -> 希少な共有hook一件 -> seed内のliteral PHP参照 -> 残りの共有hook -> Map relation二段 -> call neighbor二段`の順でpathを追加する。private closed sliceの上限は8 files、source全体650 KB、単一file 220 KBである。各fileはTarget manifestのsizeとSHA-256を再検査し、上限を越えるfileはobserved anchor周辺だけをrenderする。実装は[finder-attempt-materializer.ts](../../src/research/campaign-control/finder-attempt-materializer.ts)を参照する。
+
+この順序は再現可能だが、動的property call、service locator、組立てcallback、fileをまたぐstate identityを静的call neighborだけで接続できない。Finderが不足producerやentryを特定しても追加取得できないため、acceptedな到達形では固定seedを小さくし、path・Lease・byte・turn budgetをharnessが検査する`read / search / symbol / graph` toolへ置き換える。shell、web、runtime、Target writeは追加しない。
 
 Finderへ既知CVE、advisory、patched narrative、期待payload、別Finderの結果を渡さない。provider組込みのweb、shell、subagent、ambient MCPも無効にする。結果の到着順は判断に使わず、全Leaseが成功・失敗・取消のterminal resultになってから安定順へ戻す。
 
