@@ -101,6 +101,9 @@ class FirstFinderModelExecution implements ModelExecution {
     if (processResult.kind === "auth-required") {
       return this.#terminal(plan, "auth-required", processResult.reason);
     }
+    if (processResult.kind === "policy-denied") {
+      return this.#terminal(plan, "policy-denied", processResult.reason);
+    }
     if (processResult.kind === "timed-out") {
       return this.#terminal(plan, "budget-exhausted", "wall-time-exceeded");
     }

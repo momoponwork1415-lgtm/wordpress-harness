@@ -3,9 +3,16 @@ import { isAbsolute } from "node:path";
 
 import { z } from "zod";
 
+import type { SourceEvidenceGateway } from "../source-mapping/source-evidence-contracts.js";
 import { openModelExecution } from "./model-execution.js";
 import {
+  claudeSourceEvidenceToolNames,
+  openClaudeSourceEvidenceBridge,
+  type ClaudeSourceEvidenceBridge,
+} from "./claude-source-evidence-bridge.js";
+import {
   attemptPlanSchema,
+  type AttemptSourceEvidence,
   type ModelExecution,
   type ModelProcess,
   type ModelProcessResult,
@@ -19,6 +26,7 @@ export interface OpenClaudeModelExecutionOptions {
   readonly executablePath: string;
   readonly executableVersion: string;
   readonly workingDirectory: string;
+  readonly sourceEvidenceGateway?: SourceEvidenceGateway;
 }
 
 export interface OpenClaudeStructuredProcessOptions {
@@ -35,15 +43,18 @@ export interface ClaudeStructuredProcessRequest {
     readonly maxOutputBytes: number;
   };
   readonly outputJsonSchema: object;
+  readonly sourceEvidence?: AttemptSourceEvidence;
 }
 
 export interface ClaudeStructuredProcess {
   execute(request: ClaudeStructuredProcessRequest): Promise<ModelProcessResult>;
 }
 
-type NativeProcessResult = Exclude<
+type NativeProcessResult = Extract<
   ModelProcessResult,
-  { readonly kind: "auth-required" }
+  {
+    readonly kind: "exited" | "timed-out" | "output-limit-exceeded";
+  }
 >;
 
 const inheritedEnvironment = [
@@ -67,7 +78,12 @@ const inheritedEnvironment = [
 const claudeAuthStatusSchema = z.object({ loggedIn: z.boolean() });
 
 function minimalEnvironment(): NodeJS.ProcessEnv {
-  const environment: NodeJS.ProcessEnv = { CI: "1", NO_COLOR: "1" };
+  const environment: NodeJS.ProcessEnv = {
+    CI: "1",
+    NO_COLOR: "1",
+    CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
+    ENABLE_CLAUDEAI_MCP_SERVERS: "false",
+  };
   for (const name of inheritedEnvironment) {
     const value = process.env[name];
     if (value !== undefined) environment[name] = value;
@@ -189,6 +205,24 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
       return { kind: "timed-out", stderr: "" };
     }
 
+    let sourceBridge: ClaudeSourceEvidenceBridge | undefined;
+    if (request.sourceEvidence !== undefined) {
+      try {
+        sourceBridge = await openClaudeSourceEvidenceBridge(
+          request.sourceEvidence,
+        );
+      } catch {
+        return {
+          kind: "policy-denied",
+          reason: "source-evidence-bridge-unavailable",
+        };
+      }
+    }
+    if (remainingTime() === 0) {
+      await sourceBridge?.close();
+      return { kind: "timed-out", stderr: "" };
+    }
+
     const args = [
       "-p",
       "--model",
@@ -196,11 +230,20 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
       "--effort",
       request.modelProfile.effort,
       "--restricted",
-      "--safe-mode",
       "--strict-mcp-config",
       "--disable-slash-commands",
       "--tools",
       "",
+      ...(sourceBridge === undefined
+        ? ["--safe-mode"]
+        : [
+            "--mcp-config",
+            sourceBridge.mcpConfigPath,
+            "--permission-mode",
+            "dontAsk",
+            "--allowedTools",
+            claudeSourceEvidenceToolNames.join(","),
+          ]),
       "--no-session-persistence",
       "--no-chrome",
       "--prompt-suggestions",
@@ -210,12 +253,27 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
       "--json-schema",
       JSON.stringify(request.outputJsonSchema),
     ];
-    return this.#run(
-      args,
-      request.prompt,
-      remainingTime(),
-      request.budget.maxOutputBytes,
-    );
+    try {
+      const result = await this.#run(
+        args,
+        request.prompt,
+        remainingTime(),
+        request.budget.maxOutputBytes,
+      );
+      if (
+        sourceBridge !== undefined &&
+        result.kind === "exited" &&
+        !sourceBridge.observedConnection()
+      ) {
+        return {
+          kind: "policy-denied",
+          reason: "source-evidence-bridge-not-connected",
+        };
+      }
+      return result;
+    } finally {
+      await sourceBridge?.close();
+    }
   }
 
   #run(
@@ -314,8 +372,14 @@ export function openClaudeModelExecution(
           prompt: request.plan.prompt,
           budget: request.plan.budget,
           outputJsonSchema: request.outputJsonSchema,
+          ...(request.sourceEvidence === undefined
+            ? {}
+            : { sourceEvidence: request.sourceEvidence }),
         }),
     },
+    ...(options.sourceEvidenceGateway === undefined
+      ? {}
+      : { sourceEvidenceGateway: options.sourceEvidenceGateway }),
   });
 }
 
@@ -354,6 +418,9 @@ export function openClaudeStructuredModelExecutionFromProcess(
       }
       if (result.kind === "auth-required") {
         return { status: "auth-required", reason: result.reason };
+      }
+      if (result.kind === "policy-denied") {
+        return { status: "policy-denied", reason: result.reason };
       }
       if (result.kind === "timed-out") {
         return { status: "budget-exhausted", reason: "wall-time-exceeded" };

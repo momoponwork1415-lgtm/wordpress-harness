@@ -208,10 +208,10 @@ flowchart TB
     classDef partial fill:#fff5d6,stroke:#a87800,color:#3f2d00;
     classDef planned fill:#f2f3f5,stroke:#777,color:#333;
     class unit,model,query,gate,gateway,receipt,output done;
-    class adapter partial;
+    class adapter done;
 ```
 
-緑の経路はdeterministic provider adapterで実装済みである。exact `search`とrange `read`は固定Manifestだけを読み、Attempt、Lease、Snapshot、Policy、query ordinalをmodelではなくModel Executionが拘束する。query、scope、走査量、truncation、result digestはprivate CASへ記録する。黄のProvider AdapterはInterfaceだけ接続済みで、公式Claude processへtoolを公開するnative bridgeは未実装である。
+緑の経路はdeterministic provider adapterと公式Claude process用native bridgeで実装済みである。exact `search`とrange `read`は固定Manifestだけを読み、Attempt、Lease、Snapshot、Policy、query ordinalをmodelではなくModel Executionが拘束する。query、scope、走査量、truncation、result digestはprivate CASへ記録する。Claude bridgeはAttempt-localなloopback MCP、private bearer config、exact allowlist、`dontAsk`を使い、接続を観測できなければfail closedにする。fake providerのBehavior Testとsubscription認証済みClaude Code 2.1.258の合成live probeを通過した。
 
 model-visibleな到達形は`read / search / symbol / graph`に限定し、任意shell、network、runtime、Target writeを追加しない。現在動くのは`read / search`だけで、`symbol / graph`とproduction Campaign materializerは後続sliceである。Focus Areaは「何を調べるか」の所有権であり、最初に選んだfileを越えてはならない境界ではない。
 
@@ -235,7 +235,7 @@ flowchart TB
     class output,mapreq,revision,wave planned;
 ```
 
-詳細と受入条件は[Evidence-guided Finder loop](../evidence-guided-finder-loop.md)と[ADR 0112](../../adr/0112-treat-analysis-units-as-seeds-for-bounded-source-retrieval.md)に記録する。設計はacceptedで、最初のprovider非依存tracerまで実装済みである。灰色部分とClaude native bridgeは未実装である。
+詳細と受入条件は[Evidence-guided Finder loop](../evidence-guided-finder-loop.md)と[ADR 0112](../../adr/0112-treat-analysis-units-as-seeds-for-bounded-source-retrieval.md)に記録する。設計はacceptedで、provider非依存GatewayとClaude native bridgeまで実装済みである。灰色のWave間artifact、`symbol / graph`、production Campaign materializerは未実装である。
 
 ### Brizy pairで確認した6 Gate
 

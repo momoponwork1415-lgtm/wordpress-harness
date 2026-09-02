@@ -27,6 +27,8 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@modelcontextprotocol/node": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
     "better-sqlite3": "^13.0.3",
     "zod": "^4.5.4"
   },

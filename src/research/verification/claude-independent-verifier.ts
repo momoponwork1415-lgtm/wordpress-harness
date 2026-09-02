@@ -195,7 +195,10 @@ class FirstClaudeIndependentVerifier implements IndependentVerifier {
     ) {
       throw new IndependentVerifierBlockedError("budget-exhausted");
     }
-    if (processResult.kind === "auth-required") {
+    if (
+      processResult.kind === "auth-required" ||
+      processResult.kind === "policy-denied"
+    ) {
       throw new IndependentVerifierBlockedError("verifier-unavailable");
     }
     if (processResult.exitCode !== 0) {

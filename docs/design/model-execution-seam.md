@@ -1,6 +1,6 @@
 # Model execution seam
 
-Status: accepted; tool-free Finder, provider-neutral structured role bridge, and Source Evidence tracer implemented, 2026-09-02
+Status: accepted; restricted Finder, provider-neutral structured role bridge, and Claude Source Evidence tracer implemented, 2026-09-02
 
 ## Owner and purpose
 
@@ -43,13 +43,15 @@ callerはprovider executable、argv、session ID、credential path、process ID�
 
 現行実装はFinder roleと、owner Module向けのstructured role bridgeを公式Claude Code process `2.1.258`へ接続する細いadapterである。productionで実測済みのProfileは`claude-opus-5`である。`Attempt Plan`はTarget、Work Lease、model/effort、Eligibility Receipt digest、render済みprompt、wall/output budgetを固定する。Campaign Controlのproduction materializerが固定Surface Map、PHP Program Index、Focus Area、Work Leaseからoracle-free source contextを決定的に選択し、実ファイルdigestを再検査してpromptをrenderする。実Opusを伴う`CampaignRunner.run`へcomposition済みであり、private Brizy Stored XSSとAppointment Booking Calendar SQLi Campaignで各3 Finderの並列実行から独立Verificationまで到達した。
 
-native adapterは推論前にexecutable versionと公式`auth status`を検査する。認証切れは`auth-required`として終了し、別modelへfallbackしない。provider built-in tool、Web、subagent、ambient MCP、slash command、session persistence、Chromeを無効化し、promptはargvではなくstdinへ渡す。親processだけでなくdetached process groupをwall ceiling時に終了し、`SIGTERM`後または親終了時に残った子へ`SIGKILL`を送る。wall budgetにはversion/auth probeも含める。
+native adapterは推論前にexecutable versionと公式`auth status`を検査する。認証切れは`auth-required`として終了し、別modelへfallbackしない。provider built-in tool、Web、subagent、ambient MCP、slash command、session persistence、Chromeを無効化し、promptはargvではなくstdinへ渡す。Source Tool PolicyがあるFinderだけは、Attempt-localなloopback Streamable HTTP MCPを先に起動し、private temporary config、exact two-tool allowlist、`dontAsk`、`alwaysLoad`で`source_search`と`source_read`を公開する。Source Tool Policyがないroleは引き続き`safe-mode`でtool-freeにする。親processだけでなくdetached process groupをwall ceiling時に終了し、`SIGTERM`後または親終了時に残った子へ`SIGKILL`を送る。wall budgetにはversion/auth probeとbridge lifecycleも含める。
+
+Claude tool bridgeは公式MCP TypeScript SDK 2.0.0を使い、`127.0.0.1`のrandom port、Host/Origin検査、Attempt-local bearer、mode 0600のprivate configで閉じる。Claudeが起動するstdio tool subprocessを作らないため、provider credential environmentまたはcredential-bearing homeをtool processへ継承しない。MCPへの認証済み接続を一度も観測しないprocessは、schema-validに見える最終回答を返しても`source-evidence-bridge-not-connected`としてfail closedにする。fake providerを用いたexact tool inventoryと`search -> read` Behavior Test、および公式subscription認証のClaude Code 2.1.258 live probeを通過した。これはTransport Eligibility Receipt全体または実Target Campaign接続の完了を意味しない。
 
 Claude Codeの通常起動が成功しても、呼出元のcommand sandboxがoutbound networkを禁止していれば子processはproviderへ接続できない。この場合の`api_error`はDirect API credentialの要求ではなく、Claude CLI内部のtransport error分類である。production Campaignは公式CLIと`claude.ai` subscription認証をそのまま使い、consumer OAuth tokenを独自HTTP APIへ転用しない。全Finderが`provider-failed`でterminalになった場合、Iteration Reviewは探索結果0件へ丸めず`provider-unavailable`を記録する。
 
 現行のtool-free source sliceは、structured output、process supervision、3並列、Verification接続を最短で通すためのtracer implementationであり、acceptedなAttempt tool planeの完成形ではない。単一Focusから先回りして選ぶ固定file集合は、必要routeを含まない場合と不要な大contextを含む場合があるため、その結果だけでModel Profileの探索能力を判定しない。次の探索sliceでは公開`ModelExecution.run(plan)`を変えず、内部adapterを予算付きのharness-owned read、search、symbol、graph toolへ置き換える。
 
-provider非依存の次段tracerでは、`Attempt Plan`が任意の`SourceToolPolicyRef`とquery ceilingを持てる。`ModelExecution.run`はproviderが出したqueryへAttempt、Lease、Target Snapshot、Policy、query ordinalを付与し、固定Manifestだけを読む`SourceEvidenceGateway`へ渡す。Gatewayはexact `search`とrange `read`を実装し、path/digest mismatch、truncation、not-found、policy denial、budget exhaustionを区別してresponseとReceiptをprivate CASへ置く。deterministic provider adapterによるAttempt-local loopはBehavior Test済みだが、Claude process用native bridgeとproduction Campaign materializerは未実装である。
+provider非依存の次段tracerでは、`Attempt Plan`が任意の`SourceToolPolicyRef`とquery ceilingを持てる。`ModelExecution.run`はproviderが出したqueryへAttempt、Lease、Target Snapshot、Policy、query ordinalを付与し、固定Manifestだけを読む`SourceEvidenceGateway`へ渡す。Gatewayはexact `search`とrange `read`を実装し、path/digest mismatch、truncation、not-found、policy denial、budget exhaustionを区別してresponseとReceiptをprivate CASへ置く。deterministic provider adapterとClaude native bridgeによるAttempt-local loopはBehavior Test済みだが、production Campaign materializerは未実装である。
 
 Claude JSON envelope、実model identity、permission denial、Web request数、subagent数は一つのdecoderでruntime decodeする。FinderはさらにFinder schema、Work Lease binding、Lease固有の`maxHypotheses`を、Source MappingはMap Delta schemaとpredecessor/context bindingを、Independent Verifierは検証identityとsource evidence bindingを各owner Moduleで検査する。Finderの成功outputまたは型付きterminal resultはprivate CASへ保存し、呼出元へdigest付きrefを返す。provider errorのstderrはcredential値をredactし、非ゼロ終了時のstdoutがClaude error envelopeならterminal reason、bounded message、API statusだけを抽出してprivate error artifactへ置く。raw stdoutとcredentialは保存せず、公開resultにはartifact digestだけを残す。
 
@@ -57,7 +59,7 @@ Claude JSON envelope、実model identity、permission denial、Web request数、
 
 同日のSource Mapping接続smokeでは、全Surface Mapを渡した最初のrequestがproviderのcontext上限を超えたため、owner Module側でContext pathと1-hop subgraphへ投影する欠陥修正につながった。修正後のOpus 5 `high` structured callは約6分20秒で完了し、Map Delta compilerまで到達した。Model Executionはこの結果の意味を判定せず、今後もroleごとのcontext選択とschema検査はowner Moduleへ残す。
 
-未実装なのは、raw provider eventとusageを含む完全なSegment durability、MapperのAttempt Receiptとrepair、classified retry/resume、orchestrator crash recovery、cgroup/resource ceiling、Agent SandboxのgVisor化、Source EvidenceのClaude native bridgeと`symbol/graph`、Finder以外の統一durable role execution、第二providerである。CampaignRunnerのlaunch intent/completionと3 Finderのcomposition、Mapperのbounded structured call、deterministic adapter上のSource Evidence loopは実装済みだが、それを完全なAttempt Receipt、安全なcrash resume、または実Targetのtool付きCampaignと読み替えない。
+未実装なのは、raw provider eventとusageを含む完全なSegment durability、MapperのAttempt Receiptとrepair、classified retry/resume、orchestrator crash recovery、cgroup/resource ceiling、Agent SandboxのgVisor化、Source Evidenceの`symbol/graph`とproduction materializer、Finder以外の統一durable role execution、第二providerである。CampaignRunnerのlaunch intent/completionと3 Finderのcomposition、Mapperのbounded structured call、deterministic/Claude adapter上のSource Evidence loopは実装済みだが、それを完全なAttempt Receipt、安全なcrash resume、または実Targetのtool付きCampaignと読み替えない。
 
 ## Attempt Plan
 

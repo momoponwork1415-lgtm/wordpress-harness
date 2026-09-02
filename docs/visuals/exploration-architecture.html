@@ -486,7 +486,7 @@
           </div>
           <div class="status planned">
             <b>Planned</b>
-            Target Intake、Claude Tool Bridge、Chain Synthesis
+            Target Intake、Campaign Tool Wiring、Chain Synthesis
           </div>
         </div>
       </header>
@@ -717,7 +717,7 @@
           </article>
           <div class="arrow">→</div>
           <article class="card target">
-            <span class="tag partial">partial tracer</span>
+            <span class="tag partial">native bridge ready</span>
             <h3>Source Evidence Gateway</h3>
             <div class="mini-flow">
               <div>Focus + 小さいobserved seedを渡す</div>
@@ -725,7 +725,8 @@
               <div>Attempt・Lease・Snapshot・Policyを拘束</div>
               <div>path・digest・byte・query上限を検査</div>
               <div>response / Receiptをprivate CASへ記録</div>
-              <div>次: Claude bridge + symbol / graph</div>
+              <div>Claude: private loopback MCP + exact allowlist</div>
+              <div>次: Campaign wiring + symbol / graph</div>
             </div>
             <p class="small">
               禁止: shell、web、runtime、Target write、ambient
@@ -734,9 +735,10 @@
           </article>
         </div>
         <p class="callout">
-          緑のGatewayとAttempt bindingはdeterministic provider adapterでBehavior
-          Test済み。実Target Campaignはまだtool-freeであり、Claude
-          CLIへ安全にtoolを公開するnative bridgeは未実装。<br />
+          Gateway、Attempt binding、Claude native bridgeはBehavior
+          Test済み。公式Claude Code 2.1.258のsubscription認証でも合成live
+          probeを通過した。実Target
+          Campaignはまだtool-freeであり、次はmaterializerからPolicyとGatewayをcompositionする。<br />
           二次sourceのliteralを単純なpath順で選ぶと、一般文字列と同名のPHP
           fileがtemplateより先に入った。現在は出現回数、source内の出現順、path順で固定し、反復するtranslation
           domainより一度だけ現れるtemplate名を優先する。Verifierは<code>requiredEvidence</code>に明示されたinventory内PHP
@@ -923,7 +925,12 @@
           </div>
           <div class="file">
             <code>src/research/model-execution/claude-process.ts</code
-            ><span>Claude CLIの起動、tool禁止、process終了</span>
+            ><span>Claude CLIの起動、exact tool許可、process終了</span>
+          </div>
+          <div class="file">
+            <code
+              >src/research/model-execution/claude-source-evidence-bridge.ts</code
+            ><span>private loopback MCP、bearer、search/read変換</span>
           </div>
           <div class="file">
             <code>src/research/verification/verification.ts</code
@@ -948,6 +955,10 @@
           <div class="file">
             <code>tests/research/source-evidence-attempt-loop.test.ts</code
             ><span>search → read → Finder outputとquery ceiling</span>
+          </div>
+          <div class="file">
+            <code>tests/research/claude-source-evidence-bridge.test.ts</code
+            ><span>native tool inventory、往復、接続fail-closed</span>
           </div>
         </div>
       </section>

@@ -115,6 +115,10 @@ export type ModelProcessResult =
       readonly reason: string;
     }
   | {
+      readonly kind: "policy-denied";
+      readonly reason: string;
+    }
+  | {
       readonly kind: "exited";
       readonly exitCode: number;
       readonly stdout: string;
