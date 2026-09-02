@@ -4,12 +4,15 @@ import { isAbsolute } from "node:path";
 import { z } from "zod";
 
 import { openModelExecution } from "./model-execution.js";
-import type {
-  ModelExecution,
-  ModelProcess,
-  ModelProcessResult,
-  ModelProcessRequest,
+import {
+  attemptPlanSchema,
+  type ModelExecution,
+  type ModelProcess,
+  type ModelProcessResult,
+  type ModelProcessRequest,
+  type StructuredModelExecution,
 } from "./contracts.js";
+import { decodeClaudeEnvelope } from "./claude-envelope.js";
 
 export interface OpenClaudeModelExecutionOptions {
   readonly artifactDirectory: string;
@@ -320,4 +323,72 @@ export function openClaudeStructuredProcess(
   options: OpenClaudeStructuredProcessOptions,
 ): ClaudeStructuredProcess {
   return new NativeClaudeStructuredProcess(options);
+}
+
+export function openClaudeStructuredModelExecutionFromProcess(
+  process: ClaudeStructuredProcess,
+): StructuredModelExecution {
+  return {
+    run: async (request) => {
+      const modelProfile = attemptPlanSchema.shape.modelProfile.safeParse(
+        request.modelProfile,
+      );
+      if (!modelProfile.success) {
+        return {
+          status: "policy-denied",
+          reason: "transport-profile-incompatible",
+        };
+      }
+      let result: ModelProcessResult;
+      try {
+        result = await process.execute({
+          ...request,
+          modelProfile: modelProfile.data,
+        });
+      } catch (error: unknown) {
+        return {
+          status: "provider-failed",
+          reason:
+            error instanceof Error ? error.message : "Provider process failed",
+        };
+      }
+      if (result.kind === "auth-required") {
+        return { status: "auth-required", reason: result.reason };
+      }
+      if (result.kind === "timed-out") {
+        return { status: "budget-exhausted", reason: "wall-time-exceeded" };
+      }
+      if (result.kind === "output-limit-exceeded") {
+        return { status: "budget-exhausted", reason: "output-limit-exceeded" };
+      }
+      if (result.exitCode !== 0) {
+        return {
+          status: "provider-failed",
+          reason: `provider-exit-${result.exitCode}`,
+        };
+      }
+      const envelope = decodeClaudeEnvelope(
+        result.stdout,
+        request.modelProfile.model,
+      );
+      if (envelope.kind === "invalid-envelope") {
+        return {
+          status: "invalid-output",
+          reason: "invalid-provider-envelope",
+        };
+      }
+      if (envelope.kind === "policy-denied") {
+        return { status: "policy-denied", reason: envelope.reason };
+      }
+      return { status: "completed", output: envelope.output };
+    },
+  };
+}
+
+export function openClaudeStructuredModelExecution(
+  options: OpenClaudeStructuredProcessOptions,
+): StructuredModelExecution {
+  return openClaudeStructuredModelExecutionFromProcess(
+    openClaudeStructuredProcess(options),
+  );
 }

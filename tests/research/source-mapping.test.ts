@@ -6,8 +6,11 @@ import { describe, expect, it } from "vitest";
 
 import { openFileJsonArtifactStore } from "../../src/research/research-record/index.js";
 import {
+  decodeMapDeltaReceipt,
   decodeSurfaceMap,
   openSourceMapping,
+  type ContextResponse,
+  type MapDeltaSynthesizer,
   type MappingProfileRef,
   type TargetFileManifest,
 } from "../../src/research/source-mapping/index.js";
@@ -156,6 +159,7 @@ async function stageMapping(
   artifactDirectory: string,
   index: PhpProgramIndex,
   summary: PhpProgramIndexRef["summary"],
+  synthesizer?: MapDeltaSynthesizer,
 ) {
   const artifacts = openFileJsonArtifactStore(artifactDirectory);
   const manifestDigest = await artifacts.putJson(manifest);
@@ -180,6 +184,7 @@ async function stageMapping(
         summary,
       },
     },
+    ...(synthesizer === undefined ? {} : { synthesizer }),
   });
   return { artifacts, manifestDigest, programIndexDigest, mapping };
 }
@@ -420,6 +425,351 @@ describe("Source Mapping", () => {
       expect(await artifacts.readJson(initialRef.digest)).toEqual(
         initialBeforeRevision,
       );
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("compiles accepted model relations into an immutable revision and records rejected claims", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordpress-surface-model-revision-"),
+    );
+    const artifactDirectory = join(directory, "artifacts");
+    const synthesizer: MapDeltaSynthesizer = {
+      synthesize: async (request) => {
+        const source = request.predecessor.nodes.find(
+          (node) => node.kind === "source",
+        );
+        const state = request.predecessor.nodes.find(
+          (node) => node.kind === "state",
+        );
+        if (source === undefined || state === undefined) {
+          throw new Error("Expected source and state nodes in predecessor");
+        }
+        return {
+          kind: "map-delta-proposal",
+          schemaVersion: 1,
+          predecessor: request.predecessorRef,
+          mappingProfile: request.profile,
+          contextResponseDigests: request.context.map(
+            (response) => response.digest,
+          ),
+          relations: [
+            {
+              kind: "flows-to",
+              from: source.id,
+              to: state.id,
+              claim: "data-flow",
+              premises: [source.id, state.id],
+              anchors: request.context[0]!.value.slices.map(
+                ({ content: _content, ...anchor }) => anchor,
+              ),
+              rationale: "The request value is written to persistent state.",
+            },
+            {
+              kind: "flows-to",
+              from: source.id,
+              to: `sha256:${"9".repeat(64)}`,
+              claim: "data-flow",
+              premises: [source.id, `sha256:${"9".repeat(64)}`],
+              anchors: request.context[0]!.value.slices.map(
+                ({ content: _content, ...anchor }) => anchor,
+              ),
+              rationale: "This endpoint does not exist in the predecessor.",
+            },
+            {
+              kind: "flows-to",
+              from: source.id,
+              to: state.id,
+              claim: "control-flow",
+              premises: [source.id, state.id],
+              anchors: request.context[0]!.value.slices.map(
+                ({ content: _content, ...anchor }) => ({
+                  ...anchor,
+                  endOffset: anchor.endOffset + 1,
+                }),
+              ),
+              rationale: "This anchor extends beyond the accepted context.",
+            },
+            {
+              kind: "flows-to",
+              from: source.id,
+              to: state.id,
+              claim: "state-flow",
+              premises: [source.id, `sha256:${"8".repeat(64)}`],
+              anchors: request.context[0]!.value.slices.map(
+                ({ content: _content, ...anchor }) => anchor,
+              ),
+              rationale: "This premise does not exist in the predecessor.",
+            },
+          ],
+        };
+      },
+    };
+
+    try {
+      const staged = await stageMapping(
+        artifactDirectory,
+        programIndex,
+        baseProgramSummary,
+        synthesizer,
+      );
+      const initialRef = await staged.mapping.build({
+        kind: "initial",
+        target,
+        profile,
+      });
+      const initialBeforeRevision = await staged.artifacts.readJson(
+        initialRef.digest,
+      );
+      const context: ContextResponse = {
+        kind: "context-response",
+        schemaVersion: 1,
+        id: "context-plugin-request-to-state",
+        targetSnapshot: { id: target.id, digest: target.digest },
+        slices: [
+          {
+            path: "plugin.php",
+            fileDigest: `sha256:${"b".repeat(64)}`,
+            startOffset: 380,
+            endOffset: 455,
+            content: "x".repeat(75),
+          },
+        ],
+      };
+      const contextDigest = await staged.artifacts.putJson(context);
+
+      const revisionRef = await staged.mapping.build({
+        kind: "revision",
+        predecessor: initialRef,
+        acceptedContext: [
+          {
+            kind: "context-response",
+            schemaVersion: 1,
+            id: context.id,
+            digest: contextDigest,
+          },
+        ],
+        profile,
+      });
+      const revision = decodeSurfaceMap(
+        await staged.artifacts.readJson(revisionRef.digest),
+      );
+      const receiptDigest = revision.sources.mapDeltaReceiptDigests?.[0];
+      if (receiptDigest === undefined) {
+        throw new Error("Expected Map Delta Receipt digest");
+      }
+      const receipt = decodeMapDeltaReceipt(
+        await staged.artifacts.readJson(receiptDigest),
+      );
+
+      expect(revision.revision).toMatchObject({
+        kind: "model",
+        number: 2,
+        predecessor: initialRef,
+      });
+      expect(
+        revision.relations.filter((relation) => relation.kind === "flows-to"),
+      ).toEqual([
+        expect.objectContaining({
+          kind: "flows-to",
+          claim: "data-flow",
+          evidence: expect.objectContaining({
+            kind: "inferred",
+            derivation: "model",
+          }),
+        }),
+      ]);
+      expect(receipt).toMatchObject({
+        kind: "map-delta-receipt",
+        schemaVersion: 1,
+        predecessor: initialRef,
+        accepted: [{ proposalIndex: 0 }],
+        rejected: [
+          { proposalIndex: 1, reason: "endpoint-not-found" },
+          { proposalIndex: 2, reason: "anchor-not-in-context" },
+          { proposalIndex: 3, reason: "premise-not-found" },
+        ],
+      });
+      expect(await staged.artifacts.readJson(initialRef.digest)).toEqual(
+        initialBeforeRevision,
+      );
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("preserves the deterministic map and records a gap when model synthesis fails", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordpress-surface-model-failure-"),
+    );
+    const artifactDirectory = join(directory, "artifacts");
+    const synthesizer: MapDeltaSynthesizer = {
+      synthesize: async () => ({
+        kind: "map-delta-synthesis-failure",
+        schemaVersion: 1,
+        reason: "provider-failed",
+      }),
+    };
+
+    try {
+      const staged = await stageMapping(
+        artifactDirectory,
+        programIndex,
+        baseProgramSummary,
+        synthesizer,
+      );
+      const initialRef = await staged.mapping.build({
+        kind: "initial",
+        target,
+        profile,
+      });
+      const context: ContextResponse = {
+        kind: "context-response",
+        schemaVersion: 1,
+        id: "context-model-failure",
+        targetSnapshot: { id: target.id, digest: target.digest },
+        slices: [
+          {
+            path: "plugin.php",
+            fileDigest: `sha256:${"b".repeat(64)}`,
+            startOffset: 380,
+            endOffset: 455,
+            content: "x".repeat(75),
+          },
+        ],
+      };
+      const contextDigest = await staged.artifacts.putJson(context);
+
+      const revisionRef = await staged.mapping.build({
+        kind: "revision",
+        predecessor: initialRef,
+        acceptedContext: [
+          {
+            kind: "context-response",
+            schemaVersion: 1,
+            id: context.id,
+            digest: contextDigest,
+          },
+        ],
+        profile,
+      });
+      const revision = decodeSurfaceMap(
+        await staged.artifacts.readJson(revisionRef.digest),
+      );
+      const receiptDigest = revision.sources.mapDeltaReceiptDigests?.[0];
+      if (receiptDigest === undefined) {
+        throw new Error("Expected failed Map Delta Receipt digest");
+      }
+      const receipt = decodeMapDeltaReceipt(
+        await staged.artifacts.readJson(receiptDigest),
+      );
+
+      expect(revision.revision.kind).toBe("model");
+      expect(
+        revision.relations.filter((relation) => relation.kind === "flows-to"),
+      ).toEqual([]);
+      expect(revision.gaps).toContainEqual(
+        expect.objectContaining({
+          kind: "mapping-incomplete",
+          reason: "provider-failed",
+        }),
+      );
+      expect(receipt).toMatchObject({
+        kind: "map-delta-receipt",
+        status: "failed",
+        failureReason: "provider-failed",
+        accepted: [],
+        rejected: [],
+      });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("produces the same model revision regardless of Context Response arrival order", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordpress-surface-context-order-"),
+    );
+    const artifactDirectory = join(directory, "artifacts");
+    const synthesizer: MapDeltaSynthesizer = {
+      synthesize: async (request) => ({
+        kind: "map-delta-proposal",
+        schemaVersion: 1,
+        predecessor: request.predecessorRef,
+        mappingProfile: request.profile,
+        contextResponseDigests: request.context.map((item) => item.digest),
+        relations: [],
+      }),
+    };
+
+    try {
+      const staged = await stageMapping(
+        artifactDirectory,
+        programIndex,
+        baseProgramSummary,
+        synthesizer,
+      );
+      const initialRef = await staged.mapping.build({
+        kind: "initial",
+        target,
+        profile,
+      });
+      const contexts: ContextResponse[] = [
+        {
+          kind: "context-response",
+          schemaVersion: 1,
+          id: "context-a",
+          targetSnapshot: { id: target.id, digest: target.digest },
+          slices: [
+            {
+              path: "plugin.php",
+              fileDigest: `sha256:${"b".repeat(64)}`,
+              startOffset: 0,
+              endOffset: 10,
+              content: "a".repeat(10),
+            },
+          ],
+        },
+        {
+          kind: "context-response",
+          schemaVersion: 1,
+          id: "context-b",
+          targetSnapshot: { id: target.id, digest: target.digest },
+          slices: [
+            {
+              path: "plugin.php",
+              fileDigest: `sha256:${"b".repeat(64)}`,
+              startOffset: 10,
+              endOffset: 20,
+              content: "b".repeat(10),
+            },
+          ],
+        },
+      ];
+      const refs = await Promise.all(
+        contexts.map(async (context) => ({
+          kind: "context-response" as const,
+          schemaVersion: 1 as const,
+          id: context.id,
+          digest: await staged.artifacts.putJson(context),
+        })),
+      );
+
+      const reversed = await staged.mapping.build({
+        kind: "revision",
+        predecessor: initialRef,
+        acceptedContext: [...refs].reverse(),
+        profile,
+      });
+      const ordered = await staged.mapping.build({
+        kind: "revision",
+        predecessor: initialRef,
+        acceptedContext: refs,
+        profile,
+      });
+
+      expect(reversed).toEqual(ordered);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

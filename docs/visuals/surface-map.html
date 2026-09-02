@@ -594,6 +594,13 @@
                 <div class="module-step">
                   <span>5</span>
                   <div>
+                    <strong>Compile Map Delta</strong>
+                    <small>model候補をclaim単位で採用・棄却</small>
+                  </div>
+                </div>
+                <div class="module-step">
+                  <span>6</span>
+                  <div>
                     <strong>Publish revision</strong>
                     <small>stable orderのcanonical JSONをCASへ保存</small>
                   </div>
@@ -675,9 +682,9 @@
             </div>
           </div>
           <p class="caption">
-            現行sliceが構築するrelationは
-            <code>dispatches-to</code
-            >。右側へのflowは、今後のMapperと探索が根拠付きで補う。
+            現行sliceは決定論的な <code>dispatches-to</code> と、検査済みの
+            model提案から <code>flows-to</code> を構築する。model失敗は
+            <code>mapping-incomplete</code> gapとして残る。
           </p>
         </div>
       </section>
@@ -686,7 +693,7 @@
         <p class="eyebrow">3 / Script + AI + Verification</p>
         <h2>決定論的な骨格をAIが補完し、検証は別Moduleが行う</h2>
         <p class="section-copy">
-          すべてを静的scriptで解こうとしない。一方で、AIの推測をsourceの事実へ昇格させない。
+          すべてを静的scriptで解こうとしない。一方で、AIの直接出力をMapにせず、検査済みの差分だけを次revisionへ入れる。
         </p>
         <div class="surface">
           <div class="split">
@@ -702,6 +709,7 @@
             <article class="owner ai">
               <h3>AI Mapper</h3>
               <ul>
+                <li>Context path + 1-hop Map subgraph</li>
                 <li>feature境界とcross-file relation候補</li>
                 <li>dynamic dispatchの候補</li>
                 <li>stateを跨ぐroute候補</li>
@@ -713,6 +721,35 @@
           <div class="rule">
             AIは <code>observed</code> を上書きしない。追加できるのは根拠付きの
             <code>inferred</code> または理由付きの <code>unknown</code>。
+          </div>
+
+          <div class="oracle">
+            現在の実装は既存node間の <code>flows-to</code> 提案、Delta
+            Receipt、失敗gapまで。追加node・Conflict・Context
+            Request・repair・tool付きMapperは次のsliceである。
+          </div>
+
+          <div class="handoff" aria-label="AI MapperからFinderまでの差分検査">
+            <div>
+              <strong>AI Mapper</strong>
+              <small>候補を提案</small>
+            </div>
+            <div>
+              <strong>Map Delta</strong>
+              <small>未検査claim</small>
+            </div>
+            <div>
+              <strong>Validator</strong>
+              <small>anchor・語彙・予算</small>
+            </div>
+            <div>
+              <strong>Map Revision</strong>
+              <small>受理claimだけ</small>
+            </div>
+            <div>
+              <strong>Finder Focus</strong>
+              <small>bounded subgraph</small>
+            </div>
           </div>
 
           <div class="handoff" aria-label="Findingまでの責任分離">

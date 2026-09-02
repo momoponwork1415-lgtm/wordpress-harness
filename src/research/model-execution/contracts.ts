@@ -14,6 +14,15 @@ const identifierSchema = z
   .max(128)
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
 
+export const structuredModelProfileSchema = z.strictObject({
+  provider: identifierSchema,
+  model: z.string().min(1).max(256),
+  transport: identifierSchema,
+  executableVersion: z.string().min(1).max(64),
+  effort: z.string().min(1).max(64),
+  eligibilityReceiptDigest: digestSchema,
+});
+
 export const attemptPlanSchema = z.strictObject({
   kind: z.literal("attempt-plan"),
   schemaVersion: z.literal(1),
@@ -24,13 +33,11 @@ export const attemptPlanSchema = z.strictObject({
     id: identifierSchema,
     digest: digestSchema,
   }),
-  modelProfile: z.strictObject({
+  modelProfile: structuredModelProfileSchema.extend({
     provider: z.literal("anthropic"),
-    model: z.literal("claude-opus-5"),
+    model: z.string().min(1).max(256),
     transport: z.literal("claude-code-process"),
-    executableVersion: z.string().min(1).max(64),
     effort: z.enum(["low", "medium", "high", "xhigh", "max"]),
-    eligibilityReceiptDigest: digestSchema,
   }),
   prompt: z
     .string()
@@ -44,6 +51,9 @@ export const attemptPlanSchema = z.strictObject({
 });
 
 export type AttemptPlan = z.infer<typeof attemptPlanSchema>;
+export type StructuredModelProfile = z.infer<
+  typeof structuredModelProfileSchema
+>;
 
 export type AttemptExecutionResult = {
   readonly status: FinderAttemptResult["status"];
@@ -53,6 +63,32 @@ export type AttemptExecutionResult = {
 
 export interface ModelExecution {
   run(plan: AttemptPlan): Promise<AttemptExecutionResult>;
+}
+
+export interface StructuredModelRequest {
+  readonly modelProfile: StructuredModelProfile;
+  readonly prompt: string;
+  readonly budget: {
+    readonly maxWallTimeMs: number;
+    readonly maxOutputBytes: number;
+  };
+  readonly outputJsonSchema: object;
+}
+
+export type StructuredModelResult =
+  | { readonly status: "completed"; readonly output: unknown }
+  | {
+      readonly status:
+        | "auth-required"
+        | "provider-failed"
+        | "budget-exhausted"
+        | "invalid-output"
+        | "policy-denied";
+      readonly reason: string;
+    };
+
+export interface StructuredModelExecution {
+  run(request: StructuredModelRequest): Promise<StructuredModelResult>;
 }
 
 export interface ModelProcessRequest {

@@ -160,6 +160,14 @@ _Avoid_: Threat model、Scan result
 Surface Mapのnodeまたはrelationを、固定sourceまたは型付き実行時観測から直接確認した`observed`、根拠から導いた`inferred`、接続を確定できない未解決（`unknown`）のいずれかとして表す区分。不明を観測事実へ昇格させない。
 _Avoid_: Confidence score、Model certainty、Boolean known
 
+**Map Delta Proposal**:
+一つのSurface Map revisionとMapping Profileに対してAI Mapperが返す、追加node、relation、gap、Conflict、Context Requestの型付き候補。完成したSurface Mapでも訂正命令でもなく、決定論的検査を通るまで次revisionへ入らない。
+_Avoid_: Corrected Map、Model patch、Mapper verdict
+
+**Map Delta Receipt**:
+一つのMap Delta Proposalについて、固定入力、Model Profile、各claimの受理または拒否と理由、Context使用量、生成したSurface Map revisionを結び付けた不変の検査記録。
+_Avoid_: Mapper output、Confidence report、Validation log
+
 **PHP Program Index**:
 固定Target Snapshotを実行せずに構文解析して得た、file digest、source range、symbol、call relation、WordPress registration、guard、source、storage、sink、parse diagnosticを持つcanonicalでversionedなJSON artifact。
 _Avoid_: Parser object、Raw AST dump、Surface Map

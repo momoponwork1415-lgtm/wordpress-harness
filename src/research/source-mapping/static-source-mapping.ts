@@ -9,12 +9,16 @@ import {
   phpProgramIndexSchema,
   type PhpProgramIndex,
 } from "./php-program-index/index.js";
+import { compileMapDelta } from "./map-delta-compiler.js";
 import {
+  contextResponseSchema,
   surfaceMapRefSchema,
   surfaceMapSchema,
   surfaceMappingInputSchema,
   surfaceMappingSourceSchema,
   targetFileManifestSchema,
+  type ContextResponse,
+  type MapDeltaSynthesizer,
   type OpenSourceMappingOptions,
   type SourceMapping,
   type SurfaceMap,
@@ -196,10 +200,12 @@ function factNode(
 class StaticSourceMapping implements SourceMapping {
   readonly #artifacts;
   readonly #source;
+  readonly #synthesizer: MapDeltaSynthesizer | undefined;
 
   constructor(options: OpenSourceMappingOptions) {
     this.#artifacts = openFileJsonArtifactStore(options.artifactDirectory);
     this.#source = surfaceMappingSourceSchema.parse(options.source);
+    this.#synthesizer = options.synthesizer;
   }
 
   async build(
@@ -214,11 +220,6 @@ class StaticSourceMapping implements SourceMapping {
       }
       revision = { kind: "initial", number: 1, predecessor: null };
     } else {
-      if (parsedInput.acceptedContext.length > 0) {
-        throw new Error(
-          "Context Response integration is not supported by the static mapping slice",
-        );
-      }
       const predecessor = surfaceMapRefSchema.parse(parsedInput.predecessor);
       predecessorMap = surfaceMapSchema.parse(
         await this.#artifacts.readJson(predecessor.digest),
@@ -240,6 +241,20 @@ class StaticSourceMapping implements SourceMapping {
       await this.#artifacts.readJson(this.#source.phpProgramIndex.digest),
     );
     this.#validateSources(manifest, programIndex, parsedInput.profile);
+    const acceptedContext =
+      parsedInput.kind === "revision"
+        ? (
+            await Promise.all(
+              parsedInput.acceptedContext.map(async (ref) => {
+                const value = contextResponseSchema.parse(
+                  await this.#artifacts.readJson(ref.digest),
+                );
+                this.#validateContextResponse(ref.id, value, manifest);
+                return { digest: ref.digest, value };
+              }),
+            )
+          ).sort((left, right) => compareText(left.digest, right.digest))
+        : [];
 
     const indexedFiles = new Map(
       programIndex.files.map((file) => [file.path, file] as const),
@@ -426,14 +441,40 @@ class StaticSourceMapping implements SourceMapping {
       }
     }
 
+    let mapDeltaReceiptDigest: string | undefined;
+    if (acceptedContext.length > 0) {
+      if (
+        parsedInput.kind !== "revision" ||
+        predecessorMap === undefined ||
+        this.#synthesizer === undefined
+      ) {
+        throw new Error("Map Delta synthesis is not configured");
+      }
+      const compiled = await compileMapDelta({
+        artifacts: this.#artifacts,
+        synthesizer: this.#synthesizer,
+        predecessorRef: parsedInput.predecessor,
+        predecessor: predecessorMap,
+        profile: parsedInput.profile,
+        context: acceptedContext,
+        nodeIds: new Set(nodesById.keys()),
+        existingRelationIds: new Set(relations.map((relation) => relation.id)),
+      });
+      relations.push(...compiled.relations);
+      gaps.push(...compiled.gaps);
+      mapDeltaReceiptDigest = compiled.receiptDigest;
+      revision = compiled.revision;
+    }
+
     const nodes = [...nodesById.values()].sort((left, right) =>
       compareText(left.id, right.id),
     );
     relations.sort((left, right) => compareText(left.id, right.id));
-    gaps.sort(
-      (left, right) =>
-        compareText(left.path, right.path) || compareText(left.id, right.id),
-    );
+    gaps.sort((left, right) => {
+      const leftPath = "path" in left ? left.path : "";
+      const rightPath = "path" in right ? right.path : "";
+      return compareText(leftPath, rightPath) || compareText(left.id, right.id);
+    });
     const summary = {
       files: inventory.length,
       nodes: nodes.length,
@@ -455,6 +496,12 @@ class StaticSourceMapping implements SourceMapping {
       sources: {
         manifestDigest: this.#source.manifest.digest,
         phpProgramIndexDigest: this.#source.phpProgramIndex.digest,
+        mapDeltaReceiptDigests: [
+          ...(predecessorMap?.sources.mapDeltaReceiptDigests ?? []),
+          ...(mapDeltaReceiptDigest === undefined
+            ? []
+            : [mapDeltaReceiptDigest]),
+        ],
       },
       inventory,
       nodes,
@@ -531,6 +578,36 @@ class StaticSourceMapping implements SourceMapping {
       map.sources.manifestDigest !== this.#source.manifest.digest
     ) {
       throw new Error("Surface Map predecessor identity mismatch");
+    }
+  }
+
+  #validateContextResponse(
+    expectedId: string,
+    response: ContextResponse,
+    manifest: ReturnType<typeof targetFileManifestSchema.parse>,
+  ): void {
+    if (
+      response.id !== expectedId ||
+      response.targetSnapshot.id !== this.#source.target.id ||
+      response.targetSnapshot.digest !== this.#source.target.digest
+    ) {
+      throw new Error("Context Response identity mismatch");
+    }
+    const entries = new Map(
+      manifest.entries.map((entry) => [entry.path, entry]),
+    );
+    for (const slice of response.slices) {
+      const entry = entries.get(slice.path);
+      if (
+        entry === undefined ||
+        entry.digest !== slice.fileDigest ||
+        slice.endOffset <= slice.startOffset ||
+        slice.endOffset > entry.size ||
+        Buffer.byteLength(slice.content, "utf8") !==
+          slice.endOffset - slice.startOffset
+      ) {
+        throw new Error(`Invalid Context Response slice: ${slice.path}`);
+      }
     }
   }
 }

@@ -12,25 +12,33 @@ Status: living implementation view, 2026-09-02
 flowchart TB
     snapshot["Target Snapshot"]
     index["PHP Program Index"]
-    mapper["Static Source Mapping"]
-    map[("Surface Map")]
+    mapper["Static Mapping"]
+    base[("Observed Map")]
+    gaps{"Semantic Gaps?"}
+    ai["AI Mapper"]
+    delta[("Map Delta")]
+    validate{"Delta Validator"}
+    map[("Map Revision")]
     gate{"Minimum Map Gate"}
     revise["Mapping Evidence Request"]
     candidates["Focus Candidates"]
     portfolio["Category Round Robin"]
     focus[("Finite Focus Areas")]
 
-    snapshot --> index --> mapper --> map --> gate
+    snapshot --> index --> mapper --> base --> gaps
+    gaps -->|"なし"| map
+    gaps -->|"あり"| ai --> delta --> validate --> map
+    map --> gate
     gate -->|"不足"| revise
     gate -->|"通過"| candidates --> portfolio --> focus
 
     classDef done fill:#e9f7ed,stroke:#337a46,color:#173d22;
     classDef partial fill:#fff5d6,stroke:#a87800,color:#3f2d00;
-    class snapshot,index,mapper,map,gate,candidates,portfolio,focus done;
-    class revise partial;
+    class snapshot,index,mapper,base,map,gate,candidates,portfolio,focus done;
+    class ai,delta,validate,revise partial;
 ```
 
-Minimum Map Gateは全コードの完全理解を要求しない。ファイル一覧、実在するsource anchor、relationの結合、明示されたgapを検査し、根拠が足りなければ推測せず`Mapping Evidence Request`を返す。
+Minimum Map Gateは全コードの完全理解を要求しない。ファイル一覧、実在するsource anchor、relationの結合、明示されたgapを検査し、根拠が足りなければ推測せず`Mapping Evidence Request`を返す。AI Mapperの直接出力はMapではなく`Map Delta Proposal`であり、path、digest、anchor、closed relation語彙を検査したclaimだけが新しいMap Revisionへ入る。現行の黄部分はContext pathをseedにした1-hop Map subgraphから既存node間の`flows-to`を提案する一回のstructured model実行、claim単位のDelta検査、Receipt、失敗/context-ceiling gapまでである。追加node、Conflict、Context Request、repair/continuation、tool付きMapperは未実装である。
 
 Focus候補はREST entry、hook、source、state、guard、sink、未登録PHP、mapping gapから作る。同種のsurfaceだけで最初のWaveを埋めず、categoryをround-robinして有限件へ切る。
 

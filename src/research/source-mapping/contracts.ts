@@ -69,18 +69,39 @@ const surfaceMapSummarySchema = z.strictObject({
 export const surfaceMapRefSchema = z.strictObject({
   kind: z.literal("surface-map"),
   schemaVersion: z.literal(1),
-  revisionKind: z.enum(["initial", "source"]),
+  revisionKind: z.enum(["initial", "source", "model"]),
   targetSnapshotId: identifierSchema,
   mappingProfileId: identifierSchema,
   digest: digestSchema,
   summary: surfaceMapSummarySchema,
 });
 
-const contextResponseRefSchema = z.strictObject({
+export const contextResponseRefSchema = z.strictObject({
   kind: z.literal("context-response"),
   schemaVersion: z.literal(1),
   id: identifierSchema,
   digest: digestSchema,
+});
+
+export const contextResponseSchema = z.strictObject({
+  kind: z.literal("context-response"),
+  schemaVersion: z.literal(1),
+  id: identifierSchema,
+  targetSnapshot: z.strictObject({
+    id: identifierSchema,
+    digest: digestSchema,
+  }),
+  slices: z
+    .array(
+      z.strictObject({
+        path: relativePathSchema,
+        fileDigest: digestSchema,
+        startOffset: z.number().int().nonnegative(),
+        endOffset: z.number().int().positive(),
+        content: z.string(),
+      }),
+    )
+    .min(1),
 });
 
 export const surfaceMappingInputSchema = z.discriminatedUnion("kind", [
@@ -97,7 +118,7 @@ export const surfaceMappingInputSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-const sourceAnchorSchema = z.strictObject({
+export const sourceAnchorSchema = z.strictObject({
   kind: z.literal("source-anchor"),
   targetSnapshotDigest: digestSchema,
   path: relativePathSchema,
@@ -117,6 +138,7 @@ const evidenceStateSchema = z.discriminatedUnion("kind", [
     kind: z.literal("inferred"),
     premises: z.array(digestSchema).min(1),
     derivation: z.enum(["deterministic", "knowledge", "model"]),
+    proposalDigest: digestSchema.optional(),
   }),
   z.strictObject({
     kind: z.literal("unknown"),
@@ -179,14 +201,113 @@ const surfaceNodeSchema = z.strictObject({
   evidence: evidenceStateSchema,
 });
 
-const surfaceRelationSchema = z.strictObject({
-  id: digestSchema,
-  kind: z.literal("dispatches-to"),
-  from: digestSchema,
-  to: digestSchema.nullable(),
-  claim: z.enum(["literal-callback", "callback-target"]),
-  evidence: evidenceStateSchema,
+const surfaceRelationSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    id: digestSchema,
+    kind: z.literal("dispatches-to"),
+    from: digestSchema,
+    to: digestSchema.nullable(),
+    claim: z.enum(["literal-callback", "callback-target"]),
+    evidence: evidenceStateSchema,
+  }),
+  z.strictObject({
+    id: digestSchema,
+    kind: z.literal("flows-to"),
+    from: digestSchema,
+    to: digestSchema,
+    claim: z.enum(["data-flow", "control-flow", "state-flow", "render-flow"]),
+    evidence: evidenceStateSchema,
+  }),
+]);
+
+const mapDeltaAnchorSchema = z.strictObject({
+  path: relativePathSchema,
+  fileDigest: digestSchema,
+  startOffset: z.number().int().nonnegative(),
+  endOffset: z.number().int().positive(),
 });
+
+export const mapDeltaProposalSchema = z.strictObject({
+  kind: z.literal("map-delta-proposal"),
+  schemaVersion: z.literal(1),
+  predecessor: surfaceMapRefSchema,
+  mappingProfile: mappingProfileRefSchema,
+  contextResponseDigests: z.array(digestSchema),
+  relations: z
+    .array(
+      z.strictObject({
+        kind: z.literal("flows-to"),
+        from: digestSchema,
+        to: digestSchema,
+        claim: z.enum([
+          "data-flow",
+          "control-flow",
+          "state-flow",
+          "render-flow",
+        ]),
+        premises: z.array(digestSchema).min(2).max(16),
+        anchors: z.array(mapDeltaAnchorSchema).min(1).max(16),
+        rationale: z.string().min(1).max(4096),
+      }),
+    )
+    .max(128),
+});
+
+export const mapDeltaSynthesisFailureSchema = z.strictObject({
+  kind: z.literal("map-delta-synthesis-failure"),
+  schemaVersion: z.literal(1),
+  reason: z.enum([
+    "auth-required",
+    "provider-failed",
+    "budget-exhausted",
+    "invalid-output",
+    "policy-denied",
+    "context-ceiling",
+  ]),
+});
+
+const mapDeltaReceiptIdentitySchema = {
+  kind: z.literal("map-delta-receipt"),
+  schemaVersion: z.literal(1),
+  predecessor: surfaceMapRefSchema,
+  mappingProfile: mappingProfileRefSchema,
+  contextResponseDigests: z.array(digestSchema),
+};
+
+const acceptedMapDeltaClaimSchema = z.array(
+  z.strictObject({
+    proposalIndex: z.number().int().nonnegative(),
+    relationId: digestSchema,
+  }),
+);
+
+const rejectedMapDeltaClaimSchema = z.array(
+  z.strictObject({
+    proposalIndex: z.number().int().nonnegative(),
+    reason: z.enum([
+      "endpoint-not-found",
+      "premise-not-found",
+      "anchor-not-in-context",
+    ]),
+  }),
+);
+
+export const mapDeltaReceiptSchema = z.discriminatedUnion("status", [
+  z.strictObject({
+    ...mapDeltaReceiptIdentitySchema,
+    status: z.literal("compiled"),
+    proposalDigest: digestSchema,
+    accepted: acceptedMapDeltaClaimSchema,
+    rejected: rejectedMapDeltaClaimSchema,
+  }),
+  z.strictObject({
+    ...mapDeltaReceiptIdentitySchema,
+    status: z.literal("failed"),
+    failureReason: mapDeltaSynthesisFailureSchema.shape.reason,
+    accepted: z.tuple([]),
+    rejected: z.tuple([]),
+  }),
+]);
 
 const assetClassificationSchema = z.enum([
   "php",
@@ -217,14 +338,32 @@ const inventoryEntrySchema = z.strictObject({
   coverage: coverageSchema,
 });
 
-const mappingGapSchema = z.strictObject({
-  id: digestSchema,
-  kind: z.enum(["asset-not-analyzed", "parse-diagnostic"]),
-  path: relativePathSchema,
-  reason: z.string().min(1),
-  classification: assetClassificationSchema,
-  evidence: sourceAnchorSchema.optional(),
-});
+const mappingGapSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    id: digestSchema,
+    kind: z.literal("asset-not-analyzed"),
+    path: relativePathSchema,
+    reason: z.string().min(1),
+    classification: assetClassificationSchema,
+    evidence: sourceAnchorSchema.optional(),
+  }),
+  z.strictObject({
+    id: digestSchema,
+    kind: z.literal("parse-diagnostic"),
+    path: relativePathSchema,
+    reason: z.string().min(1),
+    classification: assetClassificationSchema,
+    evidence: sourceAnchorSchema.optional(),
+  }),
+  z.strictObject({
+    id: digestSchema,
+    kind: z.literal("mapping-incomplete"),
+    scope: z.literal("surface-map"),
+    path: relativePathSchema,
+    reason: mapDeltaSynthesisFailureSchema.shape.reason,
+    evidence: sourceAnchorSchema.optional(),
+  }),
+]);
 
 export const surfaceMapSchema = z.strictObject({
   kind: z.literal("surface-map"),
@@ -240,6 +379,12 @@ export const surfaceMapSchema = z.strictObject({
       number: z.number().int().min(2),
       predecessor: surfaceMapRefSchema,
     }),
+    z.strictObject({
+      kind: z.literal("model"),
+      number: z.number().int().min(2),
+      predecessor: surfaceMapRefSchema,
+      mapDeltaReceiptDigest: digestSchema,
+    }),
   ]),
   targetSnapshot: z.strictObject({
     id: identifierSchema,
@@ -252,6 +397,7 @@ export const surfaceMapSchema = z.strictObject({
   sources: z.strictObject({
     manifestDigest: digestSchema,
     phpProgramIndexDigest: digestSchema,
+    mapDeltaReceiptDigests: z.array(digestSchema).optional(),
   }),
   inventory: z.array(inventoryEntrySchema),
   nodes: z.array(surfaceNodeSchema),
@@ -261,6 +407,13 @@ export const surfaceMapSchema = z.strictObject({
 });
 
 export type MappingProfileRef = z.infer<typeof mappingProfileRefSchema>;
+export type ContextResponse = z.infer<typeof contextResponseSchema>;
+export type ContextResponseRef = z.infer<typeof contextResponseRefSchema>;
+export type MapDeltaProposal = z.infer<typeof mapDeltaProposalSchema>;
+export type MapDeltaReceipt = z.infer<typeof mapDeltaReceiptSchema>;
+export type MapDeltaSynthesisFailure = z.infer<
+  typeof mapDeltaSynthesisFailureSchema
+>;
 export type SurfaceMap = z.infer<typeof surfaceMapSchema>;
 export type SurfaceMapRef = z.infer<typeof surfaceMapRefSchema>;
 export type SurfaceMappingInput = z.infer<typeof surfaceMappingInputSchema>;
@@ -272,7 +425,22 @@ export interface SourceMapping {
   build(input: SurfaceMappingInput): Promise<SurfaceMapRef>;
 }
 
+export interface MapDeltaSynthesisRequest {
+  readonly predecessorRef: SurfaceMapRef;
+  readonly predecessor: SurfaceMap;
+  readonly profile: MappingProfileRef;
+  readonly context: readonly {
+    readonly digest: string;
+    readonly value: ContextResponse;
+  }[];
+}
+
+export interface MapDeltaSynthesizer {
+  synthesize(request: MapDeltaSynthesisRequest): Promise<unknown>;
+}
+
 export interface OpenSourceMappingOptions {
   readonly artifactDirectory: string;
   readonly source: SurfaceMappingSource;
+  readonly synthesizer?: MapDeltaSynthesizer;
 }

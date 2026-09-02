@@ -116,6 +116,10 @@ Lane、Strategy、model family、worker roleを一つのenumへ潰さない。vu
 
 eligibleな各Work Waveには非ゼロのWildcard枠を持たせる。高リスクsurfaceまたはFrontier候補は、可能な限り異なるmodel familyと異なるStrategyで二系統以上に割り当てる。それ以外はsurface ownershipを分割してcoverageを優先する。割合、重複数、Hypothesis上限はinstrumented pilotで決める。
 
+探索多様性の第一要因は異なるFocus AreaとStrategyであり、model family数だけを多様性とみなさない。実戦Campaignでは、安価なProfileの独立Attemptを複数回使う選択と、異なるfamilyを組み合わせる選択の両方を許可し、source-boundな固有route、token、wall time、Attempt数で限界効用を記録する。state-chain、cross-feature Chain Synthesis、重大unknown、相反するrouteの解消には高い推論能力を持つeligible Profileを優先するが、provider名をLaneまたはStrategyへ固定しない。
+
+Model Profile比較では同じTarget Snapshot、Map revision、Focus Area、Strategy、tool budgetを固定してmodel差だけを測る。実戦のWork Waveでは割当をWave間でrotateし、複数AttemptのHypothesisをunionする。安価なProfileを含む一方、一familyしかeligibleでない場合もStrategy Portfolioを保って継続する。どちらの場合もmodel voting、支持数、単一のconfidence scoreでminority routeを落とさない。
+
 ## Finder contract
 
 Finderの正本outputは次の型付きartifactだけとする。
