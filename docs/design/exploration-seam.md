@@ -1,225 +1,136 @@
 # Exploration seam
 
-Status: implemented Map-first seam under migration; target policy superseded by ADR 0113, 2026-09-03
+Status: accepted design; ADR 0113 and ADR 0114 are authoritative
 
 ## Owner and purpose
 
-ResearchのExplorationが所有する。Target Snapshot、Approach Family Registry、terminal artifactから、独立した自由探索Wave、source-boundなHypothesisとRoute Fragment、Target横断ではなく機能横断のchain、証拠付きclosureを作り、次に実行する有限workだけを一つの深いinterfaceの背後へ隠す。
+Explorationは、固定Target Snapshotから独立したresearch ideaを進め、反証可能なHypothesis、再利用可能なRoute Fragment、明示的なgapへ変換するResearch内部Moduleである。Findingへの昇格、runtime操作、provider process、Target取得を所有しない。
 
-Explorationは脆弱性を実証せず、provider process、Lab、Research Ledgerを直接操作しない。Campaign Controlは探索内部のFinder数、idea family生成、dedup、Root Synthesis、Critic、Gap Reviewを知らず、typed decisionだけを実行する。Surface Mapは後段coverageへの任意入力であり、Depthの最初のWaveを開始する必須条件ではない。
+現在の実装状態、file、Behavior Testは[Codebase Guide](../CODEBASE-GUIDE.md)だけを正本とする。過去のMap-first実装詳細は[history](../history/README.md)、Target別成否は[experiments](../experiments/README.md)へ置く。
 
-## 現在のInterface（移行元）
+## Seam and Interface
 
-次のInterfaceは現在のproduction codeと一致するが、`bootstrap`へSurface Mapを必須にする点と、Map revisionを中心に状態遷移する点は到達設計ではない。移行は公開`decide` seamを保ちながら、Target SnapshotとSource Tool Policyを必須、Surface Mapを任意にする。
+Explorationの外部Seamは一つのdecision Interfaceに保つ。
 
 ```ts
 interface Exploration {
   decide(input: ExplorationDecisionInput): ExplorationDecision;
 }
-
-type ExplorationDecisionInput =
-  | { kind: "bootstrap"; map: SurfaceMapRef; policy: ExplorationPolicyRef }
-  | {
-      kind: "wave-completed";
-      map: SurfaceMapRef;
-      state: ExplorationStateRef;
-      wave: WorkWaveRef;
-      results: readonly AttemptExecutionResultRef[];
-    }
-  | {
-      kind: "map-revised";
-      map: SurfaceMapRef;
-      state: ExplorationStateRef;
-    }
-  | {
-      kind: "verification-completed";
-      map: SurfaceMapRef;
-      state: ExplorationStateRef;
-      records: readonly VerificationRecordRef[];
-    };
-
-type ExplorationDecision =
-  | { kind: "run-wave"; plan: WorkWavePlan }
-  | { kind: "revise-map"; request: MappingEvidenceRequest }
-  | { kind: "verify"; hypotheses: readonly HypothesisRef[] }
-  | { kind: "review-gaps"; plan: GapReviewPlan }
-  | { kind: "close"; proposal: CoverageClosureProposalRef }
-  | { kind: "blocked"; gaps: readonly ExplorationGapRef[] };
 ```
 
-`ExplorationPolicyRef`はLane/Strategy policy、eligible Model Profile registry、ranking tuple、closure policyをdigest固定する。`decide`は同じ入力refsから同じdecisionとstable orderingを返すpure decisionである。callerはFinder role別method、`runChainSynthesizer`、`reopenFocus`、score更新、model votingを呼ばない。
+callerへRoot Planner、Family Registry、Finder、Synthesis、Critic、deduplication、closureを個別methodとして公開しない。これらの順序、freshness、stable fold、再開条件はExploration implementationへ隠す。
 
-## 現在実装済みのslice
+Interfaceは次の種類のdecisionを返せる。
 
-現行実装は`bootstrap`と最初の`wave-completed` inputを受ける。CASからdecode済みのSurface Map、versioned bootstrap policy、必要な場合は完了したWork WaveとFinder Attempt Resultを`openExploration`で一度束ねる。その後の`decide`はfilesystem、Research Ledger、provider process、Lab、clock、randomnessを使わないpure decisionである。binding時にMap、Policy、Wave、Resultのcanonical digest、identity、summaryを照合する。
+- 独立Approach Familyを持つ有限Work Wave
+- source-bound routeのIndependent Verification要求
+- 一つの具体的なmissing linkを追う次Wave
+- 追加sourceまたはdependencyを求めるEvidence Request
+- evidence-backed Closureまたは理由付きBlocked
 
-最小Map gateはinventoryの存在、summary、path uniqueness、observed source anchorとinventoryのbinding、relation endpoint、gap pathを確認する。空inventoryは`blocked`、訂正可能な不整合は必要証拠を持つ`revise-map`を返し、推測したworkを作らない。
+次versionのruntime schemaは実装するvertical sliceでBehavior Testと同時に固定する。設計だけで未使用schemaを先に増やさない。
 
-最初のFocus候補は次から作る。
+## Owned artifacts
 
-- symbol以外のentry、guard、source、state、sink node
-- observed entryを持たないindexed PHP file。直接request surfaceの可能性を安全と仮定せず、`unregistered-php-file`としてCoverage Laneへ置く
-- Surface Mapが明示したcoverage gap
+| Artifact | 意味 |
+| --- | --- |
+| Approach Family | 表面的なPrompt表現ではなく、mechanism、surface、premise、round、証拠、状態、reopen条件で識別したresearch idea |
+| Work Wave | 最大並列数、予算、Target、fresh Attempt、独立性を固定した有限work |
+| Source-bound Hypothesis | premise、破壊されるsecurity property、causal route、impact、unknown、falsifier、次Experimentを持つ完全候補 |
+| Route Fragment | 完全impactに届かないがsourceで裏付けたcapability、state transition、value production/consumption |
+| Gap Review | 不足link、coverage debt、dependency不足、反証結果をstable orderで統合した判断材料 |
+| Closure | 全familyのterminal state、残るgap、hard ceiling、reopen条件を持つ終了根拠 |
 
-各候補は一つのstable owner keyだけを持つ。候補全件を一Waveへ投入せず、Policyの`maxFocusAreas`と`maxLeases`内で決定的なFocus portfolioへ切る。`observed`または`inferred` relationだけで作る既知componentを使い、Target固有の外部entry、既知routeへ接続したsurface、危険primitive、期待情報利得、coverage debt、stable identityの順で比較する。`unknown` relationを到達根拠として辿らず、孤立した`bundled-vendor`候補は削除せず初回順位だけを下げる。外部entry、server impact、database、browserを別bucketとしてround-robinし、同じprimitive familyだけで最初のWaveが埋まらないようにする。
+raw transcript、provider session、mutable scratch、payload、runtime handleはExploration artifactにしない。
 
-各Focusへ一つのprimary Finder leaseを作り、entry順方向、sink逆方向、state-chain、権限・security invariant、Wildcardをfeatureに応じて割り当てる。異なるFocusで`maxLeases`を満たした場合は重複Leaseを作らない。capacityが残る場合だけ、REST entryまたはsinkのelevated candidateへ異なるStrategyと、利用可能なら異なるmodel familyの二つ目のleaseを置く。eligible familyが一つだけなら同じfamilyを黙って再利用せず、`reuse-with-exception: single-eligible-family`をplanへ残す。具体的modelではなくPolicyが許可したmodel family constraintだけをplanへ入れ、各leaseはwall time、model token、Hypothesis数の上限を持つ。
+## Research loop
 
-5 plugin familyのGit外characterizationでは、同じ8 Focus/9 lease policyから全Targetで有限な`run-wave`を返した。各Waveは少なくとも未登録PHP、mapping gap、sink、state、guardまたはentryを含み、Wildcardを一枠保持した。これは探索結果の質を示す評価ではなく、大規模なBrizyから小規模なWordPress File Uploadまで、Mapの大きさに比例してworkが無制限化しないことの特性確認である。
+```mermaid
+flowchart TB
+    input["Target Snapshot"]
+    planner["Root Planner"]
+    registry[("Approach Family Registry")]
+    finders["Independent Finders"]
+    barrier["Wave Barrier"]
+    synthesis["Root Synthesis"]
+    critic["Adversarial Critic"]
+    decision{"Decision"}
+    verify["Independent Verification"]
+    next["Missing-link Wave"]
+    stop["Closure / Blocked"]
 
-`wave-completed`は現時点ではSource-bound Hypothesisだけを取り込む。Waveの全Work Leaseに成功・失敗・取消のいずれかのterminal Resultが一つずつ揃うまでbarrierを開かない。Finder schemaとWork Leaseを照合し、observed anchorおよび全route node/relationが入力Mapに存在する候補だけを残す。Causal Identityとroute shapeで決定的に重複排除し、支持model数を使わず一件だけのHypothesisと相反するrouteを保持する。Resultの到着順を変えても同じ順序で`verify`を返す。有効な候補がなければFindingゼロではなく`blocked: no-source-bound-hypothesis`を返す。
+    input --> planner
+    registry --> planner
+    planner --> finders --> barrier --> synthesis --> critic --> decision
+    barrier --> registry
+    decision -->|"route"| verify
+    decision -->|"gap"| next --> planner
+    decision -->|"terminal"| stop
+```
 
-現行risk basisはREST interface、外部AJAX/admin-post hook、sink presenceを使うbootstrap分類であり、脆弱性、attacker reachability、severityを意味しない。actor、required privilege、state transitionがMapから確定しないfieldは`unresolved`のままにする。Route Fragment、Mapping Evidence Request、Closure Record、Chain Synthesis、Gap Review、map revision後の再計画は後続sliceである。
+Finder同士は進行中のconversation、scratch、candidateを共有しない。全Attemptがterminalになったbarrier後にだけ、型付きartifactをstable orderでSynthesisへ渡す。Synthesisの接続結果は新しいHypothesisでありFindingではない。
 
-### Focus correction slice（accepted / implemented）
+## Freedom inside the Evidence Shell
 
-private characterizationでは、stable ID順のcategory round-robinがbundled libraryのdebug sinkへ独立二系統を割り当てる場合と、数KBの孤立した未登録PHPを上位へ置く場合が観測された。一方、外部REST entryをseedにしたAttemptは複数のsource-bound Hypothesisを生成した。これはmodel effortの比較ではなく、初回WaveのFocusとsource contextが探索結果を支配する証拠である。
+Harnessが固定するのはTarget、source provenance、tool、予算、最大並列数、artifact schema、barrier、freshness、停止である。Finderは読む順序、pivot、機能間接続、wrapper追跡、cross-request state、parser境界、dependency調査の仮説を自由に決める。
 
-公開`Exploration.decide(input)`、Focus Areaの単一owner、三Lane、五Strategy、最大3並列を変更せず、内部の候補順とLease portfolioだけを次の規則へ置き換えた。
+`source-first`、`sink-first`、`state-chain`、`invariant-review`等は開始lensまたは観測labelに限る。固定手順、checklist、提出可能routeの制限にしない。Vulnerability class別Finder Interfaceを作らない。
 
-1. 外部REST、`wp_ajax_*`、`admin_post_*`と、Target固有entryへ既知relationで接続したsurfaceを先にする。
-2. sink impactはcode/process execution、filesystem write、database query、HTML outputの順に扱う。ただしこの順序をseverityまたは到達可能性の証明に使わない。
-3. 同程度なら、既知componentに含まれるsurface kind数、未解決relation数、既知relation数を期待情報利得の決定的proxyにする。その後にparse diagnostic、mapping incomplete、unsupported assetというcoverage debtとstable identityを使う。model confidenceは順位へ入れない。
-4. external-entry、server-impact-sink、database-sink、browser-sinkと残りのfeature bucketから一件ずつ選び、異なるimpact開始点を有限Waveへ残す。
-5. `bundled-vendor`は除外しないが、Target固有entryまたはstateへ`observed`/`inferred` relationで接続しない候補の初回順位を下げる。`unknown` relationは接続根拠にしない。
-6. Focusごとのprimary Leaseで上限に達しない場合だけ、選ばれたelevated Focusのうち同じpriority tupleで最上位の一件へ異なるStrategyを重ねる。
+詳細は[ADR 0113](../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)を正本とする。
 
-Focus改善の評価は最終Finding数へ潰さず、Target Snapshot identity、Map anchor coverage、最初の三Leaseにおけるrelevant Focus rank、Finderが取得できたroute context、Source-bound Hypothesis、Verification outcomeの順に観測する。十分なsource contextを得た同じProfileが繰り返しrouteを作れない場合にだけeffortまたはmodel比較へ進む。
+## Source Map and static tools
 
-Git外のBrizy 2.8.11/2.8.12 characterizationでは、両Targetとも外部AJAX entryを`entry-forward`と`wildcard`で重ね、別のcode-execution primitiveを`sink-backward`へ置く三Leaseになった。各Analysis Unitは8 files、650 KB以下で、Wildcardはdirected候補よりSurface Map標本を先にして別のsource集合を得た。`require_once`等のprimitive選択は調査開始点であって、attacker control、RCE、または脆弱性発見の証拠ではない。
+Depth Campaignの最初のWaveはraw-source Context Profileを使う。Surface Map、AST、Semgrep、CodeQL、個別scriptは任意のseed、coverage、pattern expansion、regressionに使えるが、次を許可しない。
 
-Git外のAppointment Booking Calendar characterizationでは、impact-aware bucketにより外部entry、server-impact sink、database sinkの三つを別Focusへ割り当てた。databaseの`sink-backward` Analysis Unitは同じdatabase-query familyのsourceを比較し、二次sourceが参照するclass-like symbol定義を一段だけ追加した。oracle-free positive Campaignはこの有限WaveからSQLi Hypothesisを生成したが、bucketまたはsource選択それ自体をreachabilityやFindingの証拠にはしていない。
+- Map nodeがないpathまたはcandidateを拒否する
+- static toolのnon-matchを安全性またはclosureの証拠にする
+- Analysis Unit、Focus Area、Map excerptを探索範囲の上限にする
+- toolが作ったreachabilityをsource evidenceなしにobservedとして扱う
 
-## Legacy Map bootstrap gate（移行元のみ）
+Map-assisted Coverageは独立raw-source Waveのbarrier後に追加候補を作れるが、先行candidateを削除またはdowngradeできない。
 
-この節は現行Map-first bootstrapの正確な挙動を記録する。新しいDepth Campaignの開始条件ではない。[ADR 0113](../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)に従い、raw-source Context Profile統合後はMap gateを最初のWaveから外す。
+## Diversity and prioritization
 
-全sourceの解析完了をDiscovery開始条件にしない。最初のWork Waveには少なくとも次を満たすSurface Map revisionを要求する。
+Root Plannerは同じideaの言い換えを別familyと数えず、相容れない複数familyを複数round維持する。有望度だけで全枠を一familyへ集中させない。blocked familyは新mechanismまたは新source evidenceがある場合だけ再開する。
 
-- 全Target manifest entryのinventoryと未対応理由がある
-- 一つ以上の実在するentry、trust transition、state、guard、sink anchorがあるか、それらを得られないgapが明示されている
-- observed、inferred、unknownが区別され、source anchorを持たない関係がobservedになっていない
-- Focus Areaの所有keyに使えるsurface anchorがstable identityを持つ
+Priorityはterminal impact、観測済みpremise、route completeness、missing linkの決定可能性、information gain、novelty、verification cost、coverage debtから作る。model confidence、支持model数、到着順を採否またはpriorityへ使わない。
 
-Discovery開始後もContext Request、Runtime Observation、Finderが見つけた新しいasset relationからSource Mapping revisionを要求できる。revisionは既存Work Waveの入力を変えず、次のdecisionから適用する。
+## Verification handoff
 
-各Focus Areaには、対象機能、利用actor、必要privilege、重要state transition、想定security invariantを短い型付きbriefとして持たせる。単一sinkの列挙だけを探索開始点にしない。
+Explorationはsource-boundで反証可能な候補だけをVerificationへ送る。Verifierへ渡す最小artifactはTarget identity、attacker premise、security property、causal route、source anchors、unknown、falsifier、requested Experimentである。
 
-## Superseded Lane / Strategy assignment
+Finderのconfidence、priority、transcript、session、別Finderの議論は渡さない。unknown relationをFinding成立条件へ残さず、runtime observationをWitnessとして再利用しない。
 
-以下の三Lane・五Strategyは現行実装と過去実験を再現するlabelとして残すが、Finderへ固定手順として割り当てる到達policyではない。Root PlannerはApproach Family RegistryからTarget固有の異質なidea familyを生成し、`entry-forward`等は観測labelまたは開始lensにだけ使う。
+## Failure and closure semantics
 
-Exploration Laneは「なぜ調べるか」を表す。
+次を区別し、空配列または「問題なし」へ丸めない。
 
-- Frontier Lane: primitiveをchainし、RCEまたは同等のsite-wide compromiseへ近づける
-- Primitive Lane: SQL injection、Stored XSS、authorization、identity、file、path等の独立impactを探す
-- Coverage Lane: 未所有surface、unknown relation、parseまたはmapping gapを閉じる
+- provider unavailable
+- invalid or policy-denied output
+- source evidence budget exhausted
+- unsupported attacker premise
+- missing dependency
+- unsupported verification mechanism
+- no new source evidence
+- disproved route
+- evidence-backed closure
 
-Exploration Strategyは「どう調べるか」を表す。初期Strategy Portfolioは次の五つとする。
-
-1. entry順方向: attacker-controlled inputからguard、state、sink、impactへ追う
-2. sink逆方向: code execution、file write、query、render、privileged actionから到達可能なinputへ戻る
-3. state-chain: write/read、actor交代、cross-request、保存identity、時間順を追う
-4. 権限・security invariant: 正常なFeature、Actor、Privilege、State Transitionから破壊可能な不変条件を探す
-5. Wildcard: 既知classまたはsink catalogに開始点を固定せず、source-boundな意外なrouteを探す
-
-Lane、Strategy、model family、worker roleを一つのenumへ潰さない。vulnerability classごとのFinder interfaceを作らず、共通Finder roleと共通Output Schemaへversioned Strategy Profileを与える。
-
-eligibleな各Work Waveには非ゼロのWildcard枠を持たせる。高リスクsurfaceまたはFrontier候補は、可能な限り異なるmodel familyと異なるStrategyで二系統以上に割り当てる。それ以外はsurface ownershipを分割してcoverageを優先する。割合、重複数、Hypothesis上限はinstrumented pilotで決める。
-
-探索多様性の第一要因は異なるFocus AreaとStrategyであり、model family数だけを多様性とみなさない。実戦Campaignでは、安価なProfileの独立Attemptを複数回使う選択と、異なるfamilyを組み合わせる選択の両方を許可し、source-boundな固有route、token、wall time、Attempt数で限界効用を記録する。state-chain、cross-feature Chain Synthesis、重大unknown、相反するrouteの解消には高い推論能力を持つeligible Profileを優先するが、provider名をLaneまたはStrategyへ固定しない。
-
-Model Profile比較では同じTarget Snapshot、Map revision、Focus Area、Strategy、tool budgetを固定してmodel差だけを測る。実戦のWork Waveでは割当をWave間でrotateし、複数AttemptのHypothesisをunionする。安価なProfileを含む一方、一familyしかeligibleでない場合もStrategy Portfolioを保って継続する。どちらの場合もmodel voting、支持数、単一のconfidence scoreでminority routeを落とさない。
-
-## Finder contract
-
-Finderの正本outputは次の型付きartifactだけとする。
-
-- Source-bound Hypothesis
-- Context RequestまたはRuntime Observationを必要とするMapping Evidence Request
-- Closure Record
-- Route Fragment Proposal
-
-自由文レポート、model confidence、重大度の自己申告、scanner matchだけを受理しない。Hypothesisは少なくともPermitted Attacker、破壊するsecurity property、Evidence Route、observed anchor、inferredまたはunknown gap、falsifier、次の決定的観測を持つ。cross-request routeはstate write、state read、保存identity、actor、順序を分ける。
-
-一Focus Areaから類似候補を無制限に生成せず、Causal Identityとroute shapeでdeduplicateする。ただし支持model数を採否に使わず、一つのmodelだけが示したHypothesisもsource-boundかつ反証可能なら残す。criticまたはSynthesizerはfalsifierと不足証拠を追加できるが拒否権を持たない。
-
-## Independent work and Chain Synthesis
-
-Finderは別Finderのconversation、scratch、payload、進行中outputを読まない。同じ高リスクFocus Areaへ複数Attemptを割り当てる場合もfresh contextと異なるStrategyを使う。結果は完了順に記録してよいが、全Attemptがterminalになるまで統合しない。
-
-Work Wave barrier後に、結果をstable Work ID順でfoldしてChain Synthesisを行う。入力は型付きRoute Fragment、Hypothesis、state transition、negative evidenceだけであり、raw transcriptではない。Chain Synthesisは次を行う。
-
-- 別Focus Areaのprimitive間に必要なactor、state、capability、trust transitionを照合する
-- ATO、Stored XSS、SQL injection、file primitive等を新しい権限またはexecution capabilityとしてFrontier routeへ戻す
-- 接続に必要な未知relationをFrontier Gapとして作る
-- 同じCausal Identityの重複をまとめるが、相反するrouteをconsensusで消さない
-
-接続済みgraphは新しいHypothesisでありFindingではない。既存Route Fragmentのobserved範囲を越えるedgeとterminal impactは個別に反証可能でなければならない。
-
-## Mapping evidence and Runtime Observation
-
-静的に決められないdynamic hook、callback、registration、dispatch、state transitionは推測でobservedにしない。Explorationは必要な決定と情報利得を持つMapping Evidence Requestを返し、Source Mappingがsource Context RequestまたはRuntime Observation Planへ変換する。
-
-Runtime Observationはfresh Lab Baseline cloneで許可された低影響操作だけを実行し、固定request、観測対象、成功条件、上限、cleanupを記録する。結果は次のSurface Map revisionのruntime evidenceになれるが、攻撃payload、security property破壊、Witness、Causal Control、Finding promotionには使わない。FinderへLab、HTTP、browser、shellを渡さない。
-
-## Ranking and verification handoff
-
-Exploration Queueはopaque scoreまたはmodel confidenceではなく、次のversioned tupleをstable orderで比較する。
-
-1. terminal impactとPermitted Attacker
-2. observed Route Fragmentとessential gapの具体性
-3. 次の観測が支持または反証を決める情報利得
-4. 検証費用と残budget
-5. noveltyと既知Causal Identityとの差
-6. coverage debt
-
-Wordfenceの誤検出基準はDiscoveryの候補生成を禁止するchecklistにせず、Hypothesis生成後のPreflightとVerificationで具体的falsifierとして使う。static rule matchはHypothesis Seedとして出自を記録し、通常のsource binding、ranking、Preflight、独立Verificationを通す。
-
-blindな全面fuzzingは初期探索へ入れない。source-bound Hypothesisと決定したinput surfaceがある場合だけ、Verificationが限定的なtyped Experimentとしてrequest生成を扱う。
-
-## Closure and reopening
-
-Finderのdoneまたは自由文summaryでFocus Areaを閉じない。Closure Recordは所有surfaceをobserved、Hypothesis化、source根拠付きruled-out、理由付きBlockedへ分類する。
-
-全Focus AreaのClosure Recordが揃った後、freshなGap Reviewerが未所有surface、unknown relation、未追跡state、未解析asset、探索重複を調べる。Coverage Closureには既存ADRどおり独立した二回のgap passを要求する。新しいSurface Map revision、Route Fragment、state transition、dependency evidenceがclosureの前提を変えた場合だけ、該当Focus Areaを新revisionとして再開する。
-
-resource exhaustion、provider failure、Observation不能、未選択HypothesisをCoverage Closureへ読み替えない。
-
-## Failure semantics
-
-- Finder outputがschema不一致またはsource anchorなしならHypothesisへ昇格せず、invalid outputとして記録する。
-- 一つのAttemptまたはmodel familyが失敗しても、別Attemptのminority Hypothesisを破棄しない。
-- MapperとFinderの主張が矛盾する場合、observed factを維持し、矛盾をMapping Evidence Requestへ変える。
-- Runtime Observationが失敗した場合、relationをfalseにせずreason付きunknownまたはBlockedとして残す。
-- Chain Synthesisが新しい接続を作れなくても、入力Route Fragmentとprimitive Hypothesisを変更しない。
-- Gap Reviewで新しいsurfaceまたはrouteが見つかった場合、Completedへ進まず次の有限Work Waveを作る。
+一Waveの失敗またはFinderの自己申告だけでCampaignを終了しない。全Approach Familyがterminalで、blocked routeがreopen条件を持ち、連続Waveで新しいsource evidence、Fragment、familyが増えず、Criticもmaterially new mechanismを提示できず、coverage debtとdependency gapが記録された場合に終了できる。最大時間はhard ceilingであり、消費目標または最低探索時間ではない。
 
 ## Test surface
 
-behavior testは`decide(input)`が返すExploration Decisionと、そこから記録される型付きartifactだけを観測する。prompt文章、内部score、model call count、Finder実行順、dedup helper、Chain Synthesisの中間graphを直接assertしない。
+Behavior Testは`Exploration.decide`から観測する。Root Plannerのprivate prompt、内部call順、registry storage row、model thought processを直接testしない。
 
-固定Surface Map、Attempt outputs、Verification records、policyをfixtureとして使い、少なくとも次を検査する。
+最低限、次を保護する。
 
-1. 同じ入力から同じFocus Area、Work Wave、stable orderingを返す。
-2. LaneとStrategyが別軸で割り当てられ、Wildcard枠がeligibleなWaveから消えない。
-3. 高リスクFocus Areaの独立Attemptが別Strategyとmodel-family constraintを持つ。
-4. 一件だけのsource-bound Hypothesisが多数決で失われない。
-5. 相反するrouteが別artifactとして残り、決定的なEvidence Requestが作られる。
-6. cross-request chainがwrite/read identityとactor順序を失わない。
-7. Runtime Observation resultがSurface Map evidenceにはなってもWitnessにはならない。
-8. Semgrep matchがHypothesis Seedを越えてFinding扱いされない。
-9. 新しいRoute Fragmentが閉じたFocus Areaの前提を変えた時だけ再開する。
-10. independent Gap Reviewが未所有surfaceを見つけた場合、Coverage Closureを返さない。
+1. Mapなしでもraw-source Waveを開始できる。
+2. Map外source anchorを持つHypothesisとFragmentを取り込める。
+3. 最大3 Finderが独立Attemptになり、完了順でterminal digestが変わらない。
+4. minority routeと相反routeを多数決で失わない。
+5. FragmentがSynthesisとCriticを経て具体的なmissing-link Waveを作る。
+6. blocked familyは新mechanismなしに再開されない。
+7. route成立時だけIndependent Verificationへ進む。
+8. provider failure、budget、dependency、unsupported verificationを別のterminal reasonに保つ。
+9. close/reopen後もFamily Registry、Wave、decisionを同じLedgerから再生できる。
 
-## Explicit non-goals for the first implementation
-
-- vulnerability classごとのagent hierarchy
-- Finder同士のchat、debate、majority vote
-- model confidenceまたはlearned black-box ranker
-- embedding/vector databaseを前提にしたsource retrieval
-- root evidenceのない全面fuzzing
-- FinderへのWordPress runtime、browser、network、shell権限
-- Runtime ObservationとFinding Verificationの統合
-
-embedding等はdeterministic symbol、graph、source searchで再現可能なcoverage gapが測定された時だけ再評価する。探索以外のUI、notification、multi-user、運用自動化は、安全隔離とevidence integrityに必要な最小限を除き、実戦で壊れた箇所をissue化して改善する。
+DepthとBreadthの別運行は[ADR 0114](../adr/0114-separate-breadth-and-depth-campaign-policies.md)、全体図は[自由探索エージェント・ループ](architecture/autonomous-research-loop.md)を参照する。

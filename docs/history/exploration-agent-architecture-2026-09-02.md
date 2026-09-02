@@ -1,12 +1,12 @@
 # 探索エージェント構成（Exploration Agent Architecture）
 
-Status: living implementation view, 2026-09-02
+Status: frozen implementation snapshot, 2026-09-02
 
-この文書は、現在の探索処理をコードの詳細なしで追うための図である。設計上の正本は[Exploration seam](../exploration-seam.md)、実装場所とTestは[Codebase Guide](../../CODEBASE-GUIDE.md)とする。
+この文書は、2026-09-02時点の探索処理をコードの詳細なしで追うための履歴図である。現在の設計上の正本は[Exploration seam](../design/exploration-seam.md)、実装場所とTestは[Codebase Guide](../CODEBASE-GUIDE.md)とする。
 
-現在の短い独立探索と、複数primitiveを長いattack chainへ接続する到達形の違いは[広域探索と深掘り調査](breadth-depth-research-loop.md)に分ける。この文書の「3並列」は現在のWork Wave実装を示し、三つの異なる認知戦略またはArgus相当のdepthを保証するものではない。
+当時の短い独立探索と、複数primitiveを長いattack chainへ接続する到達形の違いは[広域探索と深掘り調査](../design/architecture/breadth-depth-research-loop.md)に分ける。この文書の「3並列」は当時のWork Wave実装を示し、三つの異なる認知戦略またはArgus相当のdepthを保証するものではない。
 
-図を横長にしないため、`対象理解 -> 作業分割 -> 並列Finder -> 仮説取込 -> 独立検証`を複数枚に分ける。緑は実装済み、黄は一部実装、灰は設計のみを表す。到達形の自由探索loopは[自由探索エージェント・ループ](autonomous-research-loop.md)、現在の完成度は[ハーネス完成度監査](../harness-completeness-audit.md)を参照する。
+図を横長にしないため、`対象理解 -> 作業分割 -> 並列Finder -> 仮説取込 -> 独立検証`を複数枚に分ける。緑は当時の実装済み、黄は一部実装、灰は設計のみを表す。到達形の自由探索loopは[自由探索エージェント・ループ](../design/architecture/autonomous-research-loop.md)、当時の完成度は[2026-09-03監査](../audits/harness-completeness-2026-09-03.md)を参照する。
 
 ## 1. 現行Map-first実装（移行元）
 
@@ -73,7 +73,7 @@ leases      = one primary Lease per selected Focus
 
 `unknown` relationを既知routeとして辿らず、架空の到達可能性を作らない。孤立した`bundled-vendor`候補も削除せず初回順位だけを下げ、Target固有entryまたはstateへ既知relationで接続していれば通常候補へ戻す。これはseverity scoreではなく、最初の有限Waveで何を調べるかを決める優先規則である。
 
-候補生成とWork Waveは[bootstrap-exploration.ts](../../../src/research/exploration/bootstrap-exploration.ts)、内部順位は[focus-portfolio.ts](../../../src/research/exploration/focus-portfolio.ts)、外から観測する回帰仕様は[exploration-bootstrap.test.ts](../../../tests/research/exploration-bootstrap.test.ts)を参照する。
+候補生成とWork Waveは[bootstrap-exploration.ts](../../src/research/exploration/bootstrap-exploration.ts)、内部順位は[focus-portfolio.ts](../../src/research/exploration/focus-portfolio.ts)、外から観測する回帰仕様は[exploration-bootstrap.test.ts](../../tests/research/exploration-bootstrap.test.ts)を参照する。
 
 ## 2. LaneとStrategyを別々に割り当てる
 
@@ -182,7 +182,7 @@ flowchart TB
     class assignment,seed,choose,directed,secondary,hop,symbol,literal,hook,wildcard,bind,unit,prompt done;
 ```
 
-UnitはTarget、Map、Program Index、Focus、Leaseのdigestと、実際に採用したpath、file digest、line range、byte量、選択理由を持つ。同じsinkへ二つのLeaseを重ねても、directedとwildcardが同じsource集合へ収束しにくい。選択理由は「なぜcontextへ入れたか」の記録であり、sourceからsinkへの到達証拠ではない。実装は[finder-attempt-materializer.ts](../../../src/research/campaign-control/finder-attempt-materializer.ts)、外から観測する仕様は[finder-attempt-materializer.test.ts](../../../tests/research/finder-attempt-materializer.test.ts)を参照する。
+UnitはTarget、Map、Program Index、Focus、Leaseのdigestと、実際に採用したpath、file digest、line range、byte量、選択理由を持つ。同じsinkへ二つのLeaseを重ねても、directedとwildcardが同じsource集合へ収束しにくい。選択理由は「なぜcontextへ入れたか」の記録であり、sourceからsinkへの到達証拠ではない。実装は[finder-attempt-materializer.ts](../../src/research/campaign-control/finder-attempt-materializer.ts)、外から観測する仕様は[finder-attempt-materializer.test.ts](../../tests/research/finder-attempt-materializer.test.ts)を参照する。
 
 FinderがHypothesisの`requiredEvidence`にTarget inventory内の具体的なPHP pathを挙げた場合、Independent Verifierはそのpathだけを追加sourceとして取得できる。これはFinderの主張を真と扱う処理ではない。pathの実在、PHP分類、manifest digest、file/total byte上限を再検査したうえで、Verifierが固定sourceから独立に支持または反証するためのbounded Context Responseである。
 
@@ -237,7 +237,7 @@ flowchart TB
     class output,mapreq,revision,wave planned;
 ```
 
-詳細と受入条件は[Evidence-guided Finder loop](../evidence-guided-finder-loop.md)と[ADR 0112](../../adr/0112-treat-analysis-units-as-seeds-for-bounded-source-retrieval.md)に記録する。設計はacceptedで、provider非依存Gateway、Claude native bridge、production Campaign materializer bindingまで実装済みである。Finder Attempt Resultは完全なHypothesis未満の`Route Fragment Proposal`もprivate CASへ保持できる。ただしWaveへの取込とChain Synthesisは未実装なので、図のbarrier以降は引き続き灰色である。`symbol / graph`も未実装である。
+詳細と受入条件は[Evidence-guided Finder loopの旧設計snapshot](evidence-guided-finder-loop-2026-09-02.md)と[ADR 0112](../adr/0112-treat-analysis-units-as-seeds-for-bounded-source-retrieval.md)に記録する。当時はprovider非依存Gateway、Claude native bridge、production Campaign materializer bindingまで実装済みだった。Finder Attempt Resultは完全なHypothesis未満の`Route Fragment Proposal`もprivate CASへ保持できたが、Waveへの取込とChain Synthesisは未実装だった。
 
 ### Brizy pairで確認した6 Gate
 

@@ -126,6 +126,25 @@ function readGlossaryTerms(markdown) {
   return terms;
 }
 
+function checkCanonicalDesignContent(markdownPath, markdown) {
+  if (!markdownPath.startsWith("docs/design/")) {
+    return;
+  }
+
+  const staleHeading =
+    /^## (?:Implementation status|Implemented\b|Current-code alignment|First-slice limits|First implementation sequence|First closed research slice)/m;
+
+  if (
+    staleHeading.test(markdown) ||
+    /^Implementation status:/m.test(markdown)
+  ) {
+    diagnostics.push(
+      markdownPath +
+        ": implementation snapshots belong in docs/CODEBASE-GUIDE.md, docs/experiments/, docs/audits/, or docs/history/",
+    );
+  }
+}
+
 const glossaryPath = "docs/JAPANESE-GLOSSARY.md";
 const glossaryTerms = markdownFiles.includes(glossaryPath)
   ? readGlossaryTerms(
@@ -137,6 +156,7 @@ let contextTermCount = 0;
 for (const markdownPath of markdownFiles) {
   const markdown = readFileSync(resolve(repositoryRoot, markdownPath), "utf8");
   checkRelativeLinks(markdownPath, markdown);
+  checkCanonicalDesignContent(markdownPath, markdown);
 
   if (markdownPath === "CONTEXT.md" || markdownPath.endsWith("/CONTEXT.md")) {
     const contextTermPattern = /^\*\*([^*\n]+)\*\*:/gm;

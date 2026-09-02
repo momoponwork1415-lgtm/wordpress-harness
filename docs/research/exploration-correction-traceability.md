@@ -53,7 +53,7 @@ OpenAntは`repository scanner -> AST extractor -> call graph -> unit generator`�
 
 **B.** Target固有entry、trust transition、state、dangerous sinkを単一node kindより先に比較し、到達根拠のないbundled codeを削除せず初回重複割当だけ避けるのは、上記のreachability/risk/coverage patternをfalse-negative-safeに適応したものだ。
 
-**C.** 旧実装のstable-ID category round-robinがbundled debug sink、relationのないtemplate、小さな補助PHPを上位へ置く一方、外部REST entryをseedにしたAttemptはsource-bound Hypothesisを作った。このprivate characterizationがFocus correctionの直接原因である。[Exploration agent architecture](../design/architecture/exploration-agent-architecture.md#1-surface-mapから調査範囲を作る) private artifactはGitへ置かないため、公開benchmark結果とは主張しない。
+**C.** 旧実装のstable-ID category round-robinがbundled debug sink、relationのないtemplate、小さな補助PHPを上位へ置く一方、外部REST entryをseedにしたAttemptはsource-bound Hypothesisを作った。このprivate characterizationがFocus correctionの直接原因である。[当時のExploration agent architecture](../history/exploration-agent-architecture-2026-09-02.md#1-現行map-first実装移行元) private artifactはGitへ置かないため、公開benchmark結果とは主張しない。
 
 **D.** 同順位を`expected information gain -> coverage debt -> stable identity`で決め、model confidenceを使わない正確なtupleは本harnessの提案である。外部資料はrisk rankingとcoverage測定を支持するが、この順序や計算式を規定しない。[Exploration seam](../design/exploration-seam.md#focus-correction-sliceaccepted--implemented)
 
@@ -61,9 +61,9 @@ OpenAntは`repository scanner -> AST extractor -> call graph -> unit generator`�
 
 **A.** Mandiantはspecialized agentをsequential pipelineへ接続し、各phaseを完了してから次へ進め、threat modelには明示的approval gateを置く。[Mandiant AVDH, Architecting the Pipeline–Threat Modeling](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review) AnthropicはDiscoveryとVerificationを別目的にし、agentic gradingより前にcheap programmatic gateを置く。[Anthropic Best Practices, Verification](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#verification-the-load-bearing-component) Codex Securityもexact inventory、source-backed investigation packet、typed candidate、parent validationを別artifact/stepで扱う。[Codex Security core scan](https://github.com/openai/codex-security/blob/cfde3f4c0922656caa625c1fad42aa1f7ba1df71/plugins/codex-security/references/core-scan.md#core-workflow)
 
-**B/D.** これを`Target Identity -> Map Coverage -> Focus Rank -> Context Reach -> Hypothesis Recall -> Verification`へした6 gateは本harnessの診断用adaptationである。最終Finding数だけを見ず、「対象が違う」「Mapが欠ける」「重要Focusを選べない」「必要sourceへ届かない」「仮説を作れない」「実証できない」を分ける命名と観測contractはDである。[探索エージェント構成](../design/architecture/exploration-agent-architecture.md)
+**B/D.** これを`Target Identity -> Map Coverage -> Focus Rank -> Context Reach -> Hypothesis Recall -> Verification`へした6 gateは本harnessの診断用adaptationである。最終Finding数だけを見ず、「対象が違う」「Mapが欠ける」「重要Focusを選べない」「必要sourceへ届かない」「仮説を作れない」「実証できない」を分ける命名と観測contractはDである。[当時の探索エージェント構成](../history/exploration-agent-architecture-2026-09-02.md)
 
-**C.** Simply Schedule Appointmentsの校正では、同じ表示versionでも取得bytesが想定したvulnerable snapshotではなく、Gate 1で比較を止めるべき事例を観測した。これはmodel effortを上げる前にTarget digestを確認するcorrectionのローカル根拠であり、一般benchmark結果ではない。[探索エージェント構成](../design/architecture/exploration-agent-architecture.md)
+**C.** Simply Schedule Appointmentsの校正では、同じ表示versionでも取得bytesが想定したvulnerable snapshotではなく、Gate 1で比較を止めるべき事例を観測した。これはmodel effortを上げる前にTarget digestを確認するcorrectionのローカル根拠であり、一般benchmark結果ではない。[当時の探索エージェント構成](../history/exploration-agent-architecture-2026-09-02.md)
 
 ### 5. Independent Verification, Witness, and Causal Control
 

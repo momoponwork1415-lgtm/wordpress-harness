@@ -63,4 +63,4 @@ Aikidoのfirst-party materialは、AI Code Analysisがfile/moduleをまたいで
 
 このsliceが通るまで、同一Map・同一Focus・同一Analysis UnitでOpus試行数だけを増やす実験は止める。次に測るべき値はtoken消費ではなく、`Context Reach`、新規source anchor数、wrapper resolution、Hypothesis Recall、取得budgetである。
 
-この調査を反映したaccepted designと最初の実装sliceは、[Evidence-guided Finder loop](../design/evidence-guided-finder-loop.md)に記録する。
+この調査を反映した当時のdesignと最初の実装sliceは、[Evidence-guided Finder loopの旧設計snapshot](../history/evidence-guided-finder-loop-2026-09-02.md)に凍結している。現在の判断は[ADR 0113](../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)を優先する。

@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR 0113
 ---
 
 # Compose each Work Wave from three exploration lanes

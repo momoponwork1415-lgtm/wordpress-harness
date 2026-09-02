@@ -1,14 +1,10 @@
 # Verification seam
 
-Status: accepted, 2026-09-02
+Status: accepted design; current mechanisms are tracked only in the [Codebase Guide](../CODEBASE-GUIDE.md)
 
-Implementation status: partial. Stored XSSとSQL injectionについて、同じ公開`verify` Interface、Finding gate、同じCausal Identityに限定したDisproved、typed Blocked、artifact digest検査、private CAS、Verification event、close/reopen replayまで実装済みである。production Claude Independent Verifierは、固定Target、Surface Map、Hypothesis routeに加え、Hypothesisの`requiredEvidence`が明示したinventory内PHP pathだけをbounded Context Responseとして追加できる。path tokenの両端とinventory identityを完全一致させ、分類、size、SHA-256も再検査し、Finderの主張自体は証拠にしない。Stored XSSとSQLiのLab adapterは、共通のWordPress/gVisor lifecycle Moduleを利用し、`runsc` preflight、content-addressed image、internal network、fresh volume、digest検査済みreviewed fixture pluginのactivation、private worker/input、sanitized Observation、cleanupを行う。自由なsetup argvまたは`eval-file`は受け取らない。private Brizy 2.8.11/2.8.12では、実Opus再導出とfresh gVisor Witness/Controlにより同じCausal IdentityのFinding/Disproved境界を確認した。Appointment Booking Calendar 1.6.9.29ではSQLi root mechanismをFindingにしたが、完全な未認証premiseと、同一Identityを使う1.6.10.0のDisprovedは未完了である。`runsc` unavailable時はplain Dockerへfallbackしない。未実装なのはaccount takeover、file、code/process execution等のproduction Experiment mechanismである。
+## Owner and purpose
 
-## Design target
-
-VerificationはResearch contextが所有するload-bearing deep Moduleである。Source-bound Hypothesisを固定Target Snapshotに対して独立に再導出し、必要なExperimentを隔離実行し、成立証拠と因果対照実験を一つの型付きoutcomeへ閉じる。
-
-Campaign ControlとBehavior Testが使う公開Interfaceは一つにする。
+`Verification`はsource-bound Hypothesisを固定Targetに対して独立に再導出し、隔離実験と因果対照から型付きoutcomeを作る。Finderの主張をそのまま証拠にせず、Findingへ昇格できる唯一のgateを所有する。
 
 ```ts
 interface Verification {
@@ -16,77 +12,105 @@ interface Verification {
 }
 ```
 
-Campaign Controlへ`preflight`、`planExperiment`、`runWitness`、`runControl`、`askSkeptic`、`promoteFinding`を個別公開しない。これらを呼ぶ順序、freshness、budget reservation、evidence gate、記録順はVerification implementationへ隠す。
+`preflight`、`runWitness`、`runControl`、`promoteFinding`を個別公開しない。安全な順序、freshness、evidence durability、promotion ruleは`verify`の背後へ隠す。
 
-## Design it twice
+## Verification lifecycle
 
-三つのInterface案を比較した。
+```mermaid
+flowchart TB
+    plan["Verification Plan"]
+    integrity{"Identity and digest<br/>valid?"}
+    rederive["Independent source<br/>re-derivation"]
+    experiment["Typed Experiment Plan"]
+    baseline[("Sealed Lab Baseline")]
+    witness["Fresh Witness Lab"]
+    control["Fresh Control Lab"]
+    gate{"Evidence gate"}
+    finding["Finding"]
+    disproved["Disproved"]
+    blocked["Blocked"]
+    record[("Verification record")]
 
-| 案 | Interface | 判断 |
-| --- | --- | --- |
-| lifecycle公開 | `preflight`、`runWitness`、`runControl`、`decide` | callerが安全な順序と全invariantを知るshallow Moduleになるため却下 |
-| outcome直接返却 | `verify(plan) -> VerificationOutcome` | 呼びやすいが、evidence durable writeとLedger commit前にoutcomeが外へ出るため却下 |
-| record ref返却 | `verify(plan) -> VerificationRecordRef` | 小さいInterfaceの背後にlifecycle、artifact durability、promotion gateを隠せるため採用 |
+    plan --> integrity
+    integrity -->|"invalid"| blocked
+    integrity -->|"valid"| rederive --> experiment
+    baseline --> witness
+    baseline --> control
+    experiment --> witness --> gate
+    experiment --> control --> gate
+    gate --> finding --> record
+    gate --> disproved --> record
+    gate --> blocked --> record
+```
 
-採用案では、返却されたrefはResearch Recordへdurableに記録済みのrecordだけを指す。callerはrefから型付きread modelを取得し、private artifact storageを直接読まない。
+FinderとVerifierはAttempt、session、conversation、scratch、payload、mutable Labを共有しない。同じmodel familyを使っても独立性の代用にはしない。
 
-## Owner and dependencies
+## Minimal handoff
 
-Owner contextは`Research`、owner Moduleは`Verification`である。
+Verificationが受け取るHypothesisは次の因果要素に限定する。
 
-許可する依存:
+```mermaid
+flowchart LR
+    premise["Attacker premise"] --> route["Source-bound route"]
+    route --> property["Broken security property"]
+    property --> impact["Impact"]
+    route --> unknown["Unknown and falsifier"]
+    unknown --> experiment["Requested experiment"]
+```
 
-- Target Snapshotとsource artifactのread-only resolver
-- Model Executionの`run(AttemptPlan)`
-- Verification専用のLab Control `execute(ExperimentPlan)`
-- private CASのtyped artifact read/write
-- Research Recordのappend/read
-- harness-owned clockとID source
+Case role、expected result、advisory、CVE、patch narrative、known payload、Finder confidence、Discovery transcriptをPlanへ含めない。
 
-禁止する依存:
+## Causal experiment
 
-- Finder session、transcript、scratch、provider object、worker identity
-- Exploration priority、model confidence、known advisory、Wordfence duplicate data
-- Human OS storageまたはprogramme eligibility
-- container socket、host target process、plain Docker fallback
-- VerificationからSource Map、Hypothesis、Campaign policyを書き換える逆向き依存
+WitnessとControlは同じsealed baselineから作るfresh siblingであり、宣言した一つのcausal factorだけを変える。
 
-Model Execution、Lab Control、artifact store、clock、ID sourceはconstructorで受け取るinternal system seamとする。二つ目のproduction adapterを想定した汎用repository層は作らない。
+```mermaid
+flowchart TB
+    baseline[("Same baseline")]
+    factor["Declared causal factor"]
+    witness["Witness<br/>factor present"]
+    control["Control<br/>factor removed"]
+    normal["Normal function check"]
+    compare{"Compare observations"}
 
-## Verification Plan
+    baseline --> witness
+    baseline --> control
+    factor --> witness
+    factor -. "removed" .-> control
+    witness --> compare
+    control --> compare
+    normal --> compare
+```
 
-`VerificationPlanV1`はversioned runtime schemaでdecodeし、canonical digestを持つ不変入力とする。callerが渡す情報は次に限定する。
+Target、runtime、setup、configuration、adapter versionが一致しないpairは証拠にしない。mapping用Runtime ObservationをWitnessへ流用しない。normal functionが壊れただけのnegativeを脆弱性修正と扱わない。
 
-- verification ID、Campaign ID、Target Snapshot ref
-- Campaignの技術的scopeとPermitted Attacker
-- 正規化したSource-bound Hypothesisとそのdigest
-- sealed Lab Baseline refとRuntime Profile ref
--固定Verifier Model Profile、Prompt Set、Verification Policy、Experiment Registryのrefs
-- Verification用に予約済みのAttempt、wall time、Experiment回数の予算
+## Outcome gate
 
-Hypothesisはattacker premise、破壊されるsecurity property、source-bound Evidence Route、unknown、falsifier、Causal Identityを含む。Case role、expected result、advisory、CVE、patch、Discovery conversation、known payload、confidence、priorityを含めない。
+```mermaid
+flowchart TB
+    source{"Source route<br/>supported?"}
+    witness{"Property break<br/>observed?"}
+    control{"Break disappears<br/>in control?"}
+    normal{"Normal function<br/>holds?"}
+    finding["Finding"]
+    disproved["Disproved<br/>this causal identity only"]
+    blocked["Blocked<br/>insufficient evidence"]
 
-VerificationはPlan digest、Target Snapshot digest、Hypothesis digest、Lab Baseline digestが一致しない場合、Labやmodelを起動する前にintegrity errorとして拒否する。
+    source -->|"yes"| witness
+    source -->|"no, decisive"| disproved
+    source -->|"unknown"| blocked
+    witness -->|"yes"| control
+    witness -->|"no, valid pair"| disproved
+    witness -->|"unknown"| blocked
+    control -->|"yes"| normal
+    control -->|"no"| disproved
+    normal -->|"yes"| finding
+    normal -->|"no or unknown"| blocked
+```
 
-## Owned lifecycle
+`Disproved`は一つのHypothesisと`Causal Identity`に限定する。plugin全体や別routeに脆弱性がないという意味へ拡張しない。支持も反証もできない時は、unsupported experiment、provider、budget、Lab isolation、non-hermetic state等をtyped `Blocked`として残す。
 
-一回の`verify`は次を順に所有する。
-
-1. Planと参照artifactをruntime decodeし、digestとbudget reservationを検査する。
-2. 固定sourceでsymbol、source range、entry registration、attacker reachability、capability、nonce、sink relationを事前検査する。
-3. fresh Verifier Attemptを起動し、提示routeを権威とせずsourceから到達性、原因、反証可能なExperimentを再導出する。
-4. registryに存在するmechanism固有のtyped Experiment Planだけを受理する。adapterは実Targetのvertical sliceごとに`stored-xss-browser@v1`、`sql-injection-database@v1`、`account-takeover-password-reset@v1`の順で追加する。
-5. sealed Lab Baselineからfresh siblingを二つ作り、一方でWitness、他方でCausal Controlを実行する。
-6. baseline、runtime、setup、configuration、adapter versionが一致し、宣言したcausal factorだけが異なることを検査する。
-7. attacker premise、security property、Witness、Causal Control、normal-function observationを反証側から検査する。
-8. evidence artifactをprivate CASへdurable writeし、そのdigest refsとtyped outcomeをResearch Ledgerへ一つのterminal recordとしてappendする。
-9. append済み`VerificationRecordRef`だけを返す。
-
-FinderとVerifierが同じmodel familyを使う最初のsliceでも、Attempt ID、provider session、conversation、scratch、writable Lab、payloadを共有しない。model familyの同一性を独立性の証拠へ読み替えず、recordへ明示する。
-
-## Lab Control internal seam
-
-Verification implementationだけが次のdriven Interfaceを使う。
+## Lab boundary
 
 ```ts
 interface LabControl {
@@ -94,105 +118,43 @@ interface LabControl {
 }
 ```
 
-Lab ControlはgVisor、WordPress、database、browser、lab cleanupを隠すが、Hypothesisの真偽またはFinding promotionを判断しない。Observationはmechanism固有のversioned discriminated unionを持つ。全Experimentが共通して次を記録する。
+Lab Controlはruntime、database、browser、cleanupを隠すが、Finding判定を行わない。Planはregistryにあるversioned mechanismだけを使い、任意shell、任意PHP、自由なsetup argv、host実行を許可しない。隔離runtimeが利用不能ならplain DockerへfallbackせずBlockedにする。
 
-- Target Snapshot、Lab Baseline、Runtime Profile、Setup Plan、Configuration Variant、adapter versionのdigests
-- fresh sibling identityとno-fallback gVisor runtime identity
-- normal-function observation
-- causal factor identityと、WitnessまたはControlのrole
-- sanitized artifact refsとterminal execution status
+credential、cookie、raw browser trace、target source、sensitive readbackをLedgerへ保存しない。実験canaryとprincipalはLab専用・使い捨てにする。
 
-さらにmechanism固有に次を記録する。
+## Durable ordering and replay
 
-- `stored-xss-browser@v1`: attacker request、persistent-state、victim-browser execution canary
-- `sql-injection-database@v1`: attacker request、Lab生成のdatabase-only readback canary、database observation
-- `account-takeover-password-reset@v1`: attacker-obtainable reset capability、専用Lab principalのcredential transition、authentication observation
+```mermaid
+sequenceDiagram
+    participant VE as Verification
+    participant RR as Research Record
+    participant LAB as Fresh sibling Labs
+    participant CAS as Private CAS
 
-SQL injectionのWitnessはLab生成の固定canaryだけを読み出し、WordPress accountや実dataを証拠へ含めない。account takeoverのWitnessは使い捨てLab principal以外を操作しない。
-
-payload、cookie、credential、raw browser trace、target sourceをLedgerへ保存しない。gVisor unavailable、baseline clone不能、browser failure、non-hermetic external stateではevidentiary observationを返さない。
-
-## Typed outcome
-
-`VerificationRecordV1`はPlan digest、provenance、terminal time、evidence refsと次のdiscriminated unionを持つ。
-
-```ts
-type VerificationOutcomeV1 =
-  | FindingOutcomeV1
-  | DisprovedOutcomeV1
-  | BlockedOutcomeV1;
+    VE->>RR: append verification intent
+    VE->>LAB: execute typed pair
+    LAB-->>VE: sanitized observations
+    VE->>CAS: write evidence artifacts
+    CAS-->>VE: evidence refs
+    VE->>RR: append terminal outcome
+    RR-->>VE: VerificationRecordRef
 ```
 
-### Finding
+同じPlanの完了済み再実行は同じrefを返す。crash後にterminal recordがなければ古いVerifier outputやLabを再利用せず、fresh Attemptとfresh siblingで再開する。schema、digest、Ledger corruptionは研究上のBlockedへ丸めずread rejectionにする。
 
-次をすべて満たした場合だけ`finding`にする。
+## Invariants
 
-- source re-derivationがattacker premiseからsecurity-relevant sinkまでを支持する
-- fresh Labでmechanism固有のsecurity-property破壊を客観的に観測する
-- fresh sibling Causal Controlで宣言した原因要素を除くと破壊が消える
-- normal-function observationが成立する
-- Target、baseline、configuration、adapter、canary、artifactのintegrityが成立する
+1. Findingにはsource再導出、Witness、Causal Control、normal-function observation、integrityがすべて必要である。
+2. Finderの自己評価、model confidence、支持model数を証拠にしない。
+3. VerificationからMap、Hypothesis、Campaign policyを書き換えない。
+4. evidence artifactをdurable writeした後だけterminal refを返す。
+5. Labまたはprovider failureをDisprovedにしない。
+6. private evidenceとcredentialをpublic read modelへ出さない。
 
-### Disproved
+## Behavior test surface
 
-`disproved`はこのHypothesisとCausal Identityに限定したtyped negative outcomeである。sourceが必要条件の不成立を決定的に示すか、validなWitness/Control pairがsecurity-property破壊または因果関係の不成立を示す場合だけ返す。plugin全体に脆弱性がないという意味ではない。
+Testは`verify(plan)`と返されたResearch read modelだけを観測する。内部phase、helper count、SQL row、Lab command順を固定しない。
 
-### Blocked
+最低限、Finding全gate、同じCausal IdentityのDisproved、typed Blocked、no-fallback isolation、sibling一致、artifact digest、close/reopen replay、unsupported schema rejectionを保護する。新しい脆弱性mechanismは、この同じInterfaceに一つのtyped Experiment vertical sliceとして追加する。
 
-支持も反証もできる証拠が揃わない場合は`blocked`にする。少なくとも次をtyped reasonとして区別する。
-
-- `unsupported-experiment`
-- `verifier-unavailable`
-- `budget-exhausted`
-- `gvisor-unavailable`
-- `baseline-unavailable`
-- `sibling-isolation-failed`
-- `experiment-failed`
-- `non-hermetic`
-- `evidence-incomplete`
-
-schema不一致、参照digest不一致、unknown record version、Ledger corruptionは研究上のBlockedへ丸めず、Interface errorまたはread rejectionとして安全側に停止する。
-
-## Durability and replay
-
-Verification開始前にlaunch intentをResearch Recordへappendし、terminal recordは同じverification IDへ一度だけappendする。同じPlanの再実行は既存terminal refを返し、異なるPlan digestによる同一ID再利用はconflictにする。
-
-crash後にterminal recordがなければ、古いLabまたはprovider sessionを証拠として再利用しない。予算とPlanを再検査し、fresh Attemptとfresh sibling Labsで再開するか、再開不能理由をBlockedとして閉じる。Research viewはLedger eventとcontent-addressed artifactだけから再構成し、running processを正本にしない。
-
-## Test surface
-
-Behavior Testはaccepted後、`Verification.verify(plan)`と返却refから得るResearch read modelだけを観測する。内部phase、helper call count、SQL row、process argv、Lab command順をassertしない。
-
-system seamだけにdeterministic adapterを使う。owned internal Moduleはmockしない。
-
-最初のred-green順序:
-
-1. 合成stored-XSS observation pairが全gateを満たすとFindingをdurableに返す。
-2. 同じCausal Identityでsecurity-property破壊が消えるとDisprovedを返し、Findingにしない。
-3. gVisor unavailableではBlockedになり、Lab Controlはplain Dockerへfallbackしない。
-4. sibling baselineまたはeffective configuration不一致ではBlockedになる。
-5. close/reopen後に同じVerification outcomeをreplayする。
-6. unsupported record versionまたはartifact digest不一致を推測せず拒否する。
-7. private Boundary Pairで2.8.11 Finding、2.8.12 Disproved、benign functional controlを同じInterfaceから確認する。
-8. 同じInterfaceでSQL injectionのpositive、mechanism修正済みnegative、benign functional controlを確認する。
-9. account takeoverのtyped observationを追加し、同じ三条件を確認する。
-10. daroo holdoutのStored XSSとSQL injectionをCase固有分岐なしで確認する。
-
-## Acceptance scenarios
-
-1. callerは一つのPlanを`verify`へ渡すだけで、durableなFinding、Disproved、Blockedのrefを得る。
-2. Finder transcriptまたはknown payloadを渡そうとするとPlan schemaが拒否する。
-3. modelがFindingと主張しても、WitnessまたはCausal Controlが欠ければFindingにならない。
-4. WitnessとControlを同じmutable Labで実行したrecordは受理しない。
-5. gVisorが使えない時はBlockedとなり、hostまたはplain Dockerでtargetを実行しない。
-6. patched negativeは同一Hypothesisに限定したDisprovedとなり、「脆弱性なし」へ拡張されない。
-7. event append後・response前のcrashでも、同じPlanを安全に再試行して同じterminal refを得る。
-8. private artifactまたはcredential値なしに、Research Readerからdecision provenanceとoutcomeをreplayできる。
-
-## First-slice limits
-
-- production Experiment adapterは現在`stored-xss-browser@v1`と`sql-injection-database@v1`。次は`account-takeover-password-reset@v1`
-- production provider transportはeligible Claude process一つだけ
-- 一つのcanonical Runtime Profileと、根拠があるConfiguration Variantだけ
-- Case固有情報はprivate setup/graderへ限定し、production branchingへ入れない
-- UI、Remote Control、Target Intelligence、multiple provider、RCE/file/deserialization adapterは含めない
+実装済みmechanismとTest pathは[Codebase Guide](../CODEBASE-GUIDE.md)、公開CVEでの実測は[実験記録](../experiments/README.md)だけに置く。

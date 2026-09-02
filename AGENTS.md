@@ -5,7 +5,7 @@
 ## Mission and required reading
 
 - North Starは、oracle-freeなprospective CampaignでRCEまたは同等のsite-wide compromiseへ至る未知routeを発見し、独立VerificationとHuman Confirmationまで到達すること。
-- 作業前に[Codebase Guide](docs/CODEBASE-GUIDE.md)から現在の実装、対象Module、公開Interface、Test、正本となるSeamを特定する。変更対象contextの`CONTEXT.md`とSeamを読み、system全体の判断が必要な場合だけ[architecture](docs/design/architecture.md)、理由の確認が必要な場合だけSeamから直接linkされたADRを読む。全ADRの通読を前提にしない。
+- 作業前に[Documentation Guide](docs/README.md)と[Codebase Guide](docs/CODEBASE-GUIDE.md)から現在の実装、対象Module、公開Interface、Test、正本となるSeamを特定する。変更対象contextの`CONTEXT.md`とSeamを読み、system全体の判断が必要な場合だけ[architecture](docs/design/architecture.md)、理由の確認が必要な場合だけSeamから直接linkされたADRを読む。全ADRの通読を前提にしない。
 - agentic harness全体の設計参照資料は[docs/REFERENCES.md](docs/REFERENCES.md)の3件とする。個別のsecurity methodologyは一次資料を補助根拠にできるが、外部資料が直接支持する主張とharness固有の推論を分け、3件と同列の第4の設計参照資料にしない。Codex文書やtool文書は開発手順の参考として扱う。
 - `CONTEXT.md`、code、Issueでは英語のdomain termとcode identifierを正式語として使う。user向け説明は日本語で書き、必要に応じて「正式語（日本語の意味）」を併記し、[日本語用語早見表](docs/JAPANESE-GLOSSARY.md)から意味を確認できるようにする。
 - Mermaid図の箱には短い正式語だけを置き、長い日本語説明、制約、例は図の直下へ出す。GitHub上で文字が見切れる長さのlabelを作らない。
@@ -17,7 +17,7 @@
 - context間では不変かつversionedなcontractだけを渡す。別contextのstorage、内部module、provider objectを直接参照しない。
 - `Target Intelligence`は選定と取得を所有し、oracleを除いた`Target Intake Packet`だけを`Research`へ渡す。
 - `Research`は探索だけでなく、独立Verification、記録、優先順位付け、反復を所有する。Verificationを任意の後処理にしない。
-- ExplorationはLaneで目的、Strategyで方法を分け、独立Finderの型付き成果物だけをWave barrier後にChain Synthesisする。worker間chat、model多数決、vulnerability class別agentを探索多様性の根拠にしない。
+- Explorationはraw sourceから独立Approach Familyを育て、型付き成果物だけをWave barrier後にChain Synthesisする。LaneとStrategyは観測labelまたは開始lensに限り、Finderの手順または探索範囲にしない。worker間chat、model多数決、vulnerability class別agentを探索多様性の根拠にしない。
 - `Human OS`は人間のreviewと判断を所有する。Researchの事実を変更せず、digest固定した`Human Review Packet`への判断を追記する。
 - CLI、将来のweb UI、remote controlはadapterであり、domain policyまたはlifecycleを所有しない。
 - moduleは小さなinterfaceの背後に複雑さを隠す。二つ目の現実のadapterがない段階で汎用portやrepository abstractionを作らない。
@@ -34,6 +34,16 @@
 - 外部入力、event、artifact、prompt、Model Profileはversionとprovenanceを持ち、runtime schemaでdecodeする。
 - clock、ID、randomness、provider response順をdomain判断へ暗黙に混ぜない。再現可能な入力とstable orderingを使う。
 - deterministic source fact、model推論、未解決gapを同じ真偽値へ潰さない。modelは観測済みfactを変更できず、追加relationはsourceまたは版付きKnowledgeの根拠を持つ。未解決のcode identifierは既存Evidence Route schemaと同じ`unknown`を使う。
+
+## Documentation discipline
+
+- 文書の分類と更新責任は[Documentation Guide](docs/README.md)に従う。現在の実装状態、file path、Behavior Test対応は`docs/CODEBASE-GUIDE.md`だけへ置き、Seam、architecture、module設計へ複製しない。
+- Seam文書はInterface、不変条件、所有state、許可依存、禁止依存、failure semantics、acceptance scenarioだけを扱う。実装version、LOC、run時刻、Target別成否、現在の未実装一覧、次Issueの作業順を書かない。
+- 実Targetの成否と時系列は日付付き`docs/experiments/`、完成度snapshotは`docs/audits/`へ置き、既存fileを後日のcodeへ追随させない。
+- 完了Goal、旧baseline、旧実装図は`docs/history/`へ凍結し、active designまたは通常のreading pathから参照しない。固有の判断または証拠が他の正本へ残っていれば削除できる。
+- 次の有限work、受入条件、作業順はGitHub Issueへ置く。作業日誌をdesignへ転記しない。
+- hard-to-reverseな判断だけADRへ置く。ADR本文は実装追随で書き換えず、判断変更は新ADRでsupersedeする。
+- code変更で文書更新が必要なのは、公開Interface、Module ownership、domain term、CLI Interface、security invariant、正本status tableが変わる場合だけとする。private helper、内部file、局所algorithmの変更を文章で再現しない。
 
 ## Design gate
 

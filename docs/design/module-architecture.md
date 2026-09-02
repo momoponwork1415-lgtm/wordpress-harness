@@ -438,53 +438,39 @@ execution modules -> Research Record public seam
 
 CIでmodule boundary enforcementを追加するのは、folder migration後に実際の違反を検出できる時点とする。それまではbarrel importとreview checklistで守り、未使用のlint frameworkを先行導入しない。
 
-## Target source layout
+## Ownership tree
 
-```text
-src/
-  integration/                 # schema-only cross-context handoffs
-  target-intelligence/
-    index.ts                   # context public API only
-    observation/
-    selection/
-    acquisition/
-  research/
-    index.ts                   # CampaignRunner / CampaignReader only
-    campaign-control/
-    target-workspace/
-    source-mapping/
-      php-program-index/       # concrete helper seam, not context-public
-    exploration-control/
-    model-execution/
-      claude-process/          # first concrete provider adapter
-    verification/
-    experiment-lab/
-    iteration-review/
-    review-packaging/
-    research-record/
-  human-os/
-    index.ts                   # context public API only
-    review-cases/
-    external-action-control/
-  adapters/
-    cli/
-    remote-control/
-    web/
-tools/
-  php-program-index/           # pinned PHP child implementation
+```mermaid
+flowchart TB
+    integration["Integration contracts"]
+    ti["Target Intelligence"]
+    research["Research"]
+    human["Human OS"]
+    adapters["Driving adapters"]
+
+    campaign["Campaign Control"]
+    source["Source Understanding"]
+    exploration["Exploration"]
+    verification["Verification"]
+    execution["Model Execution"]
+    record["Research Record"]
+
+    integration --> ti
+    integration --> research
+    integration --> human
+    adapters --> ti
+    adapters --> research
+    adapters --> human
+
+    research --> campaign
+    research --> source
+    research --> exploration
+    research --> verification
+    research --> execution
+    research --> record
 ```
 
-folderはownershipを示すために使い、各名詞ごとにfileを分けない。module内部は一つの深いentry pointから始め、複雑性が実測されるまでrepository/service/interfaceの層を増やさない。
-
-## Current-code alignment and remaining gaps
-
-最初のownership移行は完了している。`src/research/index.ts`はCampaign contractと`openResearch`だけを公開し、`open-research.ts`が内部moduleを組み立てる。Campaign lifecycleとprojectionは`campaign-control/`、SQLite append/replayとcanonical JSON/CASは`research-record/`、PHP Program Indexは`source-mapping/php-program-index/`が所有する。CLIは薄いadapterのままなので、次にCLI behaviorを変更する時まで`src/cli.ts`から動かさない。
-
-これはfolderを完成形まで先に作る移行ではない。未実装Moduleは、それぞれacceptedなSeamと最初のbehaviorを持つIssueで追加する。Source Mappingの静的slice、固定Surface Mapから有限Work Waveを作るExploration bootstrap、tool-freeなClaude process/Opus Finder、source-bound Hypothesis ingestion、独立Verification、gVisor Witness/Control、Iteration Decision、Research Ledger replayを一つの`CampaignRunner.run`へ接続した。opaque Calibration Review receiptとVerification crash recoveryもBehavior Testで固定している。実TargetのBrizy positive Finding、同じ固定Causal Identityのpatched Disproved、oracle-free negativeの非昇格、Calibration Fingerprint、Boundary Pair Evidenceを通し、Closure Gateは`stop-boundary-pair-complete`とclose/reopen replayまで完了した。
-
-現行Source MappingはPHP Program Indexのsymbol、WordPress fact、diagnosticを`observed`として取り込み、全manifest entry、非PHP gap、stable node/relation identity、初期mapとsource-only revisionをCASへ固定する。一方、`pluginSlug`を含む旧Target Snapshot形状、Context Response、Mapper synthesis、非PHP asset relation、Knowledge由来inference、Runtime Observationはまだ完全なSource Mapping seamを満たさない。初期探索は明示gapを持つ最小Mapから始め、必要性が観測された能力を独立sliceで追加する。
-
-現行Explorationは、Map/Policy digestを照合し、最小Map gate、stable Focus owner、route-aware Focus portfolio、有限lease budget、Lane/Strategy/model-familyの別軸割当、Wildcardとelevated surfaceの独立二系統をpure decisionとして実装する。Focus portfolioは外部entry、既知route、危険primitive、情報利得proxy、coverage debtで候補を並べつつfeature diversityを保ち、`unknown` relationを到達根拠として辿らない。最初の`wave-completed`はWork Wave/Result digestを照合し、Map上のobserved anchorへ結合したHypothesisをCausal Identityとroute shapeで重複排除し、支持数と到着順に依存せず`verify`へ渡す。ActorとPrivilegeは未解決のままであり、risk basisはREST、外部AJAX/admin-post hook、またはsink presenceを示すだけでseverityではない。Route Fragment、Chain Synthesis、Gap Review以降はまだ実装しない。
+folderはownershipを示すために使い、各名詞ごとにfileを分けない。Module内部は一つの深いentry pointから始め、複雑性が実測されるまでrepository/service/interfaceの層を増やさない。現在のpathは[Codebase Guide](../CODEBASE-GUIDE.md)だけを正本とする。
 
 ## Failure semantics across modules
 
@@ -505,7 +491,7 @@ folderはownershipを示すために使い、各名詞ごとにfileを分けな�
 ## Acceptance scenarios for this design
 
 1. Wordfence APIが停止しても、固定済みTarget SnapshotのCampaignはResearchだけで再開できる。
-2. MapperのClaude processが途中で429となっても、Model Execution以外はsession IDやresume argvを知らない。
+2. provider processが途中で429となっても、Model Execution以外はsession IDやresume argvを知らない。
 3. PHP file一件が壊れても、Source Mappingはdiagnosticを持つSurface Mapを返し、Exploration ControlはCoverage Gapを作れる。
 4. DiscoveryがStored XSSを主張しても、Model Executionの成功だけではFindingにならず、Verificationがfreshな成立証拠とsibling因果対照実験を要求する。
 5. Human reviewerが追加証拠を求めても、Research Ledgerの過去eventは変更されず、新しいEvidence Requestからworkが作られる。
@@ -515,7 +501,3 @@ folderはownershipを示すために使い、各名詞ごとにfileを分けな�
 9. 一つのFinderだけがcross-request chainを示しても、source-boundなら多数決で消えずVerification候補へ残る。
 10. dynamic callbackはFinderへruntime権限を与えずRuntime ObservationでMap revisionへ入り、そのrecord単独ではFindingにならない。
 11. Gap Reviewerが未所有surfaceを見つけたCampaignはCoverage Closureにならず、次の有限Work Waveを作る。
-
-## Design approval gate
-
-この文書は2026-09-01にacceptedとなった。まずcurrent-code gapの1〜3をbehavior-preserving refactorとして別commitにする。Model Executionのpublic seamは[Model execution seam](model-execution-seam.md)、Explorationのpublic seamは[Exploration seam](exploration-seam.md)としてacceptedだが、production codeは明示的な実装指示と各seamからのred testを満たすまで実装しない。

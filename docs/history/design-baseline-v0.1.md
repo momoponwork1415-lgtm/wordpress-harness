@@ -10,9 +10,9 @@ Status: accepted, 2026-09-01
 - Research language: [Research context](../../CONTEXT.md)
 - Target selection language: [Target Intelligence context](../domain/target-intelligence/CONTEXT.md)
 - human decision language: [Human OS context](../domain/human-os/CONTEXT.md)
-- system design: [Ten-verb architecture](architecture.md)
-- delivery order: [Capability-first roadmap](roadmap.md)
-- model candidates: [Model candidates](model-candidates.md)
+- system design: [Ten-verb architecture](../design/architecture.md)
+- delivery order: [Capability-first roadmap](../design/roadmap.md)
+- model candidates: [Model candidates](../design/model-candidates.md)
 - design sources: [three canonical references](../REFERENCES.md)
 - engineering rules: [AGENTS.md](../../AGENTS.md)
 - accepted decisions: ADR 0001 through ADR 0085。ただしADR 0026はADR 0064にsupersedeされている。

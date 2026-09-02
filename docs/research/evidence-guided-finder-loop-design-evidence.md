@@ -4,7 +4,7 @@ Status: research note, 2026-09-02
 
 ## Scope
 
-この文書は、[Evidence-guided Finder loop](../design/evidence-guided-finder-loop.md)で
+この文書は、[Evidence-guided Finder loopの旧設計snapshot](../history/evidence-guided-finder-loop-2026-09-02.md)で
 harness固有とされている判断について、何を外部実装が直接行っており、何を本harness向けに
 adaptationしたのか、何がまだ検証前のlocal choiceなのかを分ける。
 

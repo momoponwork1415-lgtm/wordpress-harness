@@ -294,7 +294,7 @@ event schemaはkindごとにversionを持ち、過去eventを更新せず純粋�
 
 各batchは開始前にassignmentを確定するWork Waveとする。結果は到着時に保存するが、全Attemptがterminalになるまで次Waveを計算せず、stable Work ID順にfoldする。これによりprovider response順が次の研究方針を変えない。詳細は[ADR 0059](../adr/0059-schedule-parallel-work-in-deterministic-waves.md)に記録する。
 
-探索Work Waveは、重大侵害へのchainを探すFrontier Lane、SQLi・Stored XSS・authorization・file等のsecurity primitiveを探すPrimitive Lane、未探索surfaceとmap gapを閉じるCoverage Laneから構成する。eligible workがある間は各Laneを最低一枠含めるが、等分にはせず、Exploration Queueがevidenceとcoverageから追加枠を決める。各Lane内ではversioned Exploration Strategyを割り当て、Wildcardを非ゼロで維持する。Laneはworker、model、Strategyの固定属性ではない。詳細は[ADR 0076](../adr/0076-compose-each-work-wave-from-three-exploration-lanes.md)と[ADR 0106](../adr/0106-run-a-versioned-exploration-strategy-portfolio.md)に記録する。
+探索Work Waveは、表現ではなくmechanismとpremiseで分けた複数の`Approach Family`から構成する。固定LaneやStrategyを提出可能routeの制限にせず、相容れないresearch ideaを複数round維持する。Surface Mapや静的ruleは任意の補助入力であり、raw-source探索を置き換えない。詳細は[ADR 0113](../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)に記録する。旧三Lane必須方針は[ADR 0076](../adr/0076-compose-each-work-wave-from-three-exploration-lanes.md)に履歴として残す。
 
 - confirmed routeのvariantをどこへ探すか
 - disproved Hypothesisから除外規則を作れるか
@@ -303,7 +303,7 @@ event schemaはkindごとにversionを持ち、過去eventを更新せず純粋�
 - LessonをWordPress core、language、framework、vulnerability familyのどの階層へ置くか
 - 同じTargetで続ける価値と、次Targetへ移る価値のどちらが高いか
 
-Frontier Laneではmodel confidenceを使わず、Permitted Attacker、terminal impact、observed Route Fragment、Frontier Gapの決定可能性、次のExperiment費用、novelty、coverage debtをpriority tupleへ加える。Frontier Gapは未確認edgeの個数ではなく、必要fact、falsifier、次のExperimentを持つessential causal relationである。詳細は[ADR 0079](../adr/0079-prioritize-frontier-work-by-observed-route-gaps.md)に記録する。
+Frontier workではmodel confidenceを使わず、Permitted Attacker、terminal impact、observed Route Fragment、Frontier Gapの決定可能性、次のExperiment費用、novelty、coverage debtをpriority tupleへ加える。Frontier Gapは未確認edgeの個数ではなく、必要fact、falsifier、次のExperimentを持つessential causal relationである。詳細は[ADR 0079](../adr/0079-prioritize-frontier-work-by-observed-route-gaps.md)に記録する。
 
 prompt、model、Lesson、priority policyを変更する時はversionを上げる。日常の改善は実戦Campaignのverified Finding、false-positive rejection、surface coverage、cost、time、run varianceを主に比較し、小さなDevelopment Cohortで安全性と明白な回帰を確認する。高リスクなpolicyまたはKnowledge昇格だけSealed Evaluation Cohortを使う。一つの成功例、一回のrun、既知Caseの再発見を能力向上の証拠にしない。
 
@@ -315,45 +315,21 @@ coreはstrict TypeScriptとする。Campaign stateとExperiment evidenceをversi
 
 PHPは`nikic/PHP-Parser` helperにだけ使用し、Campaign stateを所有させない。PythonはCampaignの正本を持たない補助解析toolとして許容する。Goはprocess supervisionまたはCPU-bound処理が実測上の主負荷になった時だけ再評価する。詳細は[ADR 0055](../adr/0055-use-strict-typescript-for-the-core.md)と[ADR 0074](../adr/0074-extract-php-through-a-pinned-parser-helper.md)に記録する。
 
-## First implementation sequence
+## Capability growth
 
-Milestone 1は一つのclosed vertical sliceだが、実装は次の細い増分で進める。
+Architectureの拡張は水平な部品数ではなく、実戦で閉じる縦の能力を一つずつ増やす。
 
-1. versioned event schema、single-writer SQLite Research Ledger、pure replay、crash-boundary testを作る
-2. `CampaignRunner.prepare`と`CampaignReader.read | inspect`だけを通し、同一inputとLedgerから決定的なviewを再構成する
-3. pinned PHP helperからdeterministic PHP Program Indexを作り、Target Snapshotへ結び付ける
-4. Transport Eligibilityを通過したOpus候補のofficial native agent processを接続し、one Work LeaseのAttemptをLedgerへ記録する
-5. gVisor上のBrizy Boundary Pairへtyped Experimentを通し、Witness、Causal Control、Finding、Human Review Packetまで閉じる
+```mermaid
+flowchart TB
+    mechanics["Closed research mechanics"]
+    prospective["Oracle-free prospective research"]
+    selection["Automated target selection"]
+    frontier["Continuous frontier discovery"]
 
-各増分は合意したpublic seamからred -> greenで作り、次の増分を先回りしない。最初の二増分ではmodel、parser、browser、containerを導入せず、event compatibilityとresume可能性を先に固定する。
-
-## First closed research slice
-
-最初に作るcodeは次の一本だけでよい。
-
-```text
-Target Snapshot
-  -> deterministic WordPress surface extraction
-  -> one mapper synthesis
-  -> 3-6 non-overlapping Focus Areas
-  -> parallel Hypothesis discovery
-  -> deduplicated priority queue
-  -> one independent source verifier
-  -> one clean WordPress runtime Experiment
-  -> Witness + causal control, or a recorded disproof
-  -> Research Ledger
-  -> next-iteration plan
+    mechanics --> prospective --> selection --> frontier
 ```
 
-最初から全vulnerability familyを動的検証しようとせず、最初に得た有望Hypothesisへ必要なcategory-specific Experimentを一本だけ通す。これで`verify`を後回しにせず、Target Snapshotから次iterationまでの閉ループを実測できる。二つ目以降のverifier、benchmark、task-specific model selectionは、この縦切りのartifactと停止条件が安定してから足す。ProgrammeとSubmissionはさらに後にHuman OSと接続する別contextとして設計する。
-
-最初のpublic Boundary PairはBrizy 2.8.11のunauthenticated stored XSSをpositive、2.8.12をpatched negative、同じfileUpload/formの正常動作をbenign controlとする。browser script Witnessとsibling Causal Controlまでを最初のtyped Experimentとして実装する。詳細は[ADR 0070](../adr/0070-use-brizy-stored-xss-as-the-first-public-boundary-pair.md)に記録する。
-
-Milestone 1は、Opus profile、gVisor、Brizy Boundary Pairだけでこのloopを完走し、positiveのみをFindingへ昇格させ、patched negativeとbenign controlを正しく扱い、Ledger replayとcrash resumeを確認した時に合格とする。ほかのproviderとvulnerability mechanismは含めない。詳細は[ADR 0071](../adr/0071-gate-milestone-one-on-one-complete-boundary-pair.md)に記録する。
-
-Milestone 1はmechanicsの合格であり、Frontier Discovery Capabilityの証明ではない。private RCE Boundary Pairでは、使い捨てVerification Lab内の無害なcanary effectをWitnessとし、interactive shell、host access、許可外egressを必要としないtyped Experimentを構築する。詳細は[ADR 0075](../adr/0075-make-frontier-compromise-discovery-the-north-star.md)に記録する。
-
-実装順はcapability-firstとする。Milestone 1の一つのBoundary Pairでclosed loopを成立させた後、Milestone 2で手動対象投入による少数の実戦Campaignを開始し、実戦証拠からmodel、Experiment adapter、prompt、priorityを改善する。Milestone 3でWordfence Intelligence APIによる自動Target Intelligenceを追加する。詳細は[Roadmap](roadmap.md)、[ADR 0096](../adr/0096-bootstrap-prospective-research-with-manual-intake.md)、[ADR 0089](../adr/0089-start-prospective-campaigns-after-minimal-calibration.md)に記録する。
+各増分はTargetからterminal outcomeまでを通し、公開InterfaceのBehavior Testと実戦Campaignの観測で評価する。現在の完了状態は[Codebase Guide](../CODEBASE-GUIDE.md)、次の有限作業はGitHub Issues、能力の順序は[Roadmap](roadmap.md)を正本とする。過去の最初の実装計画は[history](../history/README.md)へ凍結する。
 
 ## Source material
 

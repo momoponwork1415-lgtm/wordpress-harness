@@ -139,7 +139,7 @@ holdoutをfreezeした後は、そのCase固有のprompt、rule、Knowledge、pr
 
 ## Checkpoints
 
-1. [Verification seam](verification-seam.md)をacceptedにし、public test surfaceを固定する。
+1. [Verification seam](../design/verification-seam.md)をacceptedにし、public test surfaceを固定する。
 2. 合成fixtureで`Finding | Disproved | Blocked`とsibling invariantをred-greenする。
 3. Research LedgerへoutcomeとIteration Decisionを接続し、close/reopen replayをred-greenする。
 4. gVisor Runtime Profileとsealed Brizy Lab Baselineをprivate環境で成立させる。
