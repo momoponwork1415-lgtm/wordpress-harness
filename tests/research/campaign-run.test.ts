@@ -197,6 +197,33 @@ function emptyFinder(artifacts: JsonArtifactStore): ModelExecution {
   };
 }
 
+function providerFailedFinder(artifacts: JsonArtifactStore): ModelExecution {
+  return {
+    run: async (plan) => {
+      const value = {
+        kind: "finder-attempt-result" as const,
+        schemaVersion: 1 as const,
+        attemptId: plan.attemptId,
+        leaseId: plan.leaseId,
+        status: "provider-failed" as const,
+        reason: "provider-exit-1",
+      };
+      const resultDigest = await artifacts.putJson(value);
+      return {
+        status: value.status,
+        value,
+        ref: {
+          kind: "attempt-execution-result",
+          schemaVersion: 1,
+          attemptId: value.attemptId,
+          leaseId: value.leaseId,
+          digest: resultDigest,
+        },
+      };
+    },
+  };
+}
+
 function orderedFinder(
   artifacts: JsonArtifactStore,
   candidate: SourceBoundHypothesis,
@@ -841,6 +868,53 @@ describe("CampaignRunner.run", () => {
         remainingFinderAttempts: 1,
         stopWhen: "source-bound-hypothesis-or-budget-exhausted",
       });
+    } finally {
+      scenario.research.close();
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("preserves total Finder provider failure as the Campaign stop reason", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "campaign-provider-blocked-"),
+    );
+    const scenario = await openScenario(
+      directory,
+      (artifacts) => providerFailedFinder(artifacts),
+      2,
+    );
+
+    try {
+      const ref = await scenario.research.runner.run(scenario.plan);
+      const view = await scenario.research.reader.inspect(
+        scenario.input.campaignId,
+        { kind: "run", runId: scenario.plan.runId },
+      );
+
+      expect({ ref, view }).toMatchObject({
+        ref: { decision: "blocked-capability" },
+        view: {
+          value: {
+            attempts: [{}, {}],
+            verifications: [],
+            decision: {
+              kind: "blocked-capability",
+              reasons: ["provider-unavailable"],
+            },
+          },
+        },
+      });
+      if (view.kind !== "run") throw new Error("expected Campaign run view");
+      await expect(
+        Promise.all(
+          view.value.attempts.map((attempt) =>
+            scenario.artifacts.readJson(attempt.digest),
+          ),
+        ),
+      ).resolves.toMatchObject([
+        { status: "provider-failed" },
+        { status: "provider-failed" },
+      ]);
     } finally {
       scenario.research.close();
       await rm(directory, { force: true, recursive: true });

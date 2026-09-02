@@ -114,6 +114,7 @@ const blockedCapabilityReasonSchema = z.union([
   z.enum([
     "mapping-incomplete",
     "no-source-bound-hypothesis",
+    "provider-unavailable",
     "unsupported-attacker-premise",
   ]),
   verificationBlockReasonSchema,

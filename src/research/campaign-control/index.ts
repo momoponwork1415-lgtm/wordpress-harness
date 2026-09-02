@@ -473,6 +473,7 @@ async function executeRun(
     explorationKind: completedExploration.kind,
     maxFinderAttempts: plan.budget.maxFinderAttempts,
     executedAttempts: usedExecutions,
+    attemptStatuses: terminalResults.map((result) => result.value.status),
     verifications: verificationViews,
     ...(calibrationReview === undefined ? {} : { calibrationReview }),
   });

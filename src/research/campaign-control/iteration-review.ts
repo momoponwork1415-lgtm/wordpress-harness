@@ -1,4 +1,5 @@
 import { sha256Digest } from "../research-record/canonical-json.js";
+import type { FinderAttemptResult } from "../exploration/index.js";
 import type { VerificationRecordView } from "../verification/index.js";
 import {
   finiteWorkSchema,
@@ -16,6 +17,7 @@ interface IterationReviewInput {
   readonly explorationKind: "verify" | "blocked";
   readonly maxFinderAttempts: number;
   readonly executedAttempts: number;
+  readonly attemptStatuses: readonly FinderAttemptResult["status"][];
   readonly verifications: readonly VerificationRecordView[];
   readonly calibrationReview?: CalibrationReviewResult;
 }
@@ -66,6 +68,19 @@ export function reviewIteration(
       decision: iterationDecisionSchema.parse({
         kind: "blocked-capability",
         reasons: [...new Set(verificationReasons)].sort(compareText),
+      }),
+      finiteWork: null,
+    };
+  }
+
+  if (
+    input.attemptStatuses.length > 0 &&
+    input.attemptStatuses.every((status) => status === "provider-failed")
+  ) {
+    return {
+      decision: iterationDecisionSchema.parse({
+        kind: "blocked-capability",
+        reasons: ["provider-unavailable"],
       }),
       finiteWork: null,
     };
