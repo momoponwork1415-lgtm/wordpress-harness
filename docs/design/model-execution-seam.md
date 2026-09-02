@@ -35,7 +35,7 @@ callerはprovider executable、argv、session ID、credential path、process ID�
 
 ## Implemented first slice
 
-現行実装はFinder role、公式Claude Code process `2.1.251`、`claude-opus-5`だけを扱う細いadapterである。`Attempt Plan`はTarget、Work Lease、model/effort、Eligibility Receipt digest、render済みprompt、wall/output budgetを固定する。Campaign Controlのproduction materializerが固定Surface Map、PHP Program Index、Focus Area、Work Leaseからoracle-free source contextを決定的に選択し、実ファイルdigestを再検査してpromptをrenderする。実Opusを伴う`CampaignRunner.run`へのcompositionはまだ未完了である。
+現行実装はFinder role、公式Claude Code process `2.1.251`、`claude-opus-5`だけを扱う細いadapterである。`Attempt Plan`はTarget、Work Lease、model/effort、Eligibility Receipt digest、render済みprompt、wall/output budgetを固定する。Campaign Controlのproduction materializerが固定Surface Map、PHP Program Index、Focus Area、Work Leaseからoracle-free source contextを決定的に選択し、実ファイルdigestを再検査してpromptをrenderする。実Opusを伴う`CampaignRunner.run`へcomposition済みであり、private Brizy 2.8.11 Campaignで3 Finderの並列実行から独立Verificationまで到達した。
 
 native adapterは推論前にexecutable versionと公式`auth status`を検査する。認証切れは`auth-required`として終了し、別modelへfallbackしない。provider built-in tool、Web、subagent、ambient MCP、slash command、session persistence、Chromeを無効化し、promptはargvではなくstdinへ渡す。親processだけでなくdetached process groupをwall ceiling時に終了し、`SIGTERM`後または親終了時に残った子へ`SIGKILL`を送る。wall budgetにはversion/auth probeも含める。
 

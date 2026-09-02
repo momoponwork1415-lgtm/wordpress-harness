@@ -131,12 +131,14 @@ function hasCompleteStoredXssEvidence(
 
 function supportsFinding(
   plan: VerificationPlan,
+  rederivation: ReturnType<typeof sourceRederivationSchema.parse>,
   witnessPlan: ExperimentPlan,
   controlPlan: ExperimentPlan,
   witness: ExperimentObservation,
   control: ExperimentObservation,
 ): boolean {
   return (
+    rederivation.status === "supported" &&
     hasCompleteStoredXssEvidence(
       plan,
       witnessPlan,
@@ -327,6 +329,7 @@ class IndependentVerification implements Verification {
 
     const outcome = supportsFinding(
       plan,
+      rederivation,
       witnessPlan,
       controlPlan,
       witness,

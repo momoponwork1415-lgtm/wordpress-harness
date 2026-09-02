@@ -127,5 +127,6 @@ sequenceDiagram
 - 全体のcontextと信頼領域: [Architecture overview](architecture-overview.md)
 - Module ownershipと依存方向: [Module architecture](module-architecture.md)
 - 探索の分割と合流: [Exploration seam](exploration-seam.md)
+- 現在のFinder並列構成と独立検証への流れ: [探索エージェント構成](exploration-agent-architecture.md)
 - 独立Verificationを含むResearch全体: [Architecture](architecture.md)
 - 日本語で分からない正式語: [日本語用語早見表](../JAPANESE-GLOSSARY.md)

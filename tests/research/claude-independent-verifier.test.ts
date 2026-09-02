@@ -191,7 +191,7 @@ function providerEnvelope(output: unknown, model = "claude-opus-5"): string {
     subtype: "success",
     is_error: false,
     terminal_reason: "completed",
-    structured_output: output,
+    structured_output: { decision: output },
     permission_denials: [],
     usage: {
       server_tool_use: { web_search_requests: 0, web_fetch_requests: 0 },
@@ -269,6 +269,10 @@ describe("ClaudeIndependentVerifier.rederive", () => {
     let observedRequest: ClaudeStructuredProcessRequest | undefined;
     const fixture = await createFixture(async (request, context) => {
       observedRequest = request;
+      expect(request.outputJsonSchema).toMatchObject({ type: "object" });
+      expect(request.outputJsonSchema).not.toHaveProperty("oneOf");
+      expect(request.outputJsonSchema).not.toHaveProperty("allOf");
+      expect(request.outputJsonSchema).not.toHaveProperty("anyOf");
       return {
         kind: "exited",
         exitCode: 0,
@@ -339,6 +343,50 @@ describe("ClaudeIndependentVerifier.rederive", () => {
       ).rejects.toMatchObject({
         name: "IndependentVerifierBlockedError",
         reason: "evidence-incomplete",
+      });
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("returns an evidence-bearing source falsifier for paired Lab confirmation", async () => {
+    const fixture = await createFixture(async (_request, context) => ({
+      kind: "exited",
+      exitCode: 0,
+      stderr: "",
+      stdout: providerEnvelope({
+        kind: "source-rederivation",
+        schemaVersion: 1,
+        verificationId: context.plan.verificationId,
+        targetSnapshotDigest: context.plan.targetSnapshot.digest,
+        hypothesisDigest: context.plan.hypothesisDigest,
+        status: "source-falsified",
+        falsifiedCondition: context.plan.hypothesis.falsifier,
+        sourceEvidence: [
+          {
+            path: "includes/route.php",
+            fileDigest: fileDigest(context.routeContent),
+            startLine: 1,
+            endLine: 3,
+          },
+        ],
+        experiment: {
+          kind: "stored-xss-browser",
+          schemaVersion: 1,
+          adapterVersion: "stored-xss-browser@v1",
+          causalFactor: "attacker-controlled-stored-value",
+          successCriterion: "privileged-browser-execution-canary",
+        },
+      }),
+    }));
+
+    try {
+      await expect(
+        fixture.verifier.rederive(fixture.context.plan),
+      ).resolves.toMatchObject({
+        status: "source-falsified",
+        falsifiedCondition: fixture.context.plan.hypothesis.falsifier,
+        sourceEvidence: [{ path: "includes/route.php" }],
       });
     } finally {
       await fixture.cleanup();

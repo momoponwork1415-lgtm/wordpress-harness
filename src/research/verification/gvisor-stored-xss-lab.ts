@@ -51,12 +51,23 @@ const absolutePathSchema = z
   });
 const pinnedImageSchema = z
   .string()
-  .regex(/^[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}$/);
+  .regex(/^(?:[A-Za-z0-9._:/-]+@)?sha256:[a-f0-9]{64}$/);
 const pluginSlugSchema = z
   .string()
   .min(1)
   .max(128)
   .regex(/^[a-z0-9][a-z0-9-]*$/);
+const labIpv4AddressSchema = z.string().refine((value) => {
+  const octets = value.split(".");
+  return (
+    octets.length === 4 &&
+    octets.every((octet) => {
+      if (!/^\d{1,3}$/u.test(octet)) return false;
+      const number = Number(octet);
+      return number >= 0 && number <= 255;
+    })
+  );
+}, "Lab container address must be an IPv4 address");
 
 const storedXssLabDefinitionSchema = z.strictObject({
   kind: z.literal("stored-xss-lab-definition"),
@@ -104,13 +115,17 @@ function rawDigest(content: Buffer): string {
   return `sha256:${createHash("sha256").update(content).digest("hex")}`;
 }
 
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 async function directoryManifest(
   root: string,
   directory = root,
 ): Promise<readonly DirectoryManifestEntry[]> {
   const entries: DirectoryManifestEntry[] = [];
   const children = await readdir(directory, { withFileTypes: true });
-  children.sort((left, right) => left.name.localeCompare(right.name));
+  children.sort((left, right) => compareText(left.name, right.name));
   for (const child of children) {
     const absolutePath = `${directory}/${child.name}`;
     if (child.isSymbolicLink()) {
@@ -130,7 +145,7 @@ async function directoryManifest(
       size: content.byteLength,
     });
   }
-  return entries;
+  return entries.sort((left, right) => compareText(left.path, right.path));
 }
 
 class LabCommandFailedError extends Error {
@@ -172,6 +187,19 @@ class GvisorStoredXssLabControl implements LabControl {
     const result = await this.#run(args, timeoutMs);
     if (result.exitCode !== 0) throw new LabCommandFailedError();
     return result.stdout;
+  }
+
+  async #containerAddress(container: string): Promise<string> {
+    const output = await this.#require(
+      [
+        "inspect",
+        "--format",
+        "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
+        container,
+      ],
+      10_000,
+    );
+    return labIpv4AddressSchema.parse(output.trim());
   }
 
   async #loadDefinition(
@@ -259,6 +287,8 @@ class GvisorStoredXssLabControl implements LabControl {
     definition: StoredXssLabDefinition,
     network: string,
     volume: string,
+    databaseAddress: string,
+    databasePassword: string,
     command: readonly string[],
   ): readonly string[] {
     return [
@@ -267,9 +297,18 @@ class GvisorStoredXssLabControl implements LabControl {
       "--runtime=runsc",
       "--network",
       network,
+      "--env",
+      `WORDPRESS_DB_HOST=${databaseAddress}`,
+      "--env",
+      "WORDPRESS_DB_NAME=wordpress",
+      "--env",
+      "WORDPRESS_DB_USER=root",
+      "--env",
+      `WORDPRESS_DB_PASSWORD=${databasePassword}`,
       "--volume",
       `${volume}:/var/www/html`,
       definition.images.wordpressCli,
+      "wp",
       ...command,
       "--allow-root",
     ];
@@ -279,10 +318,19 @@ class GvisorStoredXssLabControl implements LabControl {
     definition: StoredXssLabDefinition,
     network: string,
     volume: string,
+    databaseAddress: string,
+    databasePassword: string,
   ): Promise<void> {
     for (let attempt = 0; attempt < 60; attempt += 1) {
       const result = await this.#run(
-        this.#wpCliArgs(definition, network, volume, ["db", "check"]),
+        this.#wpCliArgs(
+          definition,
+          network,
+          volume,
+          databaseAddress,
+          databasePassword,
+          ["db", "check"],
+        ),
         15_000,
       );
       if (result.exitCode === 0) return;
@@ -376,6 +424,7 @@ class GvisorStoredXssLabControl implements LabControl {
         "MARIADB_DATABASE=wordpress",
         definition.images.database,
       ]);
+      const databaseAddress = await this.#containerAddress(databaseContainer);
       await this.#require([
         "run",
         "--detach",
@@ -389,7 +438,7 @@ class GvisorStoredXssLabControl implements LabControl {
         "--volume",
         `${volume}:/var/www/html`,
         "--env",
-        "WORDPRESS_DB_HOST=database",
+        `WORDPRESS_DB_HOST=${databaseAddress}`,
         "--env",
         "WORDPRESS_DB_NAME=wordpress",
         "--env",
@@ -398,18 +447,32 @@ class GvisorStoredXssLabControl implements LabControl {
         `WORDPRESS_DB_PASSWORD=${databasePassword}`,
         definition.images.wordpress,
       ]);
-      await this.#waitForWordPress(definition, network, volume);
+      const wordpressAddress = await this.#containerAddress(wordpressContainer);
+      await this.#waitForWordPress(
+        definition,
+        network,
+        volume,
+        databaseAddress,
+        databasePassword,
+      );
       await this.#require(
-        this.#wpCliArgs(definition, network, volume, [
-          "core",
-          "install",
-          "--url=http://wordpress",
-          "--title=Verification Lab",
-          "--admin_user=harness-admin",
-          `--admin_password=${adminPassword}`,
-          "--admin_email=harness-admin@example.invalid",
-          "--skip-email",
-        ]),
+        this.#wpCliArgs(
+          definition,
+          network,
+          volume,
+          databaseAddress,
+          databasePassword,
+          [
+            "core",
+            "install",
+            "--url=http://wordpress",
+            "--title=Verification Lab",
+            "--admin_user=harness-admin",
+            `--admin_password=${adminPassword}`,
+            "--admin_email=harness-admin@example.invalid",
+            "--skip-email",
+          ],
+        ),
       );
       await this.#require([
         "exec",
@@ -430,18 +493,24 @@ class GvisorStoredXssLabControl implements LabControl {
         `${wordpressContainer}:/var/www/html/wp-content/plugins/${definition.fixture.pluginSlug}`,
       ]);
       await this.#require(
-        this.#wpCliArgs(definition, network, volume, [
-          "plugin",
-          "activate",
-          definition.target.pluginSlug,
-        ]),
+        this.#wpCliArgs(
+          definition,
+          network,
+          volume,
+          databaseAddress,
+          databasePassword,
+          ["plugin", "activate", definition.target.pluginSlug],
+        ),
       );
       await this.#require(
-        this.#wpCliArgs(definition, network, volume, [
-          "plugin",
-          "activate",
-          definition.fixture.pluginSlug,
-        ]),
+        this.#wpCliArgs(
+          definition,
+          network,
+          volume,
+          databaseAddress,
+          databasePassword,
+          ["plugin", "activate", definition.fixture.pluginSlug],
+        ),
       );
       const stdout = await this.#require(
         [
@@ -451,6 +520,8 @@ class GvisorStoredXssLabControl implements LabControl {
           "--network",
           network,
           "--shm-size=1g",
+          "--add-host",
+          `wordpress:${wordpressAddress}`,
           "--volume",
           `${definition.browser.workerFile}:/harness/browser-worker.mjs:ro`,
           "--volume",

@@ -99,16 +99,27 @@ const storedXssExperimentMechanismSchema = z.strictObject({
   successCriterion: z.literal("privileged-browser-execution-canary"),
 });
 
-export const sourceRederivationSchema = z.strictObject({
+const sourceRederivationBaseShape = {
   kind: z.literal("source-rederivation"),
   schemaVersion: z.literal(1),
   verificationId: identifierSchema,
   targetSnapshotDigest: digestSchema,
   hypothesisDigest: digestSchema,
-  status: z.literal("supported"),
   sourceEvidence: z.array(sourceEvidenceSchema).min(1),
   experiment: storedXssExperimentMechanismSchema,
-});
+};
+
+export const sourceRederivationSchema = z.discriminatedUnion("status", [
+  z.strictObject({
+    ...sourceRederivationBaseShape,
+    status: z.literal("supported"),
+  }),
+  z.strictObject({
+    ...sourceRederivationBaseShape,
+    status: z.literal("source-falsified"),
+    falsifiedCondition: z.string().min(1),
+  }),
+]);
 
 const experimentBindingsSchema = z.strictObject({
   targetSnapshotDigest: digestSchema,

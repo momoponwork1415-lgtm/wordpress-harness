@@ -195,6 +195,35 @@ function supportedStoredXssVerifier(): IndependentVerifier {
   };
 }
 
+function sourceFalsifiedStoredXssVerifier(): IndependentVerifier {
+  return {
+    rederive: async (input) => ({
+      kind: "source-rederivation",
+      schemaVersion: 1,
+      verificationId: input.verificationId,
+      targetSnapshotDigest: input.targetSnapshot.digest,
+      hypothesisDigest: input.hypothesisDigest,
+      status: "source-falsified",
+      falsifiedCondition: input.hypothesis.falsifier,
+      sourceEvidence: [
+        {
+          path: "includes/form-handler.php",
+          fileDigest: digest("a"),
+          startLine: 40,
+          endLine: 91,
+        },
+      ],
+      experiment: {
+        kind: "stored-xss-browser",
+        schemaVersion: 1,
+        adapterVersion: "stored-xss-browser@v1",
+        causalFactor: "attacker-controlled-stored-value",
+        successCriterion: "privileged-browser-execution-canary",
+      },
+    }),
+  };
+}
+
 function storedXssLabControl(
   artifactStore: JsonArtifactStore,
   scenario: LabScenario,
@@ -269,6 +298,7 @@ async function openVerificationFixture(
   directory: string,
   plan: VerificationPlan,
   scenario: LabScenario,
+  independentVerifier?: IndependentVerifier,
 ) {
   const databasePath = join(directory, "research.sqlite");
   const fileArtifactStore = openFileJsonArtifactStore(
@@ -301,18 +331,23 @@ async function openVerificationFixture(
               );
             },
           }
-        : supportedStoredXssVerifier(),
+        : (independentVerifier ?? supportedStoredXssVerifier()),
     labControl: storedXssLabControl(artifactStore, scenario),
   });
   return { databasePath, record, verification };
 }
 
-async function verifyAndReplay(plan: VerificationPlan, scenario: LabScenario) {
+async function verifyAndReplay(
+  plan: VerificationPlan,
+  scenario: LabScenario,
+  independentVerifier?: IndependentVerifier,
+) {
   const directory = await mkdtemp(join(tmpdir(), "verification-outcome-"));
   const { databasePath, record, verification } = await openVerificationFixture(
     directory,
     plan,
     scenario,
+    independentVerifier,
   );
 
   try {
@@ -386,6 +421,44 @@ describe("Verification.verify", () => {
             reason: "security-property-preserved",
             causalIdentity: plan.hypothesis.causalIdentity,
           },
+        },
+      },
+    });
+  });
+
+  it("confirms an evidence-bearing source falsifier with a preserved browser pair", async () => {
+    const plan = verificationPlan({
+      campaignId: "campaign-source-falsified-disproved",
+      verificationId: "verification-source-falsified-disproved",
+    });
+    await expect(
+      verifyAndReplay(plan, "preserved", sourceFalsifiedStoredXssVerifier()),
+    ).resolves.toMatchObject({
+      ref: { outcome: "disproved" },
+      replayed: {
+        value: {
+          outcome: {
+            kind: "disproved",
+            reason: "security-property-preserved",
+          },
+          evidence: { kind: "experiment-pair" },
+        },
+      },
+    });
+  });
+
+  it("does not promote a Finding when source and browser evidence conflict", async () => {
+    const plan = verificationPlan({
+      campaignId: "campaign-source-falsified-conflict",
+      verificationId: "verification-source-falsified-conflict",
+    });
+    await expect(
+      verifyAndReplay(plan, "broken", sourceFalsifiedStoredXssVerifier()),
+    ).resolves.toMatchObject({
+      ref: { outcome: "blocked" },
+      replayed: {
+        value: {
+          outcome: { kind: "blocked", reason: "evidence-incomplete" },
         },
       },
     });

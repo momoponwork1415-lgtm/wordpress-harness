@@ -30,11 +30,12 @@ const testImages = {
   database: `docker.io/library/mariadb@${digest("9")}`,
   wordpress: `docker.io/library/wordpress@${digest("a")}`,
   wordpressCli: `docker.io/library/wordpress-cli@${digest("b")}`,
-  browser: `docker.io/microsoft/playwright@${digest("c")}`,
+  browser: digest("c"),
 };
 const testWorkerContent = "// private browser worker fixture\n";
 const testInputContent = '{"private":"fixture"}\n';
-const testTargetContent = "<?php // admitted target fixture\n";
+const testTargetReadmeContent = "admitted target fixture\n";
+const testTargetPluginContent = "<?php // admitted target fixture\n";
 
 function rawDigest(content: string): string {
   return `sha256:${createHash("sha256").update(content).digest("hex")}`;
@@ -64,9 +65,14 @@ const testTargetManifest = {
   },
   entries: [
     {
-      path: "plugin.php",
-      digest: rawDigest(testTargetContent),
-      size: Buffer.byteLength(testTargetContent),
+      path: "README.md",
+      digest: rawDigest(testTargetReadmeContent),
+      size: Buffer.byteLength(testTargetReadmeContent),
+    },
+    {
+      path: "admin/plugin.php",
+      digest: rawDigest(testTargetPluginContent),
+      size: Buffer.byteLength(testTargetPluginContent),
     },
   ],
 };
@@ -140,11 +146,15 @@ async function writeLabDefinition(
   const definitionFile = join(directory, "experiment.private.json");
   const targetManifestFile = join(directory, "target-manifest.json");
   const browserImage = testImages.browser;
-  await mkdir(targetDirectory);
+  await mkdir(join(targetDirectory, "admin"), { recursive: true });
   await mkdir(fixtureDirectory);
   await writeFile(workerFile, testWorkerContent);
   await writeFile(inputFile, testInputContent);
-  await writeFile(join(targetDirectory, "plugin.php"), testTargetContent);
+  await writeFile(join(targetDirectory, "README.md"), testTargetReadmeContent);
+  await writeFile(
+    join(targetDirectory, "admin", "plugin.php"),
+    testTargetPluginContent,
+  );
   await writeFile(targetManifestFile, JSON.stringify(testTargetManifest));
   await writeFile(
     definitionFile,
@@ -241,11 +251,40 @@ describe("gVisor Stored XSS Lab Control", () => {
     const directory = await mkdtemp(join(tmpdir(), "gvisor-stored-xss-lab-"));
     const artifactStore = openFileJsonArtifactStore(join(directory, "cas"));
     const plan = storedXssExperimentPlan();
+    const wordpressCliRequests: Array<readonly string[]> = [];
+    const inspectedContainers: string[] = [];
+    const databaseAddress = "172.30.0.2";
+    const wordpressAddress = "172.30.0.3";
+    let wordpressServerRequest: readonly string[] | undefined;
+    let browserRequest: readonly string[] | undefined;
 
     try {
       const definition = await writeLabDefinition(directory, plan);
       const processRunner: LabProcessRunner = {
         run: async (request) => {
+          if (
+            request.args[0] === "run" &&
+            request.args.includes(testImages.wordpressCli)
+          ) {
+            wordpressCliRequests.push(request.args);
+          }
+          if (
+            request.args[0] === "run" &&
+            request.args.includes(testImages.wordpress)
+          ) {
+            wordpressServerRequest = request.args;
+          }
+          if (request.args[0] === "inspect") {
+            const container = request.args.at(-1) ?? "";
+            inspectedContainers.push(container);
+            return {
+              exitCode: 0,
+              stdout: container.endsWith("-database")
+                ? `${databaseAddress}\n`
+                : `${wordpressAddress}\n`,
+              stderr: "",
+            };
+          }
           if (request.args[0] === "info") {
             return {
               exitCode: 0,
@@ -254,6 +293,7 @@ describe("gVisor Stored XSS Lab Control", () => {
             };
           }
           if (request.args.includes(definition.browserImage)) {
+            browserRequest = request.args;
             return {
               exitCode: 0,
               stdout: JSON.stringify({
@@ -316,6 +356,32 @@ describe("gVisor Stored XSS Lab Control", () => {
       );
       expect(JSON.stringify(observation)).not.toContain(definition.workerFile);
       expect(JSON.stringify(observation)).not.toContain(definition.inputFile);
+      expect(wordpressCliRequests).not.toHaveLength(0);
+      expect(inspectedContainers).toHaveLength(2);
+      expect(wordpressServerRequest).toEqual(
+        expect.arrayContaining([`WORDPRESS_DB_HOST=${databaseAddress}`]),
+      );
+      expect(browserRequest).toEqual(
+        expect.arrayContaining(["--add-host", `wordpress:${wordpressAddress}`]),
+      );
+      const databasePasswords = new Set<string>();
+      for (const args of wordpressCliRequests) {
+        const imageIndex = args.indexOf(testImages.wordpressCli);
+        expect(args[imageIndex + 1]).toBe("wp");
+        expect(args).toEqual(
+          expect.arrayContaining([
+            `WORDPRESS_DB_HOST=${databaseAddress}`,
+            "WORDPRESS_DB_NAME=wordpress",
+            "WORDPRESS_DB_USER=root",
+          ]),
+        );
+        const password = args.find((argument) =>
+          argument.startsWith("WORDPRESS_DB_PASSWORD="),
+        );
+        expect(password).toBeDefined();
+        if (password !== undefined) databasePasswords.add(password);
+      }
+      expect(databasePasswords).toHaveProperty("size", 1);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
@@ -453,7 +519,7 @@ describe("gVisor Stored XSS Lab Control", () => {
     try {
       const definition = await writeLabDefinition(directory, plan);
       await writeFile(
-        join(definition.targetDirectory, "plugin.php"),
+        join(definition.targetDirectory, "admin", "plugin.php"),
         "<?php // changed target fixture\n",
       );
       const processRunner: LabProcessRunner = {

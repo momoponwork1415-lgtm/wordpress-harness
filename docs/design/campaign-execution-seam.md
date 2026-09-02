@@ -168,4 +168,6 @@ Behavior Testは`CampaignRunner.run(plan)`と`CampaignReader.read/inspect`から
 
 Git外のBrizy 2.8.11/2.8.12 snapshotでは、同じproduction materializerで各3 Leaseを外部modelなしに構築し、source入力が設定上限内に収まり、2.8.11のstate-chain Leaseが保存側、unauthenticated form側、管理画面templateを同時に含むことを確認した。これはsource選択とbindingのcharacterizationであり、脆弱性発見またはpatched negativeの実証ではない。
 
-未実装の必須境界は、`continue-unresolved-work`を次の実Waveへ消費するreconcile、Verificationの各crash境界、private Calibration Review、実Opus Finder・Independent Verifier・gVisor/browserを連結したCampaign runである。
+private Brizy 2.8.11では、実Opus Finder・Independent Verifier・gVisor/browserを同じ`CampaignRunner.run`へ連結し、oracle-freeな3 FinderからFinding、`await-calibration`、Ledger replayまで到達した。2.8.12の手動較正経路は同じ最新構成でDisprovedになり、oracle-free Campaignは3 FinderからHypothesisを得ずFindingへ誤昇格しなかった。
+
+未実装の必須境界は、`continue-unresolved-work`を次の実Waveへ消費するreconcile、Verificationの各crash境界、複数のterminal runを比較するprivate Calibration Reviewである。
