@@ -184,6 +184,54 @@ UnitはTarget、Map、Program Index、Focus、Leaseのdigestと、実際に採�
 
 FinderがHypothesisの`requiredEvidence`にTarget inventory内の具体的なPHP pathを挙げた場合、Independent Verifierはそのpathだけを追加sourceとして取得できる。これはFinderの主張を真と扱う処理ではない。pathの実在、PHP分類、manifest digest、file/total byte上限を再検査したうえで、Verifierが固定sourceから独立に支持または反証するためのbounded Context Responseである。
 
+### 次の提案: Finderが不足sourceを追う
+
+現行の固定Analysis Unitは最初のcontextとして残し、次のsliceではFinderが同じTarget Snapshot内を予算付きで追跡できるようにする。これはSurface MapをAI出力で上書きする処理ではない。
+
+```mermaid
+flowchart TB
+    unit["Initial Context"]
+    finder["Finder Attempt"]
+    need{"More Evidence?"}
+    query["Source Query"]
+    gate{"Policy Gate"}
+    receipt[("Tool Receipt")]
+    terminal[("Research Output")]
+
+    unit --> finder --> need
+    need -->|yes| query --> gate
+    gate -->|allow| receipt --> finder
+    gate -->|deny or limit| terminal
+    need -->|no| terminal
+
+    classDef done fill:#e9f7ed,stroke:#337a46,color:#173d22;
+    classDef planned fill:#f2f3f5,stroke:#777,color:#333;
+    class unit done;
+    class finder,need,query,gate,receipt,terminal planned;
+```
+
+model-visibleな操作は`read / search / symbol / graph`に限定し、任意shell、network、runtime、Target writeを追加しない。query、scope、走査量、truncation、result digestはprivate CASへ記録する。Focus Areaは「何を調べるか」の所有権であり、最初に選んだfileを越えてはならない境界ではない。
+
+追加取得で解ける局所的なcaller、callee、wrapperはAttempt内の`Source Query`で追う。dynamic dispatch、cross-request state、dependency semantics等、Attempt内で決められない不足だけを`Mapping Evidence Request`として次のMap revisionへ送る。
+
+```mermaid
+flowchart TB
+    local["Source Query"]
+    output["Finder Output"]
+    mapreq["Mapping Request"]
+    revision[("Map Revision")]
+    wave["Next Wave"]
+
+    local --> output
+    output -->|unresolved semantics| mapreq
+    mapreq --> revision --> wave
+
+    classDef planned fill:#f2f3f5,stroke:#777,color:#333;
+    class local,output,mapreq,revision,wave planned;
+```
+
+詳細と受入条件は[Evidence-guided Finder loop](../evidence-guided-finder-loop.md)に記録する。現時点ではproposedであり、図の灰色部分は未実装である。
+
 ### Brizy pairで確認した6 Gate
 
 | Gate | このsliceの結果 | artifactから確認したこと |

@@ -14,4 +14,5 @@ white-box review、static analysis、検証手法の個別判断では、OWASP�
 
 - [White-box Surface Mapping security reference](research/white-box-surface-mapping-security-reference.md)
 - [Harness source-mapping implementation patterns](research/harness-source-mapping-patterns.md)
+- [Surface Map context retrieval bottleneck](research/surface-map-context-retrieval-bottleneck.md)
 - [Agentic harness reference inventory](research/agentic-harness-reference-inventory.md)
