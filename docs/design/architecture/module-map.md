@@ -2,7 +2,7 @@
 
 Status: living visual index, 2026-09-02
 
-この文書は、コードの詳細を知らなくても「どのModuleが何を行い、何を受け取り、何を作るか」を把握するための機能図である。設計判断の正本は[Module architecture](module-architecture.md)、現在のsource・Testとの対応は[Codebase Guide](../CODEBASE-GUIDE.md)とする。
+この文書は、コードの詳細を知らなくても「どのModuleが何を行い、何を受け取り、何を作るか」を把握するための機能図である。設計判断の正本は[Module architecture](../module-architecture.md)、現在のsource・Testとの対応は[Codebase Guide](../../CODEBASE-GUIDE.md)とする。
 
 ## 1. 製品が行うこと
 
@@ -87,12 +87,12 @@ flowchart TB
 
 | Module | 主な機能 | 受け取るもの | 作るもの | 所有しないもの |
 | --- | --- | --- | --- | --- |
-| [Campaign Control](module-architecture.md#campaign-control) | Campaignを準備・前進・停止・再開し、有限のWork Waveと予算を管理する | Target Snapshot、Campaign Spec、operator command | Work Lease、停止理由、現在状態 | 脆弱性の真偽、provider固有処理 |
-| [Source Understanding](source-mapping-seam.md) | pluginの攻撃面、guard、data flow、未解決gapを構造化する | Target Snapshot、PHP Program Index、許可されたRuntime Observation | versioned Surface Map、Lab Baseline | Finding、探索の多数決 |
-| [Exploration](exploration-seam.md) | Focus Areaへ多様なStrategyを適用し、routeを組み立て、coverage gapを閉じる | Surface Map、Work Lease、Strategy Portfolio | Hypothesis、Route Fragment、Gap Review | Findingへの昇格、runtimeの直接操作 |
-| [Verification](module-architecture.md#verification) | 仮説を独立再導出し、cleanなLabで成立・不成立・未検証を確定する | Target Snapshot、最小Hypothesis、typed Experiment | Finding、Negative Result、Blocked Result、Review Packet | Finderの自己評価、raw transcriptによる証明 |
-| [Model Execution](model-execution-seam.md) | 公式provider processを隔離実行し、timeout、retry、session、usageを管理する | Model Profile、Assignment、外部budget | normalized events、result、transcript reference | Campaign priority、Verification verdict |
-| [Research Record](module-architecture.md#research-record) | eventとartifactをappend-onlyに保存し、再現可能なviewを構築する | versioned event、artifact、provenance | Research Ledger、CAS reference、replayed view | domain判断、provider選択 |
+| [Campaign Control](../module-architecture.md#campaign-control) | Campaignを準備・前進・停止・再開し、有限のWork Waveと予算を管理する | Target Snapshot、Campaign Spec、operator command | Work Lease、停止理由、現在状態 | 脆弱性の真偽、provider固有処理 |
+| [Source Understanding](../source-mapping-seam.md) | pluginの攻撃面、guard、data flow、未解決gapを構造化する | Target Snapshot、PHP Program Index、許可されたRuntime Observation | versioned Surface Map、Lab Baseline | Finding、探索の多数決 |
+| [Exploration](../exploration-seam.md) | Focus Areaへ多様なStrategyを適用し、routeを組み立て、coverage gapを閉じる | Surface Map、Work Lease、Strategy Portfolio | Hypothesis、Route Fragment、Gap Review | Findingへの昇格、runtimeの直接操作 |
+| [Verification](../module-architecture.md#verification) | 仮説を独立再導出し、cleanなLabで成立・不成立・未検証を確定する | Target Snapshot、最小Hypothesis、typed Experiment | Finding、Negative Result、Blocked Result、Review Packet | Finderの自己評価、raw transcriptによる証明 |
+| [Model Execution](../model-execution-seam.md) | 公式provider processを隔離実行し、timeout、retry、session、usageを管理する | Model Profile、Assignment、外部budget | normalized events、result、transcript reference | Campaign priority、Verification verdict |
+| [Research Record](../module-architecture.md#research-record) | eventとartifactをappend-onlyに保存し、再現可能なviewを構築する | versioned event、artifact、provenance | Research Ledger、CAS reference、replayed view | domain判断、provider選択 |
 
 ## 4. 一つの調査が通る道
 
@@ -122,11 +122,11 @@ sequenceDiagram
 
 ## 5. 詳細を読むとき
 
-- 現在どこまで動くか、どのsourceとTestか: [Codebase Guide](../CODEBASE-GUIDE.md)
-- Surface MapのInterface、根拠状態、AIとの責任分担: [Surface Map visual guide](../visuals/surface-map.html)
+- 現在どこまで動くか、どのsourceとTestか: [Codebase Guide](../../CODEBASE-GUIDE.md)
+- Surface MapのInterface、根拠状態、AIとの責任分担: [Surface Map visual guide](../../visuals/surface-map.html)
 - 全体のcontextと信頼領域: [Architecture overview](architecture-overview.md)
-- Module ownershipと依存方向: [Module architecture](module-architecture.md)
-- 探索の分割と合流: [Exploration seam](exploration-seam.md)
+- Module ownershipと依存方向: [Module architecture](../module-architecture.md)
+- 探索の分割と合流: [Exploration seam](../exploration-seam.md)
 - 現在のFinder並列構成と独立検証への流れ: [探索エージェント構成](exploration-agent-architecture.md)
-- 独立Verificationを含むResearch全体: [Architecture](architecture.md)
-- 日本語で分からない正式語: [日本語用語早見表](../JAPANESE-GLOSSARY.md)
+- 独立Verificationを含むResearch全体: [Architecture](../architecture.md)
+- 日本語で分からない正式語: [日本語用語早見表](../../JAPANESE-GLOSSARY.md)

@@ -2,9 +2,9 @@
 
 Status: living implementation view, 2026-09-02
 
-この文書は、現在の探索処理をコードの詳細なしで追うための図である。設計上の正本は[Exploration seam](exploration-seam.md)、実装場所とTestは[Codebase Guide](../CODEBASE-GUIDE.md)とする。
+この文書は、現在の探索処理をコードの詳細なしで追うための図である。設計上の正本は[Exploration seam](../exploration-seam.md)、実装場所とTestは[Codebase Guide](../../CODEBASE-GUIDE.md)とする。
 
-図を横長にしないため、`対象理解 -> 作業分割 -> 並列Finder -> 仮説取込 -> 独立検証`を五枚に分ける。緑は実装済み、黄は一部実装、灰は設計のみを表す。Module責任、実行時系列、現行と到達形の差、評価gate、主要fileを一画面ずつ確認する場合は[探索アーキテクチャ詳細ガイド](../visuals/exploration-architecture.html)を開く。
+図を横長にしないため、`対象理解 -> 作業分割 -> 並列Finder -> 仮説取込 -> 独立検証`を複数枚に分ける。緑は実装済み、黄は一部実装、灰は設計のみを表す。Module責任、実行時系列、現行と到達形の差、評価gate、主要fileを一画面ずつ確認する場合は[探索アーキテクチャ詳細ガイド](../../visuals/exploration-architecture.html)を開く。
 
 ## 1. Surface Mapから調査範囲を作る
 
@@ -53,7 +53,7 @@ leases      = one primary Lease per selected Focus
 
 この規則は有限性と再現性を証明するbootstrapとしては機能するが、探索価値の順位としては粗い。private characterizationではbundled debug sinkへの重複割当、relationを持たない単独template、数KBの補助fileが上位になる例を観測した。次のcorrection sliceは公開Interfaceと三並列を変えず、Target固有entry/stateからの到達根拠、異なるroute seed、expected information gain、coverage debtを使って内部順位を置き換える。bundled dependencyは一律除外せず、Target固有codeから接続根拠がある場合に上位へ戻す。
 
-実装は[bootstrap-exploration.ts](../../src/research/exploration/bootstrap-exploration.ts)、外から観測する回帰仕様は[exploration-bootstrap.test.ts](../../tests/research/exploration-bootstrap.test.ts)を参照する。
+実装は[bootstrap-exploration.ts](../../../src/research/exploration/bootstrap-exploration.ts)、外から観測する回帰仕様は[exploration-bootstrap.test.ts](../../../tests/research/exploration-bootstrap.test.ts)を参照する。
 
 ## 2. LaneとStrategyを別々に割り当てる
 
@@ -122,7 +122,7 @@ flowchart TB
 - Surface MapとPHP Program Indexから決定的に選んだsource slice
 - source-bound Hypothesisを返すためのversioned schema
 
-現行のtool-free materializerは、Focus ownerのobserved anchorをseedにし、`seed -> 希少な共有hook一件 -> seed内のliteral PHP参照 -> 残りの共有hook -> Map relation二段 -> call neighbor二段`の順でpathを追加する。private closed sliceの上限は8 files、source全体650 KB、単一file 220 KBである。各fileはTarget manifestのsizeとSHA-256を再検査し、上限を越えるfileはobserved anchor周辺だけをrenderする。実装は[finder-attempt-materializer.ts](../../src/research/campaign-control/finder-attempt-materializer.ts)を参照する。
+現行のtool-free materializerは、Focus ownerのobserved anchorをseedにし、`seed -> 希少な共有hook一件 -> seed内のliteral PHP参照 -> 残りの共有hook -> Map relation二段 -> call neighbor二段`の順でpathを追加する。private closed sliceの上限は8 files、source全体650 KB、単一file 220 KBである。各fileはTarget manifestのsizeとSHA-256を再検査し、上限を越えるfileはobserved anchor周辺だけをrenderする。実装は[finder-attempt-materializer.ts](../../../src/research/campaign-control/finder-attempt-materializer.ts)を参照する。
 
 この順序は再現可能だが、動的property call、service locator、組立てcallback、fileをまたぐstate identityを静的call neighborだけで接続できない。Finderが不足producerやentryを特定しても追加取得できないため、acceptedな到達形では固定seedを小さくし、path・Lease・byte・turn budgetをharnessが検査する`read / search / symbol / graph` toolへ置き換える。shell、web、runtime、Target writeは追加しない。
 
@@ -137,7 +137,7 @@ flowchart TB
     dedupe["Causal Identity +<br/>Route Shape Dedup"]
     hypotheses[("Source-bound Hypotheses")]
     premise{"Attacker Premise<br/>Resolved?"}
-    verifier["Independent Opus Verifier"]
+    verifier["Independent Verifier<br/>現在: Opus"]
     source{"Source Re-derivation"}
     witness["Fresh gVisor Witness Lab"]
     control["Fresh gVisor Control Lab"]
@@ -162,7 +162,7 @@ VerifierはFinderのsession、scratch、自己評価を読まず、固定Target�
 ```mermaid
 flowchart TB
     current["現在: 1 Work Wave"]
-    finders["最大3 Opus Finders"]
+    finders["最大3 Finders<br/>現在: Opus"]
     ingest["Source-bound Ingestion"]
     verify["Independent Verification"]
     record[("Research Record")]
@@ -172,7 +172,7 @@ flowchart TB
     synthesis["Chain Synthesis"]
     gaps["Independent Gap Review"]
     closure["Coverage Closure"]
-    multimodel["GLM / Grok / GPT Profiles"]
+    multimodel["GLM / Grok / GPT /<br/>将来のModel Profiles"]
 
     current --> finders --> ingest --> verify --> record --> decision
     decision -. "未実装" .-> nextwave
@@ -190,6 +190,55 @@ flowchart TB
 ```
 
 2026-09-02時点で、Brizy 2.8.11の手動較正経路は同じCausal Identityについて`Finding`、2.8.12は`Disproved`を実Opus再導出とfresh gVisor experiment pairで記録した。oracle-free Campaignでは最大3 Finderを実行するproduction compositionまで動作している。これは探索エンジンの最初の垂直スライスであり、複数Wave、Chain Synthesis、Gap Review、multi-provider探索まで完成したことは意味しない。
+
+図中のOpusは現在接続済みのModel Profileを表し、FinderまたはVerifierの型を意味しない。Target固定、Focus、tool manifest、出力schema、仮説取込、独立検証はprovider非依存である。Claude固有`high`は現在の開発baselineに限り、安価なeligible Profileで各gateを再現できることをハーネス能力として評価する。
+
+## 6. Model Profileを差し替えても探索契約を変えない
+
+```mermaid
+flowchart TB
+    lease["Work Lease<br/>Focus + Strategy + Budget"]
+    registry["Eligible Model Profile Registry"]
+    plan[("Provider非依存<br/>Attempt Plan")]
+    execution["Model Execution"]
+
+    subgraph adapters["Provider Adapter — transport差だけを吸収"]
+        claude["Claude<br/>実装済み"]
+        gpt["GPT<br/>計画"]
+        grok["Grok<br/>計画"]
+        glm["GLM<br/>計画"]
+        future["将来Model<br/>計画"]
+    end
+
+    result[("共通の型付き<br/>Attempt Result")]
+    ingest["Hypothesis Ingestion"]
+    verify["Independent Verification"]
+
+    lease --> plan
+    registry --> plan
+    plan --> execution
+    execution --> claude
+    execution -.-> gpt
+    execution -.-> grok
+    execution -.-> glm
+    execution -.-> future
+    claude --> result
+    gpt -.-> result
+    grok -.-> result
+    glm -.-> result
+    future -.-> result
+    result --> ingest --> verify
+
+    classDef done fill:#e9f7ed,stroke:#337a46,color:#173d22;
+    classDef partial fill:#fff5d6,stroke:#a87800,color:#3f2d00;
+    classDef planned fill:#f2f3f5,stroke:#777,color:#333;
+    class lease,registry,plan,execution,claude,result,ingest,verify done;
+    class gpt,grok,glm,future planned;
+```
+
+`Attempt Plan`と`Attempt Result`が防火壁である。adapterは認証、CLI/API、model identity、provider固有effort、event形式、process lifecycleだけを変換し、Focus選定、tool権限、Hypothesisの意味、Findingへの昇格条件を変えない。したがってClaudeの`high`と別providerの設定を共通尺度へ変換せず、各Profileを同じrole contractとgateで評価する。
+
+安価なProfileでContext Reachが不足した時は、上位modelへ即時fallbackせず、Surface Mapまたはbounded toolで不足sourceを供給する。source-boundな有望仮説まで進み、残りが推論上の曖昧さである場合だけ、同じTarget、Focus、context、schema、予算を固定した上位Profileと比較する。
 
 ## 実行主体と権限
 

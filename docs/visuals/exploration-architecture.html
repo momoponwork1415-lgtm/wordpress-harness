@@ -353,6 +353,20 @@
         gap: 10px;
       }
 
+      .profile-stack {
+        display: grid;
+        gap: 14px;
+      }
+
+      .profile-grid {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+      }
+
+      .profile-core {
+        border-color: #34775a;
+        background: var(--green-soft);
+      }
+
       .gate {
         min-width: 0;
         padding: 14px;
@@ -403,7 +417,8 @@
       @media (max-width: 900px) {
         .module-grid,
         .flow,
-        .gates {
+        .gates,
+        .profile-grid {
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
@@ -430,6 +445,7 @@
         .module-grid,
         .flow,
         .gates,
+        .profile-grid,
         .workers {
           grid-template-columns: 1fr;
         }
@@ -446,7 +462,8 @@
         <p class="eyebrow">WordPress Harness / Exploration</p>
         <h1>探索アーキテクチャを、コードを読まずに把握する</h1>
         <p class="lede">
-          何が対象を固定し、誰が3並列を決め、Opusが何を読み、どこからFindingになるかを分解した実装ガイド。正式語はcodeと一致させ、日本語で責任を説明する。
+          何が対象を固定し、誰が3並列を決め、現在のModel
+          Profileが何を読み、どこからFindingになるかを分解した実装ガイド。正式語はcodeと一致させ、日本語で責任を説明する。
         </p>
         <div class="status-row">
           <div class="status done">
@@ -614,7 +631,9 @@
           </article>
         </div>
         <p class="callout">
-          現在は3つとも <code>claude-opus-5 / high</code>。同じmodel
+          現在は3つとも
+          <code>claude-opus-5 / high</code
+          >。これは接続済みの開発Profileであり、Finderの型ではない。同じmodel
           familyでもFocusとStrategyは分け、同一promptの多数決にはしない。
         </p>
       </section>
@@ -633,7 +652,7 @@
               <div>単一Focus nodeを選ぶ</div>
               <div>call neighborを先回りして選ぶ</div>
               <div>最大8 files / 650 KBをpromptへ埋める</div>
-              <div>Opusが一回でHypothesisを返す</div>
+              <div>一つのmodel実行でHypothesisを返す</div>
             </div>
             <p class="small">
               弱点: 孤立file、vendor code、入口とsinkの分断、不要な大context。
@@ -698,7 +717,65 @@
       </section>
 
       <section>
-        <p class="eyebrow">06 / Read the Code</p>
+        <p class="eyebrow">06 / Model Portability</p>
+        <h2>Modelを替えても探索契約は替えない</h2>
+        <p class="section-copy">
+          Provider固有なのはtransportとeffort。Focus、tool権限、Hypothesis、Verificationは共通のままにする。
+        </p>
+        <div class="surface profile-stack">
+          <article class="card profile-core">
+            <span class="tag done">common input</span>
+            <h3>Work Lease + Attempt Plan</h3>
+            <p>
+              Target、Focus、Strategy、source/tool budget、output
+              schemaをprovider非依存に固定する。
+            </p>
+          </article>
+          <div class="grid profile-grid">
+            <article class="card profile-core">
+              <span class="tag done">implemented</span>
+              <h3>Claude</h3>
+              <p>現在の開発ProfileはOpus 5 / high。</p>
+            </article>
+            <article class="card">
+              <span class="tag planned">planned</span>
+              <h3>GPT</h3>
+              <p>公式transportの適格性確認後に接続。</p>
+            </article>
+            <article class="card">
+              <span class="tag planned">planned</span>
+              <h3>Grok</h3>
+              <p>provider固有設定をadapter内へ閉じ込める。</p>
+            </article>
+            <article class="card">
+              <span class="tag planned">planned</span>
+              <h3>GLM</h3>
+              <p>同じrole contractとgateで評価する。</p>
+            </article>
+            <article class="card">
+              <span class="tag planned">planned</span>
+              <h3>Future</h3>
+              <p>将来modelもversioned Profileとして追加。</p>
+            </article>
+          </div>
+          <article class="card profile-core">
+            <span class="tag done">common output</span>
+            <h3>Typed Attempt Result → Independent Verification</h3>
+            <p>
+              強いmodelの自己評価ではなく、共通schema、source
+              binding、独立したWitnessとControlで昇格を決める。
+            </p>
+          </article>
+        </div>
+        <p class="callout">
+          安価なProfileがContext
+          Reachで止まった場合は、上位modelへ即時fallbackせず、Surface
+          Mapまたはbounded toolで不足sourceを供給する。
+        </p>
+      </section>
+
+      <section>
+        <p class="eyebrow">07 / Read the Code</p>
         <h2>図から実装へ辿る</h2>
         <p class="section-copy">
           上から順に読むと、設計、判断、入力作成、外部実行、検証を混同しにくい。

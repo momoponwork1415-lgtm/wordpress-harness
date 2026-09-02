@@ -6,6 +6,8 @@ Status: accepted; tool-free Finder and shared Claude structured process implemen
 
 ResearchのModel Executionが所有する。一つの不変な実行計画（Attempt Plan）を、provider、transport、認証、tool protocol、process lifecycleの差から隔離して実行し、呼出元へprovider非依存の実行結果（Attempt Execution Result）だけを返すdeep moduleである。
 
+Model Executionは特定modelの性能をdomain contractへ埋め込まない。roleを実行できる最低能力とTransport Eligibilityを満たすmodelはversioned Model Profileとして差し替えられ、Exploration、Verification、Research Recordはprovider名、effort名、CLI/APIの違いを知らない。安価なProfileが不足contextを自力で推測することを期待せず、必要な探索能力はAttempt Planとharness-owned toolへ寄せる。
+
 ## Interface
 
 ```ts
@@ -52,6 +54,12 @@ Claude JSON envelope、実model identity、permission denial、Web request数、
 Attempt PlanはWork Lease、worker role、Target Snapshot、Prompt Set、selected Knowledge、Model Profile、Sandbox Policy、role-specific Output Schema、tool manifest、reserved budgetをdigest固定する。Model Profileはprovider/model identity、transport kind、eligible transport receipt、provider固有effort、context policyを持つ。
 
 model、role、effort、tool、retry、transportをworkerまたはprovider adapterが選択しない。effort名をprovider間の共通尺度へ変換せず、初期値は`provider-default`として明示する。特定roleのquality、cost、latencyが実戦上のbottleneckになった場合だけ、同じproviderの隣接設定を小さなsmokeで比較して次のversioned Profileへ反映する。
+
+### 開発時の努力量ポリシー（Development Effort Policy、提案）
+
+Claude Opus Finderの現在の開発baselineは`high`とする。これはClaude固有Profileの比較値であり、Model Executionまたは他providerのdefaultではない。Mapまたはsource contextが不足したAttempt、relationを持たない孤立file、translation/generated asset、到達根拠のないbundled dependencyを`xhigh`で再実行しない。これらはModel ProfileではなくTarget identity、Map、Focus、Context gateのfailureとして直す。
+
+`high`がsource-boundなFrontier Hypothesis、具体的なfalsifier、追加取得可能なessential gapを作った場合だけ、同じTarget Snapshot、Focus Area、Strategy、source context、output schema、tool budgetを固定して`xhigh`のfresh Attemptと比較できる。`xhigh`は結果への追加信頼を与えず、通常のsource binding、独立Verification、Witness、Causal Controlを省略しない。複数の有望FocusでHypothesisの完全性または必要証拠の決定性が再現して改善した時だけdefault変更を検討し、それまでは有望routeのescalation Profileとする。
 
 ## Transport admission
 
@@ -124,3 +132,5 @@ deterministic process adapterをtestに、公式native process adapterをproduct
 8. 429後のresumeは同じAttemptとfrozen inputでだけ行われ、別modelへfallbackしない。
 9. crash後に安全なresume条件が欠けるopen Attemptはorphanedになり、新しいAttemptとして再割当される。
 10. Remote Control利用者はCampaignをinspect・stopできるが、provider PTY、session ref、credential値を取得できない。
+11. 同じWork Leaseを別のeligible Model Profileへ割り当てても、ExplorationとVerificationの公開contractは変わらず、provider差はAttempt ReceiptのProfile identityとしてだけ観測される。
+12. 安価なProfileがContext Reachで停止した場合、上位effortへの自動昇格ではなくMapping Evidence Requestまたはbounded tool requestとして不足を分類できる。

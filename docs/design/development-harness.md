@@ -78,7 +78,7 @@ Action dependencyはtagだけでなくfull commit SHAへ固定し、対応する
 
 ### 5. Human Comprehension Map
 
-[Module Map](module-map.md)をコード詳細なしで機能を理解する視覚的な入口、[Codebase Guide](../CODEBASE-GUIDE.md)を現在の実装を短時間で再構成する索引とする。Guideは詳細仕様を再記述せず、次だけをModule単位で結び付ける。
+[Module Map](architecture/module-map.md)をコード詳細なしで機能を理解する視覚的な入口、[Codebase Guide](../CODEBASE-GUIDE.md)を現在の実装を短時間で再構成する索引とする。Guideは詳細仕様を再記述せず、次だけをModule単位で結び付ける。
 
 - production status
 - public Interface

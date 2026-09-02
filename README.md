@@ -10,9 +10,9 @@ WordPressプラグインのsource reviewを、LLMの探索力と独立した実�
 
 ## Start here
 
-- [Module Map — コードを読まずに機能と現在地を把握する](docs/design/module-map.md)
+- [Module Map — コードを読まずに機能と現在地を把握する](docs/design/architecture/module-map.md)
 - [Codebase Guide — 現在のInterface・実装・Test・設計の対応](docs/CODEBASE-GUIDE.md)
-- [Architecture overview diagram](docs/design/architecture-overview.md)
+- [Architecture overview diagram](docs/design/architecture/architecture-overview.md)
 - [Development rules](AGENTS.md)
 
 詳細が必要になったら、Codebase Guideから変更対象のSeamへ進みます。用語は[Context map](CONTEXT-MAP.md)、[Domain language](CONTEXT.md)、[日本語用語早見表](docs/JAPANESE-GLOSSARY.md)を正本とします。
