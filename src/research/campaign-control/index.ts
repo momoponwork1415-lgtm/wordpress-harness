@@ -270,10 +270,16 @@ async function executeRun(
       },
       modelProfile: materialized.modelProfile,
       prompt: materialized.prompt,
+      ...(materialized.sourceEvidence === undefined
+        ? {}
+        : { sourceToolPolicy: materialized.sourceEvidence.policy }),
       budget: {
         maxWallTimeMs: lease.budget.maxWallTimeMs,
         maxOutputBytes: materialized.maxOutputBytes,
         maxHypotheses: lease.budget.maxHypotheses,
+        ...(materialized.sourceEvidence === undefined
+          ? {}
+          : { maxSourceQueries: materialized.sourceEvidence.maxQueries }),
       },
     });
     const attemptPlanDigest =

@@ -44,7 +44,7 @@ model revisionでは、provider非依存の`MapDeltaSynthesizer`がModel Executi
 
 Target IntakeとTarget Workspaceが未実装の間は、`openSourceMapping`の内部bootstrap構成で一つの固定Target Snapshot、manifest ref、PHP Program Index ref、private CAS directoryを束ねる。`build`へhost pathまたはfile listは渡さない。この構成はTarget Workspace接続時に置き換え、`build`のInterfaceとbehavior testを維持する。
 
-現時点ではProposalによる追加node、Conflict、Context Request、Knowledge由来inference、非PHP asset relation、repair/continuation Attempt、`runtime-revision`を処理しない。Mapperの最初のproduction adapterはtool-free Claude structured executionである。Finder用Source Evidenceのexact `read/search`とClaude native bridgeは実装したが、Mapper接続、production Campaign materializer、`symbol/graph`、完全なAttempt durabilityは未実装である。未対応assetとmodel failureを解析成功にせずgapとして公開し、実戦のmapping gapまたは後続Issueから追加する。
+現時点ではProposalによる追加node、Conflict、Context Request、Knowledge由来inference、非PHP asset relation、repair/continuation Attempt、`runtime-revision`を処理しない。Mapperの最初のproduction adapterはtool-free Claude structured executionである。Finder用Source Evidenceのexact `read/search`、Claude native bridge、production Campaign materializer接続は実装したが、Mapper接続、`symbol/graph`、完全なAttempt durabilityは未実装である。未対応assetとmodel failureを解析成功にせずgapとして公開し、実戦のmapping gapまたは後続Issueから追加する。
 
 最終的なSurface Map全体を決定論的解析だけで構築する方針ではない。決定論的sliceはTarget identity、inventory、構文上のfact、source anchor、evidence state、stable orderingという骨格を固定する。Mapper modelはその上へ、feature境界、cross-file relation、dynamic dispatch候補、stateを跨ぐroute、追加Context Requestを`inferred`または`unknown`として補完する。modelは`observed`を訂正・削除せず、重要なrelationはsemantic analysisまたはpolicy適合Runtime Observationから別の根拠を追加する。
 

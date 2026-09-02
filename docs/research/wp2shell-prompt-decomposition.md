@@ -137,7 +137,7 @@ Target内に「必ずある文字列」をmodelが毎回選ぶ方式は、余分
 
 ## 現設計との差分と次の順序
 
-現在はTarget Snapshot、Surface Map、Focus、Work Lease、typed Hypothesis、独立Verification、CAS/Ledger、最大3並列まで責務分離されている。tool-free固定source sliceだけが、旧Promptの「必要なsourceを自分で読む」能力をまだ失っている。
+現在はTarget Snapshot、Surface Map、Focus、Work Lease、typed Hypothesis、独立Verification、CAS/Ledger、最大3並列まで責務分離されている。固定Analysis Unitをseedにし、Target-boundな`source_search/source_read`で必要sourceを追加取得する経路もCampaignへ接続した。`symbol/graph`と実Targetでのtool付き再評価はまだ残る。
 
 次のvertical sliceは次の順で行う。
 

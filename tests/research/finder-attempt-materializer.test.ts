@@ -6,8 +6,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  openFinderAttemptMaterializer,
   openToolFreeFinderAttemptMaterializer,
   type AttemptPlanMaterializationInput,
+  type OpenToolFreeFinderAttemptMaterializerOptions,
 } from "../../src/research/index.js";
 import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
 import type {
@@ -29,6 +31,7 @@ async function fixture(options?: {
   readonly focus?: "database" | "entry" | "sink";
   readonly includeLiteralReference?: boolean;
   readonly maxFiles?: number;
+  readonly sourceEvidence?: boolean;
   readonly strategy?: "sink-backward" | "wildcard";
 }) {
   const directory = await mkdtemp(join(tmpdir(), "finder-materializer-"));
@@ -647,10 +650,37 @@ async function fixture(options?: {
     id: "tool-free-finder-v1",
     digest: digest("7"),
   };
+  const sourceToolPolicy = {
+    kind: "source-tool-policy" as const,
+    schemaVersion: 1 as const,
+    id: "finder-source-evidence-v1",
+    targetSnapshotDigest: targetDigest,
+    operations: {
+      read: { maxResponseBytes: 64 * 1024 },
+      search: { maxScanBytes: 4 * 1024 * 1024, maxResults: 64 },
+    },
+  };
+  const sourceToolPolicyRef = {
+    kind: "source-tool-policy" as const,
+    schemaVersion: 1 as const,
+    id: sourceToolPolicy.id,
+    digest: sha256Digest(sourceToolPolicy),
+  };
   const input: AttemptPlanMaterializationInput = {
     run: {
       runId: "run:test",
-      finder: { modelProfile: modelProfileRef, promptSet },
+      finder: {
+        modelProfile: modelProfileRef,
+        promptSet,
+        ...(options?.sourceEvidence
+          ? {
+              sourceEvidence: {
+                policy: sourceToolPolicyRef,
+                maxQueries: 12,
+              },
+            }
+          : {}),
+      },
       maxWallTimeMs: 300_000,
       maxModelTokens: 50_000,
     },
@@ -666,7 +696,7 @@ async function fixture(options?: {
     focusArea,
     lease,
   };
-  const materializer = openToolFreeFinderAttemptMaterializer({
+  const materializerOptions = {
     sourceDirectory,
     surfaceMap: { ref: mapRef, value: map },
     phpProgramIndex: { ref: programIndexRef, value: programIndex },
@@ -686,7 +716,18 @@ async function fixture(options?: {
     maxFileBytes: 64 * 1024,
     maxFiles: options?.maxFiles ?? 8,
     maxOutputBytes: 256 * 1024,
-  });
+  } satisfies OpenToolFreeFinderAttemptMaterializerOptions;
+  const materializer = options?.sourceEvidence
+    ? openFinderAttemptMaterializer({
+        ...materializerOptions,
+        sourceEvidence: {
+          policy: {
+            ref: sourceToolPolicyRef,
+            value: sourceToolPolicy,
+          },
+        },
+      })
+    : openToolFreeFinderAttemptMaterializer(materializerOptions);
   return {
     cleanup: () => rm(directory, { recursive: true, force: true }),
     input,
@@ -695,7 +736,30 @@ async function fixture(options?: {
   };
 }
 
-describe("ToolFreeFinderAttemptMaterializer.materialize", () => {
+describe("FinderAttemptMaterializer.materialize", () => {
+  it("binds a Source Tool Policy and query ceiling into a source-guided materialization", async () => {
+    const test = await fixture({ sourceEvidence: true });
+    try {
+      const materialization = await test.materializer.materialize(test.input);
+
+      expect(materialization).toMatchObject({
+        sourceEvidence: {
+          policy: {
+            kind: "source-tool-policy",
+            id: "finder-source-evidence-v1",
+          },
+          maxQueries: 12,
+        },
+      });
+      expect(materialization.prompt).toContain(
+        "Use source_search and source_read only when the initial Analysis Unit is insufficient",
+      );
+      expect(materialization.prompt).not.toContain("You have no tools");
+    } finally {
+      await test.cleanup();
+    }
+  });
+
   it("compares bounded sibling files from the same sink family", async () => {
     const test = await fixture({ focus: "database", maxFiles: 2 });
     try {

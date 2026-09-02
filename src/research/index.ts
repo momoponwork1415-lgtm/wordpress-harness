@@ -56,5 +56,11 @@ export {
   UnsupportedLedgerSchemaError,
 } from "./contracts.js";
 export { openResearch } from "./open-research.js";
-export { openToolFreeFinderAttemptMaterializer } from "./campaign-control/finder-attempt-materializer.js";
-export type { OpenToolFreeFinderAttemptMaterializerOptions } from "./campaign-control/finder-attempt-materializer.js";
+export {
+  openFinderAttemptMaterializer,
+  openToolFreeFinderAttemptMaterializer,
+} from "./campaign-control/finder-attempt-materializer.js";
+export type {
+  OpenFinderAttemptMaterializerOptions,
+  OpenToolFreeFinderAttemptMaterializerOptions,
+} from "./campaign-control/finder-attempt-materializer.js";

@@ -486,7 +486,7 @@
           </div>
           <div class="status planned">
             <b>Planned</b>
-            Target Intake、Campaign Tool Wiring、Chain Synthesis
+            Target Intake、Symbol / Graph、Chain Synthesis
           </div>
         </div>
       </header>
@@ -726,7 +726,7 @@
               <div>path・digest・byte・query上限を検査</div>
               <div>response / Receiptをprivate CASへ記録</div>
               <div>Claude: private loopback MCP + exact allowlist</div>
-              <div>次: Campaign wiring + symbol / graph</div>
+              <div>Campaign binding済み / 次: symbol + graph</div>
             </div>
             <p class="small">
               禁止: shell、web、runtime、Target write、ambient
@@ -735,10 +735,10 @@
           </article>
         </div>
         <p class="callout">
-          Gateway、Attempt binding、Claude native bridgeはBehavior
-          Test済み。公式Claude Code 2.1.258のsubscription認証でも合成live
-          probeを通過した。実Target
-          Campaignはまだtool-freeであり、次はmaterializerからPolicyとGatewayをcompositionする。<br />
+          Gateway、Attempt binding、Claude native bridge、Campaign
+          materializerはBehavior Test済み。公式Claude Code
+          2.1.258のsubscription認証でも合成live
+          probeを通過した。既存の実Target結果はtool-free時点のため、次は同じCampaignをtool付きで再走査する。<br />
           二次sourceのliteralを単純なpath順で選ぶと、一般文字列と同名のPHP
           fileがtemplateより先に入った。現在は出現回数、source内の出現順、path順で固定し、反復するtranslation
           domainより一度だけ現れるtemplate名を優先する。Verifierは<code>requiredEvidence</code>に明示されたinventory内PHP

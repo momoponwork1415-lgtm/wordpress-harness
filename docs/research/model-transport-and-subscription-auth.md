@@ -66,7 +66,7 @@ MCP protocolを独自に実装せず、official TypeScript SDKのStreamable HTTP
 - `safe-mode + explicit --mcp-config`の優先順位は公式文書に明記されていない。safe modeの説明がMCP全体を無効にするため、bridgeは例外を仮定しない。将来、pinned CLIのsubprocess testでexplicit serverだけが読まれることとambient serverが読まれないことを両方実証できた場合のみ再検討する。
 - `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`はcredentialと認識されるenvironment variableを除去するが、stdio MCP childのHOME、credential file、host filesystem、Linux `/proc`を一括隔離するとは書かれていない。したがってこの一設定だけでstdioをproduction-eligibleにしない。
 - Claude Codeのmanaged settingsはcommand-line allowを上書きするdenyを持てる。exact MCP toolがorg policyでdenyされるmachineでは、native adapterはprovider failureへ丸めず`policy-denied`にする必要がある。[Permission settings precedence](https://code.claude.com/docs/en/permissions#settings-precedence)
-- Claude Code 2.1.258とsubscription OAuthを使う合成live probeは、loopback random port、private bearer header、`alwaysLoad`、`dontAsk`、structured outputの組合せで通過した。fake providerのBehavior Testはexact tool inventoryと`search -> read`往復、bridge未接続時のfail-closedを再現する。credential non-disclosureとlistener teardownを独立に観測するTransport Eligibility probe、および実Target Campaign materializerはまだ必要である。
+- Claude Code 2.1.258とsubscription OAuthを使う合成live probeは、loopback random port、private bearer header、`alwaysLoad`、`dontAsk`、structured outputの組合せで通過した。fake providerのBehavior Testはexact tool inventoryと`search -> read`往復、bridge未接続時のfail-closedを再現する。production Campaign materializerのPolicy/query ceiling bindingも実装済みである。credential non-disclosureとlistener teardownを独立に観測するTransport Eligibility probe、および実Target Campaignのtool付き再走査はまだ必要である。
 
 ## Anthropic reference harness
 

@@ -16,6 +16,7 @@ import {
   surfaceMapRefSchema,
   type SurfaceMap,
 } from "../source-mapping/contracts.js";
+import { sourceToolPolicyRefSchema } from "../source-mapping/source-evidence-contracts.js";
 import {
   labBaselineRefSchema,
   verificationBlockReasonSchema,
@@ -75,6 +76,12 @@ export const finderAttemptMaterializationSchema = z.strictObject({
   modelProfile: attemptPlanSchema.shape.modelProfile,
   prompt: attemptPlanSchema.shape.prompt,
   maxOutputBytes: z.number().int().positive(),
+  sourceEvidence: z
+    .strictObject({
+      policy: sourceToolPolicyRefSchema,
+      maxQueries: z.number().int().positive(),
+    })
+    .optional(),
 });
 
 export const campaignRunPlanSchema = z.strictObject({
@@ -88,6 +95,12 @@ export const campaignRunPlanSchema = z.strictObject({
   finder: z.strictObject({
     modelProfile: modelProfileRefSchema,
     promptSet: promptSetRefSchema,
+    sourceEvidence: z
+      .strictObject({
+        policy: sourceToolPolicyRefSchema,
+        maxQueries: z.number().int().positive(),
+      })
+      .optional(),
   }),
   verification: z.strictObject({
     labBaseline: labBaselineRefSchema,

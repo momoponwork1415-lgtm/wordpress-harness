@@ -199,7 +199,7 @@ private benchmarkの固有routeをproduction heuristic、fixture、Prompt、Git�
 
 2026-09-02にprovider非依存のtracerを実装した。固定Target File Manifestに対するexact `search`とrange `read`、path/digest検査、response truncation、Attempt query ceiling、responseとTool Receiptのprivate CAS保存を、一つの`SourceEvidenceGateway.query`へ閉じた。`ModelExecution.run`はmodel-visible requestにAttempt、Lease、Target Snapshot、Source Tool Policy、query ordinalを付与し、deterministic provider adapterで`search -> read -> Finder output`を一つのAttemptとして通す。
 
-Claude Code用native bridgeは、公式MCP TypeScript SDKのAttempt-local loopback HTTP server、private bearer config、exact tool allowlist、`dontAsk`、connection fail-closedとして同日に実装した。fake providerのexact tool inventoryと`search -> read` Behavior Test、およびsubscription認証済みClaude Code 2.1.258の合成live probeを通過した。現行の実Target Campaignは引き続きtool-freeであり、Attempt Plan materializer、`symbol`、`graph`、complete Attempt Receipt、Route Fragment等は後続sliceである。
+Claude Code用native bridgeは、公式MCP TypeScript SDKのAttempt-local loopback HTTP server、private bearer config、exact tool allowlist、`dontAsk`、connection fail-closedとして同日に実装した。fake providerのexact tool inventoryと`search -> read` Behavior Test、およびsubscription認証済みClaude Code 2.1.258の合成live probeを通過した。`Campaign Run Plan`はTarget-boundなSource Tool Policy refとquery ceilingを固定し、production Finder materializerは対応するPolicy本文、digest、Target bindingを検査して各`Attempt Plan`へ結合する。CampaignからFinderまでのbindingは`CampaignRunner.run(plan)` Behavior Testで固定した。既存private実Target Campaignはtool-free結果のままであり、tool付き再走査、`symbol`、`graph`、complete Attempt Receipt、Route Fragment等は後続sliceである。
 
 ## Evaluation vector
 

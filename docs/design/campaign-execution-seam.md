@@ -33,6 +33,7 @@ interface CampaignRunner {
 - 固定Target Snapshotに結び付いたSurface Map ref
 - Exploration Policy ref
 - FinderとVerifierのModel Profile、Transport Eligibility Receipt、Prompt Set refs
+- FinderへSource Evidenceを許可する場合のSource Tool Policy refとAttempt query ceiling
 - Lab Baseline、Verification Policy、Experiment Registry refs
 - Campaign全体とVerification予約分を分けたBudget Envelope
 - 最大3回以内の独立Finder Attempt上限
@@ -84,7 +85,7 @@ Campaign ControlはFocus Area分割、Finder出力の真偽、provider retry分�
 
 Work LeaseからAttempt Planを作る処理はCampaign Control implementation内部へ置く。Target Snapshot、Surface Map、PHP Program Indexから、Leaseが所有するFocus Areaに必要なsource range、observed relation、unknown、Strategy、budgetを`Analysis Unit@v1`として決定的にrenderする。`sink-backward`は同じsink familyのsourceをbounded比較し、directed Strategyが二次sourceを読めた場合は、そこで参照されたclass-like symbol、低頻度literal、共有hook登録元を各最大1件、一段だけ同じfile/byte上限内へ昇格する。昇格sourceから再帰展開せず、`wildcard`には適用しない。Unitは実際に渡すpath、file digest、range、byte量、選択理由を持つが、選択理由をreachability evidenceとして扱わない。
 
-Finderへprovider組込みweb、shell、filesystem、subagent、ambient MCPを渡さない。最初のclosed sliceは既存のtool-free Claude processを使う。harness-owned read/search toolは別のaccepted Model Execution sliceで追加するまで、未実装の安全性として扱う。
+Finderへprovider組込みweb、shell、filesystem、subagent、ambient MCPを渡さない。固定Analysis Unitを初期seedとして残し、`Campaign Run Plan`でSource Tool Policyとquery ceilingを固定したAttemptだけへharness-owned `read/search`を公開する。MaterializerはPlanのrefに対応するPolicy本文、digest、Target bindingを検査し、Campaign Controlは個別tool protocolを知らず同じ`Attempt Plan`へ写す。Policyがない明示的ablationは引き続きtool-freeである。
 
 render済みAttempt Planはprivate CASへ保存し、policy auditでCase role、advisory、patch、既知payloadが含まれないことを確認する。Attempt Plan materializerへもCampaign Run Plan全体を渡さず、Finder ref、対象、有限Work Lease、Finder予算だけを渡す。これによりopaque Calibration Contextへ到達する経路自体を作らない。raw promptはResearch public viewまたはGitへ出さない。
 
@@ -164,7 +165,7 @@ Behavior Testは`CampaignRunner.run(plan)`と`CampaignReader.read/inspect`から
 
 ## Implementation status
 
-最初のbehavior sliceは実装済みである。`CampaignRunner.run`はCASに固定されたSurface MapとExploration Policyを検査し、有限Work Waveを作り、最大3 Attemptの上限内でFinderを実行し、source-bound Hypothesisだけを独立Verificationへ渡す。Attempt PlanはCampaign ControlがTarget、Lease、予算へ結び付け、private CAS保存、Ledger intent、外部process、terminal receiptの順で進む。production tool-free materializerは固定Surface Map、PHP Program Index、Focus Area、Work Leaseから`Analysis Unit@v1`を決定的に作り、実ファイルのregular-file/realpath/size/SHA-256を再検査する。Unitは採用source rangeと選択理由を持つ。directed StrategyはMap/call近傍を優先し、読めた二次sourceから低頻度literalと共有hook登録元を一段だけ昇格する。`wildcard`はdirected候補から除いたnode-kind別Surface Map標本を共有hook、literal参照より先にしてcontext相関を下げる。workerへadvisory、CVE、patch、Case role、期待結果を渡さない。Leaseの`maxHypotheses`はprompt上の依頼だけでなくrole output schemaの配列上限として強制し、超過outputを`completed`にしない。中断後のin-progress processは`orphaned`へ確定し、残予算がある場合だけfresh Attempt IDで置き換える。FindingまたはDisprovedは`await-calibration`を伴うterminal Campaign RunとしてResearch Ledgerへ記録され、close/reopen後の再実行はproviderやLabを再起動せず同じrefを返す。
+最初のbehavior sliceは実装済みである。`CampaignRunner.run`はCASに固定されたSurface MapとExploration Policyを検査し、有限Work Waveを作り、最大3 Attemptの上限内でFinderを実行し、source-bound Hypothesisだけを独立Verificationへ渡す。Attempt PlanはCampaign ControlがTarget、Lease、予算へ結び付け、private CAS保存、Ledger intent、外部process、terminal receiptの順で進む。production Finder materializerは固定Surface Map、PHP Program Index、Focus Area、Work Leaseから`Analysis Unit@v1`を決定的に作り、実ファイルのregular-file/realpath/size/SHA-256を再検査する。Unitは採用source rangeと選択理由を持つ。directed StrategyはMap/call近傍を優先し、読めた二次sourceから低頻度literalと共有hook登録元を一段だけ昇格する。`wildcard`はdirected候補から除いたnode-kind別Surface Map標本を共有hook、literal参照より先にしてcontext相関を下げる。Source Evidence設定がある場合はCampaign Run PlanがPolicy refとquery ceilingを固定し、Materializerが対応するPolicy artifactとTargetを検査してAttempt Planへ結合する。workerへadvisory、CVE、patch、Case role、期待結果を渡さない。Leaseの`maxHypotheses`はprompt上の依頼だけでなくrole output schemaの配列上限として強制し、超過outputを`completed`にしない。中断後のin-progress processは`orphaned`へ確定し、残予算がある場合だけfresh Attempt IDで置き換える。FindingまたはDisprovedは`await-calibration`を伴うterminal Campaign RunとしてResearch Ledgerへ記録され、close/reopen後の再実行はproviderやLabを再起動せず同じrefを返す。
 
 並列Finderの完了順を逆転しても、Work Lease順に正規化されたterminal recordとdigestが同一になることをbehavior testで固定している。また、Verificationのtyped Blocked reasonはCampaignの`blocked-capability`まで失われない。全Finderが`provider-failed`の場合もterminal statusをIteration Reviewへ渡し、`provider-unavailable`を失わない。
 

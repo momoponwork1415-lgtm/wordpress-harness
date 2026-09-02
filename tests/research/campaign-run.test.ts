@@ -274,6 +274,62 @@ function materializer(): AttemptPlanMaterializer {
   };
 }
 
+function sourceGuidedMaterializer(): AttemptPlanMaterializer {
+  return {
+    materialize: async (input) => {
+      if (input.run.finder.sourceEvidence === undefined) {
+        throw new Error("Source Evidence must be fixed by the Campaign Plan");
+      }
+      return {
+        kind: "finder-attempt-materialization",
+        schemaVersion: 1,
+        modelProfile: {
+          provider: "anthropic",
+          model: "claude-opus-5",
+          transport: "claude-code-process",
+          executableVersion: "2.1.251",
+          effort: "high",
+          eligibilityReceiptDigest: digest("e"),
+        },
+        prompt:
+          "Inspect the bounded source and retrieve missing route evidence.",
+        maxOutputBytes: 1_000_000,
+        sourceEvidence: input.run.finder.sourceEvidence,
+      };
+    },
+  };
+}
+
+function sourceEvidenceConfiguration(): NonNullable<
+  CampaignRunPlan["finder"]["sourceEvidence"]
+> {
+  return {
+    policy: {
+      kind: "source-tool-policy",
+      schemaVersion: 1,
+      id: "finder-source-evidence-v1",
+      digest: digest("c"),
+    },
+    maxQueries: 12,
+  };
+}
+
+function sourcePolicyBoundFinder(
+  artifacts: JsonArtifactStore,
+  candidate: SourceBoundHypothesis,
+): ModelExecution {
+  const enabled = finder(artifacts, candidate);
+  const unavailable = providerFailedFinder(artifacts);
+  return {
+    run: (plan) =>
+      plan.sourceToolPolicy?.id === "finder-source-evidence-v1" &&
+      plan.sourceToolPolicy.digest === digest("c") &&
+      plan.budget.maxSourceQueries === 12
+        ? enabled.run(plan)
+        : unavailable.run(plan),
+  };
+}
+
 function verifier(): IndependentVerifier {
   return {
     rederive: async (plan) => ({
@@ -358,6 +414,10 @@ async function openScenario(
   calibrationReview?: {
     review(input: unknown): Promise<unknown>;
   },
+  attemptPlanMaterializer: AttemptPlanMaterializer = materializer(),
+  finderSourceEvidence?: NonNullable<
+    CampaignRunPlan["finder"]["sourceEvidence"]
+  >,
 ) {
   const databasePath = join(directory, "research.sqlite");
   const artifacts = openFileJsonArtifactStore(join(directory, "artifacts"));
@@ -423,6 +483,9 @@ async function openScenario(
         id: "research-prompts-v1",
         digest: digest("7"),
       },
+      ...(finderSourceEvidence === undefined
+        ? {}
+        : { sourceEvidence: finderSourceEvidence }),
     },
     verification: {
       labBaseline: {
@@ -493,7 +556,7 @@ async function openScenario(
     clock: () => new Date(fixedNow),
     campaignExecution: {
       artifactStore: artifacts,
-      attemptPlanMaterializer: materializer(),
+      attemptPlanMaterializer,
       modelExecution: modelExecution(artifacts, candidate),
       independentVerifier: verifier(),
       labControl: labControl(artifacts),
@@ -505,6 +568,43 @@ async function openScenario(
 }
 
 describe("CampaignRunner.run", () => {
+  it("carries the materialized Source Tool Policy into every Finder Attempt", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "campaign-source-evidence-"),
+    );
+    const scenario = await openScenario(
+      directory,
+      sourcePolicyBoundFinder,
+      2,
+      lab,
+      undefined,
+      sourceGuidedMaterializer(),
+      sourceEvidenceConfiguration(),
+    );
+
+    try {
+      const ref = await scenario.research.runner.run(scenario.plan);
+      const view = await scenario.research.reader.inspect(
+        scenario.input.campaignId,
+        { kind: "run", runId: scenario.plan.runId },
+      );
+
+      expect({ ref, view }).toMatchObject({
+        ref: { decision: "await-calibration" },
+        view: {
+          value: {
+            attempts: [{}, {}],
+            verifications: [{ outcome: "finding" }],
+            decision: { kind: "await-calibration" },
+          },
+        },
+      });
+    } finally {
+      scenario.research.close();
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("records one finite wave through a Finding and replays the terminal run", async () => {
     const directory = await mkdtemp(join(tmpdir(), "campaign-run-"));
     const {

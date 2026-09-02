@@ -146,7 +146,7 @@ flowchart TB
 - Surface MapとPHP Program Indexから決定的に作った`Analysis Unit@v1`
 - source-bound Hypothesisを返すためのversioned schema
 
-現行のtool-free materializerは、Focus ownerのobserved anchorをseedにする。`sink-backward`は`Map relation -> 同じsink familyの近接source -> call neighbor -> literal参照 -> 共有hook`、`entry-forward`等は`共有hook -> literal参照 -> relation/call fallback`の順で最初の候補を作る。database sinkから始めた時は、同じdatabase-query familyのsourceを件数、bundled-vendor区分、directory近接、pathの安定順で比較できる。二次sourceを実際に読めた場合、そのsourceが参照するclass-like symbolの定義、低頻度literal参照、共有hookの別登録元を各最大1件、同じfile/byte上限内で前へ昇格する。これは一段だけで止まり、昇格したsourceから再帰展開しない。
+現行のFinder materializerは、Focus ownerのobserved anchorをseedにする。`sink-backward`は`Map relation -> 同じsink familyの近接source -> call neighbor -> literal参照 -> 共有hook`、`entry-forward`等は`共有hook -> literal参照 -> relation/call fallback`の順で最初の候補を作る。database sinkから始めた時は、同じdatabase-query familyのsourceを件数、bundled-vendor区分、directory近接、pathの安定順で比較できる。二次sourceを実際に読めた場合、そのsourceが参照するclass-like symbolの定義、低頻度literal参照、共有hookの別登録元を各最大1件、同じfile/byte上限内で前へ昇格する。これは一段だけで止まり、昇格したsourceから再帰展開しない。Source Evidence設定がある場合は、Campaign Run PlanがPolicy refとquery ceilingを固定し、Materializerが対応するPolicy artifactとTarget bindingを検査してAttempt Planへ結合する。
 
 `wildcard`は`directed候補を除いたSurface Map標本 -> 共有hook -> literal参照 -> relation/call fallback`の順を維持し、二次展開を行わない。標本はnode kindをround-robinし、同じkind内ではseedとのdirectory近接とpath順で決める。private closed sliceの上限は8 files、source全体650 KB、単一file 220 KBである。各fileはTarget manifestのsizeとSHA-256を再検査し、上限を越えるfileはobserved anchor周辺だけをrenderする。
 
@@ -213,7 +213,7 @@ flowchart TB
 
 緑の経路はdeterministic provider adapterと公式Claude process用native bridgeで実装済みである。exact `search`とrange `read`は固定Manifestだけを読み、Attempt、Lease、Snapshot、Policy、query ordinalをmodelではなくModel Executionが拘束する。query、scope、走査量、truncation、result digestはprivate CASへ記録する。Claude bridgeはAttempt-localなloopback MCP、private bearer config、exact allowlist、`dontAsk`を使い、接続を観測できなければfail closedにする。fake providerのBehavior Testとsubscription認証済みClaude Code 2.1.258の合成live probeを通過した。
 
-model-visibleな到達形は`read / search / symbol / graph`に限定し、任意shell、network、runtime、Target writeを追加しない。現在動くのは`read / search`だけで、`symbol / graph`とproduction Campaign materializerは後続sliceである。Focus Areaは「何を調べるか」の所有権であり、最初に選んだfileを越えてはならない境界ではない。
+model-visibleな到達形は`read / search / symbol / graph`に限定し、任意shell、network、runtime、Target writeを追加しない。現在動くのはproduction Campaignまで接続した`read / search`で、`symbol / graph`は後続sliceである。Focus Areaは「何を調べるか」の所有権であり、最初に選んだfileを越えてはならない境界ではない。
 
 追加取得で解ける局所的なcaller、callee、wrapperはAttempt内の`Source Query`で追う。dynamic dispatch、cross-request state、dependency semantics等、Attempt内で決められない不足だけを`Mapping Evidence Request`として次のMap revisionへ送る。
 
@@ -235,7 +235,7 @@ flowchart TB
     class output,mapreq,revision,wave planned;
 ```
 
-詳細と受入条件は[Evidence-guided Finder loop](../evidence-guided-finder-loop.md)と[ADR 0112](../../adr/0112-treat-analysis-units-as-seeds-for-bounded-source-retrieval.md)に記録する。設計はacceptedで、provider非依存GatewayとClaude native bridgeまで実装済みである。灰色のWave間artifact、`symbol / graph`、production Campaign materializerは未実装である。
+詳細と受入条件は[Evidence-guided Finder loop](../evidence-guided-finder-loop.md)と[ADR 0112](../../adr/0112-treat-analysis-units-as-seeds-for-bounded-source-retrieval.md)に記録する。設計はacceptedで、provider非依存Gateway、Claude native bridge、production Campaign materializer bindingまで実装済みである。灰色のWave間artifactと`symbol / graph`は未実装である。
 
 ### Brizy pairで確認した6 Gate
 

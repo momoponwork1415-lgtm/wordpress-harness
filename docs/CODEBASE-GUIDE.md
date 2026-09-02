@@ -49,7 +49,7 @@ Source Mappingを変更する場合は、先に[Surface Map visual guide](visual
 Surface Map
   -> Exploration.bootstrap
   -> up to three Work Leases
-  -> ModelExecution.run (Claude Opus 5, tool-free, parallel)
+  -> ModelExecution.run (Claude Opus 5, Analysis Unit seed + bounded read/search, parallel)
   -> schema-valid Finder Attempt Results
   -> Exploration.wave-completed
   -> source-bound Hypothesis refs
@@ -61,7 +61,7 @@ Surface Map
 
 `CampaignRunner.run`は、CAS固定のSurface Mapから有限Work Wave、最大3並列Finder、独立Verification、Finding、Iteration Decision、Research Ledger replayまでを一つのpublic入口で接続している。production Finder materializerはLeaseごとに`Analysis Unit@v1`を作り、同じsink family、Map/call近傍、class-like symbol、低頻度literal、共有hook、広いSurface Map標本を上限内で選ぶ。Unitは実source digest、range、byte量、選択理由を固定したoracle-free promptの一部になる。全Finderの`provider-failed`は仮説0件へ丸めず`provider-unavailable`になる。private Brizy Stored XSSとAppointment Booking Calendar SQLi Boundary Pairで、oracle-free positive、独立Verifier、fresh gVisor Witness/Control、Finding、patched calibrationのDisprovedを同じ公開経路に通した。
 
-次のFinder loopのprovider非依存tracerとして、`ModelExecution.run`はSource Tool Policyを持つAttemptだけへ`search`と`read`を公開できる。model-visible requestへAttempt、Lease、Target Snapshot、Policy、query ordinalをharness側で付与し、manifest外path、digest不一致、truncation、query上限を型付きReceiptとしてprivate CASへ保存する。公式Claude processはAttempt-localなprivate MCP configからloopback Source Evidence bridgeだけを読み、provider組込みtoolを空にしてexact allowlistを`dontAsk`で実行する。合成fake providerの`search -> read` Behavior Testとsubscription認証済みClaude Code 2.1.258のlive capability probeは通過した。production Campaignのmaterializer、`symbol`、`graph`はまだ未接続であり、上の実Target経路は引き続きtool-freeである。
+Finder loopでは、`Campaign Run Plan`がTarget-boundなSource Tool Policy refとAttempt query ceilingを固定し、production Finder materializerが対応するPolicy本文、digest、Target bindingを検査して`Attempt Plan`へ結合する。`ModelExecution.run`はそのAttemptだけへ`search`と`read`を公開し、model-visible requestへAttempt、Lease、Target Snapshot、Policy、query ordinalをharness側で付与する。manifest外path、digest不一致、truncation、query上限は型付きReceiptとしてprivate CASへ保存する。公式Claude processはAttempt-localなprivate MCP configからloopback Source Evidence bridgeだけを読み、provider組込みtoolを空にしてexact allowlistを`dontAsk`で実行する。合成fake providerのCampaign binding、`search -> read`、Claude bridge Behavior Testと、subscription認証済みClaude Code 2.1.258のlive capability probeは通過した。既存private実Target Campaignはtool-free結果のままであり、tool付き再走査と`symbol`、`graph`は次の検証対象である。
 
 PHP Program Index 0.3.0は主要request superglobalと、SQL、file write、code/process executionの局所的なoperationに加え、nested REST endpoint arrayとnamed class/enum内の`[$this, 'method']` callbackをtyped factにする。trait、anonymous class、dynamic receiverは未解決に残す。Surface Mapはそれらをsource anchor付きnodeへ変えるが、taint edgeや脆弱性を決めない。Focus portfolioは公開Interfaceを変えず、外部entry、server-impact sink、database sink、browser sinkを別bucketとして最初の3 Leaseを分散する。
 
