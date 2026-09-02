@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Exploration architecture guide</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --page: #08111f;
+        --panel: #101b2d;
+        --panel-2: #14243b;
+        --line: #314966;
+        --text: #f4f7fb;
+        --muted: #a9b9ce;
+        --blue: #71a8ff;
+        --blue-soft: #172e50;
+        --green: #6fdaa5;
+        --green-soft: #153b30;
+        --gold: #f2c96d;
+        --gold-soft: #3b311d;
+        --red: #ff9d9d;
+        --red-soft: #442329;
+        --gray-soft: #202a38;
+        --radius: 18px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background:
+          radial-gradient(circle at 85% 0%, #15325b 0, transparent 32rem),
+          var(--page);
+        color: var(--text);
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        line-height: 1.6;
+      }
+
+      main {
+        width: min(1160px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 48px 0 80px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 860px;
+        margin-bottom: 12px;
+        font-size: clamp(2.1rem, 6vw, 4.4rem);
+        line-height: 1.04;
+        letter-spacing: -0.055em;
+      }
+
+      h2 {
+        margin-bottom: 8px;
+        font-size: clamp(1.45rem, 3vw, 2.2rem);
+        line-height: 1.2;
+        letter-spacing: -0.025em;
+      }
+
+      h3 {
+        margin-bottom: 6px;
+        font-size: 1rem;
+      }
+
+      a {
+        color: #a9cbff;
+      }
+
+      code,
+      .mono {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      }
+
+      .eyebrow {
+        margin-bottom: 14px;
+        color: var(--blue);
+        font:
+          700 0.78rem/1.2 "SFMono-Regular",
+          Consolas,
+          monospace;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .lede,
+      .section-copy {
+        max-width: 820px;
+        color: var(--muted);
+      }
+
+      .status-row,
+      .grid,
+      .module-grid,
+      .files {
+        display: grid;
+        gap: 12px;
+      }
+
+      .status-row {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin-top: 28px;
+      }
+
+      .status,
+      .card,
+      .surface {
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgb(16 27 45 / 84%);
+      }
+
+      .status {
+        padding: 14px 16px;
+      }
+
+      .status b {
+        display: block;
+        margin-bottom: 3px;
+        font-size: 0.76rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .done b {
+        color: var(--green);
+      }
+
+      .partial b {
+        color: var(--gold);
+      }
+
+      .planned b {
+        color: var(--muted);
+      }
+
+      section {
+        margin-top: 58px;
+      }
+
+      .surface {
+        margin-top: 20px;
+        padding: clamp(18px, 3vw, 30px);
+        background: linear-gradient(145deg, rgb(20 36 59 / 94%), #0f192a);
+        box-shadow: 0 24px 70px rgb(0 0 0 / 18%);
+      }
+
+      .module-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .card {
+        padding: 15px;
+      }
+
+      .card p,
+      .card li,
+      .small {
+        color: var(--muted);
+        font-size: 0.86rem;
+      }
+
+      .card p:last-child,
+      .card ul:last-child {
+        margin-bottom: 0;
+      }
+
+      .card ul {
+        margin: 8px 0 0;
+        padding-left: 19px;
+      }
+
+      .tag {
+        display: inline-block;
+        margin-bottom: 9px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 0.7rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .tag.done {
+        border: 1px solid #2e7655;
+        background: var(--green-soft);
+        color: var(--green);
+      }
+
+      .tag.partial {
+        border: 1px solid #775f23;
+        background: var(--gold-soft);
+        color: var(--gold);
+      }
+
+      .tag.planned {
+        border: 1px solid #526176;
+        background: var(--gray-soft);
+        color: #c0ccdb;
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 20px 28px;
+        counter-reset: step;
+      }
+
+      .step {
+        position: relative;
+        min-width: 0;
+        padding: 15px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--panel);
+        counter-increment: step;
+      }
+
+      .step::before {
+        content: counter(step);
+        display: grid;
+        width: 26px;
+        height: 26px;
+        margin-bottom: 9px;
+        place-items: center;
+        border-radius: 999px;
+        background: #294e7a;
+        color: #eaf3ff;
+        font-size: 0.78rem;
+        font-weight: 800;
+      }
+
+      .step:not(:nth-child(5n))::after {
+        content: "→";
+        position: absolute;
+        top: 46%;
+        right: -22px;
+        color: var(--blue);
+        font-size: 1.25rem;
+      }
+
+      .step strong,
+      .worker strong,
+      .gate strong {
+        display: block;
+        margin-bottom: 3px;
+        font-size: 0.9rem;
+      }
+
+      .step span,
+      .worker span,
+      .gate span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.78rem;
+      }
+
+      .parallel {
+        display: grid;
+        grid-template-columns: minmax(140px, 0.8fr) minmax(0, 2.4fr) minmax(
+            140px,
+            0.8fr
+          );
+        gap: 18px;
+        align-items: center;
+      }
+
+      .workers {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        padding: 14px;
+        border: 1px dashed #4f78aa;
+        border-radius: 15px;
+      }
+
+      .worker {
+        min-width: 0;
+        padding: 14px;
+        border: 1px solid #355e90;
+        border-radius: 12px;
+        background: var(--blue-soft);
+      }
+
+      .arrow {
+        color: var(--blue);
+        font-size: 1.7rem;
+        text-align: center;
+      }
+
+      .compare {
+        display: grid;
+        grid-template-columns: 1fr 44px 1fr;
+        gap: 14px;
+        align-items: stretch;
+      }
+
+      .compare .card {
+        padding: 20px;
+      }
+
+      .compare .current {
+        border-color: #806725;
+        background: var(--gold-soft);
+      }
+
+      .compare .target {
+        border-color: #34775a;
+        background: var(--green-soft);
+      }
+
+      .mini-flow {
+        display: grid;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .mini-flow div {
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: rgb(4 13 25 / 45%);
+        font-size: 0.84rem;
+      }
+
+      .mini-flow div + div::before {
+        content: "↓";
+        display: block;
+        margin: -7px 0 3px;
+        color: var(--blue);
+        text-align: center;
+      }
+
+      .gates {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .gate {
+        min-width: 0;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+      }
+
+      .gate.issue {
+        border-color: #78464a;
+        background: var(--red-soft);
+      }
+
+      .files {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .file {
+        display: grid;
+        grid-template-columns: minmax(180px, 0.9fr) 1.4fr;
+        gap: 12px;
+        padding: 13px 15px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+      }
+
+      .file code {
+        overflow-wrap: anywhere;
+        color: #cfe1ff;
+        font-size: 0.78rem;
+      }
+
+      .file span {
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .callout {
+        margin-top: 16px;
+        padding: 14px 16px;
+        border-left: 4px solid var(--gold);
+        border-radius: 0 12px 12px 0;
+        background: rgb(59 49 29 / 74%);
+        color: #e7dcc0;
+      }
+
+      @media (max-width: 900px) {
+        .module-grid,
+        .flow,
+        .gates {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .step::after {
+          display: none;
+        }
+
+        .parallel,
+        .compare {
+          grid-template-columns: 1fr;
+        }
+
+        .arrow {
+          transform: rotate(90deg);
+        }
+
+        .files {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 620px) {
+        .status-row,
+        .module-grid,
+        .flow,
+        .gates,
+        .workers {
+          grid-template-columns: 1fr;
+        }
+
+        .file {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">WordPress Harness / Exploration</p>
+        <h1>探索アーキテクチャを、コードを読まずに把握する</h1>
+        <p class="lede">
+          何が対象を固定し、誰が3並列を決め、Opusが何を読み、どこからFindingになるかを分解した実装ガイド。正式語はcodeと一致させ、日本語で責任を説明する。
+        </p>
+        <div class="status-row">
+          <div class="status done">
+            <b>Implemented</b>
+            3並列、Wave barrier、独立Verification、Ledger replay
+          </div>
+          <div class="status partial">
+            <b>Partial</b>
+            Surface Map、Focus選定、Stored XSS Lab
+          </div>
+          <div class="status planned">
+            <b>Planned</b>
+            Target Intake、Finder Tool Gateway、Chain Synthesis
+          </div>
+        </div>
+      </header>
+
+      <section>
+        <p class="eyebrow">01 / Ownership</p>
+        <h2>Moduleごとの責任</h2>
+        <p class="section-copy">
+          callerが知るのは各Moduleの小さいInterfaceだけ。provider
+          process、source解析、探索判断、実証を一箇所へ混ぜない。
+        </p>
+        <div class="surface module-grid">
+          <article class="card">
+            <span class="tag planned">planned</span>
+            <h3>Target Intake</h3>
+            <p>
+              untrusted packageを安全に受理し、版名ではなくfile manifest
+              digestでTarget Snapshotを固定する。
+            </p>
+          </article>
+          <article class="card">
+            <span class="tag partial">partial</span>
+            <h3>Source Mapping</h3>
+            <p>
+              PHP Program Indexからentry、guard、state、sink、未解決gapをSurface
+              Mapへ記録する。
+            </p>
+          </article>
+          <article class="card">
+            <span class="tag partial">partial</span>
+            <h3>Exploration</h3>
+            <p>
+              Focus Area、Lane、Strategy、最大3件のWork
+              Leaseを純粋な決定として作る。
+            </p>
+          </article>
+          <article class="card">
+            <span class="tag done">implemented</span>
+            <h3>Campaign Control</h3>
+            <p>
+              予算とintentを記録し、Finderを並列実行してWave
+              barrier後に結果を統合する。
+            </p>
+          </article>
+          <article class="card">
+            <span class="tag partial">partial</span>
+            <h3>Model Execution</h3>
+            <p>
+              固定Attempt PlanをClaude CLIへ変換し、process終了とstructured
+              outputを検査する。
+            </p>
+          </article>
+          <article class="card">
+            <span class="tag partial">partial</span>
+            <h3>Verification</h3>
+            <p>
+              Finderと独立にsourceを再導出し、fresh gVisor LabでWitnessとCausal
+              Controlを取る。
+            </p>
+          </article>
+          <article class="card">
+            <span class="tag done">implemented</span>
+            <h3>Research Record</h3>
+            <p>
+              小さなeventをSQLite、private
+              artifactをCASへappend-onlyで残し、再開可能にする。
+            </p>
+          </article>
+          <article class="card">
+            <span class="tag planned">planned</span>
+            <h3>Chain Synthesis</h3>
+            <p>
+              Wave後の型付きRoute
+              Fragmentだけを結び、RCE等へ向かう新しいHypothesisを作る。
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <p class="eyebrow">02 / One Campaign</p>
+        <h2>一回のCampaignが閉じるまで</h2>
+        <p class="section-copy">
+          3つの外部processは途中にあるだけで、Campaignの正本ではない。開始前と完了後の不変artifactが処理をつなぐ。
+        </p>
+        <div class="surface flow">
+          <div class="step">
+            <strong>Prepare</strong><span>Target、policy、budgetを固定</span>
+          </div>
+          <div class="step">
+            <strong>Map</strong><span>Surface MapをCASへ保存</span>
+          </div>
+          <div class="step">
+            <strong>Decide</strong><span>有限Work Waveを作成</span>
+          </div>
+          <div class="step">
+            <strong>Materialize</strong><span>LeaseごとのAttempt Plan</span>
+          </div>
+          <div class="step">
+            <strong>Record intent</strong><span>外部processより先に記録</span>
+          </div>
+          <div class="step">
+            <strong>Run Finders</strong
+            ><span>最大3件をfresh contextで並列</span>
+          </div>
+          <div class="step">
+            <strong>Wave barrier</strong><span>全Leaseのterminal化を待つ</span>
+          </div>
+          <div class="step">
+            <strong>Ingest</strong><span>source bindingとdedup</span>
+          </div>
+          <div class="step">
+            <strong>Verify</strong><span>独立再導出と実験pair</span>
+          </div>
+          <div class="step">
+            <strong>Record decision</strong><span>Finding等と次iteration</span>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <p class="eyebrow">03 / Parallelize</p>
+        <h2>3並列はどこで成立するか</h2>
+        <p class="section-copy">
+          Explorationが先に3つのLeaseを固定し、Campaign
+          Controlが同時実行する。Finder同士は会話せず、到着順も次の判断へ影響しない。
+        </p>
+        <div class="surface parallel">
+          <article class="card">
+            <span class="tag done">before launch</span>
+            <h3>Finite Work Wave</h3>
+            <p>Focus、Strategy、予算、stable Work IDを固定する。</p>
+          </article>
+          <div class="workers">
+            <div class="worker">
+              <strong>Finder A</strong
+              ><span>fresh context<br />own source view</span>
+            </div>
+            <div class="worker">
+              <strong>Finder B</strong
+              ><span>fresh context<br />own source view</span>
+            </div>
+            <div class="worker">
+              <strong>Finder C</strong
+              ><span>fresh context<br />own source view</span>
+            </div>
+          </div>
+          <article class="card">
+            <span class="tag done">after terminal</span>
+            <h3>Wave Barrier</h3>
+            <p>Resultをstable Lease順に戻し、少数派Hypothesisも保持する。</p>
+          </article>
+        </div>
+        <p class="callout">
+          現在は3つとも <code>claude-opus-5 / high</code>。同じmodel
+          familyでもFocusとStrategyは分け、同一promptの多数決にはしない。
+        </p>
+      </section>
+
+      <section>
+        <p class="eyebrow">04 / Finder Context</p>
+        <h2>今回見直す中心</h2>
+        <p class="section-copy">
+          3並列schedulerではなく、各Finderへ何を見せるかが現在の主なbottleneck。acceptedな設計へ段階的に置換する。
+        </p>
+        <div class="surface compare">
+          <article class="card current">
+            <span class="tag partial">current tracer</span>
+            <h3>Tool-free source slice</h3>
+            <div class="mini-flow">
+              <div>単一Focus nodeを選ぶ</div>
+              <div>call neighborを先回りして選ぶ</div>
+              <div>最大8 files / 650 KBをpromptへ埋める</div>
+              <div>Opusが一回でHypothesisを返す</div>
+            </div>
+            <p class="small">
+              弱点: 孤立file、vendor code、入口とsinkの分断、不要な大context。
+            </p>
+          </article>
+          <div class="arrow">→</div>
+          <article class="card target">
+            <span class="tag planned">accepted target</span>
+            <h3>Harness-owned Tool Gateway</h3>
+            <div class="mini-flow">
+              <div>Focus + 小さいobserved seedを渡す</div>
+              <div>read / search / symbol / graphを要求</div>
+              <div>harnessがpath・lease・byte・turn budgetを検査</div>
+              <div>全request/responseをprivate CASへ記録</div>
+            </div>
+            <p class="small">
+              禁止: shell、web、runtime、Target write、ambient
+              MCP、別Finderの会話。
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <p class="eyebrow">05 / Diagnose by Gates</p>
+        <h2>「見つからない」を6段階へ分ける</h2>
+        <p class="section-copy">
+          最終Finding数だけではmodel能力とharness欠陥を区別できない。各gateの入力と出力を独立に観測する。
+        </p>
+        <div class="surface gates">
+          <div class="gate issue">
+            <strong>1. Target Identity</strong
+            ><span>本当にvulnerableなsource digestか</span>
+          </div>
+          <div class="gate issue">
+            <strong>2. Map Coverage</strong
+            ><span>入口・sink・state anchorがMapにあるか</span>
+          </div>
+          <div class="gate issue">
+            <strong>3. Focus Rank</strong
+            ><span>最初の3 Leaseへ重要surfaceが入ったか</span>
+          </div>
+          <div class="gate issue">
+            <strong>4. Context Reach</strong
+            ><span>必要なroute両端をFinderが取得できたか</span>
+          </div>
+          <div class="gate">
+            <strong>5. Hypothesis Recall</strong
+            ><span>十分なsourceから反証可能候補を作れたか</span>
+          </div>
+          <div class="gate">
+            <strong>6. Verification</strong
+            ><span>独立sourceと実験pairで成立したか</span>
+          </div>
+        </div>
+        <p class="callout">
+          SSA校正ではGate 1が失敗していた。同じ
+          <code>1.6.10.0</code>
+          表示でも手元のbytesはSQLi修正済みだった。版ラベルではなくmanifest
+          digestを正本にする。
+        </p>
+      </section>
+
+      <section>
+        <p class="eyebrow">06 / Read the Code</p>
+        <h2>図から実装へ辿る</h2>
+        <p class="section-copy">
+          上から順に読むと、設計、判断、入力作成、外部実行、検証を混同しにくい。
+        </p>
+        <div class="surface files">
+          <div class="file">
+            <code>docs/design/exploration-seam.md</code
+            ><span>Explorationの正式Interfaceとfailure semantics</span>
+          </div>
+          <div class="file">
+            <code>src/research/exploration/bootstrap-exploration.ts</code
+            ><span>Focus、Lane、Strategy、Work Waveの純粋判断</span>
+          </div>
+          <div class="file">
+            <code
+              >src/research/campaign-control/finder-attempt-materializer.ts</code
+            ><span>現行tool-free source sliceの選択</span>
+          </div>
+          <div class="file">
+            <code>src/research/campaign-control/index.ts</code
+            ><span>intent、最大3並列、barrier、Verification接続</span>
+          </div>
+          <div class="file">
+            <code>src/research/model-execution/model-execution.ts</code
+            ><span>Attempt Planからstructured resultまで</span>
+          </div>
+          <div class="file">
+            <code>src/research/model-execution/claude-process.ts</code
+            ><span>Claude CLIの起動、tool禁止、process終了</span>
+          </div>
+          <div class="file">
+            <code>src/research/verification/verification.ts</code
+            ><span>Finding / Disproved / Blockedの判定</span>
+          </div>
+          <div class="file">
+            <code>tests/research/campaign-run.test.ts</code
+            ><span>3並列を含む閉路のBehavior Test</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

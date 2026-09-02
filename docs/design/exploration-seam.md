@@ -69,6 +69,20 @@ type ExplorationDecision =
 
 現行risk basisはREST interfaceとsink presenceだけを使う粗いbootstrap分類であり、脆弱性、attacker reachability、severityを意味しない。actor、required privilege、state transitionがMapから確定しないfieldは`unresolved`のままにする。Route Fragment、Mapping Evidence Request、Closure Record、Chain Synthesis、Gap Review、map revision後の再計画は後続sliceである。
 
+### 次のFocus correction slice（proposed）
+
+private characterizationでは、stable ID順のcategory round-robinがbundled libraryのdebug sinkへ独立二系統を割り当てる場合と、数KBの孤立した未登録PHPを上位へ置く場合が観測された。一方、外部REST entryをseedにしたAttemptは複数のsource-bound Hypothesisを生成した。これはmodel effortの比較ではなく、初回WaveのFocusとsource contextが探索結果を支配する証拠である。
+
+次のsliceでも`Exploration.decide(input)`、Focus Areaの単一owner、三Lane、五Strategy、最大3並列を変更しない。内部の候補順とLease portfolioだけを、次の根拠へ置き換える。
+
+1. Target固有codeの外部entry、trust transition、state、危険sinkを、単一node kindより先に比較する。
+2. bundled dependencyは除外しないが、Target固有のentryまたはstateからのobserved/inferred relationがない限り、最初の独立二系統を割り当てない。
+3. 一つのFocusへ二系統を重ねる前に、異なるentry、sink、state seedを持つFocusを有限Waveへ残す。
+4. 同順位ではexpected information gain、coverage debt、stable identityの順で決定し、model confidenceを使わない。
+5. Mapに接続根拠がない場合は架空routeを作らず、Coverage LaneまたはMapping Evidence Requestとして明示する。
+
+Focus改善の評価は最終Finding数へ潰さず、Target Snapshot identity、Map anchor coverage、最初の三Leaseにおけるrelevant Focus rank、Finderが取得できたroute context、Source-bound Hypothesis、Verification outcomeの順に観測する。十分なsource contextを得た同じProfileが繰り返しrouteを作れない場合にだけeffortまたはmodel比較へ進む。
+
 ## Minimum map gate and incremental understanding
 
 全sourceの解析完了をDiscovery開始条件にしない。最初のWork Waveには少なくとも次を満たすSurface Map revisionを要求する。

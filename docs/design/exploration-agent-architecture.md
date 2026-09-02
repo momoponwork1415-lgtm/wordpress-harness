@@ -4,7 +4,7 @@ Status: living implementation view, 2026-09-02
 
 この文書は、現在の探索処理をコードの詳細なしで追うための図である。設計上の正本は[Exploration seam](exploration-seam.md)、実装場所とTestは[Codebase Guide](../CODEBASE-GUIDE.md)とする。
 
-図を横長にしないため、`対象理解 -> 作業分割 -> 並列Finder -> 仮説取込 -> 独立検証`を五枚に分ける。緑は実装済み、黄は一部実装、灰は設計のみを表す。
+図を横長にしないため、`対象理解 -> 作業分割 -> 並列Finder -> 仮説取込 -> 独立検証`を五枚に分ける。緑は実装済み、黄は一部実装、灰は設計のみを表す。Module責任、実行時系列、現行と到達形の差、評価gate、主要fileを一画面ずつ確認する場合は[探索アーキテクチャ詳細ガイド](../visuals/exploration-architecture.html)を開く。
 
 ## 1. Surface Mapから調査範囲を作る
 

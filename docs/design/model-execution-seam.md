@@ -39,11 +39,13 @@ callerはprovider executable、argv、session ID、credential path、process ID�
 
 native adapterは推論前にexecutable versionと公式`auth status`を検査する。認証切れは`auth-required`として終了し、別modelへfallbackしない。provider built-in tool、Web、subagent、ambient MCP、slash command、session persistence、Chromeを無効化し、promptはargvではなくstdinへ渡す。親processだけでなくdetached process groupをwall ceiling時に終了し、`SIGTERM`後または親終了時に残った子へ`SIGKILL`を送る。wall budgetにはversion/auth probeも含める。
 
+現行のtool-free source sliceは、structured output、process supervision、3並列、Verification接続を最短で通すためのtracer implementationであり、acceptedなAttempt tool planeの完成形ではない。単一Focusから先回りして選ぶ固定file集合は、必要routeを含まない場合と不要な大contextを含む場合があるため、その結果だけでModel Profileの探索能力を判定しない。次の探索sliceでは公開`ModelExecution.run(plan)`を変えず、内部adapterを予算付きのharness-owned read、search、symbol、graph toolへ置き換える。
+
 Claude JSON envelope、実model identity、permission denial、Web request数、subagent数は一つのdecoderでruntime decodeする。FinderはさらにFinder schema、Work Lease binding、Lease固有の`maxHypotheses`を、Independent Verifierは検証identityとsource evidence bindingを各Moduleで検査する。Finderの成功outputまたは型付きterminal resultはprivate CASへ保存し、呼出元へdigest付きrefを返す。provider errorのstderrはcredential値をredactしてprivate error artifactへ置き、公開resultにはそのdigestだけを残す。
 
 2026-09-02のprivate development benchmarkでは、oracle情報を与えず、実在するTranslatePress 3.2.5のSurface Mapから一つのWork Leaseを選び、約414 KBのsource contextをOpus 5へ渡した。独立した二回の成功実行はそれぞれ二件と一件のschema-valid Source-bound Hypothesisを返し、どちらもExplorationの`verify` decisionまで到達した。この差は候補生成の分散であり、単発runを能力評価に使わない。これはtransportと取込経路の成立確認であって、Hypothesisの正しさ、脆弱性発見、Milestone 1完了を意味しない。target source、prompt、provider outputはGitへ置かない。
 
-未実装なのは、CampaignRunnerによるcomposition、Research Ledgerへのlaunch intent/receipt、raw provider eventとusageの完全なdurability、classified retry/resume、orchestrator crash recovery、cgroup/resource ceiling、gVisor、harness-owned read/search tool、Finder以外のrole、第二providerである。これらを実装済みの安全性として扱わない。
+未実装なのは、raw provider eventとusageを含む完全なSegment durability、classified retry/resume、orchestrator crash recovery、cgroup/resource ceiling、Agent SandboxのgVisor化、harness-owned read/search/symbol/graph tool、Finder以外の統一role execution、第二providerである。CampaignRunnerのlaunch intent/completionと3 Finderのcompositionは実装済みだが、それを完全なAttempt Receiptまたは安全なcrash resumeと読み替えない。
 
 ## Attempt Plan
 

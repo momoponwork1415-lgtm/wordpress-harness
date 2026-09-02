@@ -20,7 +20,7 @@ Status: living map, 2026-09-02
 
 1. [Module Map](design/module-map.md)で各Moduleの機能、入出力、現在の実装状況を確認する。
 2. この文書の「現在の実装」と「設計上の現在地」を読む。
-3. [アーキテクチャ概要](design/architecture-overview.md)の3枚の図で全体と信頼領域を確認し、探索を変更する場合は[探索エージェント構成](design/exploration-agent-architecture.md)の五枚を読む。
+3. [アーキテクチャ概要](design/architecture-overview.md)の3枚の図で全体と信頼領域を確認し、探索を変更する場合は[探索エージェント構成](design/exploration-agent-architecture.md)の五枚を読む。実装との対応まで確認する場合は[探索アーキテクチャ詳細ガイド](visuals/exploration-architecture.html)を開く。
 4. 作業中のGitHub Issueから、変更するModuleのSeam文書とTestを一つずつ開く。
 
 Source Mappingを変更する場合は、先に[Surface Map visual guide](visuals/surface-map.html)で「小さなInterface」「根拠状態」「AI Mapperとの責任分担」を確認する。
@@ -38,7 +38,7 @@ Source Mappingを変更する場合は、先に[Surface Map visual guide](visual
 | Tool-free Claude Finder execution | partial, internal | `openModelExecution` / `openClaudeModelExecution` -> `ModelExecution.run` | [`model-execution/index.ts`](../src/research/model-execution/index.ts), [`model-execution.ts`](../src/research/model-execution/model-execution.ts), [`claude-process.ts`](../src/research/model-execution/claude-process.ts) | [`model-execution.test.ts`](../tests/research/model-execution.test.ts) | [Model execution seam](design/model-execution-seam.md) |
 | Command-line adapter | implemented | `runCli` and `wordpress-harness` executable | [`src/cli.ts`](../src/cli.ts) | [`campaign-cli.test.ts`](../tests/cli/campaign-cli.test.ts) | [ADR 0053](adr/0053-start-with-a-cli-interface.md), [ADR 0054](adr/0054-keep-the-cli-as-a-thin-adapter.md) |
 
-`src/research/index.ts`はcontext外へCampaign contractと`openResearch`だけを公開する。`open-research.ts`がcomposition rootとなり、Campaign lifecycleは`campaign-control/`、append/replay/CASは`research-record/`、PHP Program Indexは`source-mapping/`の内部に置く。ExplorationとModel Executionの現行entry pointはResearch内部のseamであり、まだ`openResearch`へcompositionされていない。未実装Moduleのfolderを先回りで作らず、behaviorを追加するIssueで一つずつ増やす。
+`src/research/index.ts`はcontext外へCampaign contractと`openResearch`だけを公開する。`open-research.ts`がcomposition rootとなり、Campaign lifecycleは`campaign-control/`、append/replay/CASは`research-record/`、PHP Program Indexは`source-mapping/`の内部に置く。ExplorationとModel ExecutionはResearch内部のseamであり、`CampaignRunner.run(plan)`のclosed pathからcomposition済みである。operator CLIはまだ`run`を公開していない。未実装Moduleのfolderを先回りで作らず、behaviorを追加するIssueで一つずつ増やす。
 
 ## 現在動く縦の経路
 
