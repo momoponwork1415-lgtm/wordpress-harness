@@ -184,7 +184,7 @@ UnitはTarget、Map、Program Index、Focus、Leaseのdigestと、実際に採�
 
 FinderがHypothesisの`requiredEvidence`にTarget inventory内の具体的なPHP pathを挙げた場合、Independent Verifierはそのpathだけを追加sourceとして取得できる。これはFinderの主張を真と扱う処理ではない。pathの実在、PHP分類、manifest digest、file/total byte上限を再検査したうえで、Verifierが固定sourceから独立に支持または反証するためのbounded Context Responseである。
 
-### 次の提案: Finderが不足sourceを追う
+### 次のaccepted design: Finderが不足sourceを追う
 
 現行の固定Analysis Unitは最初のcontextとして残し、次のsliceではFinderが同じTarget Snapshot内を予算付きで追跡できるようにする。これはSurface MapをAI出力で上書きする処理ではない。
 
@@ -230,7 +230,7 @@ flowchart TB
     class local,output,mapreq,revision,wave planned;
 ```
 
-詳細と受入条件は[Evidence-guided Finder loop](../evidence-guided-finder-loop.md)に記録する。現時点ではproposedであり、図の灰色部分は未実装である。
+詳細と受入条件は[Evidence-guided Finder loop](../evidence-guided-finder-loop.md)と[ADR 0112](../../adr/0112-treat-analysis-units-as-seeds-for-bounded-source-retrieval.md)に記録する。設計はacceptedだが、図の灰色部分は未実装である。
 
 ### Brizy pairで確認した6 Gate
 

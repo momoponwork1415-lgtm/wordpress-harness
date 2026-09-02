@@ -12,4 +12,4 @@
 
 旧`wp2shell` Promptから現在のModuleへ責務を移した根拠は、[wp2shell由来Promptの責務分解](../../research/wp2shell-prompt-decomposition.md)にまとめる。これはarchitecture viewではなく、legacy設計意図のtraceability noteである。
 
-固定Analysis Unitから予算付きsource追跡へ移る提案は、[Evidence-guided Finder loop](../evidence-guided-finder-loop.md)を正本とする。proposedの間は、探索図の灰色部分だけがこの到達形を表す。
+固定Analysis Unitから予算付きsource追跡へ移るaccepted designは、[Evidence-guided Finder loop](../evidence-guided-finder-loop.md)と[ADR 0112](../../adr/0112-treat-analysis-units-as-seeds-for-bounded-source-retrieval.md)を正本とする。探索図の灰色部分は未実装の到達形を表す。

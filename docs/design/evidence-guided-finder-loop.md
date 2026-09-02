@@ -1,6 +1,6 @@
 # Evidence-guided Finder loop
 
-Status: proposed, 2026-09-02
+Status: accepted, 2026-09-02
 
 ## Decision summary
 
@@ -26,7 +26,7 @@ Initial Context -----> Finder Attempt
 
 公開seamは既存の`ModelExecution.run(AttemptPlan)`から増やさない。provider固有tool protocol、複数tool call、context ceiling、receipt保存、停止処理はModel Execution implementationの背後へ隠す。Campaign Controlは個々のsource queryを知ってはならない。
 
-この提案はSurface Mapを廃止しない。Surface Mapを**探索開始点とcoverage記録**、source toolを**Attempt内の局所追跡**、Mapping Evidence Requestを**Attemptを越えるMap revision要求**として分ける。
+この設計はSurface Mapを廃止しない。Surface Mapを**探索開始点とcoverage記録**、source toolを**Attempt内の局所追跡**、Mapping Evidence Requestを**Attemptを越えるMap revision要求**として分ける。
 
 ## Why now
 
@@ -58,9 +58,9 @@ Initial Context -----> Finder Attempt
 
 `confine`、`constrain`、`verify`、`record`を弱めず、過剰に固定した`focus`と`hypothesize`を修正し、`prioritize`と`iterate`を実行可能にするのが要点である。
 
-## Evidence strength of this proposal
+## Evidence strength of this design
 
-この提案に含まれる判断を、すべて「外部harnessが採用しているから必要」とは扱わない。根拠の強さと反証条件を分ける。
+この設計に含まれる判断を、すべて「外部harnessが採用しているから必要」とは扱わない。根拠の強さと反証条件を分ける。
 
 各判断の一次資料、直接precedent、本harnessへのadaptation、未検証部分は、[Evidence-guided Finder loopの設計根拠](../research/evidence-guided-finder-loop-design-evidence.md)のtraceability matrixを正本とする。要約すると、bounded source retrievalはOpenAnt、Codex Security、Anthropic、code-navigation操作はOpenAntとLSP、AI overlayとdeterministic factの分離はOpenAnt、provenanceとdigest-bound receiptはW3C PROV、NIST、in-toto、Bazel、情報不足を陰性へ丸めない状態はOpenAnt、Codex Security、SARIFを先例にする。正確なGateway interface、schema、budgetは本harnessのadaptationまたは未検証の選択として残す。
 
@@ -220,8 +220,8 @@ Source toolあり/なしのablationを先に行い、その後にPrompt wording�
 | source queryの結果を自動的にMap factへ昇格する | model retrievalとobserved relationを混同し、誤ったreachabilityを固定する |
 | vulnerability class別Finderを増やす | exploration diversityをsurfaceとStrategyではなく既知classへ固定し、未知routeを狭める |
 
-## Approval gate
+## Approval and implementation gate
 
-この文書はproposedである。受理後、`SourceEvidenceGateway`のsource queryとreceiptを一つずつred-greenで追加し、既存`ModelExecution.run(plan)`と`CampaignRunner.run(plan)`の公開seamを保つ。最初のsliceではRoute Fragment synthesis、Map revisionの自動消費、Gap Review、multi-providerを同時実装しない。
+この設計は2026-09-02にacceptedとなり、hard-to-reverseな判断を[ADR 0112](../adr/0112-treat-analysis-units-as-seeds-for-bounded-source-retrieval.md)へ固定した。`SourceEvidenceGateway`のsource queryとreceiptを一つずつred-greenで追加し、既存`ModelExecution.run(plan)`と`CampaignRunner.run(plan)`の公開seamを保つ。最初のsliceではRoute Fragment synthesis、Map revisionの自動消費、Gap Review、multi-providerを同時実装しない。
 
 設計根拠は[wp2shell由来Promptの責務分解](../research/wp2shell-prompt-decomposition.md)、[10動詞による再設計メモ](../research/agentic-source-review-ten-verbs.md)、[外部実装とのcontext retrieval比較](../research/surface-map-context-retrieval-bottleneck.md)、[判断別の設計根拠](../research/evidence-guided-finder-loop-design-evidence.md)、[Model execution seam](model-execution-seam.md)、[Exploration seam](exploration-seam.md)に置く。

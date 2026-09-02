@@ -94,6 +94,8 @@ launcherだけが必要な認証stateへ到達し、model prompt、Target mount�
 
 workerへ見せるtoolはharnessがversion固定したrole別manifestだけから構成する。
 
+`Analysis Unit`をseedとし、Attempt-localなqueryをMap revisionから分離する判断は[ADR 0112](../adr/0112-treat-analysis-units-as-seeds-for-bounded-source-retrieval.md)に固定する。
+
 - Mapper、Finder、Verifier、Skepticへ、Target Snapshot内に限定したread、search、symbol/graph queryを提供する。
 - bounded scratch computeはcredential、network、host path、Target write権限を持たない別sandboxで実行する。
 - Discovery系roleへExperiment toolを渡さない。
