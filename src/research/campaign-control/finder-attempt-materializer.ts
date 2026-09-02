@@ -78,6 +78,8 @@ const analysisUnitSelectionReasonSchema = z.enum([
   "literal-reference",
   "shared-hook",
   "surface-sample",
+  "same-sink-family",
+  "symbol-reference",
 ]);
 
 type AnalysisUnitSelectionReason = z.infer<
@@ -485,6 +487,10 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
       relationPaths.push(...[...relatedPaths].sort(compareText));
     }
     const callNeighborPaths = this.#callNeighborPaths(seedPath, seedLine);
+    const sameSinkFamilyPaths =
+      strategy === "sink-backward" && seedNodeId !== undefined
+        ? this.#sameSinkFamilyPaths(seedNodeId, seedPath)
+        : [];
     const literalReferencePaths = this.#literalReferencePaths(seedText);
     const surfaceSamplePaths = this.#surfaceSamplePaths(seedPath, [
       ...relationPaths,
@@ -496,6 +502,7 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
       ["source", "guard", "state", "sink"].includes(focus.owner.nodeKind);
     if (routeFocused) {
       add(relationPaths, "surface-relation");
+      add(sameSinkFamilyPaths, "same-sink-family");
       add(callNeighborPaths, "call-neighbor");
       add(literalReferencePaths, "literal-reference");
       add(sharedHookPaths, "shared-hook");
@@ -531,9 +538,43 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
       selected.add(path);
       candidates.push({ path, reason, expansionDepth: 1 });
     };
+    addFirst(
+      this.#symbolReferencePaths(source.path, source.text),
+      "symbol-reference",
+    );
     addFirst(this.#literalReferencePaths(source.text), "literal-reference");
     addFirst(this.#sharedHookPaths(source.path), "shared-hook");
     return candidates;
+  }
+
+  #symbolReferencePaths(sourcePath: string, sourceText: string): string[] {
+    const firstReferenceByPath = new Map<string, number>();
+    for (const file of this.#programIndex.files) {
+      if (file.path === sourcePath) continue;
+      for (const symbol of file.symbols) {
+        if (!["class", "interface", "trait", "enum"].includes(symbol.kind)) {
+          continue;
+        }
+        const shortName = symbol.name.split("\\").at(-1);
+        if (shortName === undefined) continue;
+        const escaped = shortName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+        const match = new RegExp(
+          `(^|[^A-Za-z0-9_\\\\])${escaped}(?=$|[^A-Za-z0-9_])`,
+          "mu",
+        ).exec(sourceText);
+        if (match === null) continue;
+        const previous = firstReferenceByPath.get(file.path);
+        if (previous === undefined || match.index < previous) {
+          firstReferenceByPath.set(file.path, match.index);
+        }
+      }
+    }
+    return [...firstReferenceByPath.keys()].sort(
+      (left, right) =>
+        (firstReferenceByPath.get(left) ?? Number.MAX_SAFE_INTEGER) -
+          (firstReferenceByPath.get(right) ?? Number.MAX_SAFE_INTEGER) ||
+        compareText(left, right),
+    );
   }
 
   #literalReferencePaths(seedText: string): string[] {
@@ -679,6 +720,44 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
       }
     }
     return result;
+  }
+
+  #sameSinkFamilyPaths(seedNodeId: string, seedPath: string): string[] {
+    const seed = this.#map.nodes.find((node) => node.id === seedNodeId);
+    if (seed?.kind !== "sink") return [];
+    const sinkKind = seed.subject.kind;
+    const counts = new Map<string, number>();
+    for (const node of this.#map.nodes) {
+      if (node.kind !== "sink" || node.subject.kind !== sinkKind) continue;
+      for (const anchor of observedAnchors(node)) {
+        if (anchor.path === seedPath) continue;
+        counts.set(anchor.path, (counts.get(anchor.path) ?? 0) + 1);
+      }
+    }
+    const seedDirectory = seedPath.split("/").slice(0, -1);
+    const proximity = (path: string): number => {
+      const directory = path.split("/").slice(0, -1);
+      let common = 0;
+      while (
+        common < seedDirectory.length &&
+        common < directory.length &&
+        seedDirectory[common] === directory[common]
+      ) {
+        common += 1;
+      }
+      return common;
+    };
+    const classification = new Map(
+      this.#map.inventory.map((entry) => [entry.path, entry.classification]),
+    );
+    return [...counts.keys()].sort(
+      (left, right) =>
+        (counts.get(right) ?? 0) - (counts.get(left) ?? 0) ||
+        Number(classification.get(left) === "bundled-vendor") -
+          Number(classification.get(right) === "bundled-vendor") ||
+        proximity(right) - proximity(left) ||
+        compareText(left, right),
+    );
   }
 
   #callNeighborPaths(seedPath: string, seedLine: number): string[] {

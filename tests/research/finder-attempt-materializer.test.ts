@@ -26,7 +26,7 @@ function fileDigest(content: string): string {
 }
 
 async function fixture(options?: {
-  readonly focus?: "entry" | "sink";
+  readonly focus?: "database" | "entry" | "sink";
   readonly includeLiteralReference?: boolean;
   readonly maxFiles?: number;
   readonly strategy?: "sink-backward" | "wildcard";
@@ -53,6 +53,16 @@ async function fixture(options?: {
       "<?php\n$persisted_value = get_option('persisted');\necho $persisted_value;\n",
     "views/secondary-view.php":
       "<?php\n$secondary_context = 'SECOND_HOP_TEMPLATE_MARKER';\n",
+    ...(options?.focus === "database"
+      ? {
+          "includes/database-seed.php":
+            "<?php\nfunction seed_query($wpdb, $sql) { route_handler(); return $wpdb->query($sql); }\n",
+          "includes/database-sibling.php":
+            "<?php\nclass DatabaseSibling extends BaseQueryModel { public function sibling_query($wpdb, $sql) { return $wpdb->get_results($sql); } } // DATABASE_SIBLING_MARKER\n",
+          "includes/base-query-model.php":
+            "<?php\nabstract class BaseQueryModel {} // BASE_QUERY_MODEL_MARKER\n",
+        }
+      : {}),
   } as const;
   await Promise.all(
     Object.entries(files).map(([path, content]) =>
@@ -63,6 +73,8 @@ async function fixture(options?: {
   const nodeId = sha256Digest("entry-node");
   const sourceNodeId = sha256Digest("source-node");
   const sinkNodeId = sha256Digest("sink-node");
+  const databaseSeedNodeId = sha256Digest("database-seed-node");
+  const databaseSiblingNodeId = sha256Digest("database-sibling-node");
   const stateNodeId = sha256Digest("state-node");
   const programIndex: PhpProgramIndex = {
     schemaVersion: 1,
@@ -246,6 +258,103 @@ async function fixture(options?: {
         wordpressFacts: [],
         diagnostics: [],
       },
+      ...(options?.focus === "database"
+        ? [
+            {
+              path: "includes/database-seed.php",
+              digest: fileDigest(files["includes/database-seed.php"]!),
+              symbols: [
+                {
+                  kind: "function" as const,
+                  name: "seed_query",
+                  range: {
+                    startLine: 2,
+                    endLine: 2,
+                    startOffset: 6,
+                    endOffset: 70,
+                  },
+                },
+              ],
+              calls: [
+                {
+                  kind: "function" as const,
+                  caller: "seed_query",
+                  callee: "route_handler",
+                  range: {
+                    startLine: 2,
+                    endLine: 2,
+                    startOffset: 45,
+                    endOffset: 60,
+                  },
+                },
+              ],
+              wordpressFacts: [
+                {
+                  kind: "sink" as const,
+                  category: "database-query" as const,
+                  operation: "query" as const,
+                  range: {
+                    startLine: 2,
+                    endLine: 2,
+                    startOffset: 50,
+                    endOffset: 68,
+                  },
+                },
+              ],
+              diagnostics: [],
+            },
+            {
+              path: "includes/database-sibling.php",
+              digest: fileDigest(files["includes/database-sibling.php"]!),
+              symbols: [
+                {
+                  kind: "function" as const,
+                  name: "sibling_query",
+                  range: {
+                    startLine: 2,
+                    endLine: 2,
+                    startOffset: 6,
+                    endOffset: 80,
+                  },
+                },
+              ],
+              calls: [],
+              wordpressFacts: [
+                {
+                  kind: "sink" as const,
+                  category: "database-query" as const,
+                  operation: "get_results" as const,
+                  range: {
+                    startLine: 2,
+                    endLine: 2,
+                    startOffset: 53,
+                    endOffset: 77,
+                  },
+                },
+              ],
+              diagnostics: [],
+            },
+            {
+              path: "includes/base-query-model.php",
+              digest: fileDigest(files["includes/base-query-model.php"]!),
+              symbols: [
+                {
+                  kind: "class" as const,
+                  name: "BaseQueryModel",
+                  range: {
+                    startLine: 2,
+                    endLine: 2,
+                    startOffset: 6,
+                    endOffset: 38,
+                  },
+                },
+              ],
+              calls: [],
+              wordpressFacts: [],
+              diagnostics: [],
+            },
+          ]
+        : []),
     ],
     diagnostics: [],
   };
@@ -256,10 +365,10 @@ async function fixture(options?: {
     analysisProfileId: programIndex.analysisProfile.id,
     digest: sha256Digest(programIndex),
     summary: {
-      files: 7,
-      symbols: 3,
-      calls: 1,
-      wordpressFacts: 6,
+      files: options?.focus === "database" ? 10 : 7,
+      symbols: options?.focus === "database" ? 6 : 3,
+      calls: options?.focus === "database" ? 2 : 1,
+      wordpressFacts: options?.focus === "database" ? 8 : 6,
       diagnostics: 0,
     },
   };
@@ -370,10 +479,69 @@ async function fixture(options?: {
           ],
         },
       },
+      ...(options?.focus === "database"
+        ? [
+            {
+              id: databaseSeedNodeId,
+              kind: "sink" as const,
+              subject: {
+                kind: "database-query" as const,
+                operation: "query" as const,
+              },
+              evidence: {
+                kind: "observed" as const,
+                evidence: [
+                  {
+                    kind: "source-anchor" as const,
+                    targetSnapshotDigest: targetDigest,
+                    path: "includes/database-seed.php",
+                    fileDigest: fileDigest(
+                      files["includes/database-seed.php"]!,
+                    ),
+                    startLine: 2,
+                    endLine: 2,
+                    startOffset: 50,
+                    endOffset: 68,
+                  },
+                ],
+              },
+            },
+            {
+              id: databaseSiblingNodeId,
+              kind: "sink" as const,
+              subject: {
+                kind: "database-query" as const,
+                operation: "get_results" as const,
+              },
+              evidence: {
+                kind: "observed" as const,
+                evidence: [
+                  {
+                    kind: "source-anchor" as const,
+                    targetSnapshotDigest: targetDigest,
+                    path: "includes/database-sibling.php",
+                    fileDigest: fileDigest(
+                      files["includes/database-sibling.php"]!,
+                    ),
+                    startLine: 2,
+                    endLine: 2,
+                    startOffset: 53,
+                    endOffset: 77,
+                  },
+                ],
+              },
+            },
+          ]
+        : []),
     ],
     relations: [],
     gaps: [],
-    summary: { files: 7, nodes: 4, relations: 0, gaps: 0 },
+    summary: {
+      files: options?.focus === "database" ? 10 : 7,
+      nodes: options?.focus === "database" ? 6 : 4,
+      relations: 0,
+      gaps: 0,
+    },
   };
   const mapRef: SurfaceMapRef = {
     kind: "surface-map",
@@ -385,16 +553,26 @@ async function fixture(options?: {
     summary: map.summary,
   };
   const sinkFocus = options?.focus === "sink";
+  const databaseFocus = options?.focus === "database";
   const focusArea = {
     id: sha256Digest("focus"),
     owner: {
       kind: "surface-node" as const,
-      nodeId: sinkFocus ? sinkNodeId : nodeId,
-      nodeKind: sinkFocus ? ("sink" as const) : ("entry" as const),
+      nodeId: databaseFocus
+        ? databaseSeedNodeId
+        : sinkFocus
+          ? sinkNodeId
+          : nodeId,
+      nodeKind:
+        sinkFocus || databaseFocus ? ("sink" as const) : ("entry" as const),
     },
-    lane: sinkFocus ? ("primitive" as const) : ("frontier" as const),
+    lane:
+      sinkFocus || databaseFocus
+        ? ("primitive" as const)
+        : ("frontier" as const),
     brief: {
-      feature: "hook" as const,
+      feature:
+        sinkFocus || databaseFocus ? ("sink" as const) : ("hook" as const),
       actor: "unresolved" as const,
       requiredPrivilege: "unresolved" as const,
       stateTransition: "unresolved" as const,
@@ -402,19 +580,24 @@ async function fixture(options?: {
     },
     risk: {
       tier: "elevated" as const,
-      basis: sinkFocus
-        ? ("security-sensitive-sink" as const)
-        : ("registered-hook" as const),
+      basis:
+        sinkFocus || databaseFocus
+          ? ("security-sensitive-sink" as const)
+          : ("registered-hook" as const),
     },
   };
   const lease = {
     id: sha256Digest("lease"),
     focusAreaId: focusArea.id,
     role: "finder" as const,
-    lane: sinkFocus ? ("primitive" as const) : ("frontier" as const),
-    strategy: sinkFocus
-      ? (options?.strategy ?? ("sink-backward" as const))
-      : ("entry-forward" as const),
+    lane:
+      sinkFocus || databaseFocus
+        ? ("primitive" as const)
+        : ("frontier" as const),
+    strategy:
+      sinkFocus || databaseFocus
+        ? (options?.strategy ?? ("sink-backward" as const))
+        : ("entry-forward" as const),
     modelFamilyConstraint: { kind: "require" as const, family: "claude" },
     budget: {
       maxWallTimeMs: 120_000,
@@ -513,6 +696,36 @@ async function fixture(options?: {
 }
 
 describe("ToolFreeFinderAttemptMaterializer.materialize", () => {
+  it("compares bounded sibling files from the same sink family", async () => {
+    const test = await fixture({ focus: "database", maxFiles: 2 });
+    try {
+      const materialization = await test.materializer.materialize(test.input);
+
+      expect(materialization.prompt).toContain("includes/database-seed.php");
+      expect(materialization.prompt).toContain("includes/database-sibling.php");
+      expect(materialization.prompt).toContain("DATABASE_SIBLING_MARKER");
+      expect(materialization.prompt).not.toContain("includes/handler.php");
+      expect(materialization.prompt).toContain('"reason":"same-sink-family"');
+    } finally {
+      await test.cleanup();
+    }
+  });
+
+  it("includes the definition of a class-like symbol referenced by directed context", async () => {
+    const test = await fixture({ focus: "database", maxFiles: 3 });
+    try {
+      const materialization = await test.materializer.materialize(test.input);
+
+      expect(materialization.prompt).toContain("includes/database-sibling.php");
+      expect(materialization.prompt).toContain("includes/base-query-model.php");
+      expect(materialization.prompt).toContain("BASE_QUERY_MODEL_MARKER");
+      expect(materialization.prompt).toContain('"reason":"symbol-reference"');
+      expect(materialization.prompt).not.toContain("includes/handler.php");
+    } finally {
+      await test.cleanup();
+    }
+  });
+
   it("uses a broad mapped surface sample when wildcard has no direct context", async () => {
     const wildcard = await fixture({
       focus: "sink",
