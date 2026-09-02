@@ -1,6 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
-import { isAbsolute, relative, sep } from "node:path";
+import { readFile } from "node:fs/promises";
 
 import { z } from "zod";
 
@@ -19,22 +17,23 @@ import {
   type ExperimentPlan,
   type LabControl,
 } from "./contracts.js";
+import {
+  arePinnedLabImagesAvailable,
+  isGvisorRuntimeAvailable,
+  labAbsolutePathSchema,
+  labDirectoryManifest,
+  labPluginSlugSchema,
+  pinnedLabImageSchema,
+  rawLabFileDigest,
+  runFreshGvisorWordPressLab,
+  type LabProcessRunner,
+} from "./gvisor-wordpress-lab.js";
 
-export interface LabProcessRequest {
-  readonly executable: "docker";
-  readonly args: readonly string[];
-  readonly timeoutMs: number;
-}
-
-export interface LabProcessResult {
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-}
-
-export interface LabProcessRunner {
-  run(request: LabProcessRequest): Promise<LabProcessResult>;
-}
+export type {
+  LabProcessRequest,
+  LabProcessResult,
+  LabProcessRunner,
+} from "./gvisor-wordpress-lab.js";
 
 export interface OpenGvisorStoredXssLabControlOptions {
   readonly artifactStore: JsonArtifactStore;
@@ -42,55 +41,28 @@ export interface OpenGvisorStoredXssLabControlOptions {
   readonly definitionFile?: string;
 }
 
-const dockerRuntimesSchema = z.record(z.string(), z.unknown());
-const absolutePathSchema = z
-  .string()
-  .min(1)
-  .refine((path) => isAbsolute(path) && !path.includes("\0"), {
-    message: "Lab private paths must be absolute",
-  });
-const pinnedImageSchema = z
-  .string()
-  .regex(/^(?:[A-Za-z0-9._:/-]+@)?sha256:[a-f0-9]{64}$/);
-const pluginSlugSchema = z
-  .string()
-  .min(1)
-  .max(128)
-  .regex(/^[a-z0-9][a-z0-9-]*$/);
-const labIpv4AddressSchema = z.string().refine((value) => {
-  const octets = value.split(".");
-  return (
-    octets.length === 4 &&
-    octets.every((octet) => {
-      if (!/^\d{1,3}$/u.test(octet)) return false;
-      const number = Number(octet);
-      return number >= 0 && number <= 255;
-    })
-  );
-}, "Lab container address must be an IPv4 address");
-
 const storedXssLabDefinitionSchema = z.strictObject({
   kind: z.literal("stored-xss-lab-definition"),
   schemaVersion: z.literal(1),
   bindings: experimentPlanSchema.shape.bindings,
   images: z.strictObject({
-    database: pinnedImageSchema,
-    wordpress: pinnedImageSchema,
-    wordpressCli: pinnedImageSchema,
-    browser: pinnedImageSchema,
+    database: pinnedLabImageSchema,
+    wordpress: pinnedLabImageSchema,
+    wordpressCli: pinnedLabImageSchema,
+    browser: pinnedLabImageSchema,
   }),
   target: z.strictObject({
-    sourceDirectory: absolutePathSchema,
-    pluginSlug: pluginSlugSchema,
-    manifestFile: absolutePathSchema,
+    sourceDirectory: labAbsolutePathSchema,
+    pluginSlug: labPluginSlugSchema,
+    manifestFile: labAbsolutePathSchema,
   }),
   fixture: z.strictObject({
-    sourceDirectory: absolutePathSchema,
-    pluginSlug: pluginSlugSchema,
+    sourceDirectory: labAbsolutePathSchema,
+    pluginSlug: labPluginSlugSchema,
   }),
   browser: z.strictObject({
-    workerFile: absolutePathSchema,
-    inputFile: absolutePathSchema,
+    workerFile: labAbsolutePathSchema,
+    inputFile: labAbsolutePathSchema,
   }),
 });
 
@@ -105,66 +77,6 @@ const storedXssBrowserResultSchema = z.strictObject({
 
 type StoredXssLabDefinition = z.infer<typeof storedXssLabDefinitionSchema>;
 
-interface DirectoryManifestEntry {
-  readonly path: string;
-  readonly digest: string;
-  readonly size: number;
-}
-
-function rawDigest(content: Buffer): string {
-  return `sha256:${createHash("sha256").update(content).digest("hex")}`;
-}
-
-function compareText(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
-
-async function directoryManifest(
-  root: string,
-  directory = root,
-): Promise<readonly DirectoryManifestEntry[]> {
-  const entries: DirectoryManifestEntry[] = [];
-  const children = await readdir(directory, { withFileTypes: true });
-  children.sort((left, right) => compareText(left.name, right.name));
-  for (const child of children) {
-    const absolutePath = `${directory}/${child.name}`;
-    if (child.isSymbolicLink()) {
-      throw new Error("Lab fixture must not contain symbolic links");
-    }
-    if (child.isDirectory()) {
-      entries.push(...(await directoryManifest(root, absolutePath)));
-      continue;
-    }
-    if (!child.isFile()) {
-      throw new Error("Lab fixture must contain only regular files");
-    }
-    const content = await readFile(absolutePath);
-    entries.push({
-      path: relative(root, absolutePath).split(sep).join("/"),
-      digest: rawDigest(content),
-      size: content.byteLength,
-    });
-  }
-  return entries.sort((left, right) => compareText(left.path, right.path));
-}
-
-class LabCommandFailedError extends Error {
-  constructor() {
-    super("A required Lab command failed");
-    this.name = "LabCommandFailedError";
-  }
-}
-
-function reportsRunscRuntime(result: LabProcessResult): boolean {
-  if (result.exitCode !== 0) return false;
-  try {
-    const runtimes = dockerRuntimesSchema.parse(JSON.parse(result.stdout));
-    return Object.hasOwn(runtimes, "runsc");
-  } catch {
-    return false;
-  }
-}
-
 class GvisorStoredXssLabControl implements LabControl {
   readonly #options: OpenGvisorStoredXssLabControlOptions;
 
@@ -172,39 +84,12 @@ class GvisorStoredXssLabControl implements LabControl {
     this.#options = options;
   }
 
-  async #run(
-    args: readonly string[],
-    timeoutMs = 60_000,
-  ): Promise<LabProcessResult> {
-    return this.#options.processRunner.run({
-      executable: "docker",
-      args,
-      timeoutMs,
-    });
-  }
-
-  async #require(args: readonly string[], timeoutMs = 60_000): Promise<string> {
-    const result = await this.#run(args, timeoutMs);
-    if (result.exitCode !== 0) throw new LabCommandFailedError();
-    return result.stdout;
-  }
-
-  async #containerAddress(container: string): Promise<string> {
-    const output = await this.#require(
-      [
-        "inspect",
-        "--format",
-        "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
-        container,
-      ],
-      10_000,
-    );
-    return labIpv4AddressSchema.parse(output.trim());
-  }
-
   async #loadDefinition(
     plan: ExperimentPlan,
   ): Promise<{ value: StoredXssLabDefinition; path: string }> {
+    if (plan.mechanism.kind !== "stored-xss-browser") {
+      throw new LabControlBlockedError("unsupported-experiment");
+    }
     const path = this.#options.definitionFile;
     if (path === undefined) {
       throw new LabControlBlockedError("unsupported-experiment");
@@ -239,12 +124,12 @@ class GvisorStoredXssLabControl implements LabControl {
     const fixtureManifestDigest = sha256Digest({
       kind: "trusted-fixture-manifest",
       schemaVersion: 1,
-      entries: await directoryManifest(value.fixture.sourceDirectory),
+      entries: await labDirectoryManifest(value.fixture.sourceDirectory),
     });
     const targetManifest = targetFileManifestSchema.parse(
       JSON.parse(await readFile(value.target.manifestFile, "utf8")),
     );
-    const actualTargetEntries = await directoryManifest(
+    const actualTargetEntries = await labDirectoryManifest(
       value.target.sourceDirectory,
     );
     if (
@@ -263,8 +148,12 @@ class GvisorStoredXssLabControl implements LabControl {
       targetManifestDigest,
       fixturePluginSlug: value.fixture.pluginSlug,
       fixtureManifestDigest,
-      browserWorkerDigest: rawDigest(await readFile(value.browser.workerFile)),
-      browserInputDigest: rawDigest(await readFile(value.browser.inputFile)),
+      browserWorkerDigest: rawLabFileDigest(
+        await readFile(value.browser.workerFile),
+      ),
+      browserInputDigest: rawLabFileDigest(
+        await readFile(value.browser.inputFile),
+      ),
     });
     if (configurationDigest !== plan.bindings.configurationDigest) {
       throw new Error("Stored XSS Lab configuration binding mismatch");
@@ -283,309 +172,61 @@ class GvisorStoredXssLabControl implements LabControl {
     return { value, path };
   }
 
-  #wpCliArgs(
-    definition: StoredXssLabDefinition,
-    network: string,
-    volume: string,
-    databaseAddress: string,
-    databasePassword: string,
-    command: readonly string[],
-  ): readonly string[] {
-    return [
-      "run",
-      "--rm",
-      "--runtime=runsc",
-      "--network",
-      network,
-      "--env",
-      `WORDPRESS_DB_HOST=${databaseAddress}`,
-      "--env",
-      "WORDPRESS_DB_NAME=wordpress",
-      "--env",
-      "WORDPRESS_DB_USER=root",
-      "--env",
-      `WORDPRESS_DB_PASSWORD=${databasePassword}`,
-      "--volume",
-      `${volume}:/var/www/html`,
-      definition.images.wordpressCli,
-      "wp",
-      ...command,
-      "--allow-root",
-    ];
-  }
-
-  async #waitForWordPress(
-    definition: StoredXssLabDefinition,
-    network: string,
-    volume: string,
-    databaseAddress: string,
-    databasePassword: string,
-  ): Promise<void> {
-    for (let attempt = 0; attempt < 60; attempt += 1) {
-      const result = await this.#run(
-        this.#wpCliArgs(
-          definition,
-          network,
-          volume,
-          databaseAddress,
-          databasePassword,
-          ["db", "check"],
-        ),
-        15_000,
-      );
-      if (result.exitCode === 0) return;
-      await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
-    }
-    throw new LabCommandFailedError();
-  }
-
-  async #cleanup(
-    databaseContainer: string,
-    wordpressContainer: string,
-    volume: string,
-    network: string,
-  ): Promise<boolean> {
-    const containers = await this.#run([
-      "rm",
-      "--force",
-      databaseContainer,
-      wordpressContainer,
-    ]);
-    const resources = await Promise.all([
-      this.#run(["volume", "rm", "--force", volume]),
-      this.#run(["network", "rm", network]),
-    ]);
-    return (
-      containers.exitCode === 0 &&
-      resources.every((result) => result.exitCode === 0)
-    );
-  }
-
-  async #hasAllPinnedImages(
-    definition: StoredXssLabDefinition,
-  ): Promise<boolean> {
-    const results = await Promise.all(
-      Object.values(definition.images).map((image) =>
-        this.#run(["image", "inspect", image]),
-      ),
-    );
-    return results.every((result) => result.exitCode === 0);
-  }
-
-  async #executeFreshLab(
-    plan: ExperimentPlan,
-    definition: StoredXssLabDefinition,
-    definitionFile: string,
-  ): Promise<{
-    readonly labId: string;
-    readonly result: z.infer<typeof storedXssBrowserResultSchema>;
-  }> {
-    const nonce = randomUUID();
-    const labId = `lab-${nonce}`;
-    const prefix = `wh-${nonce}`;
-    const network = `${prefix}-net`;
-    const volume = `${prefix}-wordpress`;
-    const databaseContainer = `${prefix}-database`;
-    const wordpressContainer = `${prefix}-wordpress`;
-    const databasePassword = randomUUID();
-    const adminPassword = randomUUID();
-    let executionError: unknown;
-    let browserResult: z.infer<typeof storedXssBrowserResultSchema> | undefined;
-
-    try {
-      await this.#require([
-        "network",
-        "create",
-        "--internal",
-        "--label",
-        "org.wordpress-harness.resource=verification-lab",
-        network,
-      ]);
-      await this.#require([
-        "volume",
-        "create",
-        "--label",
-        "org.wordpress-harness.resource=verification-lab",
-        volume,
-      ]);
-      await this.#require([
-        "run",
-        "--detach",
-        "--name",
-        databaseContainer,
-        "--runtime=runsc",
-        "--network",
-        network,
-        "--network-alias",
-        "database",
-        "--env",
-        `MARIADB_ROOT_PASSWORD=${databasePassword}`,
-        "--env",
-        "MARIADB_DATABASE=wordpress",
-        definition.images.database,
-      ]);
-      const databaseAddress = await this.#containerAddress(databaseContainer);
-      await this.#require([
-        "run",
-        "--detach",
-        "--name",
-        wordpressContainer,
-        "--runtime=runsc",
-        "--network",
-        network,
-        "--network-alias",
-        "wordpress",
-        "--volume",
-        `${volume}:/var/www/html`,
-        "--env",
-        `WORDPRESS_DB_HOST=${databaseAddress}`,
-        "--env",
-        "WORDPRESS_DB_NAME=wordpress",
-        "--env",
-        "WORDPRESS_DB_USER=root",
-        "--env",
-        `WORDPRESS_DB_PASSWORD=${databasePassword}`,
-        definition.images.wordpress,
-      ]);
-      const wordpressAddress = await this.#containerAddress(wordpressContainer);
-      await this.#waitForWordPress(
-        definition,
-        network,
-        volume,
-        databaseAddress,
-        databasePassword,
-      );
-      await this.#require(
-        this.#wpCliArgs(
-          definition,
-          network,
-          volume,
-          databaseAddress,
-          databasePassword,
-          [
-            "core",
-            "install",
-            "--url=http://wordpress",
-            "--title=Verification Lab",
-            "--admin_user=harness-admin",
-            `--admin_password=${adminPassword}`,
-            "--admin_email=harness-admin@example.invalid",
-            "--skip-email",
-          ],
-        ),
-      );
-      await this.#require([
-        "exec",
-        wordpressContainer,
-        "mkdir",
-        "-p",
-        `/var/www/html/wp-content/plugins/${definition.target.pluginSlug}`,
-        `/var/www/html/wp-content/plugins/${definition.fixture.pluginSlug}`,
-      ]);
-      await this.#require([
-        "cp",
-        `${definition.target.sourceDirectory}/.`,
-        `${wordpressContainer}:/var/www/html/wp-content/plugins/${definition.target.pluginSlug}`,
-      ]);
-      await this.#require([
-        "cp",
-        `${definition.fixture.sourceDirectory}/.`,
-        `${wordpressContainer}:/var/www/html/wp-content/plugins/${definition.fixture.pluginSlug}`,
-      ]);
-      await this.#require(
-        this.#wpCliArgs(
-          definition,
-          network,
-          volume,
-          databaseAddress,
-          databasePassword,
-          ["plugin", "activate", definition.target.pluginSlug],
-        ),
-      );
-      await this.#require(
-        this.#wpCliArgs(
-          definition,
-          network,
-          volume,
-          databaseAddress,
-          databasePassword,
-          ["plugin", "activate", definition.fixture.pluginSlug],
-        ),
-      );
-      const stdout = await this.#require(
-        [
-          "run",
-          "--rm",
-          "--runtime=runsc",
-          "--network",
-          network,
-          "--shm-size=1g",
-          "--add-host",
-          `wordpress:${wordpressAddress}`,
-          "--volume",
-          `${definition.browser.workerFile}:/harness/browser-worker.mjs:ro`,
-          "--volume",
-          `${definitionFile}:/harness/experiment.private.json:ro`,
-          "--volume",
-          `${definition.browser.inputFile}:/harness/browser-input.private.json:ro`,
-          "--env",
-          `HARNESS_ROLE=${plan.role}`,
-          "--env",
-          `HARNESS_CAUSAL_FACTOR_STATE=${plan.mechanism.causalFactorState}`,
-          "--env",
-          "WORDPRESS_BASE_URL=http://wordpress",
-          "--env",
-          "WORDPRESS_ADMIN_USER=harness-admin",
-          "--env",
-          `WORDPRESS_ADMIN_PASSWORD=${adminPassword}`,
-          definition.images.browser,
-          "node",
-          "/harness/browser-worker.mjs",
-        ],
-        120_000,
-      );
-      browserResult = storedXssBrowserResultSchema.parse(JSON.parse(stdout));
-    } catch (error) {
-      executionError = error;
-    }
-
-    const cleaned = await this.#cleanup(
-      databaseContainer,
-      wordpressContainer,
-      volume,
-      network,
-    );
-    if (executionError !== undefined) throw executionError;
-    if (!cleaned || browserResult === undefined) {
-      throw new LabCommandFailedError();
-    }
-    return { labId, result: browserResult };
-  }
-
   async execute(value: ExperimentPlan): Promise<ExperimentObservationRef> {
     const plan = experimentPlanSchema.parse(value);
-    const runtimes = await this.#options.processRunner.run({
-      executable: "docker",
-      args: ["info", "--format", "{{json .Runtimes}}"],
-      timeoutMs: 10_000,
-    });
-    if (!reportsRunscRuntime(runtimes)) {
+    if (!(await isGvisorRuntimeAvailable(this.#options.processRunner))) {
       throw new LabControlBlockedError("gvisor-unavailable");
     }
 
     const definition = await this.#loadDefinition(plan);
-    if (!(await this.#hasAllPinnedImages(definition.value))) {
+    const labImages = {
+      database: definition.value.images.database,
+      wordpress: definition.value.images.wordpress,
+      wordpressCli: definition.value.images.wordpressCli,
+      worker: definition.value.images.browser,
+    };
+    if (
+      !(await arePinnedLabImagesAvailable(
+        this.#options.processRunner,
+        labImages,
+      ))
+    ) {
       throw new LabControlBlockedError("baseline-unavailable");
     }
     let execution;
     try {
-      execution = await this.#executeFreshLab(
-        plan,
-        definition.value,
-        definition.path,
-      );
-    } catch (error) {
-      if (error instanceof LabControlBlockedError) throw error;
+      const lab = await runFreshGvisorWordPressLab({
+        processRunner: this.#options.processRunner,
+        images: labImages,
+        plugins: [definition.value.target, definition.value.fixture],
+        worker: {
+          mounts: [
+            {
+              sourcePath: definition.value.browser.workerFile,
+              containerPath: "/harness/browser-worker.mjs",
+            },
+            {
+              sourcePath: definition.path,
+              containerPath: "/harness/experiment.private.json",
+            },
+            {
+              sourcePath: definition.value.browser.inputFile,
+              containerPath: "/harness/browser-input.private.json",
+            },
+          ],
+          environment: [
+            `HARNESS_ROLE=${plan.role}`,
+            `HARNESS_CAUSAL_FACTOR_STATE=${plan.mechanism.causalFactorState}`,
+          ],
+          command: ["node", "/harness/browser-worker.mjs"],
+          timeoutMs: 120_000,
+        },
+      });
+      execution = {
+        labId: lab.labId,
+        result: storedXssBrowserResultSchema.parse(JSON.parse(lab.stdout)),
+      };
+    } catch {
       throw new LabControlBlockedError("experiment-failed");
     }
 
