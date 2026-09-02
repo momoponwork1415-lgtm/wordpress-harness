@@ -183,6 +183,356 @@ function initialMap(): SurfaceMap {
   };
 }
 
+function observedEvidence(
+  path: string,
+  fileDigest: string,
+  startOffset: number,
+) {
+  return {
+    kind: "observed" as const,
+    evidence: [sourceAnchor(path, fileDigest, startOffset)],
+  };
+}
+
+function inferredFlow(
+  id: string,
+  from: string,
+  to: string,
+): SurfaceMap["relations"][number] {
+  return {
+    id: sha256Digest(id),
+    kind: "flows-to",
+    from,
+    to,
+    claim: "data-flow",
+    evidence: {
+      kind: "inferred",
+      premises: [from, to].sort(),
+      derivation: "deterministic",
+    },
+  };
+}
+
+function indexedFile(
+  path: string,
+  digest: string,
+  classification: SurfaceMap["inventory"][number]["classification"] = "php",
+): SurfaceMap["inventory"][number] {
+  return {
+    path,
+    digest,
+    size: 200,
+    classification,
+    coverage: { status: "indexed" },
+  };
+}
+
+function fixtureMap(input: {
+  readonly id: string;
+  readonly inventory: SurfaceMap["inventory"];
+  readonly nodes: SurfaceMap["nodes"];
+  readonly relations?: SurfaceMap["relations"];
+  readonly gaps?: SurfaceMap["gaps"];
+}): SurfaceMap {
+  const inventory = [...input.inventory].sort((left, right) =>
+    compareText(left.path, right.path),
+  );
+  const nodes = [...input.nodes].sort((left, right) =>
+    compareText(left.id, right.id),
+  );
+  const relations = [...(input.relations ?? [])];
+  const gaps = [...(input.gaps ?? [])];
+  return {
+    kind: "surface-map",
+    schemaVersion: 1,
+    revision: { kind: "initial", number: 1, predecessor: null },
+    targetSnapshot: { id: input.id, digest: targetDigest },
+    mappingProfile: { id: "wordpress-static-v1", digest: profileDigest },
+    sources: { manifestDigest, phpProgramIndexDigest: indexDigest },
+    inventory,
+    nodes,
+    relations,
+    gaps,
+    summary: {
+      files: inventory.length,
+      nodes: nodes.length,
+      relations: relations.length,
+      gaps: gaps.length,
+    },
+  };
+}
+
+function sinkPriorityMap(): {
+  readonly map: SurfaceMap;
+  readonly codeExecutionSinkId: string;
+} {
+  const codeExecutionSinkId = sha256Digest("html-output-sink");
+  const htmlOutputSinkId = sha256Digest("code-execution-sink");
+  const codeDigest = `sha256:${"2".repeat(64)}`;
+  const htmlDigest = `sha256:${"3".repeat(64)}`;
+  const nodes: SurfaceMap["nodes"] = [
+    {
+      id: codeExecutionSinkId,
+      kind: "sink",
+      subject: { kind: "code-execution", operation: "require" },
+      evidence: observedEvidence("includes/loader.php", codeDigest, 10),
+    },
+    {
+      id: htmlOutputSinkId,
+      kind: "sink",
+      subject: { kind: "html-output", operation: "echo" },
+      evidence: observedEvidence("views/card.php", htmlDigest, 20),
+    },
+  ];
+  return {
+    codeExecutionSinkId,
+    map: fixtureMap({
+      id: "sink-priority-1.0.0",
+      inventory: [
+        indexedFile("includes/loader.php", codeDigest),
+        indexedFile("views/card.php", htmlDigest),
+      ],
+      nodes,
+    }),
+  };
+}
+
+function routePriorityMap(): {
+  readonly map: SurfaceMap;
+  readonly connectedSinkId: string;
+  readonly isolatedVendorSinkId: string;
+} {
+  const base = initialMap();
+  const callback = base.nodes.find((node) => node.kind === "symbol");
+  if (callback === undefined) throw new Error("Missing callback fixture");
+  const connectedSinkId = sha256Digest("connected-filesystem-sink");
+  const isolatedVendorSinkId = sha256Digest("isolated-vendor-code-sink");
+  const vendorDigest = `sha256:${"4".repeat(64)}`;
+  const nodes: SurfaceMap["nodes"] = [
+    ...base.nodes,
+    {
+      id: connectedSinkId,
+      kind: "sink",
+      subject: {
+        kind: "filesystem-write",
+        operation: "file_put_contents",
+      },
+      evidence: observedEvidence("plugin.php", phpDigest, 90),
+    },
+    {
+      id: isolatedVendorSinkId,
+      kind: "sink",
+      subject: { kind: "code-execution", operation: "eval" },
+      evidence: observedEvidence("vendor/debug.php", vendorDigest, 10),
+    },
+  ];
+  nodes.sort((left, right) => compareText(left.id, right.id));
+  const relations: SurfaceMap["relations"] = [
+    ...base.relations,
+    inferredFlow("callback-to-filesystem-sink", callback.id, connectedSinkId),
+  ];
+  const inventory: SurfaceMap["inventory"] = [
+    ...base.inventory,
+    indexedFile("vendor/debug.php", vendorDigest, "bundled-vendor"),
+  ];
+  inventory.sort((left, right) => compareText(left.path, right.path));
+  return {
+    connectedSinkId,
+    isolatedVendorSinkId,
+    map: {
+      ...base,
+      inventory,
+      nodes,
+      relations,
+      summary: {
+        files: base.summary.files + 1,
+        nodes: nodes.length,
+        relations: relations.length,
+        gaps: base.summary.gaps,
+      },
+    },
+  };
+}
+
+function externalEntryPortfolioMap(): {
+  readonly map: SurfaceMap;
+  readonly codeExecutionSinkId: string;
+  readonly externalEntryId: string;
+  readonly stateId: string;
+} {
+  const externalEntryId = sha256Digest("external-hook-entry");
+  const codeExecutionSinkId = sha256Digest("portfolio-code-sink");
+  const stateId = sha256Digest("portfolio-state");
+  const entryDigest = `sha256:${"5".repeat(64)}`;
+  const sinkDigest = `sha256:${"6".repeat(64)}`;
+  const stateDigest = `sha256:${"7".repeat(64)}`;
+  const nodes: SurfaceMap["nodes"] = [
+    {
+      id: externalEntryId,
+      kind: "entry",
+      subject: {
+        kind: "hook",
+        hook: "wp_ajax_nopriv_upload_asset",
+        callback: "upload_asset",
+      },
+      evidence: observedEvidence("ajax.php", entryDigest, 10),
+    },
+    {
+      id: codeExecutionSinkId,
+      kind: "sink",
+      subject: { kind: "code-execution", operation: "include" },
+      evidence: observedEvidence("loader.php", sinkDigest, 20),
+    },
+    {
+      id: stateId,
+      kind: "state",
+      subject: {
+        kind: "storage",
+        category: "option",
+        operation: "update_option",
+        access: "write",
+      },
+      evidence: observedEvidence("settings.php", stateDigest, 30),
+    },
+  ];
+  return {
+    codeExecutionSinkId,
+    externalEntryId,
+    stateId,
+    map: fixtureMap({
+      id: "portfolio-1.0.0",
+      inventory: [
+        indexedFile("ajax.php", entryDigest),
+        indexedFile("loader.php", sinkDigest),
+        indexedFile("settings.php", stateDigest),
+      ],
+      nodes,
+    }),
+  };
+}
+
+function informationGainMap(variant: number): {
+  readonly map: SurfaceMap;
+  readonly richerSinkId: string;
+} {
+  const richerSinkId = sha256Digest("poorer-code-sink");
+  const poorerSinkId = sha256Digest("richer-code-sink");
+  const richStateId = sha256Digest("rich-state");
+  const poorStateId = sha256Digest("poor-state");
+  const sourceId = sha256Digest("rich-source");
+  const digests = ["8", "9", "a", "b", "c"].map(
+    (character) => `sha256:${character.repeat(64)}`,
+  );
+  const paths = [
+    "rich-sink.php",
+    "poor-sink.php",
+    "rich-state.php",
+    "poor-state.php",
+    "source.php",
+  ];
+  const nodes: SurfaceMap["nodes"] = [
+    {
+      id: richerSinkId,
+      kind: "sink",
+      subject: { kind: "code-execution", operation: "require_once" },
+      evidence: observedEvidence(paths[0]!, digests[0]!, 10),
+    },
+    {
+      id: poorerSinkId,
+      kind: "sink",
+      subject: { kind: "code-execution", operation: "require_once" },
+      evidence: observedEvidence(paths[1]!, digests[1]!, 10),
+    },
+    ...[
+      [richStateId, paths[2]!, digests[2]!],
+      [poorStateId, paths[3]!, digests[3]!],
+    ].map(([id, path, fileDigest]): SurfaceMap["nodes"][number] => ({
+      id: id!,
+      kind: "state",
+      subject: {
+        kind: "storage",
+        category: "option",
+        operation: "get_option",
+        access: "read",
+      },
+      evidence: observedEvidence(path!, fileDigest!, 10),
+    })),
+    {
+      id: sourceId,
+      kind: "source",
+      subject: { kind: "request-superglobal", operation: "_POST" },
+      evidence: observedEvidence(paths[4]!, digests[4]!, 10),
+    },
+  ];
+  const relations: SurfaceMap["relations"] = [
+    inferredFlow("rich-state-to-sink", richStateId, richerSinkId),
+    inferredFlow("source-to-rich-state", sourceId, richStateId),
+    inferredFlow("poor-state-to-sink", poorStateId, poorerSinkId),
+  ];
+  return {
+    richerSinkId,
+    map: fixtureMap({
+      id: `information-gain-${variant}.0.0`,
+      inventory: paths.map((path, index) => indexedFile(path, digests[index]!)),
+      nodes,
+      relations,
+    }),
+  };
+}
+
+function coverageDebtMap(variant: number): {
+  readonly map: SurfaceMap;
+  readonly parseGapId: string;
+} {
+  const parseGapId = sha256Digest("php-parse-gap");
+  const assetGapId = sha256Digest("javascript-asset-gap");
+  const brokenDigest = `sha256:${"d".repeat(64)}`;
+  const javascriptDigest = `sha256:${"e".repeat(64)}`;
+  const gaps: SurfaceMap["gaps"] = [
+    {
+      id: parseGapId,
+      kind: "parse-diagnostic",
+      path: "broken.php",
+      reason: "parser could not recover the executable PHP file",
+      classification: "php",
+    },
+    {
+      id: assetGapId,
+      kind: "asset-not-analyzed",
+      path: "assets/admin.js",
+      reason: "unsupported initial static slice",
+      classification: "javascript",
+    },
+  ];
+  return {
+    parseGapId,
+    map: fixtureMap({
+      id: `coverage-debt-${variant}.0.0`,
+      inventory: [
+        {
+          path: "assets/admin.js",
+          digest: javascriptDigest,
+          size: 300,
+          classification: "javascript",
+          coverage: {
+            status: "gap",
+            reason: "unsupported-initial-static-slice",
+          },
+        },
+        {
+          path: "broken.php",
+          digest: brokenDigest,
+          size: 300,
+          classification: "php",
+          coverage: { status: "gap", reason: "php-index-missing" },
+        },
+      ],
+      nodes: [],
+      gaps,
+    }),
+  };
+}
+
 function policy(
   overrides: Partial<ExplorationBootstrapPolicy> = {},
 ): ExplorationBootstrapPolicy {
@@ -327,6 +677,144 @@ function completeWaveResults(
 }
 
 describe("Exploration bootstrap", () => {
+  it("prioritizes a code-execution sink over lower-impact output", () => {
+    const fixture = sinkPriorityMap();
+    const { exploration, mapRef, policyRef } = stage(
+      fixture.map,
+      policy({ maxFocusAreas: 1, maxLeases: 2 }),
+    );
+
+    const decision = exploration.decide({
+      kind: "bootstrap",
+      map: mapRef,
+      policy: policyRef,
+    });
+
+    expect(decision.kind).toBe("run-wave");
+    if (decision.kind !== "run-wave") return;
+    expect(decision.plan.focusAreas).toEqual([
+      expect.objectContaining({
+        owner: {
+          kind: "surface-node",
+          nodeId: fixture.codeExecutionSinkId,
+          nodeKind: "sink",
+        },
+      }),
+    ]);
+  });
+
+  it("prioritizes a target route over a stronger isolated vendor sink", () => {
+    const fixture = routePriorityMap();
+    const { exploration, mapRef, policyRef } = stage(
+      fixture.map,
+      policy({ maxFocusAreas: 2, maxLeases: 3 }),
+    );
+
+    const decision = exploration.decide({
+      kind: "bootstrap",
+      map: mapRef,
+      policy: policyRef,
+    });
+
+    expect(decision.kind).toBe("run-wave");
+    if (decision.kind !== "run-wave") return;
+    const selectedNodeIds = decision.plan.focusAreas.flatMap((focus) =>
+      focus.owner.kind === "surface-node" ? [focus.owner.nodeId] : [],
+    );
+    expect(selectedNodeIds).toContain(fixture.connectedSinkId);
+    expect(selectedNodeIds).not.toContain(fixture.isolatedVendorSinkId);
+  });
+
+  it("keeps an external entry and a dangerous sink in the first three leases", () => {
+    const fixture = externalEntryPortfolioMap();
+    const { exploration, mapRef, policyRef } = stage(
+      fixture.map,
+      policy({
+        eligibleModelFamilies: ["claude"],
+        maxFocusAreas: 2,
+        maxLeases: 3,
+      }),
+    );
+
+    const decision = exploration.decide({
+      kind: "bootstrap",
+      map: mapRef,
+      policy: policyRef,
+    });
+
+    expect(decision.kind).toBe("run-wave");
+    if (decision.kind !== "run-wave") return;
+    const selectedNodeIds = decision.plan.focusAreas.flatMap((focus) =>
+      focus.owner.kind === "surface-node" ? [focus.owner.nodeId] : [],
+    );
+    expect(selectedNodeIds).toEqual(
+      expect.arrayContaining([
+        fixture.externalEntryId,
+        fixture.codeExecutionSinkId,
+      ]),
+    );
+    expect(selectedNodeIds).not.toContain(fixture.stateId);
+    const externalFocus = decision.plan.focusAreas.find(
+      (focus) =>
+        focus.owner.kind === "surface-node" &&
+        focus.owner.nodeId === fixture.externalEntryId,
+    );
+    expect(externalFocus?.risk.tier).toBe("elevated");
+    expect(
+      decision.plan.leases.filter(
+        (lease) => lease.focusAreaId === externalFocus?.id,
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("prefers the sink whose route can resolve more security surfaces", () => {
+    for (let variant = 1; variant <= 8; variant += 1) {
+      const fixture = informationGainMap(variant);
+      const { exploration, mapRef, policyRef } = stage(
+        fixture.map,
+        policy({ maxFocusAreas: 1, maxLeases: 2 }),
+      );
+
+      const decision = exploration.decide({
+        kind: "bootstrap",
+        map: mapRef,
+        policy: policyRef,
+      });
+
+      expect(decision.kind).toBe("run-wave");
+      if (decision.kind !== "run-wave") return;
+      expect(decision.plan.focusAreas[0]?.owner).toEqual({
+        kind: "surface-node",
+        nodeId: fixture.richerSinkId,
+        nodeKind: "sink",
+      });
+    }
+  });
+
+  it("prioritizes an executable PHP parse gap over an unsupported asset", () => {
+    for (let variant = 1; variant <= 8; variant += 1) {
+      const fixture = coverageDebtMap(variant);
+      const { exploration, mapRef, policyRef } = stage(
+        fixture.map,
+        policy({ maxFocusAreas: 1, maxLeases: 2 }),
+      );
+
+      const decision = exploration.decide({
+        kind: "bootstrap",
+        map: mapRef,
+        policy: policyRef,
+      });
+
+      expect(decision.kind).toBe("run-wave");
+      if (decision.kind !== "run-wave") return;
+      expect(decision.plan.focusAreas[0]?.owner).toEqual({
+        kind: "coverage-gap",
+        gapId: fixture.parseGapId,
+        path: "broken.php",
+      });
+    }
+  });
+
   it("plans a finite deterministic Work Wave with non-overlapping Focus Areas", () => {
     const { exploration, mapRef, policyRef } = stage(initialMap());
     const input = {
@@ -372,7 +860,10 @@ describe("Exploration bootstrap", () => {
     ).toBe(true);
 
     const elevated = first.plan.focusAreas.find(
-      (focus) => focus.risk.tier === "elevated",
+      (focus) =>
+        focus.risk.tier === "elevated" &&
+        first.plan.leases.filter((lease) => lease.focusAreaId === focus.id)
+          .length === 2,
     );
     expect(elevated).toBeDefined();
     const independentLeases = first.plan.leases.filter(
@@ -425,8 +916,12 @@ describe("Exploration bootstrap", () => {
     expect(decision.kind).toBe("run-wave");
     if (decision.kind !== "run-wave") return;
     const elevated = decision.plan.focusAreas.find(
-      (focus) => focus.risk.tier === "elevated",
+      (focus) =>
+        focus.risk.tier === "elevated" &&
+        decision.plan.leases.filter((lease) => lease.focusAreaId === focus.id)
+          .length === 2,
     );
+    expect(elevated).toBeDefined();
     const independentLeases = decision.plan.leases.filter(
       (lease) => lease.focusAreaId === elevated?.id,
     );

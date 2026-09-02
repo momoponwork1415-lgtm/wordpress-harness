@@ -484,7 +484,7 @@ folderはownershipを示すために使い、各名詞ごとにfileを分けな�
 
 現行Source MappingはPHP Program Indexのsymbol、WordPress fact、diagnosticを`observed`として取り込み、全manifest entry、非PHP gap、stable node/relation identity、初期mapとsource-only revisionをCASへ固定する。一方、`pluginSlug`を含む旧Target Snapshot形状、Context Response、Mapper synthesis、非PHP asset relation、Knowledge由来inference、Runtime Observationはまだ完全なSource Mapping seamを満たさない。初期探索は明示gapを持つ最小Mapから始め、必要性が観測された能力を独立sliceで追加する。
 
-現行Explorationは、Map/Policy digestを照合し、最小Map gate、stable Focus owner、category round-robin、有限lease budget、Lane/Strategy/model-familyの別軸割当、Wildcardとelevated surfaceの独立二系統をpure decisionとして実装する。最初の`wave-completed`はWork Wave/Result digestを照合し、Map上のobserved anchorへ結合したHypothesisをCausal Identityとroute shapeで重複排除し、支持数と到着順に依存せず`verify`へ渡す。ActorとPrivilegeは未解決のままであり、risk basisはRESTまたはsink presenceを示すだけでseverityではない。Route Fragment、Chain Synthesis、Gap Review以降はまだ実装しない。
+現行Explorationは、Map/Policy digestを照合し、最小Map gate、stable Focus owner、route-aware Focus portfolio、有限lease budget、Lane/Strategy/model-familyの別軸割当、Wildcardとelevated surfaceの独立二系統をpure decisionとして実装する。Focus portfolioは外部entry、既知route、危険primitive、情報利得proxy、coverage debtで候補を並べつつfeature diversityを保ち、`unknown` relationを到達根拠として辿らない。最初の`wave-completed`はWork Wave/Result digestを照合し、Map上のobserved anchorへ結合したHypothesisをCausal Identityとroute shapeで重複排除し、支持数と到着順に依存せず`verify`へ渡す。ActorとPrivilegeは未解決のままであり、risk basisはREST、外部AJAX/admin-post hook、またはsink presenceを示すだけでseverityではない。Route Fragment、Chain Synthesis、Gap Review以降はまだ実装しない。
 
 ## Failure semantics across modules
 

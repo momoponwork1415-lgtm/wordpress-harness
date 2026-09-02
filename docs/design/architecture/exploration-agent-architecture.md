@@ -22,7 +22,8 @@ flowchart TB
     gate{"Minimum Map Gate"}
     revise["Mapping Evidence Request"]
     candidates["Focus Candidates"]
-    portfolio["Category Round Robin"]
+    rank["Route Signals"]
+    portfolio["Diverse Portfolio"]
     focus[("Finite Focus Areas")]
 
     snapshot --> index --> mapper --> base --> gaps
@@ -30,17 +31,17 @@ flowchart TB
     gaps -->|"あり"| ai --> delta --> validate --> map
     map --> gate
     gate -->|"不足"| revise
-    gate -->|"通過"| candidates --> portfolio --> focus
+    gate -->|"通過"| candidates --> rank --> portfolio --> focus
 
     classDef done fill:#e9f7ed,stroke:#337a46,color:#173d22;
     classDef partial fill:#fff5d6,stroke:#a87800,color:#3f2d00;
-    class snapshot,index,mapper,base,map,gate,candidates,portfolio,focus done;
+    class snapshot,index,mapper,base,map,gate,candidates,rank,portfolio,focus done;
     class ai,delta,validate,revise partial;
 ```
 
 Minimum Map Gateは全コードの完全理解を要求しない。ファイル一覧、実在するsource anchor、relationの結合、明示されたgapを検査し、根拠が足りなければ推測せず`Mapping Evidence Request`を返す。AI Mapperの直接出力はMapではなく`Map Delta Proposal`であり、path、digest、anchor、closed relation語彙を検査したclaimだけが新しいMap Revisionへ入る。現行の黄部分はContext pathをseedにした1-hop Map subgraphから既存node間の`flows-to`を提案する一回のstructured model実行、claim単位のDelta検査、Receipt、失敗/context-ceiling gapまでである。追加node、Conflict、Context Request、repair/continuation、tool付きMapperは未実装である。
 
-Focus候補はREST entry、hook、source、state、guard、sink、未登録PHP、mapping gapから作る。同種のsurfaceだけで最初のWaveを埋めず、categoryをround-robinして有限件へ切る。
+Focus候補はREST entry、hook、source、state、guard、sink、未登録PHP、mapping gapから作る。同種のsurfaceだけで最初のWaveを埋めず、route signalと探索価値でfeatureごとの候補を並べ、各featureから一件ずつ取るroundで有限件へ切る。
 
 ### 現行bootstrapの正確な選択規則
 
@@ -49,19 +50,27 @@ candidates = every non-symbol Surface Map node
            + every PHP file without an entry in the same file
            + every mapping gap
 
-category order = REST -> sink -> state -> source
-               -> unregistered PHP -> gap -> guard -> hook
+known graph = observed + inferred relations
+              unknown relations are never traversed
+
+priority = external entry / known route
+         -> dangerous primitive
+         -> information-gain proxy
+         -> coverage debt
+         -> stable Focus ID
+
+portfolio = one candidate per feature in each round
 
 focus limit = min(maxFocusAreas, maxLeases - 1)
 leases      = one primary Lease per selected Focus
-            + one alternate Strategy on the first elevated Focus
+            + one alternate Strategy on the highest-priority elevated Focus
 ```
 
-したがって`maxLeases = 3`の現行閉路は、異なる二つのFocusと、そのうち最初のelevated Focusを重ねる一つのLeaseから成る。category内は意味的な到達可能性ではなくstable Focus ID順である。また、entry nodeと同じfileにないPHPはcallable libraryやbundled dependencyであっても最初は`unregistered-php-file`候補になる。
+したがって`maxLeases = 3`の現行閉路は、異なる二つのFocusと、そのうち探索価値が最上位のelevated Focusを重ねる一つのLeaseから成る。外部REST、`wp_ajax_*`、`admin_post_*`を最上位classとし、既知routeへ接続したsurface、code/process execution、file write、SQL、HTML output等を比較する。同程度ならcomponentのsurface kind数、unknown relation数、known relation数を情報利得のproxyにし、coverage debtとstable IDで決着する。
 
-この規則は有限性と再現性を証明するbootstrapとしては機能するが、探索価値の順位としては粗い。private characterizationではbundled debug sinkへの重複割当、relationを持たない単独template、数KBの補助fileが上位になる例を観測した。次のcorrection sliceは公開Interfaceと三並列を変えず、Target固有entry/stateからの到達根拠、異なるroute seed、expected information gain、coverage debtを使って内部順位を置き換える。bundled dependencyは一律除外せず、Target固有codeから接続根拠がある場合に上位へ戻す。
+`unknown` relationを既知routeとして辿らず、架空の到達可能性を作らない。孤立した`bundled-vendor`候補も削除せず初回順位だけを下げ、Target固有entryまたはstateへ既知relationで接続していれば通常候補へ戻す。これはseverity scoreではなく、最初の有限Waveで何を調べるかを決める優先規則である。
 
-実装は[bootstrap-exploration.ts](../../../src/research/exploration/bootstrap-exploration.ts)、外から観測する回帰仕様は[exploration-bootstrap.test.ts](../../../tests/research/exploration-bootstrap.test.ts)を参照する。
+候補生成とWork Waveは[bootstrap-exploration.ts](../../../src/research/exploration/bootstrap-exploration.ts)、内部順位は[focus-portfolio.ts](../../../src/research/exploration/focus-portfolio.ts)、外から観測する回帰仕様は[exploration-bootstrap.test.ts](../../../tests/research/exploration-bootstrap.test.ts)を参照する。
 
 ## 2. LaneとStrategyを別々に割り当てる
 
@@ -136,7 +145,7 @@ flowchart TB
 - Surface MapとPHP Program Indexから決定的に作った`Analysis Unit@v1`
 - source-bound Hypothesisを返すためのversioned schema
 
-現行のtool-free materializerは、Focus ownerのobserved anchorをseedにする。directed Strategyは`Map relation -> call neighbor -> literal参照 -> 共有hook`の順、`wildcard`は`共有hook -> literal参照 -> directed候補を除いたSurface Map標本 -> relation/call fallback`の順でpathを選ぶ。標本はnode kindをround-robinし、同じkind内ではseedとのdirectory近接とpath順で決める。private closed sliceの上限は8 files、source全体650 KB、単一file 220 KBである。各fileはTarget manifestのsizeとSHA-256を再検査し、上限を越えるfileはobserved anchor周辺だけをrenderする。
+現行のtool-free materializerは、Focus ownerのobserved anchorをseedにする。directed Strategyは`Map relation -> call neighbor -> literal参照 -> 共有hook`の順、`wildcard`は`directed候補を除いたSurface Map標本 -> 共有hook -> literal参照 -> relation/call fallback`の順でpathを選ぶ。標本はnode kindをround-robinし、同じkind内ではseedとのdirectory近接とpath順で決める。private closed sliceの上限は8 files、source全体650 KB、単一file 220 KBである。各fileはTarget manifestのsizeとSHA-256を再検査し、上限を越えるfileはobserved anchor周辺だけをrenderする。
 
 ### Analysis Unitの作り方
 
@@ -146,7 +155,7 @@ flowchart TB
     seed["Observed Seed"]
     choose{"Strategy"}
     directed["Directed<br/>relation / callを優先"]
-    wildcard["Wildcard<br/>literal / surface標本を優先"]
+    wildcard["Wildcard<br/>surface標本を優先"]
     bind{"Digest・範囲・上限を検査"}
     unit[("Analysis Unit@v1")]
     prompt["Private Attempt Plan"]

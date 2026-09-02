@@ -59,7 +59,7 @@ type ExplorationDecision =
 - observed entryを持たないindexed PHP file。直接request surfaceの可能性を安全と仮定せず、`unregistered-php-file`としてCoverage Laneへ置く
 - Surface Mapが明示したcoverage gap
 
-各候補は一つのstable owner keyだけを持つ。候補全件を一Waveへ投入せず、REST entry、sink、state、source、未登録PHP、mapping gap、guard、hookというversion固定categoryをround-robinし、Policyの`maxFocusAreas`と`maxLeases`内へ切る。これはseverity scoreではなく、初回Waveで異なるsurface kindを失わないための決定的portfolioである。同じcategory内はstable ID順とする。
+各候補は一つのstable owner keyだけを持つ。候補全件を一Waveへ投入せず、Policyの`maxFocusAreas`と`maxLeases`内で決定的なFocus portfolioへ切る。`observed`または`inferred` relationだけで作る既知componentを使い、Target固有の外部entry、既知routeへ接続したsurface、危険primitive、期待情報利得、coverage debt、stable identityの順で比較する。`unknown` relationを到達根拠として辿らず、孤立した`bundled-vendor`候補は削除せず初回順位だけを下げる。各feature bucketから一件ずつ選ぶroundを繰り返し、上位候補だけでsurface diversityが消えないようにする。
 
 各Focusへ一つのprimary Finder leaseを作り、entry順方向、sink逆方向、state-chain、権限・security invariant、Wildcardをfeatureに応じて割り当てる。REST entryまたはsinkをelevated candidateとして、最初の一件へ異なるStrategyと、利用可能なら異なるmodel familyの二つ目のleaseを置く。eligible familyが一つだけなら同じfamilyを黙って再利用せず、`reuse-with-exception: single-eligible-family`をplanへ残す。elevated candidateがなくても一つのFocusを独立二系統にし、WaveにWildcardを最低一枠残す。具体的modelではなくPolicyが許可したmodel family constraintだけをplanへ入れ、各leaseはwall time、model token、Hypothesis数の上限を持つ。
 
@@ -67,21 +67,24 @@ type ExplorationDecision =
 
 `wave-completed`は現時点ではSource-bound Hypothesisだけを取り込む。Waveの全Work Leaseに成功・失敗・取消のいずれかのterminal Resultが一つずつ揃うまでbarrierを開かない。Finder schemaとWork Leaseを照合し、observed anchorおよび全route node/relationが入力Mapに存在する候補だけを残す。Causal Identityとroute shapeで決定的に重複排除し、支持model数を使わず一件だけのHypothesisと相反するrouteを保持する。Resultの到着順を変えても同じ順序で`verify`を返す。有効な候補がなければFindingゼロではなく`blocked: no-source-bound-hypothesis`を返す。
 
-現行risk basisはREST interfaceとsink presenceだけを使う粗いbootstrap分類であり、脆弱性、attacker reachability、severityを意味しない。actor、required privilege、state transitionがMapから確定しないfieldは`unresolved`のままにする。Route Fragment、Mapping Evidence Request、Closure Record、Chain Synthesis、Gap Review、map revision後の再計画は後続sliceである。
+現行risk basisはREST interface、外部AJAX/admin-post hook、sink presenceを使うbootstrap分類であり、脆弱性、attacker reachability、severityを意味しない。actor、required privilege、state transitionがMapから確定しないfieldは`unresolved`のままにする。Route Fragment、Mapping Evidence Request、Closure Record、Chain Synthesis、Gap Review、map revision後の再計画は後続sliceである。
 
-### 次のFocus correction slice（proposed）
+### Focus correction slice（accepted / implemented）
 
 private characterizationでは、stable ID順のcategory round-robinがbundled libraryのdebug sinkへ独立二系統を割り当てる場合と、数KBの孤立した未登録PHPを上位へ置く場合が観測された。一方、外部REST entryをseedにしたAttemptは複数のsource-bound Hypothesisを生成した。これはmodel effortの比較ではなく、初回WaveのFocusとsource contextが探索結果を支配する証拠である。
 
-次のsliceでも`Exploration.decide(input)`、Focus Areaの単一owner、三Lane、五Strategy、最大3並列を変更しない。内部の候補順とLease portfolioだけを、次の根拠へ置き換える。
+公開`Exploration.decide(input)`、Focus Areaの単一owner、三Lane、五Strategy、最大3並列を変更せず、内部の候補順とLease portfolioだけを次の規則へ置き換えた。
 
-1. Target固有codeの外部entry、trust transition、state、危険sinkを、単一node kindより先に比較する。
-2. bundled dependencyは除外しないが、Target固有のentryまたはstateからのobserved/inferred relationがない限り、最初の独立二系統を割り当てない。
-3. 一つのFocusへ二系統を重ねる前に、異なるentry、sink、state seedを持つFocusを有限Waveへ残す。
-4. 同順位ではexpected information gain、coverage debt、stable identityの順で決定し、model confidenceを使わない。
-5. Mapに接続根拠がない場合は架空routeを作らず、Coverage LaneまたはMapping Evidence Requestとして明示する。
+1. 外部REST、`wp_ajax_*`、`admin_post_*`と、Target固有entryへ既知relationで接続したsurfaceを先にする。
+2. sink impactはcode/process execution、filesystem write、database query、HTML outputの順に扱う。ただしこの順序をseverityまたは到達可能性の証明に使わない。
+3. 同程度なら、既知componentに含まれるsurface kind数、未解決relation数、既知relation数を期待情報利得の決定的proxyにする。その後にparse diagnostic、mapping incomplete、unsupported assetというcoverage debtとstable identityを使う。model confidenceは順位へ入れない。
+4. feature別bucketから一件ずつ選び、外部entry、sink、state等の異なるseedを有限Waveへ残す。
+5. `bundled-vendor`は除外しないが、Target固有entryまたはstateへ`observed`/`inferred` relationで接続しない候補の初回順位を下げる。`unknown` relationは接続根拠にしない。
+6. 二系統目は、選ばれたelevated Focusのうち同じpriority tupleで最上位の一件へ異なるStrategyとして重ねる。
 
 Focus改善の評価は最終Finding数へ潰さず、Target Snapshot identity、Map anchor coverage、最初の三Leaseにおけるrelevant Focus rank、Finderが取得できたroute context、Source-bound Hypothesis、Verification outcomeの順に観測する。十分なsource contextを得た同じProfileが繰り返しrouteを作れない場合にだけeffortまたはmodel比較へ進む。
+
+Git外のBrizy 2.8.11/2.8.12 characterizationでは、両Targetとも外部AJAX entryを`entry-forward`と`wildcard`で重ね、別のcode-execution primitiveを`sink-backward`へ置く三Leaseになった。各Analysis Unitは8 files、650 KB以下で、Wildcardはdirected候補よりSurface Map標本を先にして別のsource集合を得た。`require_once`等のprimitive選択は調査開始点であって、attacker control、RCE、または脆弱性発見の証拠ではない。
 
 ## Minimum map gate and incremental understanding
 

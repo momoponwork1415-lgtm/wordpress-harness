@@ -468,11 +468,11 @@
         <div class="status-row">
           <div class="status done">
             <b>Implemented</b>
-            Analysis Unit、3並列、独立Verification、Ledger replay
+            Focus Portfolio、Analysis Unit、3並列、Ledger replay
           </div>
           <div class="status partial">
             <b>Partial</b>
-            Surface Map、Focus選定、Stored XSS Lab
+            Surface Map、独立Verification、Stored XSS Lab
           </div>
           <div class="status planned">
             <b>Planned</b>
@@ -509,8 +509,9 @@
             <span class="tag partial">partial</span>
             <h3>Exploration</h3>
             <p>
-              Focus Area、Lane、Strategy、最大3件のWork
-              Leaseを純粋な決定として作る。
+              route signalからFocus
+              portfolioを作り、Lane、Strategy、最大3件のWork
+              Leaseを純粋に決める。
             </p>
           </article>
           <article class="card">
@@ -557,7 +558,45 @@
       </section>
 
       <section>
-        <p class="eyebrow">02 / One Campaign</p>
+        <p class="eyebrow">02 / Focus Portfolio</p>
+        <h2>最初の3 Leaseへ何を入れるか</h2>
+        <p class="section-copy">
+          全候補を一つのscoreへ潰さず、既知routeと探索価値でfeature別に並べる。各featureから一件ずつ選ぶので、外部entryだけ、sinkだけには偏らない。
+        </p>
+        <div class="surface gates">
+          <div class="gate">
+            <strong>1. External Entry</strong
+            ><span>REST、wp_ajax、admin_postを先に見る</span>
+          </div>
+          <div class="gate">
+            <strong>2. Known Route</strong
+            ><span>Target固有entry/stateとの既知接続を使う</span>
+          </div>
+          <div class="gate">
+            <strong>3. Primitive Impact</strong
+            ><span>code/process、file、SQL、HTMLの順</span>
+          </div>
+          <div class="gate">
+            <strong>4. Information Gain</strong
+            ><span>surface種類とrelation数をproxyにする</span>
+          </div>
+          <div class="gate">
+            <strong>5. Coverage Debt</strong
+            ><span>parse、mapping、unsupportedの順</span>
+          </div>
+          <div class="gate">
+            <strong>6. Stable Identity</strong
+            ><span>最後だけFocus IDで決着する</span>
+          </div>
+        </div>
+        <p class="callout">
+          Known Routeは<code>observed / inferred</code
+          >だけを辿る。<code>unknown</code>を接続証拠にせず、孤立した<code>bundled-vendor</code>も削除せず順位だけを下げる。これは調査順であり、reachabilityやseverityの判定ではない。
+        </p>
+      </section>
+
+      <section>
+        <p class="eyebrow">03 / One Campaign</p>
         <h2>一回のCampaignが閉じるまで</h2>
         <p class="section-copy">
           3つの外部processは途中にあるだけで、Campaignの正本ではない。開始前と完了後の不変artifactが処理をつなぐ。
@@ -598,7 +637,7 @@
       </section>
 
       <section>
-        <p class="eyebrow">03 / Parallelize</p>
+        <p class="eyebrow">04 / Parallelize</p>
         <h2>3並列はどこで成立するか</h2>
         <p class="section-copy">
           Explorationが先に3つのLeaseを固定し、Campaign
@@ -639,7 +678,7 @@
       </section>
 
       <section>
-        <p class="eyebrow">04 / Finder Context</p>
+        <p class="eyebrow">05 / Finder Context</p>
         <h2>今回見直す中心</h2>
         <p class="section-copy">
           3並列schedulerではなく、各Finderへ何を見せるかが現在の主なbottleneck。固定入力をAnalysis
@@ -652,7 +691,7 @@
             <div class="mini-flow">
               <div>Focus + Leaseからobserved seedを固定</div>
               <div>Directed: relation / call近傍を優先</div>
-              <div>Wildcard: literal / 広いSurface標本を優先</div>
+              <div>Wildcard: 広いSurface標本を最初に選ぶ</div>
               <div>path、digest、range、byte、理由を固定</div>
               <div>最大8 files / 650 KBでAttempt Planへ格納</div>
             </div>
@@ -677,14 +716,15 @@
           </article>
         </div>
         <p class="callout">
-          Brizy 2.8.11 / 2.8.12では、同じsinkへ重ねた
-          <code>wildcard</code> と <code>sink-backward</code>
-          が別の8-file集合になった。前者はnode-kind別標本、後者はcall近傍を読む。
+          Brizy 2.8.11 / 2.8.12では、外部AJAX entryへ重ねた
+          <code>wildcard</code> と <code>entry-forward</code>
+          が別のsource集合になった。Wildcardはnode-kind別標本を先に読み、別のcode-execution
+          primitiveは<code>sink-backward</code>へ残した。
         </p>
       </section>
 
       <section>
-        <p class="eyebrow">05 / Diagnose by Gates</p>
+        <p class="eyebrow">06 / Diagnose by Gates</p>
         <h2>「見つからない」を6段階へ分ける</h2>
         <p class="section-copy">
           最終Finding数だけではmodel能力とharness欠陥を区別できない。各gateの入力と出力を独立に観測する。
@@ -724,7 +764,7 @@
       </section>
 
       <section>
-        <p class="eyebrow">06 / Model Portability</p>
+        <p class="eyebrow">07 / Model Portability</p>
         <h2>Modelを替えても探索契約は替えない</h2>
         <p class="section-copy">
           Provider固有なのはtransportとeffort。Focus、tool権限、Hypothesis、Verificationは共通のままにする。
@@ -782,7 +822,7 @@
       </section>
 
       <section>
-        <p class="eyebrow">07 / Read the Code</p>
+        <p class="eyebrow">08 / Read the Code</p>
         <h2>図から実装へ辿る</h2>
         <p class="section-copy">
           上から順に読むと、設計、判断、入力作成、外部実行、検証を混同しにくい。
@@ -794,7 +834,11 @@
           </div>
           <div class="file">
             <code>src/research/exploration/bootstrap-exploration.ts</code
-            ><span>Focus、Lane、Strategy、Work Waveの純粋判断</span>
+            ><span>Focus候補、Lane、Strategy、Work Waveの純粋判断</span>
+          </div>
+          <div class="file">
+            <code>src/research/exploration/focus-portfolio.ts</code
+            ><span>route signal、探索価値順位、feature diversity</span>
           </div>
           <div class="file">
             <code

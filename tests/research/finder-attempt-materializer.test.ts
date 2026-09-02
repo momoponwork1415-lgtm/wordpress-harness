@@ -470,7 +470,7 @@ describe("ToolFreeFinderAttemptMaterializer.materialize", () => {
       expect(materialization.prompt).toContain("includes/handler.php");
       expect(materialization.prompt).toContain("views/review-view.php");
       expect(materialization.prompt).not.toContain("entry.php");
-      expect(materialization.prompt).toContain('"reason":"literal-reference"');
+      expect(materialization.prompt).toContain('"reason":"surface-sample"');
     } finally {
       await wildcard.cleanup();
     }

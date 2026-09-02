@@ -469,9 +469,9 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
       add(literalReferencePaths, "literal-reference");
       add(sharedHookPaths, "shared-hook");
     } else if (strategy === "wildcard") {
+      add(surfaceSamplePaths, "surface-sample");
       add(sharedHookPaths.slice(0, 1), "shared-hook");
       add(literalReferencePaths, "literal-reference");
-      add(surfaceSamplePaths, "surface-sample");
       add(sharedHookPaths.slice(1), "shared-hook");
       add(relationPaths, "surface-relation");
       add(callNeighborPaths, "call-neighbor");

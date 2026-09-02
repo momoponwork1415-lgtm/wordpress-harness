@@ -4,7 +4,7 @@ Status: supporting research note, 2026-09-02
 
 ## Purpose
 
-現在提案中のExploration correctionについて、外部referenceから直接採ったpatternと、このharnessで加えた判断を区別する。設計の正本は[Design references](../REFERENCES.md)の3件のままとし、OpenAnt、Vulnhuntr、Codex Securityは公開実装を確認する補助資料としてのみ使う。
+実装済みのExploration correctionについて、外部referenceから直接採ったpatternと、このharnessで加えた判断を区別する。設計の正本は[Design references](../REFERENCES.md)の3件のままとし、OpenAnt、Vulnhuntr、Codex Securityは公開実装を確認する補助資料としてのみ使う。
 
 判断の由来を次の4種類で表す。
 
@@ -53,9 +53,9 @@ OpenAntは`repository scanner -> AST extractor -> call graph -> unit generator`�
 
 **B.** Target固有entry、trust transition、state、dangerous sinkを単一node kindより先に比較し、到達根拠のないbundled codeを削除せず初回重複割当だけ避けるのは、上記のreachability/risk/coverage patternをfalse-negative-safeに適応したものだ。
 
-**C.** 現行のstable-ID category round-robinがbundled debug sink、relationのないtemplate、小さな補助PHPを上位へ置く一方、外部REST entryをseedにしたAttemptはsource-bound Hypothesisを作った。このprivate characterizationが次のFocus correctionの直接原因である。[Exploration agent architecture](../design/architecture/exploration-agent-architecture.md#1-surface-mapから調査範囲を作る) private artifactはGitへ置かないため、公開benchmark結果とは主張しない。
+**C.** 旧実装のstable-ID category round-robinがbundled debug sink、relationのないtemplate、小さな補助PHPを上位へ置く一方、外部REST entryをseedにしたAttemptはsource-bound Hypothesisを作った。このprivate characterizationがFocus correctionの直接原因である。[Exploration agent architecture](../design/architecture/exploration-agent-architecture.md#1-surface-mapから調査範囲を作る) private artifactはGitへ置かないため、公開benchmark結果とは主張しない。
 
-**D.** 同順位を`expected information gain -> coverage debt -> stable identity`で決め、model confidenceを使わない正確なtupleは本harnessの提案である。外部資料はrisk rankingとcoverage測定を支持するが、この順序や計算式を規定しない。[Exploration seam](../design/exploration-seam.md#次のfocus-correction-sliceproposed)
+**D.** 同順位を`expected information gain -> coverage debt -> stable identity`で決め、model confidenceを使わない正確なtupleは本harnessの提案である。外部資料はrisk rankingとcoverage測定を支持するが、この順序や計算式を規定しない。[Exploration seam](../design/exploration-seam.md#focus-correction-sliceaccepted--implemented)
 
 ### 4. Stage gates
 
@@ -81,7 +81,7 @@ Wordfenceの公開記事が明かすのは10原則中の`verify`だけであり�
 
 **B.** したがってnon-PHP assetを一律除外せず、Target固有routeへの関係とprovenanceで扱いを変える。ただしOpenAntのPHP extractorとContext Correctorは`vendor`、`node_modules`、generated code等を除外するため、この部分をWordPress pluginへそのまま採用しない。[OpenAnt PHP extractor exclusions](https://github.com/knostic/OpenAnt/blob/8bdc94251e4c50e5027db8829358ed3d3f8de87f/libs/openant-core/parsers/php/function_extractor.py#L977-L995) [`context_corrector.py`](https://github.com/knostic/OpenAnt/blob/8bdc94251e4c50e5027db8829358ed3d3f8de87f/libs/openant-core/utilities/context_corrector.py#L28-L49)
 
-**C.** private Focus characterizationでbundled libraryのdebug sinkやrelationのないtemplateへ初回の希少Leaseを使う例があり、5 plugin family実測では大量のnon-PHP gapと、PHPだけでは閉じない公開routeを確認した。[Exploration seam, Focus correction](../design/exploration-seam.md#次のfocus-correction-sliceproposed) [Five-plugin-family sample](white-box-surface-mapping-security-reference.md#five-plugin-family-sample)
+**C.** private Focus characterizationでbundled libraryのdebug sinkやrelationのないtemplateへ初回の希少Leaseを使う例があり、5 plugin family実測では大量のnon-PHP gapと、PHPだけでは閉じない公開routeを確認した。[Exploration seam, Focus correction](../design/exploration-seam.md#focus-correction-sliceaccepted--implemented) [Five-plugin-family sample](white-box-surface-mapping-security-reference.md#five-plugin-family-sample)
 
 **D.** `translation`、`bundled-vendor`、`generated`、`minified`、`binary`、`unsupported`を別classificationにし、translation/generatedをeffort escalation理由にせず、bundled codeをprovenance付きで保持し、generated/minified/binaryをmetadataとgapから必要時だけ取得する具体policyは本harnessの提案である。[Source Mapping seam, Source and asset coverage](../design/source-mapping-seam.md#source-and-asset-coverage)
 

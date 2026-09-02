@@ -26,6 +26,7 @@ import {
   type WorkLease,
   type WorkWavePlan,
 } from "./contracts.js";
+import { selectFocusPortfolio } from "./focus-portfolio.js";
 
 type SurfaceNode = SurfaceMap["nodes"][number];
 type FocusFeature = FocusArea["brief"]["feature"];
@@ -139,6 +140,12 @@ function focusForNode(mapDigest: string, node: SurfaceNode): FocusArea {
     },
   };
   const property = properties[feature];
+  const hook =
+    node.kind === "entry" && node.subject.kind === "hook"
+      ? (node.subject.hook?.toLowerCase() ?? "")
+      : "";
+  const externallyCallableHook =
+    hook.startsWith("wp_ajax_") || hook.startsWith("admin_post_");
   return {
     id: sha256Digest({ kind: "focus-area", mapDigest, owner }),
     owner,
@@ -150,7 +157,10 @@ function focusForNode(mapDigest: string, node: SurfaceNode): FocusArea {
       stateTransition,
       securityInvariant: property.invariant,
     },
-    risk: { tier: property.tier, basis: property.basis },
+    risk: {
+      tier: externallyCallableHook ? "elevated" : property.tier,
+      basis: property.basis,
+    },
   };
 }
 
@@ -201,50 +211,6 @@ function gapFocus(
     },
     risk: { tier: "coverage", basis: "mapping-gap" },
   };
-}
-
-function category(focus: FocusArea): number {
-  const ranks: Record<FocusFeature, number> = {
-    "rest-route": 0,
-    sink: 1,
-    state: 2,
-    source: 3,
-    "unregistered-php-file": 4,
-    "unmapped-asset": 5,
-    guard: 6,
-    hook: 7,
-  };
-  return ranks[focus.brief.feature];
-}
-
-function selectFocusAreas(
-  candidates: readonly FocusArea[],
-  limit: number,
-): FocusArea[] {
-  const buckets = new Map<number, FocusArea[]>();
-  for (const candidate of candidates) {
-    const rank = category(candidate);
-    const bucket = buckets.get(rank) ?? [];
-    bucket.push(candidate);
-    buckets.set(rank, bucket);
-  }
-  for (const bucket of buckets.values()) {
-    bucket.sort((left, right) => compareText(left.id, right.id));
-  }
-  const selected: FocusArea[] = [];
-  const ranks = [...buckets.keys()].sort((left, right) => left - right);
-  while (selected.length < limit) {
-    let added = false;
-    for (const rank of ranks) {
-      const candidate = buckets.get(rank)?.shift();
-      if (candidate === undefined) continue;
-      selected.push(candidate);
-      added = true;
-      if (selected.length === limit) break;
-    }
-    if (!added) break;
-  }
-  return selected.sort((left, right) => compareText(left.id, right.id));
 }
 
 function primaryStrategy(focus: FocusArea): WorkLease["strategy"] {
@@ -539,7 +505,8 @@ class BootstrapExploration implements Exploration {
       this.#policy.maxFocusAreas,
       this.#policy.maxLeases - 1,
     );
-    const focusAreas = selectFocusAreas(candidates, focusLimit);
+    const portfolio = selectFocusPortfolio(candidates, focusLimit, this.#map);
+    const focusAreas = [...portfolio.focusAreas];
     const families = [...this.#policy.eligibleModelFamilies].sort(compareText);
     const leases = focusAreas.map((focus, index) =>
       lease(
@@ -549,9 +516,7 @@ class BootstrapExploration implements Exploration {
         this.#policy,
       ),
     );
-    const duplicateFocus =
-      focusAreas.find((focus) => focus.risk.tier === "elevated") ??
-      focusAreas[0]!;
+    const duplicateFocus = portfolio.duplicateFocus;
     const primary = leases.find(
       (candidate) => candidate.focusAreaId === duplicateFocus.id,
     )!;
