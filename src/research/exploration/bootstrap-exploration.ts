@@ -503,7 +503,7 @@ class BootstrapExploration implements Exploration {
 
     const focusLimit = Math.min(
       this.#policy.maxFocusAreas,
-      this.#policy.maxLeases - 1,
+      this.#policy.maxLeases,
     );
     const portfolio = selectFocusPortfolio(candidates, focusLimit, this.#map);
     const focusAreas = [...portfolio.focusAreas];
@@ -516,34 +516,38 @@ class BootstrapExploration implements Exploration {
         this.#policy,
       ),
     );
-    const duplicateFocus = portfolio.duplicateFocus;
-    const primary = leases.find(
-      (candidate) => candidate.focusAreaId === duplicateFocus.id,
-    )!;
-    const duplicateStrategy = leases.some(
-      (candidate) => candidate.strategy === "wildcard",
-    )
-      ? "invariant-review"
-      : "wildcard";
-    const differentFamily = families.find(
-      (family) => family !== primary.modelFamilyConstraint.family,
-    );
-    const duplicateConstraint: WorkLease["modelFamilyConstraint"] =
-      differentFamily === undefined
-        ? {
-            kind: "reuse-with-exception",
-            family: primary.modelFamilyConstraint.family,
-            reason: "single-eligible-family",
-          }
-        : { kind: "require", family: differentFamily };
-    leases.push(
-      lease(
-        duplicateFocus,
-        duplicateStrategy === primary.strategy ? "wildcard" : duplicateStrategy,
-        duplicateConstraint,
-        this.#policy,
-      ),
-    );
+    if (leases.length < this.#policy.maxLeases) {
+      const duplicateFocus = portfolio.duplicateFocus;
+      const primary = leases.find(
+        (candidate) => candidate.focusAreaId === duplicateFocus.id,
+      )!;
+      const duplicateStrategy = leases.some(
+        (candidate) => candidate.strategy === "wildcard",
+      )
+        ? "invariant-review"
+        : "wildcard";
+      const differentFamily = families.find(
+        (family) => family !== primary.modelFamilyConstraint.family,
+      );
+      const duplicateConstraint: WorkLease["modelFamilyConstraint"] =
+        differentFamily === undefined
+          ? {
+              kind: "reuse-with-exception",
+              family: primary.modelFamilyConstraint.family,
+              reason: "single-eligible-family",
+            }
+          : { kind: "require", family: differentFamily };
+      leases.push(
+        lease(
+          duplicateFocus,
+          duplicateStrategy === primary.strategy
+            ? "wildcard"
+            : duplicateStrategy,
+          duplicateConstraint,
+          this.#policy,
+        ),
+      );
+    }
     leases.sort((left, right) => compareText(left.id, right.id));
     const state = {
       kind: "exploration-state" as const,

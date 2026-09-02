@@ -411,6 +411,85 @@ function externalEntryPortfolioMap(): {
   };
 }
 
+function impactFamilyPortfolioMap(): {
+  readonly map: SurfaceMap;
+  readonly externalEntryId: string;
+  readonly serverImpactSinkId: string;
+  readonly databaseSinkId: string;
+} {
+  const externalEntryId = sha256Digest("impact-family-external-entry");
+  const serverImpactSinkId = sha256Digest("impact-family-server-sink");
+  const processSinkId = sha256Digest("impact-family-process-sink");
+  const filesystemSinkId = sha256Digest("impact-family-filesystem-sink");
+  const databaseSinkId = sha256Digest("impact-family-database-sink");
+  const browserSinkId = sha256Digest("impact-family-browser-sink");
+  const digests = ["1", "2", "3", "4", "5", "6"].map(
+    (character) => `sha256:${character.repeat(64)}`,
+  );
+  const nodes: SurfaceMap["nodes"] = [
+    {
+      id: externalEntryId,
+      kind: "entry",
+      subject: {
+        kind: "hook",
+        hook: "wp_ajax_nopriv_inspect_item",
+        callback: "inspect_item",
+      },
+      evidence: observedEvidence("entry.php", digests[0]!, 10),
+    },
+    {
+      id: serverImpactSinkId,
+      kind: "sink",
+      subject: { kind: "code-execution", operation: "require" },
+      evidence: observedEvidence("code.php", digests[1]!, 20),
+    },
+    {
+      id: processSinkId,
+      kind: "sink",
+      subject: { kind: "process-execution", operation: "exec" },
+      evidence: observedEvidence("process.php", digests[2]!, 30),
+    },
+    {
+      id: filesystemSinkId,
+      kind: "sink",
+      subject: {
+        kind: "filesystem-write",
+        operation: "file_put_contents",
+      },
+      evidence: observedEvidence("filesystem.php", digests[3]!, 40),
+    },
+    {
+      id: databaseSinkId,
+      kind: "sink",
+      subject: { kind: "database-query", operation: "get_results" },
+      evidence: observedEvidence("database.php", digests[4]!, 50),
+    },
+    {
+      id: browserSinkId,
+      kind: "sink",
+      subject: { kind: "html-output", operation: "echo" },
+      evidence: observedEvidence("browser.php", digests[5]!, 60),
+    },
+  ];
+  return {
+    externalEntryId,
+    serverImpactSinkId,
+    databaseSinkId,
+    map: fixtureMap({
+      id: "impact-family-portfolio-1.0.0",
+      inventory: [
+        indexedFile("entry.php", digests[0]!),
+        indexedFile("code.php", digests[1]!),
+        indexedFile("process.php", digests[2]!),
+        indexedFile("filesystem.php", digests[3]!),
+        indexedFile("database.php", digests[4]!),
+        indexedFile("browser.php", digests[5]!),
+      ],
+      nodes,
+    }),
+  };
+}
+
 function informationGainMap(variant: number): {
   readonly map: SurfaceMap;
   readonly richerSinkId: string;
@@ -765,6 +844,41 @@ describe("Exploration bootstrap", () => {
         (lease) => lease.focusAreaId === externalFocus?.id,
       ),
     ).toHaveLength(2);
+  });
+
+  it("uses three leases for distinct ingress, server-impact, and database focus", () => {
+    const fixture = impactFamilyPortfolioMap();
+    const { exploration, mapRef, policyRef } = stage(
+      fixture.map,
+      policy({
+        eligibleModelFamilies: ["claude"],
+        maxFocusAreas: 3,
+        maxLeases: 3,
+      }),
+    );
+
+    const decision = exploration.decide({
+      kind: "bootstrap",
+      map: mapRef,
+      policy: policyRef,
+    });
+
+    expect(decision.kind).toBe("run-wave");
+    if (decision.kind !== "run-wave") return;
+    const selectedNodeIds = decision.plan.focusAreas.flatMap((focus) =>
+      focus.owner.kind === "surface-node" ? [focus.owner.nodeId] : [],
+    );
+    expect(selectedNodeIds).toEqual(
+      expect.arrayContaining([
+        fixture.externalEntryId,
+        fixture.serverImpactSinkId,
+        fixture.databaseSinkId,
+      ]),
+    );
+    expect(decision.plan.focusAreas).toHaveLength(3);
+    expect(
+      new Set(decision.plan.leases.map((lease) => lease.focusAreaId)),
+    ).toEqual(new Set(decision.plan.focusAreas.map((focus) => focus.id)));
   });
 
   it("prefers the sink whose route can resolve more security surfaces", () => {

@@ -3,6 +3,12 @@ import type { FocusArea } from "./contracts.js";
 
 type SurfaceNode = SurfaceMap["nodes"][number];
 type FocusFeature = FocusArea["brief"]["feature"];
+type FocusBucketKey =
+  | FocusFeature
+  | "external-entry"
+  | "server-impact-sink"
+  | "database-sink"
+  | "browser-sink";
 
 export interface FocusPortfolio {
   readonly focusAreas: readonly FocusArea[];
@@ -182,6 +188,35 @@ function focusClassRank(
   return 6;
 }
 
+function bucketKey(focus: FocusArea, map: SurfaceMap): FocusBucketKey {
+  if (focus.owner.kind !== "surface-node") return focus.brief.feature;
+  const nodeId = focus.owner.nodeId;
+  const node = map.nodes.find((candidate) => candidate.id === nodeId);
+  if (node?.kind === "entry") {
+    const subject = node.subject;
+    if (subject.kind === "rest-route") return "external-entry";
+    if (subject.kind === "hook") {
+      const hook = subject.hook?.toLowerCase() ?? "";
+      if (hook.startsWith("wp_ajax_") || hook.startsWith("admin_post_")) {
+        return "external-entry";
+      }
+    }
+  }
+  if (node?.kind === "sink") {
+    switch (node.subject.kind) {
+      case "code-execution":
+      case "process-execution":
+      case "filesystem-write":
+        return "server-impact-sink";
+      case "database-query":
+        return "database-sink";
+      case "html-output":
+        return "browser-sink";
+    }
+  }
+  return focus.brief.feature;
+}
+
 function coverageDebtRank(focus: FocusArea, map: SurfaceMap): number {
   if (focus.owner.kind === "coverage-gap") {
     const gapId = focus.owner.gapId;
@@ -223,12 +258,12 @@ export function selectFocusPortfolio(
   map: SurfaceMap,
 ): FocusPortfolio {
   const routeSignals = nodeRouteSignals(map);
-  const buckets = new Map<FocusFeature, FocusArea[]>();
+  const buckets = new Map<FocusBucketKey, FocusArea[]>();
   for (const candidate of candidates) {
-    const feature = candidate.brief.feature;
-    const bucket = buckets.get(feature) ?? [];
+    const key = bucketKey(candidate, map);
+    const bucket = buckets.get(key) ?? [];
     bucket.push(candidate);
-    buckets.set(feature, bucket);
+    buckets.set(key, bucket);
   }
   for (const bucket of buckets.values()) {
     bucket.sort((left, right) =>
@@ -245,7 +280,7 @@ export function selectFocusPortfolio(
     if (round.length === 0) break;
     for (const candidate of round) {
       selected.push(candidate);
-      buckets.get(candidate.brief.feature)?.shift();
+      buckets.get(bucketKey(candidate, map))?.shift();
       if (selected.length === limit) break;
     }
   }
