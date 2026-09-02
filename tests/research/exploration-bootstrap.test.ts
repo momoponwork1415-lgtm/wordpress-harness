@@ -994,7 +994,7 @@ describe("Exploration bootstrap", () => {
     expect(first.plan).toMatchObject({ map: mapRef, policy: policyRef });
   });
 
-  it("obeys policy ceilings while preserving a Wildcard lease", () => {
+  it("plans four Finder leases while preserving a Wildcard lease", () => {
     const { exploration, mapRef, policyRef } = stage(
       initialMap(),
       policy({ maxFocusAreas: 3, maxLeases: 4 }),

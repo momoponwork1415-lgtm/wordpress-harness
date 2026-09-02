@@ -59,22 +59,16 @@ flowchart TB
 
 設計判断の正本は[ADR 0114](../../adr/0114-separate-breadth-and-depth-campaign-policies.md)とする。
 
-## 3. 現在地と到達形
+## 3. Depth Campaignの構成
 
 ```mermaid
 flowchart TB
-    subgraph current["現在 — 短い独立探索"]
-        wave["1 Work Wave"]
-        local["Focusごとの局所追跡"]
-        hypothesis["単独Hypothesis"]
-        wave --> local --> hypothesis
-    end
-
-    subgraph target["到達形 — 長いChain Campaign"]
+    subgraph target["長いChain Campaign"]
         planner["Root Planner"]
         finder1["Finder A<br/>family 1"]
         finder2["Finder B<br/>family 2"]
         finder3["Finder C<br/>family 3"]
+        finder4["Finder D<br/>family 4"]
         barrier["Wave Barrier"]
         chain["Root Synthesis + Critic"]
         nextwave["Evidence-driven Next Wave"]
@@ -83,21 +77,15 @@ flowchart TB
         planner --> finder1 --> barrier
         planner --> finder2 --> barrier
         planner --> finder3 --> barrier
+        planner --> finder4 --> barrier
         barrier --> chain --> nextwave
         nextwave -->|"未解決"| planner
         nextwave -->|"経路成立"| proof
     end
 
-    hypothesis -. "Route Fragmentとして保持" .-> barrier
-
-    classDef done fill:#e9f7ed,stroke:#337a46,color:#173d22;
-    classDef partial fill:#fff5d6,stroke:#a87800,color:#3f2d00;
-    classDef planned fill:#f2f3f5,stroke:#777,color:#333;
-    class wave,local,hypothesis done;
-    class planner,finder1,finder2,finder3,barrier,chain,nextwave,proof planned;
 ```
 
-現在の3並列はMap由来FocusへStrategyを割り当てる実装を残しており、似たseedへ偏ることがある。到達形の3枠は固定された`Hunter / Analyst / Builder`役ではない。Root PlannerがそのTargetと過去Waveに応じて意味の異なるidea familyを毎回選び、各Finderは同じ出力schemaを使ってTarget全体へ自由にpivotする。
+4枠は固定されたroleではない。Root PlannerがそのTargetと過去Waveに応じて意味の異なるidea familyを毎回選び、各Finderは同じ出力schemaを使ってTarget全体へ自由にpivotする。現在の実装状態は[Codebase Guide](../../CODEBASE-GUIDE.md)を参照する。
 
 `source-first`、`sink-first`、`state-chain`等は逐次checklistではなく、Approach Family Registryの観測labelまたは開始lensに限る。HarnessはTarget、tool、予算、artifact schema、隔離、barrier、証拠基準だけを強制する。
 
@@ -126,12 +114,12 @@ sequenceDiagram
 
 例えば匿名の値読出しと未認証の状態生成が別々に見つかった場合、単独severityで切り捨てない。各Fragmentの`attacker premise`、`precondition`、`consumed/produced value`、`state identity`、`effect/capability`、`unknown`、`falsifier`を保持し、Wave後に接続可能性を推論する。Findingへの昇格はChain Synthesisでは行わず、freshな独立Verificationだけが行う。
 
-## 実装順
+## Depth loop requirements
 
-1. Finder terminal artifactへ`Route Fragment`、`Mapping Evidence Request`、`Closure Record`を追加する。
-2. Mapを見ないraw-source Context Profileと、Target inventoryへアクセスするbounded Glob/Grep/Readを作る。
-3. Root PlannerがApproach Family Registryから最大3個の独立familyを割り当てる。
-4. Wave barrierでterminal artifactを安定順にfoldし、Root SynthesisとAdversarial Criticへ渡す。
-5. Synthesisが示したmissing linkからfreshなAttemptを作り、成立chainをIndependent VerificationとgVisor Labへ渡す。
+1. Finderは`Hypothesis`、`Route Fragment`、`Mapping Evidence Request`、`Closure Record`をterminal artifactとして返す。
+2. raw-source Context ProfileはTarget inventoryへbounded Glob/Grep/Readで到達できる。
+3. Root PlannerはApproach Family Registryから最大4個の独立familyを割り当てる。
+4. Wave barrierはterminal artifactを安定順にfoldし、Root SynthesisとAdversarial Criticへ渡す。
+5. missing linkはfresh Attemptへ、成立chainはIndependent VerificationとgVisor Labへ渡す。
 
-設計根拠と公開実装の責務分担は[Free-reasoning Finder and evidence-shell harness references](../../research/free-reasoning-evidence-shell-harness-references.md)、既存の型付きchain判断は[ADR 0107](../../adr/0107-synthesize-cross-focus-chains-at-wave-barriers.md)を参照する。
+設計根拠と公開実装の責務分担は[Free-reasoning Finder and evidence-shell harness references](../../research/free-reasoning-evidence-shell-harness-references.md)、既存の型付きchain判断は[ADR 0107](../../adr/0107-synthesize-cross-focus-chains-at-wave-barriers.md)、4 Finderの根拠は[ADR 0116](../../adr/0116-use-four-finder-slots-per-depth-wave.md)を参照する。

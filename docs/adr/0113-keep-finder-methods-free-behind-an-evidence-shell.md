@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: accepted; Finder count amended by ADR 0116
 ---
 
 # Keep Finder methods free behind a deterministic Evidence Shell
+
+> Finder数だけは[ADR 0116](0116-use-four-finder-slots-per-depth-wave.md)により最大4へ変更された。以下の「最大3個」はこのADR採択時の履歴である。
 
 Finderへ`entry-forward`、`sink-backward`、`state-chain`等の固定手順を実行させない。これらは重複を避ける開始時のlensまたは観測用labelに限り、FinderはimmutableなTarget Snapshot全体から独立したattack/research idea familyを作り、読む順序、pivot、機能間の接続、不足linkの追跡を自由に決める。
 

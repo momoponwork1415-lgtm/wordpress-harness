@@ -2,7 +2,7 @@
 
 Status: accepted target architecture, 2026-09-02
 
-このviewは、wp2shell/CDC由来の自由な探索loopを、Anthropic型Finder、Semgrep型の隔離、Codex Security型のdurable workflowへ分解した到達形を示す。正本は[ADR 0113](../../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)である。
+このviewは、wp2shell/CDC由来の自由な探索loopを、Anthropic型Finder、Semgrep型の隔離、Codex Security型のdurable workflowへ分解した到達形を示す。正本は[ADR 0113](../../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)と[ADR 0116](../../adr/0116-use-four-finder-slots-per-depth-wave.md)である。
 
 ## 1. 自由にする内側、固定する外側
 
@@ -66,6 +66,7 @@ flowchart TB
     f1["Finder A<br/>自由探索"]
     f2["Finder B<br/>自由探索"]
     f3["Finder C<br/>自由探索"]
+    f4["Finder D<br/>自由探索"]
     barrier["Wave Barrier"]
     artifacts[("Terminal Artifacts")]
 
@@ -73,10 +74,11 @@ flowchart TB
     planner --> f1 --> barrier
     planner --> f2 --> barrier
     planner --> f3 --> barrier
+    planner --> f4 --> barrier
     barrier --> artifacts --> registry
 ```
 
-三つの固定診断手順を実行するのではない。Root Plannerは重複しない開始仮説を与えるが、各FinderはTarget全体へpivotできる。到着順、多数決、同じmodelの同意数はFinding成立に使わない。
+四つの固定診断手順を実行するのではない。Root Plannerは最大4個の重複しない開始仮説を与えるが、各FinderはTarget全体へpivotできる。到着順、多数決、同じmodelの同意数はFinding成立に使わない。
 
 `Approach Family Registry`は表面的なPrompt表現ではなく、研究ideaのmechanism単位で`thesis`、対象surface、assigned Work、round、evidence、`active / blocked / exhausted`、blocked理由、再開に必要な新mechanismを保持する。familyの意味分類とredirect案はRoot Plannerが推論し、HarnessはID、状態遷移、予算、参照artifactだけを強制する。
 
@@ -115,7 +117,7 @@ flowchart TB
 | Prompt上の意図 | 実装owner | productionでの扱い |
 | --- | --- | --- |
 | 最初から異質なapproachを保つ | Root Planner + Approach Family Registry | input parser、charset、upload、error、builtin route、serialization、cache、race、crypto、typing、mass assignment等は発想例であり固定checklistにしない |
-| 同一familyへの収束をredirectする | Diversity Planner | 現在の3枠と過去roundを見て未探索familyを優先する。単なる言い換えを新familyにしない |
+| 同一familyへの収束をredirectする | Diversity Planner | 4枠と過去roundを見て未探索familyを優先する。単なる言い換えを新familyにしない |
 | 有望な一案だけに独占させない | Campaign budget allocator | 少なくとも複数の相容れないfamilyをbarrierまで保持する |
 | 行き詰まったrouteをblockedにする | Approach Family Registry | concreteな新mechanismまたは新source evidenceがない再投入を拒否する |
 | 十分育つまでcross-pollinationしない | Independence Barrier | Finderへ他Finderのartifactを見せず、barrier後だけSynthesisへ渡す |
@@ -128,23 +130,4 @@ flowchart TB
 
 早期終了は単なるFinderの「もうない」という自己申告では決めない。全Approach Familyが`verified / disproved / blocked / exhausted`のterminal状態になり、blocked routeは再開条件を持ち、連続Waveで新しいsource evidence・Fragment・familyが増えず、Adversarial Criticも残存gapへmaterially new mechanismを提示できず、coverage debtと未取得dependencyが記録された時に`evidence-backed closure`とする。最大時間はhard ceilingであり、消費目標ではない。
 
-## 6. 実装状況
-
-| 部分 | 状態 |
-| --- | --- |
-| Target固定、最大3並列、typed Finder output、CAS | 実装済み |
-| Surface Map外を読めるbounded Search / Read | 実装済み |
-| Surface Map非依存のbounded Source List | 実装済み |
-| exact-literal Search / bounded Read | 実装済み |
-| ripgrep相当のbounded Glob / Grep | 次の実装 |
-| 自由探索goal、FocusをboundaryにしないPrompt | 実装済み |
-| Mapを見ないraw-source Context Profile | 次の実装 |
-| 独立barrier後のmap-assisted Coverage Profile | 次の実装 |
-| Route Fragment保存 | 実装済み |
-| Root Plannerによる独立idea family生成 | 次の実装 |
-| Wave Barrier後のRoot Synthesis | 次の実装 |
-| Adversarial CriticとMissing-link Wave自動再投入 | 次の実装 |
-| source anchorだけで完全Hypothesisを提出 | 次の実装 |
-| Approach Family RegistryとDiversity Planner | 次の実装 |
-| Dependency Wishlistのadmission loop | 次の実装 |
-| Map nodeなしのsource-anchored Hypothesis取込 | 次の実装 |
+現在の実装状態とTestは[Codebase Guide](../../CODEBASE-GUIDE.md)だけを正本とする。Finder数の判断は[ADR 0116](../../adr/0116-use-four-finder-slots-per-depth-wave.md)に記録する。

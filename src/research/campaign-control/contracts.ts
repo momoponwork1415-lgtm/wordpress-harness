@@ -32,6 +32,7 @@ const identifierSchema = z
   .max(128)
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+const finderAttemptsPerWaveCeiling = 4;
 
 const immutableRef = <Kind extends string>(kind: Kind) =>
   z.strictObject({
@@ -112,7 +113,11 @@ export const campaignRunPlanSchema = z.strictObject({
   budget: z.strictObject({
     maxWallTimeMs: z.number().int().positive(),
     maxModelTokens: z.number().int().positive(),
-    maxFinderAttempts: z.number().int().min(1).max(3),
+    maxFinderAttempts: z
+      .number()
+      .int()
+      .min(1)
+      .max(finderAttemptsPerWaveCeiling),
     verification: z.strictObject({
       maxVerifierAttempts: z.number().int().positive(),
       maxExperiments: z.number().int().min(2),
@@ -140,7 +145,11 @@ export const finiteWorkSchema = z.strictObject({
   sourceRunId: identifierSchema,
   mapDigest: digestSchema,
   predecessorWaveDigest: digestSchema,
-  remainingFinderAttempts: z.number().int().positive().max(3),
+  remainingFinderAttempts: z
+    .number()
+    .int()
+    .positive()
+    .max(finderAttemptsPerWaveCeiling),
   objective: z.literal("source-bound-hypothesis"),
   stopWhen: z.literal("source-bound-hypothesis-or-budget-exhausted"),
 });

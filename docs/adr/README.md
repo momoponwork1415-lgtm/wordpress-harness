@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-ADRは現在の実装説明ではなく、hard-to-reverseな判断履歴である。全115件を順に読む必要はない。通常は[Documentation Guide](../README.md)から該当する設計書へ進み、理由が必要な判断だけlink先のADRを読む。
+ADRは現在の実装説明ではなく、hard-to-reverseな判断履歴である。全ADRを順に読む必要はない。通常は[Documentation Guide](../README.md)から該当する設計書へ進み、理由が必要な判断だけlink先のADRを読む。
 
 ## 現在の探索に重要なADR
 
@@ -27,5 +27,6 @@ ADRは現在の実装説明ではなく、hard-to-reverseな判断履歴であ�
 - [ADR 0113 — Evidence Shell内でFinderの方法を自由にする](0113-keep-finder-methods-free-behind-an-evidence-shell.md)
 - [ADR 0114 — BreadthとDepthのCampaign policyを分ける](0114-separate-breadth-and-depth-campaign-policies.md)
 - [ADR 0115 — 公開CVEの実験結果だけをGitへ置く](0115-publish-only-public-cve-experiment-results.md)
+- [ADR 0116 — Depth Waveを4 Finderにする](0116-use-four-finder-slots-per-depth-wave.md)
 
 `status: superseded`のADRは現在の規則ではなく、判断が変わった理由を残す履歴である。

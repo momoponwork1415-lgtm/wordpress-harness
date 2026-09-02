@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  campaignRunPlanSchema,
   openResearch,
   type AttemptPlanMaterializer,
   type CampaignRunPlan,
@@ -568,6 +569,26 @@ async function openScenario(
 }
 
 describe("CampaignRunner.run", () => {
+  it("admits four Finder attempts per Wave and rejects a fifth", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "campaign-finder-cap-"));
+    const scenario = await openScenario(directory, finder, 4);
+
+    try {
+      expect(
+        campaignRunPlanSchema.parse(scenario.plan).budget.maxFinderAttempts,
+      ).toBe(4);
+      expect(() =>
+        campaignRunPlanSchema.parse({
+          ...scenario.plan,
+          budget: { ...scenario.plan.budget, maxFinderAttempts: 5 },
+        }),
+      ).toThrow();
+    } finally {
+      scenario.research.close();
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("carries the materialized Source Tool Policy into every Finder Attempt", async () => {
     const directory = await mkdtemp(
       join(tmpdir(), "campaign-source-evidence-"),

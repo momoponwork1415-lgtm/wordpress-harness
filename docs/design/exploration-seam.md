@@ -125,7 +125,7 @@ Behavior Testは`Exploration.decide`から観測する。Root Plannerのprivate 
 
 1. Mapなしでもraw-source Waveを開始できる。
 2. Map外source anchorを持つHypothesisとFragmentを取り込める。
-3. 最大3 Finderが独立Attemptになり、完了順でterminal digestが変わらない。
+3. 最大4 Finderが独立Attemptになり、完了順でterminal digestが変わらない。
 4. minority routeと相反routeを多数決で失わない。
 5. FragmentがSynthesisとCriticを経て具体的なmissing-link Waveを作る。
 6. blocked familyは新mechanismなしに再開されない。

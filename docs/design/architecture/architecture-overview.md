@@ -66,7 +66,7 @@ flowchart TB
 
     subgraph discovery["Exploration"]
         planner["Root Planner"]
-        finders["Independent Free-reasoning<br/>Finders × 3"]
+        finders["Independent Free-reasoning<br/>Finders × 4"]
         barrier["Work Wave<br/>Barrier"]
         chain["Root Synthesis +<br/>Adversarial Critic"]
         queue["Exploration /<br/>Verification Queue"]
@@ -151,4 +151,4 @@ flowchart TB
 
 コード詳細なしで各Moduleの機能を確認する場合は[Module Map](module-map.md)を入口にする。詳細なmodule ownershipは[Module architecture](../module-architecture.md)、探索は[Exploration seam](../exploration-seam.md)、AI実行は[Model execution seam](../model-execution-seam.md)、setupは[Campaign setup seam](../campaign-setup-seam.md)、対象理解は[Source mapping seam](../source-mapping-seam.md)を正本とする。
 
-Finderの分割、最大3並列、Work Wave Barrier、独立Verifier、gVisor実験、Model Profile差替えまでの現在の構成は、[Module Map](module-map.md)と[Codebase Guide](../../CODEBASE-GUIDE.md)を参照する。
+Finderの分割、最大4並列、Work Wave Barrier、独立Verifier、gVisor実験、Model Profile差替えまでの現在の構成は、[Module Map](module-map.md)と[Codebase Guide](../../CODEBASE-GUIDE.md)を参照する。

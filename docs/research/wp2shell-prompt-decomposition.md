@@ -60,7 +60,7 @@ CDC Promptの「肯定解が存在する」「部分結果は価値がない」�
 | first-principles review | Finder Role Prompt | sourceからrouteを作り、未知を明示 | 既知Findingの存在を保証しない |
 | unauthenticatedからRCEまでの強いgoal | Campaign Policy / Frontier Lane | site-wide compromiseをNorth Starにする | TargetにRCEが必ずあるというoracleを除く |
 | approach familyの多様性 | Exploration | Strategyを別軸にし、未所有surfaceを残す | provider agentの自由な割当てに任せない |
-| 最大4agentとwave反復 | Campaign Control | 独立Work Lease、最大3並列、Wave barrier | worker自身にspawn・再割当てさせない |
+| 最大4agentとwave反復 | Campaign Control | 独立Work Lease、最大4並列、Wave barrier | worker自身にspawn・再割当てさせない |
 | adversarial double-check | Verification | fresh contextでsourceと実験を再導出 | 同じconversation内の賛否や多数決にしない |
 | tool-call・wall-clock上限 | Model Execution / Campaign Control | AttemptとCampaignの有限budget | modelの自己申告や時刻推測で強制しない |
 | `research/*.md`とregistry | Research Record / Exploration | negative evidence、blocked route、再開理由を保存 | Markdownを正本stateやworker間handoffにしない |
@@ -137,7 +137,7 @@ Target内に「必ずある文字列」をmodelが毎回選ぶ方式は、余分
 
 ## 現設計との差分と次の順序
 
-現在はTarget Snapshot、Surface Map、Focus、Work Lease、typed Hypothesis、独立Verification、CAS/Ledger、最大3並列まで責務分離されている。固定Analysis Unitをseedにし、Target-boundな`source_search/source_read`で必要sourceを追加取得する経路もCampaignへ接続した。`symbol/graph`と実Targetでのtool付き再評価はまだ残る。
+現在はTarget Snapshot、Surface Map、Focus、Work Lease、typed Hypothesis、独立Verification、CAS/Ledger、最大4並列まで責務分離されている。固定Analysis Unitをseedにし、Target-boundな`source_search/source_read`で必要sourceを追加取得する経路もCampaignへ接続した。`symbol/graph`と実Targetでのtool付き再評価はまだ残る。
 
 次のvertical sliceは次の順で行う。
 

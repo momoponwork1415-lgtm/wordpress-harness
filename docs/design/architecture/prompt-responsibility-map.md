@@ -39,7 +39,7 @@ flowchart TB
 ```
 
 - `Prompt Set`: role、goal、evidence規則、Focus、closure obligationだけを表す。
-- `Campaign Control`: Work Wave、最大3並列、budget、resume、次のactionを所有する。
+- `Campaign Control`: Work Wave、最大4並列、budget、resume、次のactionを所有する。
 - `Model Execution`: provider process、effort、timeout、schema decodeを所有する。
 - `Tool Gateway`: bounded read/search/symbol/graphとTool Receiptを所有する。
 - `Research Record`: CASとLedgerへ事実、仮説、unknown、negative evidenceを保存する。

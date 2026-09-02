@@ -63,7 +63,7 @@ flowchart TB
 flowchart TB
     map["Fixed Surface Map"]
     plan["Deterministic planning"]
-    leases["Up to 3 Work Leases"]
+    leases["Up to 4 Work Leases"]
     finder["Claude Finder<br/>read and search"]
     outputs["Hypotheses and Fragments"]
     ingest["Hypothesis ingestion"]

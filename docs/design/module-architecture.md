@@ -250,7 +250,7 @@ dynamic registration、callback、dispatch、state transitionを静的に確定�
 
 ### Exploration Control
 
-何をどの異質な研究ideaで次に調べるかを所有するpure decision moduleである。Target Snapshot、repository inventory、Approach Family Registry、過去のterminal artifactから最大3個の独立familyを持つ有限Work Waveを計画する。Attempt outputのdecodeとdedup、minority routeの保持、Work Wave barrier後のRoot SynthesisとAdversarial Critic、独立Gap Review、closureまたは再開判断までを一つのinterfaceへ隠す。
+何をどの異質な研究ideaで次に調べるかを所有するpure decision moduleである。Target Snapshot、repository inventory、Approach Family Registry、過去のterminal artifactから最大4個の独立familyを持つ有限Work Waveを計画する。Attempt outputのdecodeとdedup、minority routeの保持、Work Wave barrier後のRoot SynthesisとAdversarial Critic、独立Gap Review、closureまたは再開判断までを一つのinterfaceへ隠す。
 
 ```ts
 decide(input: ExplorationDecisionInput): ExplorationDecision;
@@ -264,7 +264,7 @@ Finderは別Finderのconversation、scratch、進行中outputを読まない。W
 
 探索は全source解析またはSurface Map completionを待たず、Target manifestとSnapshot-boundなGlob/Grep/Readから開始する。最初のDepth WaveへMap excerpt、AST route、node priorityを見せない。追加sourceまたはdynamic relationが必要ならDependency WishlistまたはMapping Evidence Requestを返せるが、Map nodeの有無をcandidate受理条件にしない。Semgrep等のmatchはHypothesis Seedに留め、non-matchを安全またはclosureの証拠にしない。
 
-同じFinderの自己申告では閉じない。全Approach Familyがterminal化し、blocked routeに再開条件があり、連続Waveで新しいsource evidence、Fragment、familyが増えず、Criticもmaterially new mechanismを提示できない場合だけevidence-backed closureを提案する。acceptedなinterfaceと移行元挙動は[Exploration seam](exploration-seam.md)、自由探索policyは[ADR 0113](../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)、Breadth/Depth分離は[ADR 0114](../adr/0114-separate-breadth-and-depth-campaign-policies.md)に記録する。
+同じFinderの自己申告では閉じない。全Approach Familyがterminal化し、blocked routeに再開条件があり、連続Waveで新しいsource evidence、Fragment、familyが増えず、Criticもmaterially new mechanismを提示できない場合だけevidence-backed closureを提案する。acceptedなinterfaceと移行元挙動は[Exploration seam](exploration-seam.md)、自由探索policyは[ADR 0113](../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)、Breadth/Depth分離は[ADR 0114](../adr/0114-separate-breadth-and-depth-campaign-policies.md)、Finder上限は[ADR 0116](../adr/0116-use-four-finder-slots-per-depth-wave.md)に記録する。
 
 ### Model Execution
 

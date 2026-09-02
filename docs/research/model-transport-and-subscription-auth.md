@@ -57,7 +57,7 @@ bridgeの最小構成は次の通り。
 3. MCP serverは`source_search`/`source_read`の二toolだけを登録し、model入力からAttempt、Lease、Target Snapshot、Policy、query ordinalを受け取らない。これらはexisting `ModelExecution.run`のcallbackがharness側でbindする。
 4. Configは`strict-mcp-config`、`alwaysLoad: true`、exact `allowedTools`、`dontAsk`を使う。tool responseはexisting bounded `SourceEvidenceReceipt`からmodelに必要なstatusとcontentだけを投影し、provider credential、host path、CAS internalsを含めない。
 5. Native processはfinal structured outputとは独立に、Attempt-local bearerで認証されたMCP requestをserver側で観測できなければfail closedにする。これは現行のsingle-JSON envelopeを保ったまま、config skipを検出するlocal capability signalである。将来`stream-json`へ移す場合はinit eventのserver名、connected status、`mcp_server_errors`も同じgateへ取り込める。
-6. completion、provider failure、timeout、cancellationの全pathでHTTP listener、進行中request、private configを`finally`でcloseする。Attemptごとに独立server/capabilityを使うため3 Finder並列時も相互にqueryできない。
+6. completion、provider failure、timeout、cancellationの全pathでHTTP listener、進行中request、private configを`finally`でcloseする。Attemptごとに独立server/capabilityを使うため並列Finder同士も相互にqueryできない。
 
 MCP protocolを独自に実装せず、official TypeScript SDKのStreamable HTTP serverとshutdown primitiveを使う。SDKはstateless handlerを使う場合にrequestごとのfresh server/transportを要求し、listenerとsession transportのclose手順を示している。[Official MCP TypeScript SDK server guide](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/server.md)
 
