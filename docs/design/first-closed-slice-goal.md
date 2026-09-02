@@ -1,6 +1,6 @@
 # First closed vertical slice goal
 
-Status: confirmed objective, 2026-09-02
+Status: completed, 2026-09-02
 
 ## Goal
 
@@ -37,6 +37,18 @@ private graderだけが次のCase roleと期待結果を知る。
 Mapper、Finder、VerifierへCase role、CVE、advisory、affected version、patch narrative、既知file・symbol・parameter、既知payloadを渡さない。production codeへBrizy固有のsymbol、route、payload、期待結果を分岐として埋め込まない。
 
 2.8.12のDisprovedは、固定HypothesisとCausal Identityについて必要条件またはsecurity-property破壊が成立しなかったという限定的結論である。plugin全体に脆弱性がないという結論へ拡張しない。
+
+## Completion evidence
+
+2026-09-02にClosure Gateを通過した。private Target、prompt、payload、transcript、credentialをGitへ出さず、次をGit外のResearch Ledgerとcontent-addressed evidenceへ記録した。
+
+- 2.8.11のoracle-free Campaignは3 Finder Attempt以内にSource-bound Hypothesisを作り、独立Verifierとfresh gVisor sibling LabsからFindingへ昇格した。
+- private graderはpositiveで固定した同じCausal Identityを2.8.12へ拘束し、fresh Witness/Control pairと正常機能維持を伴うDisprovedを記録した。
+- 2.8.12のoracle-free CampaignはFindingを誤昇格せず、private Calibration Reviewは固定positive/negative pairのIdentity一致と、active FindingのCalibration Fingerprintを別々に検査した。
+- production `CampaignRunner.run`は`stop-boundary-pair-complete`を返した。Campaign Run digestは`sha256:c67bcb7a8844958c9be2b24ad865d72603a6c492c6651d41fea8529ac2f39928`、Boundary Pair Evidence digestは`sha256:1562e9dd896192c4f7ca691d9c10c32a84fb71039f613cb216dd80145999e0bf`である。
+- 同じRun Planをclose/reopen後に再実行し、外部modelまたはLabを再起動せず同じrefとviewを再生した。
+
+Causal Identityのmodel生成文言は同じ意味でもAttempt間で変化したため、cross-runのactive Finding照合にはterminalな構造証拠から作るCalibration Fingerprintを使う。固定positive/negative Boundary Pair同士の同一Identity条件は緩めない。[ADR 0111](../adr/0111-match-calibration-by-structural-evidence.md)に理由を記録する。
 
 ## Post-goal Transfer Plan
 

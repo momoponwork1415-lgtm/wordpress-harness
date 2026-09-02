@@ -478,4 +478,69 @@ fi
       await rm(directory, { force: true, recursive: true });
     }
   });
+
+  it("records bounded Claude failure details returned on stdout", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "claude-api-error-"));
+    const artifactDirectory = join(directory, "artifacts");
+    const executablePath = join(directory, "fake-claude");
+    const providerError = {
+      type: "result",
+      is_error: true,
+      terminal_reason: "api_error",
+      api_error_status: null,
+      result: "Request timed out",
+    };
+    await writeFile(
+      executablePath,
+      `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf '%s\\n' '2.1.251 (Claude Code)'
+elif [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  printf '%s' '{"loggedIn":true}'
+else
+  cat >/dev/null
+  printf '%s' '${JSON.stringify(providerError)}'
+  exit 1
+fi
+`,
+      "utf8",
+    );
+    await chmod(executablePath, 0o700);
+    const execution = openClaudeModelExecution({
+      artifactDirectory,
+      executablePath,
+      executableVersion: "2.1.251",
+      workingDirectory: directory,
+    });
+
+    try {
+      const result = await execution.run(attemptPlan());
+      expect(result).toMatchObject({ status: "provider-failed" });
+      if (result.value.status === "completed") {
+        throw new Error("Expected a terminal provider result");
+      }
+      const errorArtifact = /sha256:([a-f0-9]{64})$/u.exec(result.value.reason);
+      if (errorArtifact?.[1] === undefined) {
+        throw new Error("Missing provider error artifact digest");
+      }
+      const stored = JSON.parse(
+        await readFile(
+          join(artifactDirectory, `${errorArtifact[1]}.json`),
+          "utf8",
+        ),
+      );
+      expect(stored).toMatchObject({
+        kind: "provider-error-artifact",
+        schemaVersion: 1,
+        exitCode: 1,
+        providerError: {
+          terminalReason: "api_error",
+          message: "Request timed out",
+          apiErrorStatus: null,
+        },
+      });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
 });

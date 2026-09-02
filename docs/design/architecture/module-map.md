@@ -123,28 +123,32 @@ sequenceDiagram
 
 ```mermaid
 flowchart TB
-    positive["Positive Campaign"]
-    negative["Patched Campaign"]
-    pterm[("Finding ref")]
-    nterm[("Disproved ref")]
+    active["Oracle-free<br/>Positive Campaign"]
+    activeFinding[("Active<br/>Finding ref")]
+    fingerprint["Calibration<br/>Fingerprint"]
+    fixedPositive[("Fixed positive<br/>Finding ref")]
+    fixedNegative[("Patched<br/>Disproved ref")]
+    oracleNegative[("Oracle-free negative<br/>no promotion")]
     calibration["Private Calibration<br/>Review"]
     receipt[("Boundary Pair<br/>Evidence ref")]
     iteration{"Iteration Review"}
     await["await-calibration"]
     stop["stop-boundary-pair-complete"]
 
-    positive --> pterm --> calibration
-    negative --> nterm --> calibration
+    active --> activeFinding --> fingerprint --> calibration
+    fixedPositive -->|"固定Identity"| calibration
+    fixedNegative -->|"同じ固定Identity"| calibration
+    oracleNegative --> calibration
     calibration -->|"不足・不一致"| iteration --> await
-    calibration -->|"同一Identity + 正常機能 + 隔離成立"| receipt --> iteration --> stop
+    calibration -->|"構造証拠 + 正常機能 + 隔離成立"| receipt --> iteration --> stop
 
     classDef module fill:#edf4ff,stroke:#3767a6,color:#172b4d;
     classDef artifact fill:#fff5d6,stroke:#a87800,color:#3f2d00;
-    class positive,negative,calibration,iteration module;
-    class pterm,nterm,receipt,await,stop artifact;
+    class active,fingerprint,calibration,iteration module;
+    class activeFinding,fixedPositive,fixedNegative,oracleNegative,receipt,await,stop artifact;
 ```
 
-private Calibration Reviewは探索agentではなくDevelopment Boundary Pair専用のsystem seamである。Case roleや既知payloadをFinderへ返さず、完成済みterminal refだけを比較する。patched Targetへ正例Hypothesisを当てる作業もFinderではなくprivate graderから同じVerification seamへ入れる。単一のFinding、意味が近いだけの異なるCausal Identity、negative Campaignからのfalse promotion、機能破壊によるnegative、plain Docker fallbackのいずれでも完了receiptを作らない。
+private Calibration Reviewは探索agentではなくDevelopment Boundary Pair専用のsystem seamである。Case roleや既知payloadをFinderへ返さず、完成済みterminal refだけを比較する。patched Targetへ正例Hypothesisを当てる作業もFinderではなくprivate graderから同じVerification seamへ入れる。固定positive/negativeは同じCausal Identityを要求するが、別Attemptのactive Findingはmodelの自然言語表現ではなくCalibration Fingerprintで照合する。単一のFinding、異なるsource route、negative Campaignからのfalse promotion、機能破壊によるnegative、plain Docker fallbackのいずれでも完了receiptを作らない。
 
 ## 5. 詳細を読むとき
 

@@ -43,7 +43,7 @@ native adapterは推論前にexecutable versionと公式`auth status`を検査�
 
 現行のtool-free source sliceは、structured output、process supervision、3並列、Verification接続を最短で通すためのtracer implementationであり、acceptedなAttempt tool planeの完成形ではない。単一Focusから先回りして選ぶ固定file集合は、必要routeを含まない場合と不要な大contextを含む場合があるため、その結果だけでModel Profileの探索能力を判定しない。次の探索sliceでは公開`ModelExecution.run(plan)`を変えず、内部adapterを予算付きのharness-owned read、search、symbol、graph toolへ置き換える。
 
-Claude JSON envelope、実model identity、permission denial、Web request数、subagent数は一つのdecoderでruntime decodeする。FinderはさらにFinder schema、Work Lease binding、Lease固有の`maxHypotheses`を、Independent Verifierは検証identityとsource evidence bindingを各Moduleで検査する。Finderの成功outputまたは型付きterminal resultはprivate CASへ保存し、呼出元へdigest付きrefを返す。provider errorのstderrはcredential値をredactしてprivate error artifactへ置き、公開resultにはそのdigestだけを残す。
+Claude JSON envelope、実model identity、permission denial、Web request数、subagent数は一つのdecoderでruntime decodeする。FinderはさらにFinder schema、Work Lease binding、Lease固有の`maxHypotheses`を、Independent Verifierは検証identityとsource evidence bindingを各Moduleで検査する。Finderの成功outputまたは型付きterminal resultはprivate CASへ保存し、呼出元へdigest付きrefを返す。provider errorのstderrはcredential値をredactし、非ゼロ終了時のstdoutがClaude error envelopeならterminal reason、bounded message、API statusだけを抽出してprivate error artifactへ置く。raw stdoutとcredentialは保存せず、公開resultにはartifact digestだけを残す。
 
 2026-09-02のprivate development benchmarkでは、oracle情報を与えず、実在するTranslatePress 3.2.5のSurface Mapから一つのWork Leaseを選び、約414 KBのsource contextをOpus 5へ渡した。独立した二回の成功実行はそれぞれ二件と一件のschema-valid Source-bound Hypothesisを返し、どちらもExplorationの`verify` decisionまで到達した。この差は候補生成の分散であり、単発runを能力評価に使わない。これはtransportと取込経路の成立確認であって、Hypothesisの正しさ、脆弱性発見、Milestone 1完了を意味しない。target source、prompt、provider outputはGitへ置かない。
 

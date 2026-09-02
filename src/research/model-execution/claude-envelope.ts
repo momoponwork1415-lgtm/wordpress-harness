@@ -22,6 +22,21 @@ const providerEnvelopeSchema = z.object({
   ),
 });
 
+const providerErrorEnvelopeSchema = z.object({
+  type: z.literal("result"),
+  is_error: z.literal(true),
+  terminal_reason: z.string().min(1).max(64),
+  api_error_status: z.union([
+    z.number().int(),
+    z.string().min(1).max(64),
+    z.null(),
+  ]),
+  result: z
+    .string()
+    .min(1)
+    .max(4 * 1024),
+});
+
 export type ClaudeEnvelopeResult =
   | { readonly kind: "accepted"; readonly output: unknown }
   | { readonly kind: "invalid-envelope" }
@@ -57,4 +72,24 @@ export function decodeClaudeEnvelope(
     return { kind: "policy-denied", reason: "model-substitution" };
   }
   return { kind: "accepted", output: envelope.structured_output };
+}
+
+export function decodeClaudeErrorEnvelope(stdout: string):
+  | {
+      readonly terminalReason: string;
+      readonly message: string;
+      readonly apiErrorStatus: number | string | null;
+    }
+  | undefined {
+  try {
+    const parsed: unknown = JSON.parse(stdout);
+    const envelope = providerErrorEnvelopeSchema.parse(parsed);
+    return {
+      terminalReason: envelope.terminal_reason,
+      message: envelope.result,
+      apiErrorStatus: envelope.api_error_status,
+    };
+  } catch {
+    return undefined;
+  }
 }

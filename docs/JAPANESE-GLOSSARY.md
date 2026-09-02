@@ -168,6 +168,7 @@
 | Boundary Pair | 境界ペア |
 | Calibration Context | 校正条件。探索担当から隔離した非公開の評価条件 |
 | Calibration Review | 校正判定。境界ペアの成立条件を終端証拠から判定する工程 |
+| Calibration Fingerprint | 校正フィンガープリント。異なる実行のFindingを構造証拠で照合する非公開identity |
 | Boundary Pair Evidence | 境界ペア成立証拠 |
 | Sealed Evaluation Cohort | 封印評価群 |
 | Prospective Campaign | 実戦キャンペーン |

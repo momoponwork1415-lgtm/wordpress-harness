@@ -13,7 +13,10 @@ import {
   type ModelExecution,
   type OpenModelExecutionOptions,
 } from "./contracts.js";
-import { decodeClaudeEnvelope } from "./claude-envelope.js";
+import {
+  decodeClaudeEnvelope,
+  decodeClaudeErrorEnvelope,
+} from "./claude-envelope.js";
 
 class FirstFinderModelExecution implements ModelExecution {
   readonly #artifacts;
@@ -56,12 +59,14 @@ class FirstFinderModelExecution implements ModelExecution {
       return this.#terminal(plan, "budget-exhausted", "output-limit-exceeded");
     }
     if (processResult.exitCode !== 0) {
+      const providerError = decodeClaudeErrorEnvelope(processResult.stdout);
       const errorDigest = await this.#artifacts.putJson({
         kind: "provider-error-artifact",
         schemaVersion: 1,
         attemptId: plan.attemptId,
         exitCode: processResult.exitCode,
         stderr: processResult.stderr,
+        ...(providerError === undefined ? {} : { providerError }),
       });
       return this.#terminal(
         plan,

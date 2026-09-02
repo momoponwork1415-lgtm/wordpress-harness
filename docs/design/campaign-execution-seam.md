@@ -103,11 +103,11 @@ type IterationDecisionV1 =
 ```
 
 - `await-calibration`: 一つのTarget Snapshotのconclusive FindingまたはDisprovedを記録済みだが、private Boundary Pairの比較はまだ完了していない。単一Campaignをpair全体の成功として扱わないためのterminal decisionである。
-- `stop-boundary-pair-complete`: private Calibration Reviewがpositive Finding、同じCausal Identityのpatched Disproved、benign functional control、no false promotionをすべてdigest固定している。
+- `stop-boundary-pair-complete`: private Calibration Reviewが固定positive Finding、同じCausal Identityのpatched Disproved、benign functional control、no false promotion、およびactive oracle-free FindingのCalibration Fingerprint一致をすべてdigest固定している。
 - `continue-unresolved-work`: budget内に、情報利得と停止条件を持つ次の有限workが残る。
 - `blocked-capability`: gVisor、baseline、provider、browser、evidence等の不足により、固定Plan内で支持も反証も安全に進められない。
 
-`stop-boundary-pair-complete`は単一CampaignのFindingだけでは返さない。Calibration Reviewはproduction Campaignのterminal run refとprivate graderが同じVerification seamで作ったpatched terminal refだけを比較し、advisoryや期待payloadをResearch判断へ持ち込まない。
+`stop-boundary-pair-complete`は単一CampaignのFindingだけでは返さない。Calibration Reviewはproduction Campaignのterminal run ref、固定positive、private graderが同じVerification seamで作ったpatched terminal ref、oracle-free negative Campaignを比較し、advisoryや期待payloadをResearch判断へ持ち込まない。異なるAttemptのmodel生成文言はidentityにせず、active FindingはTarget Snapshot、重なるsource anchor、Experiment protocol、Witness/Control観測から成るprivate Calibration Fingerprintで固定positiveへ照合する。
 
 ## Durability and crash recovery
 
@@ -170,8 +170,8 @@ Behavior Testは`CampaignRunner.run(plan)`と`CampaignReader.read/inspect`から
 
 Git外のBrizy 2.8.11/2.8.12 snapshotでは、同じproduction materializerで各3 Leaseを外部modelなしに構築し、source入力が設定上限内に収まり、2.8.11のstate-chain Leaseが保存側、unauthenticated form側、管理画面templateを同時に含むことを確認した。これはsource選択とbindingのcharacterizationであり、脆弱性発見またはpatched negativeの実証ではない。
 
-private Brizy 2.8.11では、実Opus Finder・Independent Verifier・gVisor/browserを同じ`CampaignRunner.run`へ連結し、oracle-freeな3 FinderからFinding、`await-calibration`、Ledger replayまで到達した。2.8.12の過去の手動較正経路は同じ最新構成でDisprovedになり、oracle-free Campaignは3 FinderからHypothesisを得ずFindingへ誤昇格しなかった。ただし過去二runのCausal Identity表現が一致しないため、private Calibration Reviewは安全側に`pending`を返す。2.8.11で確定したIdentityへ2.8.12を拘束した再検証は、provider unavailableによりBlockedであり、Boundary Pairの完了証拠には使わない。
+private Brizy 2.8.11では、実Opus Finder・Independent Verifier・gVisor/browserを同じ`CampaignRunner.run`へ連結し、oracle-freeな3 FinderからFindingまで到達した。2.8.12のoracle-free Campaignは3 FinderからHypothesisを得ずFindingへ誤昇格しなかった。private graderは固定positiveのCausal Identityを2.8.12へ拘束し、実Opus再導出とfresh gVisor Witness/Controlから同じIdentityのDisprovedを記録した。active CampaignのFindingはmodel生成文言ではなくCalibration Fingerprintで固定positiveへ照合し、Calibration Reviewは`complete`となった。
 
 Calibration Reviewはopaque Contextとterminal Verification refsだけを受けるsystem seamとして実装し、context digestが違う完了証拠を拒否する。合成Behavior Testでは正しいprivate receiptだけが`stop-boundary-pair-complete`を記録する。Verificationは、再導出後・Witness前とWitness後・Control前のprocess crashからclose/reopenすると、古い途中成果を採用せずfresh verifierとfresh sibling pairを再実行する。完成済みVerificationは外部adapterを呼ばず同じrefをreplayする。
 
-Closure Gateに残る実証は、provider復旧後に同一Causal Identityの2.8.12 Disprovedを作り、private Calibration Reviewを`complete`へ進め、同じproduction入口の`stop-boundary-pair-complete`を実レシートで確認することである。`continue-unresolved-work`を次の実Waveへ自動消費するreconcileは、完全自律の到達形には必要だが、一つの有限Waveと次Iteration Decisionまでを閉じる現在のClosure Gateには含めず、次のvertical sliceへ送る。
+Closure Gateは2026-09-02に通過した。同じproduction入口は3 Finder Attempt、Finding、Boundary Pair Evidenceを経て`stop-boundary-pair-complete`を実レシートへ記録し、close/reopen replayも一致した。`continue-unresolved-work`を次の実Waveへ自動消費するreconcileは、完全自律の到達形には必要だが、一つの有限Waveと次Iteration Decisionまでを閉じる完了済みClosure Gateには含めず、次のvertical sliceへ送る。

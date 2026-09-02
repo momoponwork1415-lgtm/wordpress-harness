@@ -196,12 +196,11 @@ flowchart TB
     classDef done fill:#e9f7ed,stroke:#337a46,color:#173d22;
     classDef partial fill:#fff5d6,stroke:#a87800,color:#3f2d00;
     classDef planned fill:#f2f3f5,stroke:#777,color:#333;
-    class current,finders,ingest,verify,record,decision,await,continue,blocked done;
-    class calibration,stop partial;
+    class current,finders,ingest,verify,record,calibration,decision,await,stop,continue,blocked done;
     class nextwave,synthesis,gaps,closure,multimodel planned;
 ```
 
-2026-09-02時点で、Brizy 2.8.11のoracle-free Campaignは最大3 Finderから`Finding`まで到達した。2.8.12の過去の手動較正経路は`Disproved`を記録したが、正例とCausal Identity表現が一致しないためprivate Calibration Reviewは`pending`に保つ。同一Identityへ拘束した再検証はprovider unavailableで`Blocked`となり、誤って`Disproved`またはBoundary Pair完了へ昇格していない。合成Behavior Testではopaque receiptから`stop-boundary-pair-complete`まで動作する。実Targetで残るのはprovider復旧後の同一Identity negativeと完了receiptである。
+2026-09-02時点で、Brizy 2.8.11のoracle-free Campaignは最大3 Finderから`Finding`まで到達した。private graderが同じ固定Causal Identityを2.8.12へ拘束した再検証は`Disproved`となり、oracle-free negative CampaignはFindingへ誤昇格しなかった。active Findingはmodel生成文言ではなく、Target、source anchor、Experiment protocol、Witness/Control観測から成るCalibration Fingerprintで固定positiveへ照合する。Calibration Reviewは`complete`となり、実Targetのrunは`stop-boundary-pair-complete`を記録してclose/reopen replayも一致した。
 
 旧whitebox-harnessと同じく、到達形ではCampaign投入後に人間の追加指示なしで反復する。新設計はその自律性を削らず、進行、上限、resume、停止判定をroot agentの巨大Promptから`Campaign Control`と型付きrecordへ移す。現行sliceは一つの有限Waveと次Decisionまでを自律実行するが、`continue-unresolved-work`を次Waveへ自動消費する部分はまだ未実装である。
 

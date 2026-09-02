@@ -332,6 +332,10 @@ _Avoid_: Hypothesis deduplication、Oracle hint、Disproved
 root cause、attacker-controlled primitive、破壊されるsecurity propertyの組で表すHypothesisまたはFindingの重複単位。
 _Avoid_: File match、Vulnerability-class match
 
+**Calibration Fingerprint**:
+同じBoundary Pairのterminal Findingを異なるAttemptやModel Profileの間で照合するため、Target Snapshot、Evidence Routeのsource anchor、Experiment protocol、WitnessとCausal Controlの観測を固定した構造的identity。modelが生成したCausal Identityの文言または既知答えを探索へ渡すものではない。
+_Avoid_: Normalized Causal Identity、Model string match、Finder hint
+
 **Blocked**:
 必要なsource、runtime、tool、または前提を取得できず、Hypothesisを支持も反証もできないVerification結果。
 _Avoid_: Failed、Disproved
