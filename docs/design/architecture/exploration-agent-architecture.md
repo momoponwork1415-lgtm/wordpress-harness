@@ -145,7 +145,9 @@ flowchart TB
 - Surface MapとPHP Program Indexから決定的に作った`Analysis Unit@v1`
 - source-bound Hypothesisを返すためのversioned schema
 
-現行のtool-free materializerは、Focus ownerのobserved anchorをseedにする。directed Strategyは`Map relation -> call neighbor -> literal参照 -> 共有hook`の順、`wildcard`は`directed候補を除いたSurface Map標本 -> 共有hook -> literal参照 -> relation/call fallback`の順でpathを選ぶ。標本はnode kindをround-robinし、同じkind内ではseedとのdirectory近接とpath順で決める。private closed sliceの上限は8 files、source全体650 KB、単一file 220 KBである。各fileはTarget manifestのsizeとSHA-256を再検査し、上限を越えるfileはobserved anchor周辺だけをrenderする。
+現行のtool-free materializerは、Focus ownerのobserved anchorをseedにする。directed Strategyは`Map relation -> call neighbor -> literal参照 -> 共有hook`、`entry-forward`等は`共有hook -> literal参照 -> relation/call fallback`の順で最初の候補を作る。二次sourceを実際に読めた場合、そのsourceだけに現れるliteral参照を最大1件、共有hookの別登録元を最大1件、同じfile/byte上限内で前へ昇格する。これは一段だけで止まり、昇格したsourceから再帰展開しない。literalはsource内の出現回数が少ないものを先にし、同数なら出現順、最後にpath順で決める。translation domain等の反復文字列より、一度だけ現れるtemplate名をnavigation hintとして優先するためである。
+
+`wildcard`は`directed候補を除いたSurface Map標本 -> 共有hook -> literal参照 -> relation/call fallback`の順を維持し、二次展開を行わない。標本はnode kindをround-robinし、同じkind内ではseedとのdirectory近接とpath順で決める。private closed sliceの上限は8 files、source全体650 KB、単一file 220 KBである。各fileはTarget manifestのsizeとSHA-256を再検査し、上限を越えるfileはobserved anchor周辺だけをrenderする。
 
 ### Analysis Unitの作り方
 
@@ -154,22 +156,41 @@ flowchart TB
     assignment["Focus Area + Work Lease"]
     seed["Observed Seed"]
     choose{"Strategy"}
-    directed["Directed<br/>relation / callを優先"]
+    directed["Directed<br/>最初の候補を安定順へ"]
+    secondary["二次Sourceを読む"]
+    hop{"1段だけ昇格"}
+    literal["低頻度Literal<br/>最大1件"]
+    hook["共有Hook登録元<br/>最大1件"]
     wildcard["Wildcard<br/>surface標本を優先"]
     bind{"Digest・範囲・上限を検査"}
     unit[("Analysis Unit@v1")]
     prompt["Private Attempt Plan"]
 
     assignment --> seed --> choose
-    choose --> directed --> bind
+    choose --> directed --> secondary --> hop
+    hop --> literal --> bind
+    hop --> hook --> bind
     choose --> wildcard --> bind
     bind --> unit --> prompt
 
     classDef done fill:#e9f7ed,stroke:#337a46,color:#173d22;
-    class assignment,seed,choose,directed,wildcard,bind,unit,prompt done;
+    class assignment,seed,choose,directed,secondary,hop,literal,hook,wildcard,bind,unit,prompt done;
 ```
 
 UnitはTarget、Map、Program Index、Focus、Leaseのdigestと、実際に採用したpath、file digest、line range、byte量、選択理由を持つ。同じsinkへ二つのLeaseを重ねても、directedとwildcardが同じsource集合へ収束しにくい。選択理由は「なぜcontextへ入れたか」の記録であり、sourceからsinkへの到達証拠ではない。実装は[finder-attempt-materializer.ts](../../../src/research/campaign-control/finder-attempt-materializer.ts)、外から観測する仕様は[finder-attempt-materializer.test.ts](../../../tests/research/finder-attempt-materializer.test.ts)を参照する。
+
+### Brizy pairで確認した6 Gate
+
+| Gate | このsliceの結果 | artifactから確認したこと |
+| --- | --- | --- |
+| Target Identity | pass | 2.8.11と2.8.12を別Target Snapshotとし、manifest、Map、Program Index、実sourceのdigest bindingが一致した |
+| Map Coverage | pass for this route | 外部entry、request source、保存、HTML outputのobserved anchorがAnalysis UnitとHypothesisをsourceへ拘束できた。全pluginの意味coverage完了は主張しない |
+| Focus Rank | pass | 最大3 Leaseに外部entryの`entry-forward`と`wildcard`、別の危険sinkの`sink-backward`が入った |
+| Context Reach | pass after correction | directed Unitが二次sourceからtemplateとsubmit側hook登録元を一段だけ取得した。`wildcard`の広い標本は変更していない |
+| Hypothesis Recall | pass for stored-XSS slice | 2.8.11のFinderが保存値から管理画面renderまでの反証可能なCausal Identityを返した |
+| Verification | pass for Stored XSS; partial globally | 2.8.11は独立source再導出とfresh gVisor Witness/ControlでFinding、2.8.12のoracle-free CampaignはFindingなし。file-writeやauthorization-bypass等は`unsupported-experiment`のまま |
+
+最初の実行では、二次sourceを読んでもそこで見つかったtemplateとhookを追わず、Finderは不足sourceを`requiredEvidence`として返した。最初の一段展開ではliteral候補をpath順にしたため、一般的な文字列と同名のPHP fileがtemplateより先に入った。最終規則はmodelの自由文や既知脆弱性を読まず、固定source中のliteral頻度、出現順、Program Indexの共有hook、inventory digestだけで同じUnitを再現する。
 
 この順序は再現可能だが、動的property call、service locator、組立てcallback、fileをまたぐstate identityを静的call neighborだけで接続できない。Finderが不足producerやentryを特定しても追加取得できないため、acceptedな到達形では固定seedを小さくし、path・Lease・byte・turn budgetをharnessが検査する`read / search / symbol / graph` toolへ置き換える。shell、web、runtime、Target writeは追加しない。
 

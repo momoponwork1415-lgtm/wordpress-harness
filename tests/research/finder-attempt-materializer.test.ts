@@ -37,15 +37,22 @@ async function fixture(options?: {
   await mkdir(join(sourceDirectory, "views"), { recursive: true });
   const handler =
     options?.includeLiteralReference === false
-      ? "<?php\nfunction route_handler() {\n  // template is resolved late\n  echo $_POST['value'];\n}\n"
-      : "<?php\nfunction route_handler() {\n  $template = 'review-view';\n  echo $_POST['value'];\n}\n";
+      ? "<?php\nadd_filter('sample_context_hook', 'route_handler');\nfunction route_handler() {\n  // template is resolved late\n  echo $_POST['value'];\n}\n"
+      : "<?php\nadd_filter('sample_context_hook', 'route_handler');\nfunction route_handler() {\n  $domain = 'common-domain';\n  translate('common-domain');\n  $template = 'secondary-view';\n  echo $_POST['value'];\n}\n";
+  const handlerSinkLine = options?.includeLiteralReference === false ? 5 : 7;
+  const handlerEndLine = options?.includeLiteralReference === false ? 6 : 8;
   const files = {
     "entry.php":
-      "<?php\nfunction route_entry() {\n  route_handler();\n  return render('review-view');\n}\n",
+      "<?php\nadd_filter('sample_context_hook', 'route_entry');\nfunction route_entry() {\n  route_handler();\n  return render('review-view');\n}\n",
     "includes/handler.php": handler,
+    "includes/common-domain.php": "<?php // repeated non-navigation literal\n",
+    "includes/hook-producer.php":
+      "<?php\nadd_filter('sample_context_hook', 'produce_context');\nfunction produce_context($value) { return $value; }\n",
     "includes/unrelated.php": "<?php // UNRELATED_SECRET_MARKER\n",
     "views/review-view.php":
       "<?php\n$persisted_value = get_option('persisted');\necho $persisted_value;\n",
+    "views/secondary-view.php":
+      "<?php\n$secondary_context = 'SECOND_HOP_TEMPLATE_MARKER';\n",
   } as const;
   await Promise.all(
     Object.entries(files).map(([path, content]) =>
@@ -95,7 +102,19 @@ async function fixture(options?: {
             },
           },
         ],
-        wordpressFacts: [],
+        wordpressFacts: [
+          {
+            kind: "hook-registration",
+            hook: "sample_context_hook",
+            callback: "route_entry",
+            range: {
+              startLine: 2,
+              endLine: 2,
+              startOffset: 6,
+              endOffset: 57,
+            },
+          },
+        ],
         diagnostics: [],
       },
       {
@@ -106,8 +125,8 @@ async function fixture(options?: {
             kind: "function",
             name: "route_handler",
             range: {
-              startLine: 2,
-              endLine: 5,
+              startLine: 3,
+              endLine: handlerEndLine,
               startOffset: 6,
               endOffset: 88,
             },
@@ -116,12 +135,23 @@ async function fixture(options?: {
         calls: [],
         wordpressFacts: [
           {
+            kind: "hook-registration",
+            hook: "sample_context_hook",
+            callback: "route_handler",
+            range: {
+              startLine: 2,
+              endLine: 2,
+              startOffset: 6,
+              endOffset: 59,
+            },
+          },
+          {
             kind: "source",
             category: "request-superglobal",
             operation: "_POST",
             range: {
-              startLine: 4,
-              endLine: 4,
+              startLine: handlerSinkLine,
+              endLine: handlerSinkLine,
               startOffset: 72,
               endOffset: 77,
             },
@@ -131,10 +161,49 @@ async function fixture(options?: {
             category: "html-output",
             operation: "echo",
             range: {
-              startLine: 4,
-              endLine: 4,
+              startLine: handlerSinkLine,
+              endLine: handlerSinkLine,
               startOffset: 67,
               endOffset: 83,
+            },
+          },
+        ],
+        diagnostics: [],
+      },
+      {
+        path: "includes/common-domain.php",
+        digest: fileDigest(files["includes/common-domain.php"]),
+        symbols: [],
+        calls: [],
+        wordpressFacts: [],
+        diagnostics: [],
+      },
+      {
+        path: "includes/hook-producer.php",
+        digest: fileDigest(files["includes/hook-producer.php"]),
+        symbols: [
+          {
+            kind: "function",
+            name: "produce_context",
+            range: {
+              startLine: 3,
+              endLine: 3,
+              startOffset: 65,
+              endOffset: 116,
+            },
+          },
+        ],
+        calls: [],
+        wordpressFacts: [
+          {
+            kind: "hook-registration",
+            hook: "sample_context_hook",
+            callback: "produce_context",
+            range: {
+              startLine: 2,
+              endLine: 2,
+              startOffset: 6,
+              endOffset: 62,
             },
           },
         ],
@@ -169,6 +238,14 @@ async function fixture(options?: {
         ],
         diagnostics: [],
       },
+      {
+        path: "views/secondary-view.php",
+        digest: fileDigest(files["views/secondary-view.php"]),
+        symbols: [],
+        calls: [],
+        wordpressFacts: [],
+        diagnostics: [],
+      },
     ],
     diagnostics: [],
   };
@@ -179,10 +256,10 @@ async function fixture(options?: {
     analysisProfileId: programIndex.analysisProfile.id,
     digest: sha256Digest(programIndex),
     summary: {
-      files: 4,
-      symbols: 2,
+      files: 7,
+      symbols: 3,
       calls: 1,
-      wordpressFacts: 3,
+      wordpressFacts: 6,
       diagnostics: 0,
     },
   };
@@ -240,8 +317,8 @@ async function fixture(options?: {
               targetSnapshotDigest: targetDigest,
               path: "includes/handler.php",
               fileDigest: fileDigest(files["includes/handler.php"]),
-              startLine: 4,
-              endLine: 4,
+              startLine: handlerSinkLine,
+              endLine: handlerSinkLine,
               startOffset: 72,
               endOffset: 77,
             },
@@ -260,8 +337,8 @@ async function fixture(options?: {
               targetSnapshotDigest: targetDigest,
               path: "includes/handler.php",
               fileDigest: fileDigest(files["includes/handler.php"]),
-              startLine: 4,
-              endLine: 4,
+              startLine: handlerSinkLine,
+              endLine: handlerSinkLine,
               startOffset: 67,
               endOffset: 83,
             },
@@ -296,7 +373,7 @@ async function fixture(options?: {
     ],
     relations: [],
     gaps: [],
-    summary: { files: 4, nodes: 4, relations: 0, gaps: 0 },
+    summary: { files: 7, nodes: 4, relations: 0, gaps: 0 },
   };
   const mapRef: SurfaceMapRef = {
     kind: "surface-map",
@@ -509,6 +586,21 @@ describe("ToolFreeFinderAttemptMaterializer.materialize", () => {
       expect(first.prompt).toContain("persisted_value");
       expect(first.prompt).not.toContain("UNRELATED_SECRET_MARKER");
       expect(first.modelProfile.model).toBe("claude-opus-5");
+    } finally {
+      await test.cleanup();
+    }
+  });
+
+  it("uses one bounded deterministic hop from directed secondary context", async () => {
+    const test = await fixture({ maxFiles: 4 });
+    try {
+      const materialization = await test.materializer.materialize(test.input);
+
+      expect(materialization.prompt).toContain("includes/handler.php");
+      expect(materialization.prompt).toContain("views/secondary-view.php");
+      expect(materialization.prompt).toContain("SECOND_HOP_TEMPLATE_MARKER");
+      expect(materialization.prompt).toContain("includes/hook-producer.php");
+      expect(materialization.prompt).not.toContain("views/review-view.php");
     } finally {
       await test.cleanup();
     }

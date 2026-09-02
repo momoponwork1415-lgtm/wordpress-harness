@@ -380,6 +380,16 @@
         background: var(--red-soft);
       }
 
+      .gate.pass {
+        border-color: #34775a;
+        background: var(--green-soft);
+      }
+
+      .gate.partial {
+        border-color: #806725;
+        background: var(--gold-soft);
+      }
+
       .files {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
@@ -691,6 +701,8 @@
             <div class="mini-flow">
               <div>Focus + Leaseからobserved seedを固定</div>
               <div>Directed: relation / call近傍を優先</div>
+              <div>読めた二次sourceから一段だけ展開</div>
+              <div>低頻度literal 1件 + 共有hook登録元 1件</div>
               <div>Wildcard: 広いSurface標本を最初に選ぶ</div>
               <div>path、digest、range、byte、理由を固定</div>
               <div>最大8 files / 650 KBでAttempt Planへ格納</div>
@@ -716,10 +728,9 @@
           </article>
         </div>
         <p class="callout">
-          Brizy 2.8.11 / 2.8.12では、外部AJAX entryへ重ねた
-          <code>wildcard</code> と <code>entry-forward</code>
-          が別のsource集合になった。Wildcardはnode-kind別標本を先に読み、別のcode-execution
-          primitiveは<code>sink-backward</code>へ残した。
+          二次sourceのliteralを単純なpath順で選ぶと、一般文字列と同名のPHP
+          fileがtemplateより先に入った。現在は出現回数、source内の出現順、path順で固定し、反復するtranslation
+          domainより一度だけ現れるtemplate名を優先する。model自由文や既知脆弱性はrankingへ使わない。
         </p>
       </section>
 
@@ -730,36 +741,36 @@
           最終Finding数だけではmodel能力とharness欠陥を区別できない。各gateの入力と出力を独立に観測する。
         </p>
         <div class="surface gates">
-          <div class="gate issue">
+          <div class="gate pass">
             <strong>1. Target Identity</strong
-            ><span>本当にvulnerableなsource digestか</span>
+            ><span>pass — manifestと実source digestを再検査</span>
           </div>
-          <div class="gate issue">
+          <div class="gate pass">
             <strong>2. Map Coverage</strong
-            ><span>入口・sink・state anchorがMapにあるか</span>
+            ><span>pass for route — 必要anchorをsourceへ拘束</span>
           </div>
-          <div class="gate issue">
+          <div class="gate pass">
             <strong>3. Focus Rank</strong
-            ><span>最初の3 Leaseへ重要surfaceが入ったか</span>
+            ><span>pass — 外部entryと危険sinkを3 Leaseへ配置</span>
           </div>
-          <div class="gate issue">
+          <div class="gate pass">
             <strong>4. Context Reach</strong
-            ><span>必要なroute両端をFinderが取得できたか</span>
+            ><span>pass after fix — submit・保存・renderを同居</span>
           </div>
-          <div class="gate">
+          <div class="gate pass">
             <strong>5. Hypothesis Recall</strong
-            ><span>十分なsourceから反証可能候補を作れたか</span>
+            ><span>pass for slice — Stored XSSの因果routeを生成</span>
           </div>
-          <div class="gate">
+          <div class="gate partial">
             <strong>6. Verification</strong
-            ><span>独立sourceと実験pairで成立したか</span>
+            ><span>Stored XSS pass / 他classは未実装</span>
           </div>
         </div>
         <p class="callout">
-          SSA校正ではGate 1が失敗していた。同じ
-          <code>1.6.10.0</code>
-          表示でも手元のbytesはSQLi修正済みだった。版ラベルではなくmanifest
-          digestを正本にする。
+          Brizy 2.8.11は同じoracle-free production経路から独立Verifierとfresh
+          gVisor
+          Witness/Controlを通ってFindingになった。2.8.12も同じcontext規則で調べ、Findingへ誤昇格しなかった。これはこのStored
+          XSS sliceの通過であり、plugin全体のcoverage完了ではない。
         </p>
       </section>
 

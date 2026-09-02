@@ -87,6 +87,7 @@ type AnalysisUnitSelectionReason = z.infer<
 interface CandidatePath {
   readonly path: string;
   readonly reason: AnalysisUnitSelectionReason;
+  readonly expansionDepth: 0 | 1;
 }
 
 const analysisUnitSchema = z.strictObject({
@@ -255,16 +256,24 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
     );
     const sources: SelectedSource[] = [seedSource];
     remainingBytes -= Buffer.byteLength(seedSource.text);
-    const selectedPaths = this.#selectPaths(
+    const pendingPaths = this.#selectPaths(
       bound.focusArea,
       bound.lease.strategy,
       seed.path,
       seed.line,
       seed.nodeId,
       seedSource.text,
-    );
-    for (const selection of selectedPaths.slice(1)) {
-      if (sources.length >= this.#maxFiles || remainingBytes <= 0) break;
+    ).slice(1);
+    const selectedPaths = new Set([seed.path]);
+    while (
+      pendingPaths.length > 0 &&
+      sources.length < this.#maxFiles &&
+      remainingBytes > 0
+    ) {
+      const selection = pendingPaths.shift();
+      if (selection === undefined || selectedPaths.has(selection.path)) {
+        continue;
+      }
       const source = await this.#readSource(
         canonicalRoot,
         selection.path,
@@ -273,7 +282,27 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
         selection.reason,
       );
       sources.push(source);
+      selectedPaths.add(source.path);
       remainingBytes -= Buffer.byteLength(source.text);
+      if (
+        bound.lease.strategy !== "wildcard" &&
+        selection.expansionDepth === 0
+      ) {
+        const secondHop = this.#secondHopCandidates(source, selectedPaths);
+        if (secondHop.length > 0) {
+          const promoted = new Set(
+            secondHop.map((candidate) => candidate.path),
+          );
+          pendingPaths.splice(
+            0,
+            pendingPaths.length,
+            ...secondHop,
+            ...pendingPaths.filter(
+              (candidate) => !promoted.has(candidate.path),
+            ),
+          );
+        }
+      }
     }
     const analysisUnit = this.#buildAnalysisUnit(
       input,
@@ -412,7 +441,9 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
     seedNodeId: string | undefined,
     seedText: string,
   ): CandidatePath[] {
-    const ordered: CandidatePath[] = [{ path: seedPath, reason: "focus-seed" }];
+    const ordered: CandidatePath[] = [
+      { path: seedPath, reason: "focus-seed", expansionDepth: 0 },
+    ];
     const selected = new Set([seedPath]);
     const add = (
       paths: readonly string[],
@@ -421,7 +452,7 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
       for (const path of paths) {
         if (selected.has(path)) continue;
         selected.add(path);
-        ordered.push({ path, reason });
+        ordered.push({ path, reason, expansionDepth: 0 });
       }
     };
     const sharedHookPaths = this.#sharedHookPaths(seedPath);
@@ -485,8 +516,32 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
     return ordered.slice(0, this.#maxFiles);
   }
 
+  #secondHopCandidates(
+    source: SelectedSource,
+    selectedPaths: ReadonlySet<string>,
+  ): CandidatePath[] {
+    const candidates: CandidatePath[] = [];
+    const selected = new Set(selectedPaths);
+    const addFirst = (
+      paths: readonly string[],
+      reason: AnalysisUnitSelectionReason,
+    ): void => {
+      const path = paths.find((candidate) => !selected.has(candidate));
+      if (path === undefined) return;
+      selected.add(path);
+      candidates.push({ path, reason, expansionDepth: 1 });
+    };
+    addFirst(this.#literalReferencePaths(source.text), "literal-reference");
+    addFirst(this.#sharedHookPaths(source.path), "shared-hook");
+    return candidates;
+  }
+
   #literalReferencePaths(seedText: string): string[] {
-    const basenames = new Set<string>();
+    const basenames = new Map<
+      string,
+      { readonly occurrences: number; readonly firstOccurrence: number }
+    >();
+    let occurrence = 0;
     for (const match of seedText.matchAll(
       /["']([A-Za-z0-9][A-Za-z0-9._/-]{0,127})["']/gu,
     )) {
@@ -494,7 +549,15 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
       if (literal === undefined || literal.includes("..")) continue;
       const basename = literal.split("/").at(-1);
       if (basename === undefined) continue;
-      basenames.add(basename.endsWith(".php") ? basename : `${basename}.php`);
+      const phpBasename = basename.endsWith(".php")
+        ? basename
+        : `${basename}.php`;
+      const previous = basenames.get(phpBasename);
+      basenames.set(phpBasename, {
+        occurrences: (previous?.occurrences ?? 0) + 1,
+        firstOccurrence: previous?.firstOccurrence ?? occurrence,
+      });
+      occurrence += 1;
     }
     return this.#map.inventory
       .filter(
@@ -503,7 +566,16 @@ class ToolFreeFinderAttemptMaterializer implements AttemptPlanMaterializer {
           basenames.has(entry.path.split("/").at(-1) ?? ""),
       )
       .map((entry) => entry.path)
-      .sort(compareText);
+      .sort((left, right) => {
+        const leftStats = basenames.get(left.split("/").at(-1) ?? "");
+        const rightStats = basenames.get(right.split("/").at(-1) ?? "");
+        return (
+          (leftStats?.occurrences ?? 0) - (rightStats?.occurrences ?? 0) ||
+          (leftStats?.firstOccurrence ?? 0) -
+            (rightStats?.firstOccurrence ?? 0) ||
+          compareText(left, right)
+        );
+      });
   }
 
   #sharedHookPaths(seedPath: string): string[] {
