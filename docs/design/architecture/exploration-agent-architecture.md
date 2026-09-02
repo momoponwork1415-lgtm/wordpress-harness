@@ -4,9 +4,11 @@ Status: living implementation view, 2026-09-02
 
 この文書は、現在の探索処理をコードの詳細なしで追うための図である。設計上の正本は[Exploration seam](../exploration-seam.md)、実装場所とTestは[Codebase Guide](../../CODEBASE-GUIDE.md)とする。
 
-図を横長にしないため、`対象理解 -> 作業分割 -> 並列Finder -> 仮説取込 -> 独立検証`を複数枚に分ける。緑は実装済み、黄は一部実装、灰は設計のみを表す。Module責任、実行時系列、現行と到達形の差、評価gate、主要fileを一画面ずつ確認する場合は[探索アーキテクチャ詳細ガイド](../../visuals/exploration-architecture.html)を開く。
+現在の短い独立探索と、複数primitiveを長いattack chainへ接続する到達形の違いは[広域探索と深掘り調査](breadth-depth-research-loop.md)に分ける。この文書の「3並列」は現在のWork Wave実装を示し、三つの異なる認知戦略またはArgus相当のdepthを保証するものではない。
 
-## 1. Surface Mapから調査範囲を作る
+図を横長にしないため、`対象理解 -> 作業分割 -> 並列Finder -> 仮説取込 -> 独立検証`を複数枚に分ける。緑は実装済み、黄は一部実装、灰は設計のみを表す。到達形の自由探索loopは[自由探索エージェント・ループ](autonomous-research-loop.md)、現在の完成度は[ハーネス完成度監査](../harness-completeness-audit.md)を参照する。
+
+## 1. 現行Map-first実装（移行元）
 
 ```mermaid
 flowchart TB
@@ -39,7 +41,7 @@ flowchart TB
     class ai,delta,validate,revise partial;
 ```
 
-Minimum Map Gateは全コードの完全理解を要求しない。ファイル一覧、実在するsource anchor、relationの結合、明示されたgapを検査し、根拠が足りなければ推測せず`Mapping Evidence Request`を返す。AI Mapperの直接出力はMapではなく`Map Delta Proposal`であり、path、digest、anchor、closed relation語彙を検査したclaimだけが新しいMap Revisionへ入る。現行の黄部分はContext pathをseedにした1-hop Map subgraphから既存node間の`flows-to`を提案する一回のstructured model実行、claim単位のDelta検査、Receipt、失敗/context-ceiling gapまでである。追加node、Conflict、Context Request、repair/continuation、tool付きMapperは未実装である。
+この図は現在のproduction codeを説明する移行元であり、Depth Campaignの到達設計ではない。Minimum Map Gateは全コードの完全理解を要求しないが、探索開始をMapへ依存させるため、新しいraw-source Context Profileでは廃止する。Mapは今後もoffline coverageと後段enrichmentに使えるが、Mapにないpathやcandidateを除外しない。AI Mapperの直接出力はMapではなく`Map Delta Proposal`であり、path、digest、anchor、closed relation語彙を検査したclaimだけが新しいMap Revisionへ入る。現行の黄部分はContext pathをseedにした1-hop Map subgraphから既存node間の`flows-to`を提案する一回のstructured model実行、claim単位のDelta検査、Receipt、失敗/context-ceiling gapまでである。追加node、Conflict、Context Request、repair/continuation、tool付きMapperは未実装である。
 
 Focus候補はREST entry、hook、source、state、guard、sink、未登録PHP、mapping gapから作る。同種のsurfaceだけで最初のWaveを埋めず、route signalと探索価値で候補を並べる。外部entry、server impact、database、browserは別bucketとして扱い、RCE系sinkが複数あるだけで最初の3件を使い切らない。
 
@@ -235,7 +237,7 @@ flowchart TB
     class output,mapreq,revision,wave planned;
 ```
 
-詳細と受入条件は[Evidence-guided Finder loop](../evidence-guided-finder-loop.md)と[ADR 0112](../../adr/0112-treat-analysis-units-as-seeds-for-bounded-source-retrieval.md)に記録する。設計はacceptedで、provider非依存Gateway、Claude native bridge、production Campaign materializer bindingまで実装済みである。灰色のWave間artifactと`symbol / graph`は未実装である。
+詳細と受入条件は[Evidence-guided Finder loop](../evidence-guided-finder-loop.md)と[ADR 0112](../../adr/0112-treat-analysis-units-as-seeds-for-bounded-source-retrieval.md)に記録する。設計はacceptedで、provider非依存Gateway、Claude native bridge、production Campaign materializer bindingまで実装済みである。Finder Attempt Resultは完全なHypothesis未満の`Route Fragment Proposal`もprivate CASへ保持できる。ただしWaveへの取込とChain Synthesisは未実装なので、図のbarrier以降は引き続き灰色である。`symbol / graph`も未実装である。
 
 ### Brizy pairで確認した6 Gate
 
@@ -259,7 +261,7 @@ flowchart TB
 | Focus Rank | pass | 最初の3 Leaseを外部entry、server-impact sink、database sinkへ分散した |
 | Context Reach | pass after bounded response | 同sink family、class-like symbol、Finderが明示したinventory内pathから、route、model、database baseのsourceを独立Verifierへ到達させた |
 | Hypothesis Recall | pass for SQLi slice | oracle-free positive Campaignがrequest-controlled `fields`からquery structureへ至る反証可能なHypothesisを生成した |
-| Verification | pass for SQLi slice | positiveはfresh gVisor Witnessでdatabase-only canaryを観測しControlで消失、mechanism修正済みSnapshotは同じCausal IdentityでDisproved。negativeのoracle-free CampaignはFinding 0件だった |
+| Verification | partial for SQLi slice | positiveはfresh gVisor Witnessでdatabase-only canaryを観測しControlで消失した。完全未認証premiseはBlocked。negativeのoracle-free CampaignはFinding 0件だったが、保存済みDisprovedはpositiveと別Causal Identityだった |
 
 公開advisoryの版境界とactual sourceの修正点に差があったため、version labelではなくSVN revision、manifest、Snapshot digestを正本にした。Finderにはadvisory、CVE、既知file、parameter、payload、patched narrativeを渡していない。初期Mapだけで継承、service lookup、public nonce経路を完全に表現できたとは主張せず、source-bound Hypothesisが要求した追加pathを独立Verifierの上限内で再取得してContext Reachを閉じた。
 
@@ -345,7 +347,7 @@ flowchart TB
     class nextwave,synthesis,gaps,closure,multimodel planned;
 ```
 
-2026-09-02時点で、Brizy Stored XSSとAppointment Booking Calendar SQLiの二つのmechanismが同じ公開Campaign/Verification Interfaceを通った。SQLiは脆弱Snapshotのoracle-free 3 Finder CampaignからFinding、mechanism修正済みSnapshotのoracle-free CampaignでFinding 0件、同じCausal Identityを拘束したprivate calibrationからDisprovedを記録した。全Finderがprovider通信で失敗したrunは`no-source-bound-hypothesis`へ丸めず、`provider-unavailable`として停止する。
+2026-09-02時点で、Brizy Stored XSSとAppointment Booking Calendar SQLiの二つのmechanismが同じ公開Campaign/Verification Interfaceを通った。Brizyは同じCausal IdentityのFinding/Disproved境界まで完了した。SQLiは脆弱Snapshotのoracle-free 3 Finder Campaignからroot mechanismのFindingを得たが、完全未認証premiseはBlockedであり、patched Snapshotの保存済みDisprovedは別candidateだった。したがってSQLiを完全なBoundary Pairとは数えない。全Finderがprovider通信で失敗したrunは`no-source-bound-hypothesis`へ丸めず、`provider-unavailable`として停止する。
 
 旧whitebox-harnessと同じく、到達形ではCampaign投入後に人間の追加指示なしで反復する。新設計はその自律性を削らず、進行、上限、resume、停止判定をroot agentの巨大Promptから`Campaign Control`と型付きrecordへ移す。現行sliceは一つの有限Waveと次Decisionまでを自律実行するが、`continue-unresolved-work`を次Waveへ自動消費する部分はまだ未実装である。
 

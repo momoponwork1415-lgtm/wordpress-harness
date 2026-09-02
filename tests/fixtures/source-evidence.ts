@@ -38,6 +38,7 @@ export async function openSourceEvidenceFixture(options: {
     readonly maxScanBytes: number;
     readonly maxResults: number;
   };
+  readonly inventoryMaxResults?: number;
 }): Promise<SourceEvidenceFixture> {
   const directory = await mkdtemp(join(tmpdir(), "source-evidence-fixture-"));
   const sourceDirectory = join(directory, "target");
@@ -68,6 +69,9 @@ export async function openSourceEvidenceFixture(options: {
     targetSnapshotDigest: sourceEvidenceTargetDigest,
     operations: {
       read: { maxResponseBytes: options.maxReadBytes ?? 4096 },
+      ...(options.inventoryMaxResults === undefined
+        ? {}
+        : { inventory: { maxResults: options.inventoryMaxResults } }),
       ...(options.search === undefined ? {} : { search: options.search }),
     },
   };

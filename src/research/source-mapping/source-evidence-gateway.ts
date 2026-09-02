@@ -18,17 +18,20 @@ import {
   sourceEvidenceQuerySchema,
   sourceEvidenceReceiptRefSchema,
   sourceEvidenceReceiptValueSchema,
+  sourceInventoryResponseSchema,
   sourceRangeResponseSchema,
   sourceSearchResponseSchema,
   sourceToolPolicyRefSchema,
   sourceToolPolicySchema,
   type SearchSnapshotQuery,
+  type ListSnapshotFilesQuery,
   type SourceEvidenceGateway,
   type SourceEvidencePolicyDecision,
   type SourceEvidenceQuery,
   type SourceEvidenceReceipt,
   type SourceEvidenceResponse,
   type SourceEvidenceResult,
+  type SourceInventoryResponse,
   type SourceRangeResponse,
   type SourceSearchResponse,
   type SourceToolPolicy,
@@ -78,6 +81,10 @@ function isNormalizedRelativePath(path: string): boolean {
       .split("/")
       .every((segment) => segment !== "" && segment !== "." && segment !== "..")
   );
+}
+
+function isNormalizedDirectoryPrefix(prefix: string): boolean {
+  return prefix.endsWith("/") && isNormalizedRelativePath(prefix.slice(0, -1));
 }
 
 function sourceLines(content: Buffer): readonly SourceLine[] {
@@ -155,9 +162,44 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
     if (deniedReason !== undefined) {
       return this.#policyDenied(request, deniedReason);
     }
-    return request.kind === "search-snapshot"
-      ? this.#search(request)
-      : this.#readRange(request);
+    if (request.kind === "search-snapshot") return this.#search(request);
+    if (request.kind === "list-snapshot-files") {
+      return this.#listFiles(request);
+    }
+    return this.#readRange(request);
+  }
+
+  async #listFiles(
+    request: ListSnapshotFilesQuery,
+  ): Promise<SourceEvidenceReceipt> {
+    const inventoryPolicy = this.#policyValue.operations.inventory;
+    if (inventoryPolicy === undefined) {
+      return this.#policyDenied(request, "operation-not-allowed");
+    }
+    const prefix = request.subject.prefix;
+    const matching = this.#manifest.entries
+      .filter((entry) => prefix === undefined || entry.path.startsWith(prefix))
+      .sort((left, right) => compareText(left.path, right.path));
+    const truncated = matching.length > inventoryPolicy.maxResults;
+    const files: SourceInventoryResponse["files"] = matching
+      .slice(0, inventoryPolicy.maxResults)
+      .map((entry) => ({
+        path: entry.path,
+        fileDigest: entry.digest,
+        size: entry.size,
+      }));
+    const response = sourceInventoryResponseSchema.parse({
+      kind: "source-inventory-response",
+      schemaVersion: 1,
+      ...(prefix === undefined ? {} : { prefix }),
+      files,
+    });
+    return this.#respond(
+      request,
+      { outcome: "allowed", reason: "inventory-allowed" },
+      truncated ? "truncated" : "completed",
+      response,
+    );
   }
 
   async #readRange(
@@ -414,6 +456,13 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
     ) {
       return "path-outside-snapshot";
     }
+    if (
+      request.kind === "list-snapshot-files" &&
+      request.subject.prefix !== undefined &&
+      !isNormalizedDirectoryPrefix(request.subject.prefix)
+    ) {
+      return "path-outside-snapshot";
+    }
     return undefined;
   }
 
@@ -436,7 +485,8 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
     request: SourceEvidenceQuery,
     policyDecision: SourceEvidencePolicyDecision,
     status: "completed" | "truncated",
-    response: SourceRangeResponse | SourceSearchResponse,
+    response:
+      SourceRangeResponse | SourceSearchResponse | SourceInventoryResponse,
   ): Promise<SourceEvidenceReceipt> {
     const responseDigest = await this.#artifactStore.putJson(response);
     return this.#storeReceipt(

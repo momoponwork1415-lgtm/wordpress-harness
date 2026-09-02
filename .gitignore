@@ -12,6 +12,7 @@ coverage/
 
 # Private Campaign state and evidence
 .private/
+docs/visuals/
 campaigns/
 artifacts/
 

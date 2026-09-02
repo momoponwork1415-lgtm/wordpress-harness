@@ -4,7 +4,7 @@ Status: accepted on 2026-09-02; one-Wave closed-loop behavior, production Finder
 
 ## Design target
 
-Researchの`Campaign Control`が、一つの固定Target Snapshotについて、Surface Mapから有限Work Wave、Finder、独立Verification、Research Ledger、次のIteration Decisionまでを自律的に前進させる。callerへphase別command、provider session、Lab handle、Finder output、未記録の中間stateを公開しない。
+Researchの`Campaign Control`が、一つの固定Target Snapshotについて、現行Map-first実装の有限Work Wave、Finder、独立Verification、Research Ledger、次のIteration Decisionまでを自律的に前進させる。callerへphase別command、provider session、Lab handle、Finder output、未記録の中間stateを公開しない。到達形のDepth Campaignではraw sourceから開始し、Surface Mapを開始条件または探索範囲の上限にしない。
 
 既存の`Campaign`は一つの主対象Target Snapshotを所有するという不変条件を維持する。Brizyのvulnerable positiveとpatched negativeは別Campaignとして同じoracle-free production経路を通し、private Calibration Reviewだけが複数のterminal run refを比較する。二つのTarget Snapshotを一Campaignへ混ぜない。
 
@@ -160,7 +160,7 @@ Behavior Testは`CampaignRunner.run(plan)`と`CampaignReader.read/inspect`から
 - Work Waveは一つずつbarrierまで完了し、最大3 Finder Attempts
 - providerはeligible Claude Opus process一つ
 - Verification mechanismは`stored-xss-browser@v1`と`sql-injection-database@v1`
-- private Calibration ReviewはBrizy Stored XSSとAppointment Booking Calendar SQLiのBoundary Pairで実測済み
+- private Calibration ReviewはBrizy Stored XSSの完全なBoundary Pairで実測済み。Appointment Booking Calendar SQLiはroot mechanism Findingまでで、同一Identityのpatched Disprovedは要再実行
 - UI、Remote Control、Target Intelligence automation、multi-provider、general workflow engineは追加しない
 
 ## Implementation status
@@ -173,7 +173,7 @@ Behavior Testは`CampaignRunner.run(plan)`と`CampaignReader.read/inspect`から
 
 Git外のBrizy 2.8.11/2.8.12 snapshotでは、同じproduction materializerで各3 Leaseを構築し、全Unitが8 files、650 KB以下へ収まることを確認した。Focus correction後は両版とも外部entryへ`entry-forward`と`wildcard`を重ね、別の危険primitiveを`sink-backward`へ置いた。Wildcardは広いSurface Map標本を先に選ぶため、directed Strategyとは別のsource集合になった。二次sourceを一段展開する修正後、2.8.11のdirected Unitは保存・submit・renderのsourceを同じ上限内に含み、oracle-free Finder、独立Verifier、fresh gVisor Witness/Controlを経てStored XSS Findingへ到達した。2.8.12のoracle-free対照も同じcontext規則を使い、Findingへ誤昇格しなかった。file-writeやauthorization-bypass等はVerification mechanism未実装として`unsupported-experiment`を維持した。
 
-Git外のAppointment Booking Calendar `1.6.9.29@r3475885`と`1.6.10.0@r3480506`では、同じproduction入口から各3 Finderを実行した。脆弱Snapshotはsource-bound SQLi Hypothesis、独立再導出、fresh gVisor database Witness/ControlからFindingになった。mechanism修正済みSnapshotのoracle-free CampaignはFindingを作らず、private calibrationはpositiveと同じCausal IdentityをDisprovedとして記録した。Lab setupは任意PHPを実行せず、manifest固定したreviewed fixture pluginのactivationへ限定した。これはplugin全体のnegative判定ではない。
+Git外のAppointment Booking Calendar `1.6.9.29@r3475885`と`1.6.10.0@r3480506`では、同じproduction入口から各3 Finderを実行した。脆弱Snapshotはsource-bound SQLi Hypothesis、独立再導出、fresh gVisor database Witness/ControlからFindingになった。ただしFindingのpremiseはcustomer tokenを持つ利用者で、別の完全未認証routeは証拠不足でBlockedだった。1.6.10.0のoracle-free CampaignはFindingを作らなかったが、保存済みDisprovedはpositiveの`fields` Causal Identityとは別candidateである。Lab setupは任意PHPを実行せず、manifest固定したreviewed fixture pluginのactivationへ限定した。これは完全な公開CVE再発見またはplugin全体のnegative判定ではない。
 
 private Brizy 2.8.11では、実Opus Finder・Independent Verifier・gVisor/browserを同じ`CampaignRunner.run`へ連結し、oracle-freeな3 FinderからFindingまで到達した。2.8.12のoracle-free Campaignは別classのHypothesisを返したが、対応実験がないものをtyped Blockedに保ち、Stored XSS Findingへ誤昇格しなかった。private graderは固定positiveのCausal Identityを2.8.12へ拘束し、実Opus再導出とfresh gVisor Witness/Controlから同じIdentityのDisprovedを記録した。active CampaignのFindingはmodel生成文言ではなくCalibration Fingerprintで固定positiveへ照合し、Calibration Reviewは`complete`となった。
 

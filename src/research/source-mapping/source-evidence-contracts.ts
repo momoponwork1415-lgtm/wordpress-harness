@@ -19,6 +19,11 @@ export const sourceToolPolicySchema = z.strictObject({
     read: z.strictObject({
       maxResponseBytes: z.number().int().positive(),
     }),
+    inventory: z
+      .strictObject({
+        maxResults: z.number().int().positive(),
+      })
+      .optional(),
     search: z
       .strictObject({
         maxScanBytes: z.number().int().positive(),
@@ -59,6 +64,7 @@ const sourceEvidenceQueryFields = {
     "guard",
     "state",
     "source-range",
+    "inventory",
   ]),
   reason: z.string().min(1).max(1024),
 } as const;
@@ -100,9 +106,18 @@ export const searchSnapshotQuerySchema = z.strictObject({
   }),
 });
 
+export const listSnapshotFilesQuerySchema = z.strictObject({
+  kind: z.literal("list-snapshot-files"),
+  ...sourceEvidenceQueryFields,
+  subject: z.strictObject({
+    prefix: sourceRequestPathSchema.optional(),
+  }),
+});
+
 export const sourceEvidenceQuerySchema = z.union([
   readSourceRangeQuerySchema,
   searchSnapshotQuerySchema,
+  listSnapshotFilesQuerySchema,
 ]);
 
 export const sourceRangeResponseSchema = z.strictObject({
@@ -129,15 +144,29 @@ export const sourceSearchResponseSchema = z.strictObject({
   ),
 });
 
+export const sourceInventoryResponseSchema = z.strictObject({
+  kind: z.literal("source-inventory-response"),
+  schemaVersion: z.literal(1),
+  prefix: sourceRequestPathSchema.optional(),
+  files: z.array(
+    z.strictObject({
+      path: sourceRequestPathSchema,
+      fileDigest: digestSchema,
+      size: z.number().int().nonnegative(),
+    }),
+  ),
+});
+
 export const sourceEvidenceResponseSchema = z.union([
   sourceRangeResponseSchema,
   sourceSearchResponseSchema,
+  sourceInventoryResponseSchema,
 ]);
 
 const policyDecisionSchema = z.discriminatedUnion("outcome", [
   z.strictObject({
     outcome: z.literal("allowed"),
-    reason: z.enum(["read-allowed", "search-allowed"]),
+    reason: z.enum(["read-allowed", "search-allowed", "inventory-allowed"]),
   }),
   z.strictObject({
     outcome: z.literal("denied"),
@@ -204,6 +233,9 @@ export type SourceToolPolicy = z.infer<typeof sourceToolPolicySchema>;
 export type SourceToolPolicyRef = z.infer<typeof sourceToolPolicyRefSchema>;
 export type SourceEvidenceQuery = z.infer<typeof sourceEvidenceQuerySchema>;
 export type SearchSnapshotQuery = z.infer<typeof searchSnapshotQuerySchema>;
+export type ListSnapshotFilesQuery = z.infer<
+  typeof listSnapshotFilesQuerySchema
+>;
 export type SourceEvidenceToolRequest = SourceEvidenceQuery extends infer Query
   ? Query extends SourceEvidenceQuery
     ? Omit<
@@ -214,6 +246,9 @@ export type SourceEvidenceToolRequest = SourceEvidenceQuery extends infer Query
   : never;
 export type SourceRangeResponse = z.infer<typeof sourceRangeResponseSchema>;
 export type SourceSearchResponse = z.infer<typeof sourceSearchResponseSchema>;
+export type SourceInventoryResponse = z.infer<
+  typeof sourceInventoryResponseSchema
+>;
 export type SourceEvidenceResponse = z.infer<
   typeof sourceEvidenceResponseSchema
 >;

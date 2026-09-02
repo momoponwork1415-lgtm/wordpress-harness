@@ -51,6 +51,7 @@
 - expected valueはspecification、固定fixture、worked example等の独立した根拠から作り、implementationと同じ計算をtest内で再実装しない。
 - mockはprovider CLI、clock、filesystem等のsystem seamだけに使う。所有する内部moduleはmockせず、可能ならreal local substituteを使う。
 - fixtureは合成データを使い、private target、未公開Finding、credentialをTest、Issue、PR、CI artifactへ入れない。
+- Target名、version、mechanism、探索成否を結び付けた実験結果は、対応CVEが公開済みの場合だけGit管理下へ置く。未公開または審査中のFindingはGit外のprivate artifactに残し、commit message、Issue、fixture、CI出力にも含めない。[ADR 0115](docs/adr/0115-publish-only-public-cve-experiment-results.md)に従う。
 - refactorはgreenになったsliceのreview段階で行い、behavior変更と混ぜない。
 - Ledger replay、crash境界、unknown event version、stable work ordering、minority Hypothesis保持、Boundary Pairのpositive/negative/controlは回帰testを必須とする。
 

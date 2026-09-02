@@ -37,6 +37,10 @@ class FirstFinderModelExecution implements ModelExecution {
       hypotheses: finderOutputSchema.shape.hypotheses.max(
         plan.budget.maxHypotheses,
       ),
+      routeFragments: finderOutputSchema.shape.routeFragments
+        .unwrap()
+        .max(plan.budget.maxHypotheses)
+        .optional(),
     });
     const outputJsonSchema = z.toJSONSchema(boundedFinderOutputSchema);
     delete outputJsonSchema.$schema;

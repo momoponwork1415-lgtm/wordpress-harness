@@ -16,4 +16,8 @@ white-box review、static analysis、検証手法の個別判断では、OWASP�
 - [Harness source-mapping implementation patterns](research/harness-source-mapping-patterns.md)
 - [Surface Map context retrieval bottleneck](research/surface-map-context-retrieval-bottleneck.md)
 - [Evidence-guided Finder loop design evidence](research/evidence-guided-finder-loop-design-evidence.md)
+- [Free-reasoning Finder and evidence-shell harness references](research/free-reasoning-evidence-shell-harness-references.md)
 - [Agentic harness reference inventory](research/agentic-harness-reference-inventory.md)
+- [Dutafi — How I Structure My WordPress Vulnerability Hunting Workflow](https://medium.com/@ductai126/how-i-structure-my-wordpress-vulnerability-hunting-workflow-0a236760096f) — Semgrep-first実務の成功範囲と、wrapper・state・second-order・multi-stepに関する著者自身の限界分析
+
+Anthropicの公開best practicesをこのrepositoryでどう適用するかは[調査設計原則](design/research-design-principles.md)を正本とする。原文のsystem mappingをSurface Map必須化へ読み替えず、raw-source first、Discovery/Verification分離、run間union、missing-primitive follow-up、検証済みFindingのrule化として採用する。

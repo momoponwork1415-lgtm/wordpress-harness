@@ -1,10 +1,12 @@
 # Ten-verb architecture
 
-Status: Design Baseline v0.1, 2026-09-01
+Status: accepted baseline; exploration policy revised by ADR 0113 and ADR 0114, 2026-09-03
 
 ## Design intent
 
 このharnessの目的は「LLMにpluginを読ませてreportを書かせる」ことではない。探索を広く保ちながら、各主張を独立した実証へ収束させ、失敗を次の探索へ再利用できる研究系を作ることである。North Starは、既知脆弱性のoracleなしにPermitted AttackerからRCEまたは同等のsite-wide compromiseへ至る未知routeを発見・実証できる`Frontier Discovery Capability`である。
+
+探索判断の優先規則、Argusの10動詞、Anthropic Defending Code Reference Harnessの適用方法は[調査設計原則](research-design-principles.md)を最初の正本とする。
 
 保存した[三つの設計参照資料](../REFERENCES.md)から次を土台にする。
 
@@ -68,7 +70,7 @@ WordPress.org版の正規インストールディレクトリはofficial slugへ
 そのまま残さないものも明確にする。
 
 - 「既知のpre-auth RCEが必ずある」というpriorと`/flag` oracleは、prospective reviewではHypothesisを歪めるため使わない。
-- aggressiveなfan-outは、Surface MapとFocus Planを作った後の重複しないleaseへ置き換える。
+- aggressiveなfan-outは、Target inventoryとApproach Family Registryから作る重複しないleaseへ置き換える。Surface Mapは後段coverageへ利用できるが、Depthの最初のWaveでは探索境界にしない。
 - adversarial agentの再読だけをVerificationと呼ばず、fresh context、独立再導出、clean runtimeのWitness、causal controlを要求する。
 - agent自身へwall timeやbudget遵守を申告させず、外側のrunnerが測定して止める。
 - free-form research noteは残せるが、昇格対象は最小Hypothesis contractを満たすものに限る。
@@ -81,14 +83,14 @@ WordPress.org版の正規インストールディレクトリはofficial slugへ
 | --- | --- | --- | --- |
 | Confine | Targetをlocal sandboxに置き、sourceをread-only、研究出力だけをwriteableにし、未宣言egressを閉じる | Workspace receipt / External Dependency Grant | 許可外path・host・networkへ到達できない |
 | Constrain | Campaign開始前にscope、attacker premise、budget、許可tool、停止条件を固定する | Campaign Spec | 上限超過、scope逸脱、identity driftを実行系が拒否する |
-| Focus | Surface Mapから重複しないFocus Areaを作り、Laneと異質なStrategyを別軸で与える | Surface Map / Focus Plan / Strategy Portfolio | 全assignmentが所有範囲と探索方法を持ち、未所有surfaceが見える |
+| Focus | 高水準のsecurity goalと具体的なfrontier gapを与え、読む順序とpivotはFinderへ任せる | Campaign Goal / Approach Family Registry | 全assignmentが異なる研究ideaを持ち、固定手順がTarget全体へのpivotを妨げない |
 | Motivate | workerへ抽象的な「scan」ではなく、security goal、成功証拠、未解決gap、残予算を渡す | Assignment | 次の行動がgoalまたはgapに結び付く |
-| Parallelize | 分割したFocus Areaを異なるStrategyへleaseし、高リスクsurfaceだけ独立に重ねる | Work Lease | 同じpromptの複製やworker間chatへ多様性を依存しない |
+| Parallelize | 意味の異なるApproach Familyを独立Finderへleaseし、barrierまで成果を相互に見せない | Work Lease / Wave Barrier | 同じpromptの複製や表面的な言い換えを多様性と数えない |
 | Hypothesize | DiscoveryとChain Synthesisがpremise、route、impact、反証条件、不足証拠を持つHypothesisを作る | Hypothesis / Route Fragment / Frontier Gap | 自由文verdict、model多数決、単純なgraph結合だけの候補を受理しない |
 | Verify | fresh contextでrouteを再導出し、programmatic gate、Witness、causal control、skeptical reviewを通す | Verification Record | Discovery transcriptやwritable stateを根拠にしない |
 | Record | positive/negativeをResearch Ledgerへ追記し、証拠と決定をcontent hashで結ぶ | Ledger / Evidence | Findingからsource、Experiment、Witnessまで辿れる |
 | Prioritize | impactだけでなく、attacker premise、route evidence、novelty、information gain、検証費用、coverage debtでqueueを更新する | Priority Snapshot | LLMのscore、confidence、支持model数で順序を決めない |
-| Iterate | 各Wave後にchain、gap、map、priority、Lesson、rule、次のFocus Planを更新する | Chain Synthesis / Gap Review / Iteration Review | 前回と同じ探索を理由なく繰り返さない |
+| Iterate | 各Wave後にchain、gap、family state、priority、Lesson、rule、次の問いを更新する | Root Synthesis / Gap Review / Iteration Review | 前回と同じ探索を理由なく繰り返さない |
 
 10動詞は全設計判断を評価する最上位原則であり、直列のphaseではない。たとえば`record`は全phaseに作用し、`confine`と`constrain`はworkerだけでなくverifierにも作用する。`parallelize`は`focus`の後にだけ価値を持ち、`iterate`は一回の大規模fan-outより短い証拠loopを優先する。
 
@@ -97,14 +99,14 @@ WordPress.org版の正規インストールディレクトリはofficial slugへ
 ```mermaid
 flowchart TB
     spec[Campaign Spec] --> setup[Lab Baseline Builder]
-    setup -->|ready| map[Surface Map]
+    setup -->|ready| snapshot[Target Snapshot]
     setup -->|setup-blocked| result[Incomplete Campaign]
-    map --> plan[Focus Plan + Strategy Portfolio]
-    map -. unknown relation .-> observe[Runtime Observation]
-    observe -->|map evidence only| map
-    plan --> discover[Independent Discovery workers]
+    snapshot --> plan[Root Planner + Approach Families]
+    snapshot --> tools[Bounded Glob / Grep / Read]
+    plan --> discover[Independent Free-reasoning Finders]
+    tools --> discover
     discover --> wave[Work Wave barrier]
-    wave --> chain[Chain Synthesis]
+    wave --> chain[Root Synthesis + Adversarial Critic]
     chain --> hypotheses[Hypothesis pool]
     hypotheses --> rank[Priority queue]
     rank --> verify[Independent Verification]
@@ -112,29 +114,35 @@ flowchart TB
     verify -->|disproved / blocked| outcome[Negative evidence]
     finding --> ledger[Research Ledger]
     outcome --> ledger
-    ledger --> gap[Gap Review]
+    ledger --> gap[Gap Review + Missing Link]
     gap --> learn[Iteration Review]
-    learn -->|new gap / variant / rule| plan
+    learn -->|new family / missing link| plan
     learn -->|stop condition met| result2[Campaign Result]
+    snapshot -. optional .-> map[Surface Map / Static Tools]
+    map -. coverage hint after barrier .-> gap
+    finding --> pattern[Pattern Extraction]
+    pattern --> breadth[Breadth Campaign Rules]
 ```
 
 ### Campaign lifecycle
 
 1. `prepare`: 一つの主対象Target Snapshot、必要最小限の環境依存、scope、検証予約を含む予算枠、sandbox policyを固定する。
 2. `setup`: digest固定したRuntime Profileと版付き・型付きSetup Planを使ってgVisor内にCanonical Configurationを構築し、客観的な正常機能確認を経てLab Baselineをsealする。失敗はセットアップ阻害として停止する。
-3. `map`: WordPress固有のentry pointとsecurity-relevant relationを列挙し、必要なdynamic relationだけをRuntime Observationで補う。
-4. `plan`: coverageとexpected information gainからFocus Area、Exploration Lane、Strategy Portfolioを選ぶ。
-5. `discover`: 分離したworkerがfalsifiableなHypothesisを作り、Wave barrier後にChain SynthesisでFocus Area横断routeを探す。
+3. `plan`: Target inventory、過去artifact、未解決gapから、意味の異なるApproach Familyと有限Work Waveを選ぶ。固定Strategyを実行手順にしない。
+4. `discover`: raw sourceへ拘束したGlob/Grep/Readを使う分離workerが自由にpivotし、HypothesisとRoute Fragmentを作る。最初のDepth WaveへSurface Map routeを見せない。
+5. `synthesize`: Wave barrier後にRoot Synthesisがprimitiveを接続し、Adversarial Criticが成立しないhopとoracle的補完を攻撃する。不足primitiveはfreshなMissing-link Waveへ送る。
 6. `verify`: 優先Hypothesisを別contextとclean runtimeで反証しに行く。
-7. `review`: positive/negative evidenceをまとめ、map・Lesson・priorityを更新する。
+7. `review`: positive/negative/blocked evidenceをまとめ、family state、coverage debt、Lesson、priorityを更新する。必要な場合だけ後段Map-assisted coverageを行う。
 8. `repeat | stop`: 次のiterationへ進むか、停止理由を確定する。
+
+検証済みFindingのうち構文的に一般化できる部分は、positiveとnegative fixtureを持つSemgrep/CodeQL ruleへ変換し、別のBreadth Campaignで横展開する。static ruleはDepth Campaignの代替またはclosure gateにしない。
 
 停止は「agentが完了と言った」ではなく、少なくとも次のどれかで決める。
 
 - Campaignの予算枠を消費した（未完了として停止）
-- すべてのin-scope Focus Areaがclosure conditionを満たした
-- 一定回数、priority thresholdを超える新Hypothesisが生まれなかった
-- operatorがFinding確認またはscope変更のgateで停止した
+- すべてのin-scope Approach Familyがterminal状態になり、blocked routeに再開条件が記録された
+- 連続Waveで新しいsource evidence、Route Fragment、idea familyが生まれず、Criticも新mechanismを提示できなかった
+- operatorが明示的にCampaign取消またはscope変更を行った
 - sandbox、target identity、toolingの異常で結果を信頼できない
 
 ## Research deep modules and seams
@@ -206,7 +214,7 @@ RCE-oriented focusingでは、単一の危険関数だけでなく、uploadま�
 
 初期Focus Areaはvulnerability classだけで固定しない。たとえば「unauthenticated AJAXから永続stateへ入る全route」「subscriberがobject ownershipを越えるREST mutation」「stored valueがadmin HTML attributeへ出る経路」のように、attacker premise × surface × security propertyで切る。workerは担当file外のcalleeやguardを追ってよいが、Hypothesisの所有権はFocus Areaに残す。
 
-各Focus Areaでは、対象Feature、Actor、Privilege、State Transition、security invariantを短い型付きbriefへ固定する。Exploration Laneは探索目的、Exploration Strategyは探索方法として分離し、entry順方向、sink逆方向、state-chain、権限・security invariant、WildcardのStrategy Portfolioを使う。vulnerability class別agent、同一promptの多数決、既知sinkだけのchecklistへ探索多様性を依存させない。詳細は[Exploration seam](exploration-seam.md)と[ADR 0106](../adr/0106-run-a-versioned-exploration-strategy-portfolio.md)に記録する。
+現行Map-first実装はFocus Areaと固定Strategyを使うが、これは移行元であり到達形ではない。Depth CampaignではRoot Plannerがraw source全体から最大3個の独立したApproach Familyを割り当て、Finder自身が読む順序、pivot、機能間の接続を自由に決める。entry-forward、sink-backward、state-chain等は開始時のlensまたは観測labelに限り、探索手順や提出可能routeを制限しない。Surface Map、AST、Semgrep、CodeQLのnon-matchを候補棄却またはclosureに使わない。詳細は[Exploration seam](exploration-seam.md)、[ADR 0113](../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)、[ADR 0114](../adr/0114-separate-breadth-and-depth-campaign-policies.md)に記録する。
 
 Surface MapはTarget SnapshotとMapping Profileへ固定した不変revisionとし、nodeとrelationを`observed`、`inferred`、未解決（`unknown`）に分ける。PHP Program Indexとtyped Runtime Observationのobserved factをmodelが上書きせず、追加contextは理由付きContext Request、dynamic evidenceは低影響な`runtime-revision`として記録する。通常の初期mapはLab完成を待たず、Runtime Observationを使うrevisionだけをsealed Lab Baselineへ固定する。PHPを骨格に関連するJavaScript、template、SQL、configuration、bundled vendor assetを接続し、未解析assetをcoverage gapとして残す。詳細は[Source mapping seam](source-mapping-seam.md)、[ADR 0103](../adr/0103-build-evidence-graded-surface-map-revisions.md)、[ADR 0108](../adr/0108-observe-dynamic-mapping-with-typed-lab-plans.md)に記録する。
 

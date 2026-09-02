@@ -48,6 +48,8 @@ flowchart TB
 
 ## 2. 調査・探索ループ（Research and Exploration Loop）
 
+広いsurfaceから短いprimitiveを得る運行と、一Targetで複数primitiveを最終impactまで接続する運行は同じResearch基盤を使うが目的が異なる。現在地と到達形は[広域探索と深掘り調査](breadth-depth-research-loop.md)を参照する。
+
 ```mermaid
 flowchart TB
     campaign["Campaign Control"]
@@ -63,15 +65,14 @@ flowchart TB
     end
 
     subgraph discovery["Exploration"]
-        focus["Focus Areas"]
-        strategy["Lane × Strategy"]
-        finders["Independent Finders"]
+        planner["Root Planner"]
+        finders["Independent Free-reasoning<br/>Finders × 3"]
         barrier["Work Wave<br/>Barrier"]
-        chain["Chain Synthesis"]
+        chain["Root Synthesis +<br/>Adversarial Critic"]
         queue["Exploration /<br/>Verification Queue"]
         gaps["Gap Review"]
-        focus --> strategy --> finders --> barrier --> chain --> queue
-        gaps -->|"reopen"| focus
+        planner --> finders --> barrier --> chain --> queue
+        gaps -->|"missing-link wave"| planner
     end
 
     subgraph proof["Verification"]
@@ -87,7 +88,8 @@ flowchart TB
     review[["Human Review<br/>Packet"]]
 
     campaign --> workspace
-    mapping --> focus
+    mapping -. "optional hint / coverage" .-> planner
+    workspace --> planner
     queue --> preflight
     finding --> record
     mapping --> record
@@ -95,17 +97,18 @@ flowchart TB
     chain --> record
     record --> gaps
     gaps -->|"closure"| iteration
-    iteration -->|"next wave"| focus
+    iteration -->|"next wave"| planner
     finding -->|"confirmed"| review
 
     classDef context fill:#edf4ff,stroke:#3767a6,color:#172b4d;
     classDef durable fill:#fff5d6,stroke:#a87800,color:#3f2d00;
-    class campaign,workspace,baseline,mapping,observation,focus,strategy,finders,barrier,chain,queue,gaps,preflight,verifier,labs,finding,iteration context;
+    class campaign,workspace,baseline,mapping,observation,planner,finders,barrier,chain,queue,gaps,preflight,verifier,labs,finding,iteration context;
     class record,review durable;
 ```
 
-- Surface Mapの全解析完了を待たず、stable anchorと明示gapを持つ最小revisionから探索を始める。
-- Laneは探索目的、Strategyは探索方法であり、vulnerability class別agentを増やさない。
+- Surface Mapを待たず、Target manifestとbounded Source Toolsだけで探索を始められる。Mapはhintとcoverageへ使う。
+- 固定Strategyを逐次手順にしない。Root Plannerは独立idea familyを分け、Finderは全Targetへ自由にpivotできる。
+- Raw sourceへのbounded Glob/Grep/Readを主経路とし、Surface Map、Semgrep、CodeQLはseed、coverage、発見済みpatternの横展開へ限定する。
 - Finder同士は会話せず、型付き成果物だけをWork Wave後のChain Synthesisへ渡す。
 - 一つのmodelだけが示したsource-bound routeを多数決で捨てない。
 - Runtime Observationはmapを補うだけで、Finding用のWitnessまたはCausal Controlには使わない。

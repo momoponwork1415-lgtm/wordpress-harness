@@ -1,6 +1,6 @@
 # Module architecture
 
-Status: accepted, 2026-09-01
+Status: accepted module boundaries; Exploration policy revised by ADR 0113/0114, 2026-09-03
 
 この文書は、`Target Intelligence -> Research -> Human OS`を一つのstrict TypeScript modular monolithとして実装する際のmodule ownership、公開面、依存方向、record ownershipを固定する。高水準のcontext境界だけで実装を始めず、各production moduleはこの設計上の配置と個別にacceptedなseamを持ってから実装する。
 
@@ -87,7 +87,7 @@ Researchを理解・操作するときは、次の6moduleだけを第一階層�
 | --- | --- | --- |
 | 調査進行制御 | Campaign Control | Campaign lifecycle、budget、有限Work Wave、停止・再開 |
 | 対象理解 | Source Understanding | Target Workspace、Lab Baseline Builder、Source Mapping、PHP Program Index、Source Evidence Gateway、Mapper |
-| 脆弱性仮説の探索 | Exploration | Focus Area、Strategy Portfolio、Chain Synthesis、探索順、重複排除、Gap Review、Iteration Review |
+| 脆弱性仮説の探索 | Exploration | Root Planner、Approach Family Registry、自由探索Wave、Route Fragment、Root Synthesis、Adversarial Critic、Gap Review |
 | 独立検証 | Verification | 成立証拠、因果対照実験、反証レビュー、検証環境制御、Review Packaging |
 | AI実行管理 | Model Execution | Claude/GPT/Grok/GLM adapter、Attempt/tool binding、session、retry、usage、Tool Receipt、transcript |
 | 研究記録 | Research Record | Research Ledger、CAS、replay、参照整合性 |
@@ -246,11 +246,11 @@ Mapperの初期promptはstable orderingで選んだgraph近傍とsource sliceだ
 
 dynamic registration、callback、dispatch、state transitionを静的に確定できず、Explorationから情報利得の高いMapping Evidence Requestが返った場合、Source Mappingは版付きRuntime Observation Planをfresh Lab Baseline cloneで実行できる。これはSource Mapping内部のdriven seamであり、Finderへruntime、HTTP、browser、shellを渡さない。Observation Recordは次のMap revisionの根拠になれるが、WitnessまたはFinding evidenceにはならない。
 
-既存Surface Mapを更新する時はpredecessor refを持つ新revisionを作り、旧revisionを変更しない。Source MappingはFocus Areaを決めず、Exploration ControlがMapのsurface ownership anchorから重複しないFocus Areaを作る。vulnerability classはExploration Laneに使えてもsurface ownership keyにはしない。acceptedなinterface、failure semantics、test surfaceは[Source mapping seam](source-mapping-seam.md)に固定し、詳細な判断は[ADR 0103](../adr/0103-build-evidence-graded-surface-map-revisions.md)に記録する。
+既存Surface Mapを更新する時はpredecessor refを持つ新revisionを作り、旧revisionを変更しない。Source MappingはApproach Familyまたは探索境界を決めない。Exploration ControlはTarget inventoryと過去artifactから独立familyを作り、Surface Mapを独立barrier後のcoverage補助にだけ使える。acceptedなinterface、failure semantics、test surfaceは[Source mapping seam](source-mapping-seam.md)に固定し、詳細な判断は[ADR 0103](../adr/0103-build-evidence-graded-surface-map-revisions.md)に記録する。
 
 ### Exploration Control
 
-何をどの異質な方法で次に調べるかを所有するpure decision moduleである。最小条件を満たすSurface MapからFocus Areaを作り、三Exploration Laneと五Exploration Strategyを別軸で組み合わせた有限Work Waveを計画する。Attempt outputのdecodeとdedup、minority routeの保持、Work Wave barrier後のChain Synthesis、独立Gap Review、closureまたは再開判断までを一つのinterfaceへ隠す。
+何をどの異質な研究ideaで次に調べるかを所有するpure decision moduleである。Target Snapshot、repository inventory、Approach Family Registry、過去のterminal artifactから最大3個の独立familyを持つ有限Work Waveを計画する。Attempt outputのdecodeとdedup、minority routeの保持、Work Wave barrier後のRoot SynthesisとAdversarial Critic、独立Gap Review、closureまたは再開判断までを一つのinterfaceへ隠す。
 
 ```ts
 decide(input: ExplorationDecisionInput): ExplorationDecision;
@@ -258,13 +258,13 @@ decide(input: ExplorationDecisionInput): ExplorationDecision;
 
 `ExplorationDecision`は`run-wave | revise-map | verify | review-gaps | close | blocked`のいずれかで、Campaign Controlが実行すべき次の有限workだけを返す。`AttemptExecutionResult`はdurable receipt refとprovider非依存のterminal status/outputを持つ。Exploration Controlはrole固有schemaでoutputをdecodeするが、raw stream、session ID、provider eventを受け取らない。providerを起動せず、arrival order、model confidence、programme reward、model多数決だけでpriorityまたは採否を変えない。
 
-LaneはFrontier、Primitive、Coverageという探索目的、Strategyはentry順方向、sink逆方向、state-chain、権限・security invariant、Wildcardという探索方法である。共通Finder roleとOutput Schemaを保ち、vulnerability class別moduleまたはagent hierarchyを作らない。eligibleなWork Waveには非ゼロのWildcard枠を置き、高リスクsurfaceとFrontier候補だけを可能な限り異なるmodel family・Strategyで重ねる。具体的な枠数と比率は実戦で調整する。
+共通Finder roleとOutput Schemaを保ち、vulnerability class別moduleまたは固定された`Hunter / Analyst / Builder` hierarchyを作らない。`entry-forward`、`sink-backward`、`state-chain`、権限・security invariant、Wildcardは逐次手順ではなく、Approach Family Registryの観測labelまたは開始lensに限る。Root Plannerは同じideaの言い換えを別familyにせず、barrierまで複数の相容れないrouteを維持する。
 
 Finderは別Finderのconversation、scratch、進行中outputを読まない。Work Wave内の結果は全Attempt terminal後にstable Work Lease ID順でfoldし、型付きRoute Fragment、Hypothesis、state transitionからChain Synthesisを行う。一つのmodelだけが出したsource-bound Hypothesisを捨てず、相反する支持・反証routeをconsensusで潰さない。criticはfalsifierまたは不足証拠を追加できるが拒否権を持たない。
 
-探索は全source解析完了を待たず、inventory、stable surface anchors、根拠状態、明示gapを持つ最小Surface Mapから開始する。追加sourceまたはdynamic relationが必要ならMapping Evidence Requestを返し、Map revision後の次decisionで再開する。Semgrep等のmatchはHypothesis Seedに留め、blind fuzzingはsource-bound Hypothesis後のVerification Experimentへ送る。
+探索は全source解析またはSurface Map completionを待たず、Target manifestとSnapshot-boundなGlob/Grep/Readから開始する。最初のDepth WaveへMap excerpt、AST route、node priorityを見せない。追加sourceまたはdynamic relationが必要ならDependency WishlistまたはMapping Evidence Requestを返せるが、Map nodeの有無をcandidate受理条件にしない。Semgrep等のmatchはHypothesis Seedに留め、non-matchを安全またはclosureの証拠にしない。
 
-Closure Recordが揃っても同じFinderの自己申告では閉じない。freshなGap Reviewerが未所有surface、unknown relation、未追跡state、未解析assetを確認し、独立した二回のgap passで新しいsurface、Hypothesis、priority変化がない場合だけCoverage Closureを提案する。新しいMap revisionまたはRoute Fragmentがclosure前提を変えた場合だけ、該当Focus Areaを再開する。acceptedなinterface、failure semantics、test surfaceは[Exploration seam](exploration-seam.md)に固定し、Strategyは[ADR 0106](../adr/0106-run-a-versioned-exploration-strategy-portfolio.md)、chain統合は[ADR 0107](../adr/0107-synthesize-cross-focus-chains-at-wave-barriers.md)に記録する。
+同じFinderの自己申告では閉じない。全Approach Familyがterminal化し、blocked routeに再開条件があり、連続Waveで新しいsource evidence、Fragment、familyが増えず、Criticもmaterially new mechanismを提示できない場合だけevidence-backed closureを提案する。acceptedなinterfaceと移行元挙動は[Exploration seam](exploration-seam.md)、自由探索policyは[ADR 0113](../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)、Breadth/Depth分離は[ADR 0114](../adr/0114-separate-breadth-and-depth-campaign-policies.md)に記録する。
 
 ### Model Execution
 
@@ -363,7 +363,7 @@ Research Recordはdomain判断をしない。たとえばAttemptをretryすべ�
 | --- | --- | --- | --- |
 | confine | Target Workspace / 検証環境制御 | Model Execution | Workspace/Lab receipt、denied capability |
 | constrain | Campaign Control | Model Execution / Verification | fixed budget/policy、terminal reason |
-| focus | Exploration Control | Source Mapping | Surface Map、Focus Plan、Strategy Portfolio、coverage gap |
+| focus | Exploration Control | Source Mapping | raw-source inventory、Approach Family Registry、任意のSurface Map enrichment、coverage gap |
 | motivate | Exploration Control | Model Execution | goalとsuccess evidenceを持つAttempt Plan |
 | parallelize | Exploration Control | Campaign Control | non-overlapping Work Waveとbarrier |
 | hypothesize | Exploration Control | Model Execution / Source Mapping | schema-valid Hypothesis、Chain Synthesis、Mapping Evidence Request |

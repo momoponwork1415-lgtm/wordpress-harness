@@ -657,6 +657,7 @@ async function fixture(options?: {
     targetSnapshotDigest: targetDigest,
     operations: {
       read: { maxResponseBytes: 64 * 1024 },
+      inventory: { maxResults: 1024 },
       search: { maxScanBytes: 4 * 1024 * 1024, maxResults: 64 },
     },
   };
@@ -752,8 +753,16 @@ describe("FinderAttemptMaterializer.materialize", () => {
         },
       });
       expect(materialization.prompt).toContain(
-        "Use source_search and source_read only when the initial Analysis Unit is insufficient",
+        "The Focus Area is a starting lens, not a search boundary",
       );
+      expect(materialization.prompt).toContain("source_list");
+      expect(materialization.prompt).toContain(
+        "Explore alternative features anywhere in the admitted Target Snapshot",
+      );
+      expect(materialization.prompt).toContain(
+        "Choose how to navigate, pivot, and connect features",
+      );
+      expect(materialization.prompt).toContain("Discovery favors recall");
       expect(materialization.prompt).not.toContain("You have no tools");
     } finally {
       await test.cleanup();

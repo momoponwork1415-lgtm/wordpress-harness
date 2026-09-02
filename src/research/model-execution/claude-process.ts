@@ -328,6 +328,13 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
         if (killTimer !== undefined) clearTimeout(killTimer);
         reject(error);
       });
+      child.stdin.once("error", (error: NodeJS.ErrnoException) => {
+        if (error.code === "EPIPE") return;
+        clearTimeout(timeout);
+        if (killTimer !== undefined) clearTimeout(killTimer);
+        signalProcessTree(child, "SIGKILL");
+        reject(error);
+      });
       child.once("close", (exitCode) => {
         clearTimeout(timeout);
         const stderrText = redactProviderCredential(

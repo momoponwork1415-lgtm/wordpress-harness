@@ -1,14 +1,16 @@
 # Exploration seam
 
-Status: accepted; bootstrap and first Hypothesis ingestion slice implemented, 2026-09-02
+Status: implemented Map-first seam under migration; target policy superseded by ADR 0113, 2026-09-03
 
 ## Owner and purpose
 
-ResearchのExplorationが所有する。根拠状態付きSurface Mapから、重複しないFocus Area、異質な探索戦略、source-boundなHypothesis、Focus Area横断chain、証拠付きclosureを作り、次に実行する有限workだけを一つの深いinterfaceの背後へ隠す。
+ResearchのExplorationが所有する。Target Snapshot、Approach Family Registry、terminal artifactから、独立した自由探索Wave、source-boundなHypothesisとRoute Fragment、Target横断ではなく機能横断のchain、証拠付きclosureを作り、次に実行する有限workだけを一つの深いinterfaceの背後へ隠す。
 
-Explorationは脆弱性を実証せず、provider process、Lab、Research Ledgerを直接操作しない。Campaign Controlは探索内部のFinder数、Strategy順、dedup、Chain Synthesis、Gap Reviewを知らず、Model ExecutionとSource Mappingをtyped decisionに従って呼ぶ。
+Explorationは脆弱性を実証せず、provider process、Lab、Research Ledgerを直接操作しない。Campaign Controlは探索内部のFinder数、idea family生成、dedup、Root Synthesis、Critic、Gap Reviewを知らず、typed decisionだけを実行する。Surface Mapは後段coverageへの任意入力であり、Depthの最初のWaveを開始する必須条件ではない。
 
-## Interface
+## 現在のInterface（移行元）
+
+次のInterfaceは現在のproduction codeと一致するが、`bootstrap`へSurface Mapを必須にする点と、Map revisionを中心に状態遷移する点は到達設計ではない。移行は公開`decide` seamを保ちながら、Target SnapshotとSource Tool Policyを必須、Surface Mapを任意にする。
 
 ```ts
 interface Exploration {
@@ -47,7 +49,7 @@ type ExplorationDecision =
 
 `ExplorationPolicyRef`はLane/Strategy policy、eligible Model Profile registry、ranking tuple、closure policyをdigest固定する。`decide`は同じ入力refsから同じdecisionとstable orderingを返すpure decisionである。callerはFinder role別method、`runChainSynthesizer`、`reopenFocus`、score更新、model votingを呼ばない。
 
-## Implemented slices
+## 現在実装済みのslice
 
 現行実装は`bootstrap`と最初の`wave-completed` inputを受ける。CASからdecode済みのSurface Map、versioned bootstrap policy、必要な場合は完了したWork WaveとFinder Attempt Resultを`openExploration`で一度束ねる。その後の`decide`はfilesystem、Research Ledger、provider process、Lab、clock、randomnessを使わないpure decisionである。binding時にMap、Policy、Wave、Resultのcanonical digest、identity、summaryを照合する。
 
@@ -88,7 +90,9 @@ Git外のBrizy 2.8.11/2.8.12 characterizationでは、両Targetとも外部AJAX 
 
 Git外のAppointment Booking Calendar characterizationでは、impact-aware bucketにより外部entry、server-impact sink、database sinkの三つを別Focusへ割り当てた。databaseの`sink-backward` Analysis Unitは同じdatabase-query familyのsourceを比較し、二次sourceが参照するclass-like symbol定義を一段だけ追加した。oracle-free positive Campaignはこの有限WaveからSQLi Hypothesisを生成したが、bucketまたはsource選択それ自体をreachabilityやFindingの証拠にはしていない。
 
-## Minimum map gate and incremental understanding
+## Legacy Map bootstrap gate（移行元のみ）
+
+この節は現行Map-first bootstrapの正確な挙動を記録する。新しいDepth Campaignの開始条件ではない。[ADR 0113](../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)に従い、raw-source Context Profile統合後はMap gateを最初のWaveから外す。
 
 全sourceの解析完了をDiscovery開始条件にしない。最初のWork Waveには少なくとも次を満たすSurface Map revisionを要求する。
 
@@ -101,7 +105,9 @@ Discovery開始後もContext Request、Runtime Observation、Finderが見つけ�
 
 各Focus Areaには、対象機能、利用actor、必要privilege、重要state transition、想定security invariantを短い型付きbriefとして持たせる。単一sinkの列挙だけを探索開始点にしない。
 
-## Lane and Strategy are different axes
+## Superseded Lane / Strategy assignment
+
+以下の三Lane・五Strategyは現行実装と過去実験を再現するlabelとして残すが、Finderへ固定手順として割り当てる到達policyではない。Root PlannerはApproach Family RegistryからTarget固有の異質なidea familyを生成し、`entry-forward`等は観測labelまたは開始lensにだけ使う。
 
 Exploration Laneは「なぜ調べるか」を表す。
 

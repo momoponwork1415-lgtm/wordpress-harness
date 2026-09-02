@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR 0113
 ---
 
 # Run a versioned exploration strategy portfolio

@@ -69,7 +69,7 @@ BrizyでClosure Gateを通した後、次の公開済みCaseをprivate Boundary 
 
 #### SQL injection transfer result
 
-2026-09-02にAppointment Booking Calendarのtransferを完了した。公開advisoryのversion labelだけではactual patch境界を固定できなかったため、WordPress.org SVN revision、全file manifest、Snapshot digestを正本にした。脆弱Snapshotのoracle-free Campaignは3並列Opus 5/high FinderからSQLi Hypothesisを生成し、独立source再導出とfresh gVisor database Witness/ControlからFindingになった。mechanism修正済みSnapshotのoracle-free CampaignはFinding 0件であり、private calibrationではpositiveと同じCausal IdentityがDisprovedになった。
+2026-09-02にAppointment Booking Calendarのtransferを開始した。公開advisoryのversion labelだけではactual patch境界を固定できなかったため、WordPress.org SVN revision、全file manifest、Snapshot digestを正本にした。脆弱Snapshotのoracle-free Campaignは3並列Opus 5/high FinderからSQLi Hypothesisを生成し、独立source再導出とfresh gVisor database Witness/Controlからroot mechanismのFindingになった。ただし完全未認証premiseはBlockedであり、mechanism修正済みSnapshotの保存済みDisprovedも別candidateだった。したがって同一Causal Identityのpatched verificationは未完了である。
 
 このtransferにより、公開`Verification.verify`を増やさず二つ目のmechanismを追加できることを確認した。共通のgVisor/WordPress lifecycleは内部deep Moduleへ集約し、Stored XSSとSQLi adapterはmechanism固有setupとsanitized Observationだけを持つ。Target source、prompt、provider output、payload、Lab artifactは引き続きGit外に置く。
 

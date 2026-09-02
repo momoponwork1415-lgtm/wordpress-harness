@@ -186,6 +186,75 @@ const causalIdentitySchema = z.strictObject({
   brokenSecurityProperty: identifierSchema,
 });
 
+const unresolvedEvidenceSchema = z.strictObject({
+  claim: boundedTextSchema,
+  requiredEvidence: boundedTextSchema,
+});
+
+const sourceEvidenceAnchorSchema = z
+  .strictObject({
+    path: relativePathSchema,
+    fileDigest: digestSchema,
+    startLine: z.number().int().positive(),
+    endLine: z.number().int().positive(),
+  })
+  .refine((anchor) => anchor.endLine >= anchor.startLine, {
+    message: "Source evidence endLine must not precede startLine",
+  });
+
+export const routeFragmentProposalSchema = z.strictObject({
+  kind: z.literal("route-fragment-proposal"),
+  schemaVersion: z.literal(1),
+  attackerPremise: z.enum([
+    "unauthenticated",
+    "subscriber",
+    "customer",
+    "unresolved",
+  ]),
+  preconditions: z.array(boundedTextSchema).min(1),
+  operation: boundedTextSchema,
+  consumedValues: z.array(
+    z.strictObject({
+      identity: identifierSchema,
+      provenance: z.enum([
+        "attacker-controlled",
+        "system-generated",
+        "persisted",
+        "unknown",
+      ]),
+    }),
+  ),
+  producedValues: z.array(
+    z.strictObject({
+      identity: identifierSchema,
+      capability: z.enum([
+        "read",
+        "write",
+        "authenticate",
+        "impersonate",
+        "query-control",
+        "output-control",
+        "file-control",
+        "code-execution",
+        "other",
+      ]),
+    }),
+  ),
+  stateTransitions: z
+    .array(
+      z.strictObject({
+        stateIdentity: identifierSchema,
+        operation: z.enum(["read", "write", "transition", "delete"]),
+        effect: boundedTextSchema,
+      }),
+    )
+    .min(1),
+  evidence: z.array(sourceEvidenceAnchorSchema).min(1),
+  unknowns: z.array(unresolvedEvidenceSchema).min(1),
+  falsifier: boundedTextSchema,
+  nextInvestigation: boundedTextSchema,
+});
+
 export const sourceBoundHypothesisSchema = z.strictObject({
   kind: z.literal("source-bound-hypothesis"),
   schemaVersion: z.literal(1),
@@ -212,14 +281,7 @@ export const sourceBoundHypothesisSchema = z.strictObject({
     nodeIds: z.array(digestSchema).min(1),
     relationIds: z.array(digestSchema),
   }),
-  unknowns: z
-    .array(
-      z.strictObject({
-        claim: boundedTextSchema,
-        requiredEvidence: boundedTextSchema,
-      }),
-    )
-    .min(1),
+  unknowns: z.array(unresolvedEvidenceSchema).min(1),
   falsifier: boundedTextSchema,
   nextExperiment: boundedTextSchema,
 });
@@ -229,6 +291,7 @@ export const finderOutputSchema = z.strictObject({
   schemaVersion: z.literal(1),
   leaseId: digestSchema,
   hypotheses: z.array(sourceBoundHypothesisSchema),
+  routeFragments: z.array(routeFragmentProposalSchema).optional(),
 });
 
 export const finderAttemptResultSchema = z.discriminatedUnion("status", [
@@ -341,6 +404,7 @@ export type AttemptExecutionResultRef = z.infer<
   typeof attemptExecutionResultRefSchema
 >;
 export type SourceBoundHypothesis = z.infer<typeof sourceBoundHypothesisSchema>;
+export type RouteFragmentProposal = z.infer<typeof routeFragmentProposalSchema>;
 
 export interface Exploration {
   decide(input: ExplorationDecisionInput): ExplorationDecision;

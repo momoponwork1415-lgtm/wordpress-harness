@@ -15,7 +15,7 @@ Transport Eligibilityを通過したOpus候補のModel ProfileとClaude process 
 - PHPを骨格にJavaScript・template・SQL・configuration・bundled vendor assetを必要に応じて結ぶ、根拠状態付きimmutable Surface Map revisions
 - observed factをmodelが変更せず、dynamic relationは根拠付きinferredまたは未解決gapとして保持するbounded Mapper synthesis
 - Focus Areas、parallel Finder、Hypothesis deduplication
-- 共通Finder schemaと一つ以上のversioned Exploration Strategyを通す、後続Strategy Portfolio互換の探索artifact
+- 共通Finder schemaとraw-source Context Profileを通し、Approach Family、Hypothesis、Route Fragmentを版付きartifactにする
 - evidence state付きEvidence Routeによるmulti-file・cross-request chain表現
 - Frontier、Primitive、Coverageの三Exploration Laneを持つdeterministic Work Wave
 - independent Verifier、browser Witness、sibling Causal Control、Skeptic
@@ -52,7 +52,7 @@ Milestone 1の一つのBoundary Pairでresearch loopと安全機構が閉じた�
 - Canonical ConfigurationはUTC・en_USを基準とし、別localeや設定は根拠付きConfiguration Variantの別Setup Plan・別baselineとして扱う
 - 外部serviceはlocal emulator、record/replay、live External Dependency Grantの順で選び、live接続はCampaign専用の非production research accountだけを使う
 - Campaign開始後は自律実行するが、候補の自動選定と次Campaignの自動開始はMilestone 3まで行わない
-- 全source解析完了を待たず、inventory、stable surface anchors、根拠状態、明示gapを持つ最小Surface Mapから探索を開始し、Context Requestとmap revisionを反復する
+- 全source解析完了またはSurface Map完成を待たず、Snapshot-boundなsource inventoryと`list/search/read`から探索を開始する。Surface Map revisionは任意のcoverage/enrichmentとして反復する
 - Focus AreaごとにFeature、Actor、Privilege、State Transition、security invariantを型付きbriefへ固定する
 - Frontier・Primitive・CoverageというLaneと、entry順方向・sink逆方向・state-chain・権限/invariant・WildcardというStrategyを別軸で組み合わせる
 - eligibleなWork Waveには非ゼロのWildcard枠を置き、高リスクsurfaceとFrontier候補だけを異なるmodel family・Strategyで独立に重ねる

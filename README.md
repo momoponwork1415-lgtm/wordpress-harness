@@ -6,11 +6,12 @@ WordPressプラグインのsource reviewを、LLMの探索力と独立した実�
 
 これらを標語や10段の固定pipelineではなく、所有module、永続artifact、実行時に観測できるgateを持つcontrol propertyとして実装します。Discoveryが作るものは未確認の`Hypothesis`であり、cleanな環境で独立Verificationを通過したものだけを`Finding`と呼びます。
 
-現在は最初のproduction-quality研究ループを閉じ、Stored XSSとSQL injectionの二つの実Target Boundary Pairで探索・独立Verification・replayを確認済みです。旧`whitebox-harness`からcodeやcontractを移植せず、`wp2shell` promptの意図を小さなModuleとversioned artifactへ分解しています。Target source、prompt、provider output、payload、未公開FindingはGit外に置きます。
+現在は最初のproduction-quality研究ループをBrizy Stored XSSの実Target Boundary Pairで閉じ、SSA SQL injectionではroot mechanismのFindingまで確認済みです。SSAの完全な未認証到達性と、同じCausal Identityに対するpatched negativeは再検証が必要です。旧`whitebox-harness`からcodeやcontractを移植せず、`wp2shell` promptの意図を小さなModuleとversioned artifactへ分解しています。Target source、prompt、provider output、payload、未公開FindingはGit外に置きます。
 
 ## Start here
 
 - [Module Map — コードを読まずに機能と現在地を把握する](docs/design/architecture/module-map.md)
+- [Harness Completeness Audit — 成功・不足・次の優先順位](docs/design/harness-completeness-audit.md)
 - [Codebase Guide — 現在のInterface・実装・Test・設計の対応](docs/CODEBASE-GUIDE.md)
 - [Architecture overview diagram](docs/design/architecture/architecture-overview.md)
 - [Development rules](AGENTS.md)

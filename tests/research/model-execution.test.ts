@@ -42,6 +42,51 @@ function candidateHypothesis() {
   };
 }
 
+function candidateRouteFragment() {
+  return {
+    kind: "route-fragment-proposal" as const,
+    schemaVersion: 1 as const,
+    attackerPremise: "unauthenticated" as const,
+    preconditions: ["the public request handler is registered"],
+    operation: "read a persisted dictionary row by attacker-selected id",
+    consumedValues: [
+      {
+        identity: "dictionary-row-id",
+        provenance: "attacker-controlled" as const,
+      },
+    ],
+    producedValues: [
+      {
+        identity: "dictionary-row-value",
+        capability: "read" as const,
+      },
+    ],
+    stateTransitions: [
+      {
+        stateIdentity: "translation-dictionary-row",
+        operation: "read" as const,
+        effect: "the anonymous caller learns the stored row value",
+      },
+    ],
+    evidence: [
+      {
+        path: "includes/public-handler.php",
+        fileDigest: `sha256:${"c".repeat(64)}`,
+        startLine: 20,
+        endLine: 48,
+      },
+    ],
+    unknowns: [
+      {
+        claim: "a security token can be persisted in the same dictionary",
+        requiredEvidence: "trace token generation into dictionary writes",
+      },
+    ],
+    falsifier: "the handler restricts every requested row to public content",
+    nextInvestigation: "find values written to the same dictionary identity",
+  };
+}
+
 function attemptPlan(): AttemptPlan {
   return {
     kind: "attempt-plan",
@@ -244,12 +289,60 @@ describe("ModelExecution.run", () => {
     }
   });
 
+  it("preserves a source-bound partial primitive when no complete hypothesis exists", async () => {
+    const output = {
+      kind: "finder-output",
+      schemaVersion: 1,
+      leaseId,
+      hypotheses: [],
+      routeFragments: [candidateRouteFragment()],
+    };
+
+    await expect(
+      runWithProcess({
+        execute: async () => ({
+          kind: "exited",
+          exitCode: 0,
+          stdout: JSON.stringify(providerEnvelope(output)),
+          stderr: "",
+        }),
+      }),
+    ).resolves.toMatchObject({
+      status: "completed",
+      value: { status: "completed", output },
+    });
+  });
+
   it("rejects output exceeding the Work Lease hypothesis ceiling", async () => {
     const output = {
       kind: "finder-output",
       schemaVersion: 1,
       leaseId,
       hypotheses: [candidateHypothesis(), candidateHypothesis()],
+    };
+
+    await expect(
+      runWithProcess({
+        execute: async () => ({
+          kind: "exited",
+          exitCode: 0,
+          stdout: JSON.stringify(providerEnvelope(output)),
+          stderr: "",
+        }),
+      }),
+    ).resolves.toMatchObject({
+      status: "invalid-output",
+      value: { reason: "invalid-finder-output" },
+    });
+  });
+
+  it("applies the Work Lease ceiling to route fragments", async () => {
+    const output = {
+      kind: "finder-output",
+      schemaVersion: 1,
+      leaseId,
+      hypotheses: [],
+      routeFragments: [candidateRouteFragment(), candidateRouteFragment()],
     };
 
     await expect(

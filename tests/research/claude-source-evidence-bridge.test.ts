@@ -117,8 +117,25 @@ try {
 
   const listed = await rpc({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
   const toolNames = listed.result.tools.map((tool) => tool.name).sort();
-  if (JSON.stringify(toolNames) !== JSON.stringify(["source_read", "source_search"])) {
+  if (JSON.stringify(toolNames) !== JSON.stringify(["source_list", "source_read", "source_search"])) {
     throw new Error("unexpected tool list: " + JSON.stringify(toolNames));
+  }
+
+  const inventory = await rpc({
+    jsonrpc: "2.0",
+    id: 20,
+    method: "tools/call",
+    params: {
+      name: "source_list",
+      arguments: {
+        prefix: "includes/",
+        reason: "Find security-relevant components outside the initial map seed.",
+      },
+    },
+  });
+  const inventoryEvidence = JSON.parse(inventory.result.content[0].text);
+  if (!inventoryEvidence.response.files.some((file) => file.path === "includes/wrapper.php")) {
+    throw new Error("wrapper absent from source inventory");
   }
 
   const searched = await rpc({
@@ -206,6 +223,7 @@ describe("ModelExecution.run Claude source evidence bridge", () => {
         ].join("\n"),
       },
       search: { maxScanBytes: 4096, maxResults: 8 },
+      inventoryMaxResults: 64,
     });
     const directory = await mkdtemp(join(tmpdir(), "claude-source-bridge-"));
     const executablePath = join(directory, "fake-claude");

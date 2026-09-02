@@ -11,6 +11,7 @@ export type {
   FinderAttemptResult,
   FocusArea,
   OpenExplorationOptions,
+  RouteFragmentProposal,
   SourceBoundHypothesis,
   WorkLease,
   WorkWavePlan,

@@ -6,7 +6,7 @@ Status: accepted; static skeleton and first relation-synthesis slice implemented
 
 ResearchのSource Understanding内部にあるSource Mappingが所有する。固定Target Snapshotから、deterministic source analysisとmodel synthesisを混同せず、Exploration Controlが重複しないFocus Areaを作れる根拠状態付きSurface Map revisionへ変換する複雑性を一つのinterfaceの背後へ隠す。
 
-全体像は[Surface Map visual guide](../visuals/surface-map.html)で、Interfaceの深さ、根拠状態、決定論的解析とAI Mapperの責任分担を図解する。
+全体像は[攻撃面マップ構成](architecture/surface-map-architecture.md)で、Interfaceの深さ、根拠状態、決定論的解析とAI Mapperの責任分担を図解する。
 
 ## Interface
 

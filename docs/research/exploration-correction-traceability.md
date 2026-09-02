@@ -61,9 +61,9 @@ OpenAntは`repository scanner -> AST extractor -> call graph -> unit generator`�
 
 **A.** Mandiantはspecialized agentをsequential pipelineへ接続し、各phaseを完了してから次へ進め、threat modelには明示的approval gateを置く。[Mandiant AVDH, Architecting the Pipeline–Threat Modeling](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review) AnthropicはDiscoveryとVerificationを別目的にし、agentic gradingより前にcheap programmatic gateを置く。[Anthropic Best Practices, Verification](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#verification-the-load-bearing-component) Codex Securityもexact inventory、source-backed investigation packet、typed candidate、parent validationを別artifact/stepで扱う。[Codex Security core scan](https://github.com/openai/codex-security/blob/cfde3f4c0922656caa625c1fad42aa1f7ba1df71/plugins/codex-security/references/core-scan.md#core-workflow)
 
-**B/D.** これを`Target Identity -> Map Coverage -> Focus Rank -> Context Reach -> Hypothesis Recall -> Verification`へした6 gateは本harnessの診断用adaptationである。最終Finding数だけを見ず、「対象が違う」「Mapが欠ける」「重要Focusを選べない」「必要sourceへ届かない」「仮説を作れない」「実証できない」を分ける命名と観測contractはDである。[Exploration architecture visual](../visuals/exploration-architecture.html)
+**B/D.** これを`Target Identity -> Map Coverage -> Focus Rank -> Context Reach -> Hypothesis Recall -> Verification`へした6 gateは本harnessの診断用adaptationである。最終Finding数だけを見ず、「対象が違う」「Mapが欠ける」「重要Focusを選べない」「必要sourceへ届かない」「仮説を作れない」「実証できない」を分ける命名と観測contractはDである。[探索エージェント構成](../design/architecture/exploration-agent-architecture.md)
 
-**C.** Simply Schedule Appointmentsの校正では、同じ表示versionでも取得bytesが想定したvulnerable snapshotではなく、Gate 1で比較を止めるべき事例を観測した。これはmodel effortを上げる前にTarget digestを確認するcorrectionのローカル根拠であり、一般benchmark結果ではない。[Exploration architecture visual, Diagnose by Gates](../visuals/exploration-architecture.html)
+**C.** Simply Schedule Appointmentsの校正では、同じ表示versionでも取得bytesが想定したvulnerable snapshotではなく、Gate 1で比較を止めるべき事例を観測した。これはmodel effortを上げる前にTarget digestを確認するcorrectionのローカル根拠であり、一般benchmark結果ではない。[探索エージェント構成](../design/architecture/exploration-agent-architecture.md)
 
 ### 5. Independent Verification, Witness, and Causal Control
 

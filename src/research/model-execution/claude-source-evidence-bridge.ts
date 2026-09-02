@@ -32,6 +32,11 @@ const sourceSearchInputSchema = z.strictObject({
   reason: z.string().min(1).max(1024),
 });
 
+const sourceListInputSchema = z.strictObject({
+  prefix: z.string().min(1).max(4096).optional(),
+  reason: z.string().min(1).max(1024),
+});
+
 const sourceReadInputSchema = z
   .strictObject({
     path: z.string().min(1).max(4096),
@@ -47,6 +52,7 @@ const sourceReadInputSchema = z
   });
 
 export const claudeSourceEvidenceToolNames = [
+  "mcp__source_evidence__source_list",
   "mcp__source_evidence__source_search",
   "mcp__source_evidence__source_read",
 ] as const;
@@ -114,6 +120,27 @@ export async function openClaudeSourceEvidenceBridge(
       idempotentHint: true,
       openWorldHint: false,
     } as const;
+    server.registerTool(
+      "source_list",
+      {
+        description:
+          "List manifest-bound files in the admitted immutable Target Snapshot, optionally below a normalized directory prefix. This is navigation evidence, not proof of reachability or safety.",
+        inputSchema: sourceListInputSchema,
+        annotations,
+      },
+      async (input) => {
+        const { prefix, reason } = sourceListInputSchema.parse(input);
+        return toolResult(
+          await sourceEvidence.query({
+            kind: "list-snapshot-files",
+            schemaVersion: 1,
+            subject: prefix === undefined ? {} : { prefix },
+            desiredRelation: "inventory",
+            reason,
+          }),
+        );
+      },
+    );
     server.registerTool(
       "source_search",
       {

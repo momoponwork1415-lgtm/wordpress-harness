@@ -10,6 +10,48 @@ import {
 const leaseId = `sha256:${"b".repeat(64)}`;
 
 describe("SourceEvidenceGateway.query", () => {
+  it("lists manifest-bound files without depending on Surface Map coverage", async () => {
+    const fixture = await openSourceEvidenceFixture({
+      files: {
+        "views/comment.php": "<?php\n",
+        "includes/password-reset.php": "<?php\n",
+        "translatepress.php": "<?php\n",
+      },
+      inventoryMaxResults: 2,
+    });
+
+    try {
+      const receipt = await fixture.gateway.query({
+        kind: "list-snapshot-files",
+        schemaVersion: 1,
+        attemptId: "attempt-inventory",
+        leaseId,
+        targetSnapshot: fixture.manifest.targetSnapshot,
+        policy: fixture.gateway.policy,
+        subject: { prefix: "includes/" },
+        desiredRelation: "inventory",
+        reason:
+          "Discover security-relevant features outside the initial map seed.",
+      });
+
+      expect(receipt.value.result).toMatchObject({ status: "completed" });
+      expect(receipt.response).toEqual({
+        kind: "source-inventory-response",
+        schemaVersion: 1,
+        prefix: "includes/",
+        files: [
+          {
+            path: "includes/password-reset.php",
+            fileDigest: fixture.fileDigest("includes/password-reset.php"),
+            size: 6,
+          },
+        ],
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("returns an anchored source range and a durable receipt for the bound Snapshot", async () => {
     const source = [
       "<?php",
