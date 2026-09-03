@@ -4,20 +4,32 @@ Status: accepted, 2026-09-03
 
 この文書は、脆弱性探索に関する設計判断を読む最初の正本である。最上位にはWordfence Argus記事から採った10動詞を置き、公開実装へ落とす運用原則にはAnthropicのDefending Code Reference Harnessを使う。個別のinterfaceと例外はaccepted ADRが決める。
 
+## 0. 何を最適化するか
+
+第一目的は、既知脆弱性のoracleなしに**高impactなbroken security semanticsを取りこぼさず発見し、独立Verificationで実証すること**である。RCEやsite-wide compromiseは最上位impactだが唯一の成功条件ではない。Unauthenticated SQL injection、意味的に深いStored XSS、account takeover、privilege escalation、arbitrary file operation、object injection、authorizationまたはbusiness-logic failure等、単独でも重大なFindingを成果として扱う。
+
+> **Do not optimize for sinks. Optimize for broken security semantics.**
+
+sink、CWE、Surface Map nodeの網羅率は補助信号であり、Discoveryの目的関数ではない。trust boundary、state transition、persistent state、producer/consumer mismatch、decode/reparse、authorization assumption、cross-request、cross-actor、機能間compositionをsource semanticsから推論できることを重視する。
+
+通常運転はraw-source-firstの有限Semantic Research Waveである。全Targetを最初からmulti-wave Depth Campaignへ入れない。十分に重大なHypothesisはVerificationへ送り、強い未解決primitiveまたはhigh-impact frontierが残る時だけDepth Admissionを通してSynthesis、Critic、missing-link Waveへ追加投資する。最終impactが既にRCE/ATO/PrivEscと分かっていることをDepth Admissionの条件にしない。
+
+現段階の評価優先順位は`high-impact recall -> root-cause quality -> attacker-premise closure -> independent verification -> false-positive behavior -> token/cost`とする。Budgetはhard ceilingとしてmodel外で強制するが、recallを落としてまでtokenやwall timeを削らない。cost最適化はbaseline確立後のablationで行う。詳細は[ADR 0117](../adr/0117-optimize-for-high-impact-semantic-recall.md)を参照する。
+
 ## 1. 最上位の10原則
 
 | 原則 | このharnessでの意味 |
 | --- | --- |
 | Confine（隔離する） | Target、worker、credential、runtime、networkを必要最小限の信頼領域へ閉じる |
 | Constrain（制約する） | scope、予算、tool、並列数、停止条件をmodelの外側で強制する |
-| Focus（焦点を定める） | 高水準のsecurity goalと未解決gapを与え、手順は固定しない |
-| Motivate（動機づける） | 高impactな完全chainと、次に閉じるべき具体的な不足linkを明示する |
+| Focus（焦点を定める） | 高水準のsecurity goalまたは具体的なmissing linkを与え、file、CWE、手順を固定しない |
+| Motivate（動機づける） | 単独で重大なFindingと、高impactへ伸びる未解決primitiveの両方を追えるようにする |
 | Parallelize（並列化する） | 言い換えではない独立したidea familyを、相互に見せず同時に育てる |
 | Hypothesize（仮説化する） | premise、route、impact、unknown、falsifierを反証可能なartifactにする |
 | Verify（検証する） | Discoveryと状態を共有しないfresh verifierとclean labで成立条件を再導出する |
-| Record（記録する） | positive、negative、blocked、unknownをsource provenanceとともに追記する |
-| Prioritize（優先する） | impact、到達可能性、情報利得、chain gap、検証費用から次の有限workを選ぶ |
-| Iterate（高速反復する） | waveごとの証拠を統合・批判し、方法、rule、次の問いへ短く還元する |
+| Record（記録する） | positive、negative、blocked、unknown、低優先だが意味のあるprimitiveをsource provenanceとともに追記する |
+| Prioritize（優先する） | impact、到達可能性、semantic novelty、未解決frontier、検証費用から次の有限workを選ぶ |
+| Iterate（高速反復する） | Depth Admission後はwaveごとの証拠を統合・批判し、具体的missing linkをfresh runへ返す |
 
 10動詞は10段pipelineでも10個のmoduleでもない。全Campaignと各反復で観測するcontrol propertyである。詳細は[ADR 0001](../adr/0001-ten-verbs-as-control-properties.md)を参照する。
 
@@ -27,59 +39,65 @@ Status: accepted, 2026-09-03
 
 | 公開ベストプラクティス | このharnessへの適用 |
 | --- | --- |
-| systemを把握して探索空間を分割する | Root Plannerがrepository inventoryと過去artifactから独立idea familyを割り当てる。ただし最初のDepth FinderへSurface Map routeを見せず、Mapを探索境界にしない |
+| systemを把握して探索空間を分割する | Root Plannerがrepository inventoryと過去artifactから独立research thesisを割り当てる。ただしSurface Map routeやfile集合を探索境界にしない |
 | modelへ必要なcontext toolを渡す | Snapshot-boundなGlob・Grep・Readを主経路にする。小さな一時scriptは制約内で許せるが、semantic verdictをscriptへ委譲しない |
 | DiscoveryとVerificationを分離する | Discoveryは高recall、Verificationは候補を積極的に反証する。conversation、scratch、writable runtimeを共有しない |
 | verifierへ投資する | category別のprogrammatic gate、executable witness、causal control、clean sandboxをFinding昇格条件にする |
-| Finder→Critic→Judgeを分ける | Finder、Adversarial Critic、Independent Verificationを別Attemptにし、同じmodelの自己確認を独立性と呼ばない |
+| Finder→Critic→Judgeを分ける | DepthではFinder、Adversarial Critic、Independent Verificationを別Attemptにし、同じmodelの自己確認を独立性と呼ばない |
 | 独立runのunionを取る | 多数決ではなくsource-bound candidateの和集合を保持する。少数routeを支持数で捨てない |
-| 一度のfan-outより短い反復を優先する | Wave→Synthesis→Critic→Missing-link Waveを回し、同じPromptの並列数だけを増やさない |
-| partial chainの不足primitiveをfresh runへ渡す | Route Fragmentから一つの具体的なmissing linkを作り、新しいFinderへ限定された問いとして渡す |
-| findingをruleとregressionへ変える | 検証済みFindingのうち構文的に一般化できる部分だけをSemgrep/CodeQLへ変換する。ruleは安価なcoverage floorであり、次の自由探索の代替ではない |
+| 一度のfan-outより短い反復を優先する | strong frontierへDepth Admissionした後にWave→Synthesis→Critic→Missing-link Waveを回し、同じPromptの並列数だけを増やさない |
+| partial chainの不足primitiveをfresh runへ渡す | Route Fragmentから具体的なmissing linkを作り、新しいFinderへ限定された問いとして渡す |
+| findingをruleとregressionへ変える | 検証済みFindingのうち構文的に一般化できる部分だけをSemgrep/CodeQLへ変換する。ruleはcoverage floorであり、自由探索の代替ではない |
 | 実Targetを早期に回す | 完璧なMapやbenchmark suiteを待たず、小さいvertical sliceを実戦投入し、失敗をtyped artifactとtestへ戻す |
-| large repositoryでは再分割する | summary、cheap ranking、source search、Dependency Wishlistを使い、単にagent数を増やさない |
+| large repositoryでは再分割する | summary、source search、Dependency Wishlist等を使い、単にagent数を増やさない |
 | setupとattackを分離しsupervisorを守る | acquisition/setupのegressとDiscovery/Verificationのnetwork policyを分け、root control planeをuntrusted sourceから隔離する |
 
-Anthropic文書の「map the system first」は、探索前に完全なSurface Mapを生成してFinderへ強制する意味には採らない。ここで必要なのは重複を避けるための対象把握と分割であり、Depth Campaignの最初のFinderはraw sourceだけを見て自由にpivotできる。[ADR 0113](../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)がこの適応を固定する。
+Anthropic文書の「map the system first」は、探索前に完全なSurface Mapを生成してFinderへ強制する意味には採らない。必要なのは対象をnavigateし独立した研究方向を持てることであり、Default Finderはraw sourceからTarget全体へ自由にpivotできる。[ADR 0113](../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)がこの適応を固定する。
 
-## 3. 深掘りと横展開を混ぜない
+## 3. 通常研究、Depth、Breadthを混ぜない
 
 ```mermaid
 flowchart TB
     target["Target Snapshot"]
-    depth["Depth Campaign<br/>raw-source free reasoning"]
+    semantic["Semantic Research Wave<br/>raw-source free reasoning"]
+    decision{"Root Evaluation"}
     verify["Independent Verification"]
+    depth["Depth Escalation<br/>Synthesis・Critic・missing link"]
+    stop["Evidence-backed Stop"]
     finding["Verified Finding"]
-    extract["Pattern Extraction"]
-    test["Rule Validation<br/>positive + negative fixtures"]
-    breadth["Breadth Campaign<br/>Semgrep・CodeQL・Map"]
-    admission["Depth Admission"]
+    breadth["Later Breadth<br/>rules・coverage・many targets"]
 
-    target --> depth --> verify --> finding
-    finding --> extract --> test --> breadth
-    breadth --> admission --> depth
+    target --> semantic --> decision
+    decision -->|"重大Hypothesis"| verify --> finding
+    decision -->|"strong frontier"| depth --> semantic
+    decision -->|"価値ある新証拠なし"| stop
+    finding -. "validated pattern" .-> breadth
 ```
 
-主探索はDepth Campaignである。高推論modelとraw-source navigationを使い、wrapper、state、second-order flow、複数request、機能間chainを追う。検証済みの発見から一般化できる構文patternだけをruleへ変換し、Breadth Campaignで多数Targetへ横展開する。
+通常のSemantic Research WaveとArgus-likeなDepth Escalationは同じraw-source reasoning基盤を使うが、後者だけがmulti-wave chain pursuitを必須にする。単発で十分に重大なSQLi、Stored XSS、PrivEsc等を「長いchainでない」という理由で未完成扱いしない。一方、弱いprimitiveでもhigh-impactへ伸びる具体的可能性があれば単独severityだけで捨てない。
 
-rule化できないsemantic chainを無理に一つのstatic ruleへ潰さない。途中primitiveだけを候補seedとして抽出し、最終判断はDepthへ戻す。Semgrep、CodeQL、AST、Surface Mapのnon-matchを安全性または探索終了の証拠にしない。二Modeの責任は[ADR 0114](../adr/0114-separate-breadth-and-depth-campaign-policies.md)を参照する。
+BreadthはWordfence PRISMが示すbreadth-first運行への対応であり、sink scannerの同義語ではない。短いAuthZやbusiness-logic bugもbreadthで発見し得る。将来はSemgrep、CodeQL、Surface Map、安価なmodel等で多数Targetへscaleするが、現在のhigh-impact semantic recallを確立するより先にcritical pathへ置かない。二Modeの責任は[ADR 0114](../adr/0114-separate-breadth-and-depth-campaign-policies.md)、通常運転とDepth Admissionは[ADR 0117](../adr/0117-optimize-for-high-impact-semantic-recall.md)を参照する。
 
 ## 4. 衝突時の優先規則
 
-1. Depthの最初のWaveはraw-source firstとし、Surface Map、AST route、既知rule hitを必須入力にしない。
-2. Finderへ`source-first`、`sink-first`、`state-chain`等を固定手順として強制しない。Approach Family Registryのlabelまたは開始lensに限る。
-3. Surface Mapは後段coverage、候補seed、記録、rule expansionへ使えるが、Map外pathを探索対象外にしない。
-4. Harnessは隔離、provenance、budget、artifact、barrier、停止を決定論的に管理し、chainを発想する意味判断はmodelへ残す。
-5. 通常のResearch loopは人間介入なしで反復する。Human OSはFinding後の外部提出判断と例外的なEvidence Requestを所有し、探索方法を操作しない。
-6. 実装済みのMap-first bootstrapまたは固定Strategy記述は移行元の現状説明であり、到達設計ではない。ADR 0113以後の判断が優先する。
+1. 最初のSemantic Research Waveはraw-source firstとし、Surface Map、AST route、既知rule hitを必須入力にしない。
+2. Finderへ`source-first`、`sink-first`、`state-chain`等を固定手順として強制しない。開始lensまたは観測labelに限る。
+3. Surface Map、PHP Program Index、Semgrep、CodeQLはnavigation、evidence、coverage、pattern expansionへ使えるが、Map外pathを探索対象外にしない。
+4. HarnessはTarget、隔離、provenance、budget、artifact、barrier、停止、fresh Verificationを管理し、何を見るか、何が怪しいか、何をchainするかというresearch decisionはmodelへ残す。
+5. 一つのFindingが出てもstrong frontierが残る場合は自動終了しない。低優先Findingもsemantic mechanismまたはRoute Fragmentとして意味があれば記録する。
+6. Depth Admissionは既知の最終impactではなくhigh-impact potentialで決める。強いread/write/file/auth/state capability、cross-request/cross-actor flow、persistent state、decode/reparse、producer/consumer mismatch、concrete missing link等を根拠にできる。
+7. 通常のResearch loopは人間介入なしで進める。Human OSはFinding後の外部提出判断と例外的なEvidence Requestを所有し、探索方法を操作しない。
+8. 実装済みのMap-first bootstrapまたは固定Strategy記述は移行元の現状説明であり、到達設計ではない。ADR 0113、0117以後の判断が優先する。
 
 ## 5. 設計変更の受入条件
 
 探索関連の変更は、少なくとも次を説明できなければ採用しない。
 
+- high-impact recallを改善するか、少なくとも既存baselineを落とさないことをどう確認するか。
 - 10原則のどれを改善し、何を観測すれば確認できるか。
 - 高recall Discoveryと厳しいVerificationのどちらに属するか。
-- raw-source routeを削除またはdowngradeしないか。
+- raw-source routeまたはMap外candidateを削除、downgradeしないか。
 - model/providerを差し替えてもartifactとsecurity boundaryが保たれるか。
-- positiveだけでなくnegative、blocked、unknownを残せるか。
-- 実Targetで短く試し、失敗をtestまたは設計判断へ戻せるか。
+- positiveだけでなくnegative、blocked、unknown、partial Fragmentを残せるか。
+- cost削減を目的とする場合、同じoracle-separated cohortでrecallを落とさないablationになっているか。
+- 実Targetで短く試し、失敗をtestまたは次の有限設計変更へ戻せるか。
