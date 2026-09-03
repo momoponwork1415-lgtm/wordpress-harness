@@ -6,17 +6,21 @@
 
 ```mermaid
 flowchart LR
-    principles["設計原則"] --> overview["Architecture"]
+    principles["Research Design Principles"] --> loop["Autonomous Research Loop"]
+    loop --> overview["Architecture Overview"]
     overview --> modules["Module Map"]
     modules --> current["Codebase Guide"]
 ```
 
-1. [調査設計原則](design/research-design-principles.md) — 変わりにくい探索原則
-2. [アーキテクチャ概要](design/architecture/architecture-overview.md) — system全体と信頼領域
-3. [Module Map](design/architecture/module-map.md) — Moduleの機能と関係
-4. [Codebase Guide](CODEBASE-GUIDE.md) — 現在の実装場所、状態、Test
+1. [調査設計原則](design/research-design-principles.md) — high-impact semantic recall、Harness/Agent境界、通常運転とDepth Admission
+2. [自由探索エージェント・ループ](design/architecture/autonomous-research-loop.md) — Semantic Research Wave、Root Evaluation、conditional Depth Escalation
+3. [アーキテクチャ概要](design/architecture/architecture-overview.md) — system全体と信頼領域
+4. [Module Map](design/architecture/module-map.md) — Moduleの機能と関係
+5. [Codebase Guide](CODEBASE-GUIDE.md) — 現在の実装場所、状態、Test
 
 現在の完成度だけを確認する場合は、日付付きの[最新監査](audits/harness-completeness-2026-09-03.md)を読む。実Targetで何が起きたかは[実験記録](experiments/README.md)を読む。
+
+探索policyの現在のhard-to-reverse decisionは[ADR 0117](adr/0117-optimize-for-high-impact-semantic-recall.md)である。`design/architecture.md`はTen-verb architectureの広いbaselineと詳細な設計履歴を保持するが、North Star、通常運転、Surface Mapの位置付け、Depth Admissionについて衝突する記述がある場合は、`Research Design Principles`、`Autonomous Research Loop`、ADR 0113/0117を優先する。現在動くMap-first実装は`Codebase Guide`だけを正本とし、到達設計と混同しない。
 
 ## 文書の種類
 
