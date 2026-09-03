@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR 0117
 ---
 
 # Make frontier compromise discovery the north star
