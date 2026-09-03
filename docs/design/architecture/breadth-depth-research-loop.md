@@ -1,125 +1,129 @@
-# 広域探索と深掘り調査（Breadth and Depth）
+# 通常研究・広域探索・深掘り調査（Semantic Research, Breadth and Depth）
 
-Status: accepted architecture view, 2026-09-02
+Status: accepted architecture view, 2026-09-03
 
-この図はWordfenceが公開したPRISMとArgusの役割差を、現在のResearch architectureへ対応付ける。`PRISM`と`Argus`はWordfenceの名称であり、このrepositoryのModule名には使わない。実装では広域探索と深掘り調査を同じCampaign基盤上の異なる運行として扱う。
+この文書は、通常のhigh-impact semantic research、Wordfence PRISMに対応するbreadth-first運行、Wordfence Argusに対応するdepth-first運行を区別する。`PRISM`と`Argus`はWordfenceの名称であり、このrepositoryのModule名には使わない。公開されていないprompt、agent topology、retrieval、memoryを推測して模倣しない。
 
-WordfenceはPRISMを多数の対象とbug classを短い経路で広く調べるbreadth-first側、Argusを一つのTargetに留まり、複数の弱点を長い依存順序へ接続するdepth-first側と説明している。公開されていないprompt、agent topology、retrieval、memoryを推測して模倣しない。[Wordfence, “Breadth and Depth”](https://www.wordfence.com/blog/2026/08/wordfence-argus-finds-complex-6-step-critical-rce-in-avada-theme-with-1-million-sales/#breadth-and-depth)
+PRISMとArgusの違いは`simple sink`対`semantic bug`ではない。PRISMは多数Targetとbug classを短いrouteで広く調べるbreadth-first側、Argusは一Targetに留まり複数primitiveを長い依存順序へ接続するdepth-first側である。したがって短いauthorizationやbusiness-logic bugもBreadthで発見し得るし、SQLiやStored XSSでも状態・変換・複数requestを深く追う場合がある。
 
-## 1. 深掘りを主探索にし、横展開をfeedback loopに置く
+## 1. 現在の通常運転
 
 ```mermaid
 flowchart TB
     target["Target Snapshot"]
-    deep["深掘り調査<br/>Depth"]
-    reason["Raw-source<br/>free reasoning"]
-    verify["End-to-end Verification"]
-    finding["Verified Finding"]
-    pattern["Pattern Extraction"]
-    rule["Rule Validation"]
-    broad["広域探索<br/>Breadth"]
-    fragments[("Candidates / Fragments")]
-    admission{"Depth Admission"}
+    semantic["Semantic Research Wave<br/>raw-source free reasoning"]
+    decision{"Root Evaluation"}
+    verify["Independent Verification"]
+    depth["Depth Admission"]
+    stop["Evidence-backed Stop"]
+    finding["Verified High-impact Finding"]
 
-    target --> deep --> reason --> verify --> finding
-    finding --> pattern --> rule --> broad
-    broad --> fragments --> admission --> deep
-    target --> broad
+    target --> semantic --> decision
+    decision -->|"重大Hypothesis"| verify --> finding
+    decision -->|"strong semantic frontier"| depth
+    decision -->|"価値ある新証拠なし"| stop
 ```
 
-現在の主探索は深掘り調査であり、すべてのTargetを先に広域探索へ通す必要はない。深掘りで独立検証されたFindingから、構文的に一般化できる部分だけをruleへ変換し、広域探索で横展開する。広域探索は単独Findingだけでなく、impactへ届いていないsource-boundな経路断片を残し、価値の高いものをDepth Admission経由で深掘りへ戻す。
+現在の主探索は全TargetをDepth Campaignへ投入することではない。まず高推論modelとraw-source navigationを使う有限Semantic Research Waveを行い、単独で重大なFindingを閉じる能力と、high-impactへ伸びるpartial primitiveを発見する能力の両方を持たせる。
 
-## 2. Modeを混ぜない
+Simply Schedule Appointments型SQLiやBrizy型Stored XSSのように一Waveで十分強いsource-bound routeが閉じるなら、そのままIndependent Verificationへ進める。TranslatePress ATOのように、public read、persistent producer、authentication-sensitive value等のFragmentが別々に見えて最終impactがまだ閉じないなら、Depth Admissionから追加投資する。
+
+## 2. Depth Admissionは最終impactを要求しない
+
+```mermaid
+flowchart LR
+    fragment["Route Fragment / Hypothesis"] --> admission{"Depth Admission"}
+    admission -->|"high-impact potential"| depth["Depth Campaign"]
+    admission -->|"standalone Finding"| verify["Verification"]
+    admission -->|"low value / no frontier"| stop["Record / Stop"]
+```
+
+Depth Admissionは`RCE sinkがある`または`ATOがほぼ完成した`ことを要求しない。次のようなsource-bound signalがあればhigh-impact potentialとして昇格できる。
+
+- unauthenticatedまたはlow-privilegeなread、write、file、auth、state capability
+- secret、token、credential、password-reset materialへのread path
+- role、capability、identity、session、authentication stateの変更
+- persistent attacker-controlled stateとlater privileged consumer
+- cross-requestまたはcross-actorなvalue/state flow
+- decode/reparse、parser boundary、producer/consumer mismatch
+- component間のsecurity assumption mismatch
+- 単独severityは低いが別primitiveと具体的に接続できるFragment
+- Criticが示す、閉じればimpactが大きく変わる具体的missing link
+
+これはcategory scoreではなく、同じTargetへ追加のhigh-reasoning budgetを投資するresearch decisionである。
+
+## 3. Depth Campaign
 
 ```mermaid
 flowchart TB
-    intake["Target Intelligence"]
-    breadth["Breadth Campaign<br/>多数Target・短いroute"]
-    admission{"Depth Admission"}
-    depth["Depth Campaign<br/>一Target・長いchain"]
-    shared["Shared Runtime<br/>Snapshot・Sandbox・CAS・Verification"]
+    frontier["Admitted Frontier"]
+    planner["Root Planner"]
+    f1["Finder A"]
+    f2["Finder B"]
+    f3["Finder C"]
+    f4["Finder D"]
+    barrier["Wave Barrier"]
+    synthesis["Root Synthesis"]
+    critic["Adversarial Critic"]
+    next{"Depth Decision"}
+    proof["Independent Verification"]
 
-    intake --> breadth --> admission
-    intake --> depth
-    admission -->|"高impact frontier"| depth
-    admission -->|"短いFindingで完結"| intake
-    shared --> breadth
-    shared --> depth
+    frontier --> planner
+    planner --> f1 --> barrier
+    planner --> f2 --> barrier
+    planner --> f3 --> barrier
+    planner --> f4 --> barrier
+    barrier --> synthesis --> critic --> next
+    next -->|"missing link"| planner
+    next -->|"source-bound route"| proof
 ```
 
-| 判断軸 | Breadth Campaign | Depth Campaign |
-| --- | --- | --- |
-| Target | 多数を短時間で回す | 一つへ留まる |
-| 主探索 | static seed + model triage | raw-source free reasoning（本projectの主経路） |
-| Static tool | Semgrep/CodeQL/Mapを積極利用 | 補助と後段pattern expansion |
-| Model | cheap/medium中心 | frontier reasoning中心 |
-| Loop | candidate→verify→次Target | family→synthesis→critic→missing link |
-| 終了 | target単位budgetと短いcoverage | evidence-backed closureまたはhard ceiling |
-| 指標 | targets/hour、precision、coverage、cost | chain closure、high-impact frontier、time-to-proof |
+4枠は固定されたSQLi/XSS/RCE roleではない。Root PlannerがTargetと過去artifactに応じて意味の異なるresearch thesisを割り当て、各Finderは同じoutput contractでTarget全体へ自由にpivotする。`source-first`、`sink-first`、`state-chain`等は逐次checklistではなく、開始lensまたは観測labelに限る。
 
-設計判断の正本は[ADR 0114](../../adr/0114-separate-breadth-and-depth-campaign-policies.md)とする。
+Root SynthesisはRoute Fragmentをsemanticに接続するmodel roleであり、Harnessがdeterministic scriptでchainを作らない。Adversarial Criticはattacker premise、actor、state identity、request ordering、防御、security assumption、因果hopを攻撃し、成立しない主張をFindingへ昇格させず、具体的missing linkへ変える。Findingへの昇格はfresh Independent Verificationだけが行う。
 
-## 3. Depth Campaignの構成
+## 4. Breadth Campaignは後段のscale-out
 
 ```mermaid
 flowchart TB
-    subgraph target["長いChain Campaign"]
-        planner["Root Planner"]
-        finder1["Finder A<br/>family 1"]
-        finder2["Finder B<br/>family 2"]
-        finder3["Finder C<br/>family 3"]
-        finder4["Finder D<br/>family 4"]
-        barrier["Wave Barrier"]
-        chain["Root Synthesis + Critic"]
-        nextwave["Evidence-driven Next Wave"]
-        proof["End-to-end Proof"]
+    findings["Verified Findings"]
+    patterns["Pattern / Lesson Extraction"]
+    rules["Validated Rules / Seeds"]
+    breadth["Breadth Campaign<br/>many targets"]
+    candidates["Hypotheses / Fragments"]
+    verify["Verification"]
+    admission["Depth Admission"]
 
-        planner --> finder1 --> barrier
-        planner --> finder2 --> barrier
-        planner --> finder3 --> barrier
-        planner --> finder4 --> barrier
-        barrier --> chain --> nextwave
-        nextwave -->|"未解決"| planner
-        nextwave -->|"経路成立"| proof
-    end
-
+    findings --> patterns --> rules --> breadth
+    breadth --> candidates
+    candidates -->|"short high-impact route"| verify
+    candidates -->|"strong frontier"| admission
 ```
 
-4枠は固定されたroleではない。Root PlannerがそのTargetと過去Waveに応じて意味の異なるidea familyを毎回選び、各Finderは同じ出力schemaを使ってTarget全体へ自由にpivotする。現在の実装状態は[Codebase Guide](../../CODEBASE-GUIDE.md)を参照する。
+Breadthは将来、多数Targetへ速くscaleするための運行である。Semgrep、CodeQL、Surface Map、PHP Program Index、安価または中価格Model Profile等を候補seedとcoverageへ積極利用できる。ただしstatic toolのnon-matchを安全性とせず、rule matchもFindingではなくHypothesisとして同じVerificationへ送る。
 
-`source-first`、`sink-first`、`state-chain`等は逐次checklistではなく、Approach Family Registryの観測labelまたは開始lensに限る。HarnessはTarget、tool、予算、artifact schema、隔離、barrier、証拠基準だけを強制する。
+現在はBreadthのtargets/hourやcostを最適化するより、Semantic ResearchとDepth Escalationがhigh-impact bugを取りこぼさないことを優先する。十分なrecall baselineを作った後に、validated Findingからpatternを横展開し、PRISM-likeなbreadthへ進む。
 
-## 4. 深掘り調査の反復
+## 5. 三つの運行を比較する
 
-```mermaid
-sequenceDiagram
-    participant C as Campaign Control
-    participant F as Free-reasoning Finder
-    participant R as Research Record
-    participant S as Chain Synthesis
-    participant V as Independent Verifier
+| 判断軸 | Semantic Research | Depth Campaign | Breadth Campaign |
+| --- | --- | --- | --- |
+| 役割 | 通常のhigh-impact探索 | strong frontierの深掘り | 多数Targetへのscale-out |
+| Target | 一Targetを有限Waveで調査 | 一Targetへ複数Wave留まる | 多数Targetを短く回す |
+| 主探索 | raw-source free reasoning | raw-source + fragments + missing links | static seed + model triage +短いreasoning |
+| Static tool | optional navigation / evidence / coverage | 補助のみ | 積極利用可能 |
+| Model | frontier reasoning中心 | frontier reasoning中心 | 将来cheap/mediumも利用 |
+| Loop | Wave → Root Evaluation | family → synthesis → critic → missing link | candidate → verify / admit → next target |
+| 成功 | standalone high-impact Hypothesisまたはstrong frontier | high-impact route closure | high-value findings / candidatesを多数回収 |
+| 終了 | evidence-backed stop / hard ceiling | evidence-backed closure / hard ceiling | target budget / coverage policy |
+| 当面の指標 | high-impact recall、root-cause quality | frontier closure、time-to-proof | 後でtargets/hour、precision、cost |
 
-    C->>F: Goal + lens + bounded tools
-    F->>R: Hypothesis / Fragment / Unknown
-    C->>S: terminal artifacts at barrier
-    S->>R: Chain candidate + missing link
-    alt linkが不足
-        C->>F: fresh Frontier Attempt
-        F->>R: new fragment or falsifier
-    else chainがsource-bound
-        C->>V: minimal chain hypothesis
-        V->>R: Witness + Causal Control
-    end
-```
+設計判断の正本は[ADR 0114](../../adr/0114-separate-breadth-and-depth-campaign-policies.md)と[ADR 0117](../../adr/0117-optimize-for-high-impact-semantic-recall.md)である。
 
-例えば匿名の値読出しと未認証の状態生成が別々に見つかった場合、単独severityで切り捨てない。各Fragmentの`attacker premise`、`precondition`、`consumed/produced value`、`state identity`、`effect/capability`、`unknown`、`falsifier`を保持し、Wave後に接続可能性を推論する。Findingへの昇格はChain Synthesisでは行わず、freshな独立Verificationだけが行う。
+## 6. Fragmentを単独severityで捨てない
 
-## Depth loop requirements
+例えば匿名の値読出しと未認証の状態生成が別々に見つかった場合、各Fragmentの`attacker premise`、`precondition`、`consumed/produced value`、`state identity`、`effect/capability`、`unknown`、`falsifier`を保持する。単独で低severityでも、別機能と接続してATO、PrivEsc、RCE等へ伸びる具体的可能性があればDepth Admissionへ進める。
 
-1. Finderは`Hypothesis`、`Route Fragment`、`Mapping Evidence Request`、`Closure Record`をterminal artifactとして返す。
-2. raw-source Context ProfileはTarget inventoryへbounded Glob/Grep/Readで到達できる。
-3. Root PlannerはApproach Family Registryから最大4個の独立familyを割り当てる。
-4. Wave barrierはterminal artifactを安定順にfoldし、Root SynthesisとAdversarial Criticへ渡す。
-5. missing linkはfresh Attemptへ、成立chainはIndependent VerificationとgVisor Labへ渡す。
+逆に単純なReflected XSS等が独立Findingとして低優先でも、そのroot mechanismがparser transition、decode/reparse、security-control bypass等を示すならFragmentとして残せる。優先度を下げることと、semantic evidenceを破棄することを同一にしない。
 
-設計根拠と公開実装の責務分担は[Free-reasoning Finder and evidence-shell harness references](../../research/free-reasoning-evidence-shell-harness-references.md)、既存の型付きchain判断は[ADR 0107](../../adr/0107-synthesize-cross-focus-chains-at-wave-barriers.md)、4 Finderの根拠は[ADR 0116](../../adr/0116-use-four-finder-slots-per-depth-wave.md)を参照する。
+設計根拠と公開実装の責務分担は[Free-reasoning Finder and evidence-shell harness references](../../research/free-reasoning-evidence-shell-harness-references.md)、Finder自由度は[ADR 0113](../../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)、4 Finderの根拠は[ADR 0116](../../adr/0116-use-four-finder-slots-per-depth-wave.md)を参照する。現在の実装状態は[Codebase Guide](../../CODEBASE-GUIDE.md)だけを正本とする。
