@@ -1,10 +1,18 @@
 # WordPress Harness
 
-WordPressプラグインのsource reviewを、LLMの探索力と独立した実証を組み合わせて反復するresearch harnessです。目指すのは、既知脆弱性のoracleなしにRCEまたは同等のsite-wide compromiseへ至る未知routeを発見・実証できる能力です。SQL injection、Stored XSS、account takeoverも独立した重要Findingおよび重大routeの構成要素として扱います。最上位の設計原則は、Wordfence Argusが示した10動詞です。
+WordPressプラグインのsource reviewを、LLMの自由な探索力と独立した実証を組み合わせて反復するresearch harnessです。第一目的は、既知脆弱性のoracleなしに**高impactな脆弱性を取りこぼさず発見する能力**を作ることです。特定のsinkやCWEを網羅すること自体を目的にせず、trust boundary、state transition、producer/consumer mismatch、decode/reparse、authorization assumption、複数機能のcompositionなど、**broken security semantics**を優先して探索します。
+
+> **Do not optimize for sinks. Optimize for broken security semantics.**
+
+RCEやsite-wide compromiseは最上位impactですが、長いchainだけを成功と定義しません。Unauthenticated SQL injection、意味的に深いStored XSS、account takeover、privilege escalation、arbitrary file operation、object injectionなど、単独でも十分に重大なFindingはその時点で価値があります。研究スタイルの参照は、darooの公開実績に見られる高impact classの広さと、wp2shell / Wordfence Argusに見られる有望primitiveを深く追う姿勢です。Argus型のmulti-wave深掘りは全Targetへ常時適用せず、RCE・ATO・PrivEsc等へ伸びる強いsignalや未解決chainがある時に追加投資します。
+
+最上位の設計原則は、Wordfence Argusが示した10動詞です。
 
 > confine, constrain, focus, motivate, parallelize, hypothesize, verify, record, prioritize, iterate
 
-これらを標語や10段の固定pipelineではなく、所有module、永続artifact、実行時に観測できるgateを持つcontrol propertyとして実装します。Discoveryが作るものは未確認の`Hypothesis`であり、cleanな環境で独立Verificationを通過したものだけを`Finding`と呼びます。
+これらを標語や10段の固定pipelineではなく、所有module、永続artifact、実行時に観測できるgateを持つcontrol propertyとして実装します。Harnessはscope、budget ceiling、tool permission、isolation、provenance、persistence、fresh verificationを所有し、**どのfileを見るか、何が怪しいか、どの脆弱性classを疑うか、どこへpivotするかというresearch decisionはAgentへ残します**。Discoveryが作るものは未確認の`Hypothesis`または`Route Fragment`であり、cleanな環境で独立Verificationを通過したものだけを`Finding`と呼びます。
+
+現段階ではtoken costやwall timeを最小化するより、high-impact recallとroot-cause qualityを優先します。budgetは暴走を防ぐhard ceilingとして持ちますが、性能を落としてまで早期に削りません。コスト最適化は、公開blind benchmarkとprospective Campaignでrecall baselineを作った後にablationで行います。
 
 旧`whitebox-harness`からcodeやcontractを移植せず、`wp2shell` promptの意図を小さなModuleとversioned artifactへ分解しています。Target source、prompt、provider output、payload、未公開FindingはGit外に置きます。現在の完成度は[Codebase Guide](docs/CODEBASE-GUIDE.md)、公開CVEでの実測は[experiments](docs/experiments/README.md)だけを正本とします。
 
@@ -12,6 +20,8 @@ WordPressプラグインのsource reviewを、LLMの探索力と独立した実�
 
 - [Documentation Guide — 文書の正本と読み方](docs/README.md)
 - [Module Map — コードを読まずに機能関係を把握する](docs/design/architecture/module-map.md)
+- [Autonomous Research Loop — semantic researchとdepth escalation](docs/design/architecture/autonomous-research-loop.md)
+- [Breadth and Depth — PRISM/Argusを運行として分離する](docs/design/architecture/breadth-depth-research-loop.md)
 - [Harness Completeness Audit — 成功・不足・次の優先順位](docs/audits/harness-completeness-2026-09-03.md)
 - [Codebase Guide — 現在のInterface・実装・Test・設計の対応](docs/CODEBASE-GUIDE.md)
 - [Architecture overview diagram](docs/design/architecture/architecture-overview.md)
@@ -61,8 +71,8 @@ node dist/cli.js campaign inspect --database .private/research.sqlite --campaign
 
 ```mermaid
 flowchart TB
-    plugins["WordPress plugins"] --> research["Autonomous Research"]
-    research --> findings["Verified Findings"]
+    plugins["WordPress plugins"] --> research["Autonomous Semantic Research"]
+    research --> findings["Verified High-impact Findings"]
     research -. "later context" .-> selection["Target Intelligence"]
     findings -. "outside Research" .-> external["Submission and vendor work"]
 ```
