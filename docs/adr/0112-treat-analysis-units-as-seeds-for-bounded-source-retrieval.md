@@ -10,6 +10,6 @@ Attempt-localなSource Evidence Queryはsourceを読むだけで、進行中のS
 
 Source Understandingはsource検索とsymbol解決の意味を所有し、Model Executionはrole別tool公開、Snapshot/Lease binding、budget、policy decision、Tool Receiptを所有する。`ModelExecution.run(AttemptPlan)`と`CampaignRunner.run(CampaignRunPlan)`の公開Interfaceは増やさず、Campaign Controlへ個別tool callやprovider protocolを漏らさない。
 
-この判断は、固定contextを境界にしないOpenAnt、Codex Security、Anthropicのsource navigation、OpenAntのread pathとpromote-only reachability signalの分離、W3C PROVのusage/generation/derivation分離を本harnessへadaptationしたものである。private custom-wrapper benchmarkでも、同じ固定Top-N/Analysis Unitの反復がcontext外sourceを観測できない限界を示した。根拠と適用限界は[Evidence-guided Finder loopの設計根拠](../research/evidence-guided-finder-loop-design-evidence.md)に記録する。
+この判断の目的は、固定contextまたはMap seedをFinderの探索境界にしないことである。現在のより強い原則は[ADR 0113](0113-keep-finder-methods-free-behind-an-evidence-shell.md)と[ADR 0117](0117-optimize-for-high-impact-semantic-recall.md)を参照する。
 
-model-visible operationの正確な分割、query grammar、call/byte/hop/wall上限、pagination、retention、default Model ProfileはADRへ固定しない。これらは合成Boundary Pairとoracle-separated private benchmarkで測り、versioned policyまたはProfileとして変更可能に保つ。queryの`not-found`、`ambiguous`、`truncated`、`budget-exhausted`、`policy-denied`を`safe`へ読み替えず、同一queryまたはresponseのno-progressは理由付きで有限終了する。
+model-visible operationの正確な分割、query grammar、call/byte/hop/wall上限、pagination、retention、default Model ProfileはADRへ固定しない。これらはoracle-separated benchmarkで測り、versioned policyまたはProfileとして変更可能に保つ。queryの`not-found`、`ambiguous`、`truncated`、`budget-exhausted`、`policy-denied`を`safe`へ読み替えず、同一queryまたはresponseのno-progressは理由付きで有限終了する。

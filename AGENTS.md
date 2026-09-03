@@ -1,101 +1,85 @@
 # Repository development rules
 
-このファイルはrepository全体に適用する、長期的に安定した開発規則である。Codexのinstruction discoveryは[OpenAIのAGENTS.md documentation](https://learn.chatgpt.com/docs/agent-configuration/agents-md)に従う。subtree固有の規則が実際に必要になるまでは、nested `AGENTS.md`を作らない。
+このファイルはrepository全体の安定した開発規則だけを置く。subtree固有の規則が必要になるまでnested `AGENTS.md`を作らない。
 
-## Mission and required reading
+## Mission
 
-- North Starは、oracle-freeなprospective Campaignで**high-impactなbroken security semanticsを高recallで発見し、独立Verificationで実証すること**である。RCEやsite-wide compromiseは最上位impactだが唯一の成功条件ではない。通常運転はSemantic Research Waveとし、strong semantic frontierだけをconditional Depthへ昇格する。
-- 作業前に全ドキュメントを通読しない。[Documentation](docs/README.md)から目的別の入口を選び、通常のcode変更は[Codebase Guide](docs/CODEBASE-GUIDE.md)で対象Module・公開Interface・Behavior Testを特定してから、[Design Documentation](docs/design/README.md)経由でowning Seamだけを読む。system全体の変更時だけArchitecture OverviewやModule Architecture、理由が必要な時だけSeamからlinkされたADRを読む。
-- agentic harness全体の設計参照資料は[docs/REFERENCES.md](docs/REFERENCES.md)の3件とする。個別のsecurity methodologyは一次資料を補助根拠にできるが、外部資料が直接支持する主張とharness固有の推論を分け、3件と同列の第4の設計参照資料にしない。Codex文書やtool文書は開発手順の参考として扱う。
-- `CONTEXT.md`、code、Issueでは英語のdomain termとcode identifierを正式語として使う。user向け説明は日本語で書き、必要に応じて「正式語（日本語の意味）」を併記し、[日本語用語早見表](docs/JAPANESE-GLOSSARY.md)から意味を確認できるようにする。
-- Mermaid図の箱には短い正式語だけを置き、長い日本語説明、制約、例は図の直下へ出す。GitHub上で文字が見切れる長さのlabelを作らない。
+- North Starは、oracle-freeなprospective Campaignで**high-impactなbroken security semanticsを高recallで発見し、独立Verificationで実証すること**。
+- RCEやsite-wide compromiseは最上位impactだが唯一の成功条件ではない。
+- 通常運転はraw-source-firstのSemantic Research Wave。strong semantic frontierだけをconditional Depthへ昇格する。
+- **Do not optimize for sinks. Optimize for broken security semantics.**
+- **Harness owns the research process; agents own research decisions.**
+
+## Reading path
+
+全ドキュメントを通読しない。
+
+1. [Documentation](docs/README.md)から目的別の入口を選ぶ。
+2. code変更は[Codebase Guide](docs/CODEBASE-GUIDE.md)でowner、Interface、Behavior Testを特定する。
+3. [Design Documentation](docs/design/README.md)からowning Seamだけを読む。
+4. 理由が必要な時だけSeamからlinkされたADRを読む。
+5. 次の有限workと受入条件はGitHub Issueを正本とする。
 
 ## Architecture
 
-- 最上位の設計原則は`confine -> constrain -> focus -> motivate -> parallelize -> hypothesize -> verify -> record -> prioritize -> iterate`の10語とする。各原則は所有module、永続artifact、観測可能なgateへ具体化する。
-- 初期systemはstrict TypeScriptのmodular monolithとし、`Target Intelligence -> Research -> Human OS`をprimary result flowとする。feedbackは公開contractを介し、context内部への逆向き依存を作らない。
-- context間では不変かつversionedなcontractだけを渡す。別contextのstorage、内部module、provider objectを直接参照しない。
-- `Target Intelligence`は選定と取得を所有し、oracleを除いた`Target Intake Packet`だけを`Research`へ渡す。
-- `Research`は探索だけでなく、独立Verification、記録、優先順位付け、反復を所有する。Verificationを任意の後処理にしない。
-- Explorationの通常運転はraw-source-firstのSemantic Research Waveとする。Root Plannerは独立research thesisまたは開始lensを割り当てるが、Finderのfile、CWE、手順、探索範囲を固定しない。重大HypothesisはVerificationへ、strong semantic frontierだけをDepth Admissionへ送る。DepthではRoute Fragmentをdurableに保持し、fresh Synthesis、Adversarial Critic、missing-link Waveを反復する。worker間chat、model多数決、vulnerability class別agentを探索多様性の根拠にしない。
-- `Human OS`は人間のreviewと判断を所有する。Researchの事実を変更せず、digest固定した`Human Review Packet`への判断を追記する。
-- CLI、将来のweb UI、remote controlはadapterであり、domain policyまたはlifecycleを所有しない。
-- moduleは小さなinterfaceの背後に複雑さを隠す。二つ目の現実のadapterがない段階で汎用portやrepository abstractionを作らない。
+- strict TypeScriptのmodular monolithとし、`Target Intelligence -> Research -> Human OS`をprimary flowとする。
+- context間はversioned handoff contractだけを渡し、別contextのstorageや内部moduleを直接参照しない。
+- ResearchはCampaign Control、Source Understanding、Exploration、Verification、Model Execution、Research Recordの6 Moduleで構成する。
+- Model Executionはprovider/process/tool bindingを所有するが研究判断を所有しない。
+- ExplorationはFinderのfile、CWE、手順を固定しない。最大4個の独立research thesisを保ち、支持数やmodel多数決でcandidateを捨てない。
+- Surface Map、PHP Program Index、AST、Semgrep、CodeQLは補助toolであり探索空間ではない。
+- Finding昇格はfresh Independent Verificationだけが行う。
 
 ## Change discipline
 
-- 一回の変更は一つの観測可能なbehaviorまたは一つの明確な文書判断へ絞る。将来用のframeworkや未使用の設定を先回りして追加しない。
-- public CLIのcommand、argument、flag、accepted value、environment variable、defaultは互換性を持つInterfaceとして扱い、変更時はhelp、runtime schema、Behavior Testを同じ変更で更新する。
-- 実在するfailureまたはsecurity propertyに根拠がないsanitization、fallback、limit、abstractionを推測で追加しない。
-- North Starへ直接寄与する探索、Source Mapping、Verificationを優先する。UI、notification、multi-user、運用自動化は、安全隔離とevidence integrityに必要な最小限を除き、実戦で観測した故障をissue化して直す。
-- hard-to-reverse、文脈なしでは意外、実在するtrade-offの3条件を満たす判断だけADRにする。既存ADRの歴史を書き換えず、新しいADRでsupersedeする。
-- domain termが変わったら該当`CONTEXT.md`と[日本語用語早見表](docs/JAPANESE-GLOSSARY.md)を同じ変更で更新する。`CONTEXT.md`へ実装詳細を置かない。
-- Module ownership、公開Interface、production status、主要な実装pathまたはBehavior Testの対応が変わったら[Codebase Guide](docs/CODEBASE-GUIDE.md)を同じ変更で更新する。Guideへ内部helperや詳細仕様を複製しない。
-- 外部入力、event、artifact、prompt、Model Profileはversionとprovenanceを持ち、runtime schemaでdecodeする。
-- clock、ID、randomness、provider response順をdomain判断へ暗黙に混ぜない。再現可能な入力とstable orderingを使う。
-- deterministic source fact、model推論、未解決gapを同じ真偽値へ潰さない。modelは観測済みfactを変更できず、追加relationはsourceまたは版付きKnowledgeの根拠を持つ。未解決のcode identifierは既存Evidence Route schemaと同じ`unknown`を使う。
+- 一回の変更は一つの観測可能なbehaviorまたは一つの設計判断へ絞る。
+- 将来用framework、未使用設定、二つ目の実装がない汎用abstractionを先回りして作らない。
+- public CLI、versioned schema、Module ownership、domain term、security invariantの変更は対応するTestと正本docを同じ変更で更新する。
+- private helperや局所algorithmの変更をdocへ文章で複製しない。
+- hard-to-reverseで実在するtrade-offがある判断だけADRにする。判断変更は新ADRでsupersedeする。
+- cost削減はrecall baseline確立後のablationで行い、high-impact recallを落とす最適化を採用しない。
 
-## Documentation discipline
+## Documentation
 
-- root `README.md`はprojectの短い入口に保つ。mission、最小architecture、Quickstart、少数のDocs linkだけを置き、詳細なdesign index、research reference一覧、implementation statusを複製しない。
-- [Documentation](docs/README.md)は目的別ルーターであり、順番に全資料を読ませるtutorialにしない。[Design Documentation](docs/design/README.md)はowner別のdesign indexとする。
-- 現在の実装状態、file path、Behavior Test対応は`docs/CODEBASE-GUIDE.md`だけへ置き、Seam、architecture、module設計へ複製しない。
-- Seam文書はInterface、不変条件、所有state、許可依存、禁止依存、failure semantics、acceptance scenarioだけを扱う。実装version、LOC、run時刻、Target別成否、現在の未実装一覧、次Issueの作業順を書かない。
-- Module固有の仕様はowning Seamへ置く。cross-moduleの責務でない詳細を巨大な中央architecture文書へ追加しない。新しい文書を作る前に既存のowner Seam、Behavior Test、Issueのどれかで足りないか確認する。
-- Architecture Viewは理解用の投影に限定し、Seamの仕様を全文複製しない。通常のreading pathは少数のmain viewだけに保ち、specialized viewは変更対象になった時だけ読む。
-- 実Targetの成否と時系列は日付付き`docs/experiments/`、完成度snapshotは`docs/audits/`へ置き、既存fileを後日のcodeへ追随させない。
-- 外部資料、比較、設計根拠の生データは`docs/research/`へ置く。採用済み結論はowning designまたはADRへ短く反映し、Research Noteをproduction仕様として参照しない。
-- 完了Goal、旧baseline、旧実装図は`docs/history/`へ凍結し、active designまたは通常のreading pathから参照しない。固有の判断または証拠が他の正本へ残っていれば削除できる。
-- 次の有限work、受入条件、作業順はGitHub Issueへ置く。作業日誌をdesignへ転記しない。
-- hard-to-reverseな判断だけADRへ置く。ADR本文は実装追随で書き換えず、判断変更は新ADRでsupersedeする。
-- code変更で文書更新が必要なのは、公開Interface、Module ownership、domain term、CLI Interface、security invariant、正本status tableが変わる場合だけとする。private helper、内部file、局所algorithmの変更を文章で再現しない。
+- root `README.md`はmission、Quickstart、少数のDocs linkだけに保つ。
+- 現在の実装状態、source path、Behavior Test対応は`docs/CODEBASE-GUIDE.md`だけへ置く。
+- Module固有のInterface、不変条件、failure semanticsはowning Seamへ置く。
+- Architecture Viewは理解用の図に限定し、Seamの詳細を複製しない。
+- 実Targetの公開可能な実測は`docs/experiments/`へ置く。
+- 外部資料の調査noteは、現在の設計・評価で再利用するものだけ`docs/research/`へ残す。
+- 完了計画、旧設計、過去snapshotを保存用Markdownとして残さない。Git履歴を使う。
+- 新規docを作る前に、既存Seam、Behavior Test、Issueのどれかで足りないか確認する。
 
 ## Design gate
 
-- 新しいmoduleまたはMilestoneのproduction codeへ入る前に、owner context、公開seam、所有state/artifact、許可依存、禁止依存、failure semantics、受入scenarioを設計文書へ`proposed`として記録する。
-- production設計の重要なbehaviorは、一次資料で確認したreference implementation、公開標準またはsecurity invariant、再現可能なlocal experimentの少なくとも一つへ結び付ける。設計文書は、外部資料が直接支持する部分、本harnessへのadaptation、まだ未検証の選択を分ける。根拠がない新規案は`accepted`にせず、反証条件を持つprototypeまたはablationを先に行う。可逆な内部helper、命名、機械的refactorへ形式的な出典を要求しない。
-- roadmapまたは高水準architectureへの同意を、個別module設計への同意と読み替えない。userが設計を確認して`accepted`となるまでproduction codeを書かない。
-- 設計を提示した同じturnで、明示的な実装指示なしにproduction codeへ進まない。mechanical scaffold、調査fixture、文書だけはこのgateの対象外とする。
-- 既存codeがacceptedなmodule mapと一致しない場合は、次の機能を足す前に差分と移行順を示す。互換性を保つ段階的refactorを優先し、全面rewriteを既定にしない。
+- 新しいproduction behaviorへ入る前に、owner、public seam、owned state/artifact、failure semantics、acceptance scenarioを明確にする。
+- roadmapや高水準architectureへの合意を、個別module実装への合意と読み替えない。
+- 既存codeがaccepted designと一致しない場合は、機能追加より先に差分を示し、段階的refactorを優先する。
 
-## Test-driven development
+## Tests and checks
 
-- 新しいbehaviorはred -> greenを一つのvertical sliceずつ進める。mechanical change、文書、test/build scaffoldを除き、先に失敗するtestを作る。
-- 新しいtest surfaceを作る前に、public interfaceとtest対象のseamを設計文書へ明記し、userと合意する。testはそのseamからだけ観測する。
-- private method、内部call count、内部module同士の呼出順、直接database queryでbehaviorを検証しない。
-- expected valueはspecification、固定fixture、worked example等の独立した根拠から作り、implementationと同じ計算をtest内で再実装しない。
-- mockはprovider CLI、clock、filesystem等のsystem seamだけに使う。所有する内部moduleはmockせず、可能ならreal local substituteを使う。
-- fixtureは合成データを使い、private target、未公開Finding、credentialをTest、Issue、PR、CI artifactへ入れない。
-- Target名、version、mechanism、探索成否を結び付けた実験結果は、対応CVEが公開済みの場合だけGit管理下へ置く。未公開または審査中のFindingはGit外のprivate artifactに残し、commit message、Issue、fixture、CI出力にも含めない。[ADR 0115](docs/adr/0115-publish-only-public-cve-experiment-results.md)に従う。
-- refactorはgreenになったsliceのreview段階で行い、behavior変更と混ぜない。
-- Ledger replay、crash境界、unknown event version、stable work ordering、minority Hypothesis保持、Boundary Pairのpositive/negative/controlは回帰testを必須とする。
+- 新しいbehaviorは可能な限りred -> greenで一つのvertical sliceずつ進める。
+- Testはpublic seamからbehaviorを観測し、private method、内部call順、database rowを固定しない。
+- mockはprovider CLI、clock、filesystem等のsystem seamへ限定する。
+- fixtureへprivate Target、未公開Finding、credentialを入れない。
+- commit前のrepository gateは`pnpm check`。
+- Ledger replay、stable ordering、minority Hypothesis保持、fresh Verification、Witness/Causal Controlは回帰対象とする。
 
 ## TypeScript and PHP
 
 - TypeScriptは`strict`、`noUncheckedIndexedAccess`、`exactOptionalPropertyTypes`、`useUnknownInCatchVariables`を維持する。
-- `any`、unchecked type assertion、non-null assertionをvalidationの代用にしない。versioned discriminated unionとexhaustive checkingを使う。
-- PHPはpinned `nikic/PHP-Parser` helperに限定し、Campaign lifecycleまたは正本stateを所有させない。
-- target PHP、target autoloader、target Composer script、WordPress bootstrapをsource analysisのためにhost上で実行しない。
-- Pythonは短命な補助解析に限る。Goは測定されたprocess supervisionまたはCPU bottleneckが生じた時に再評価する。
+- `any`やunchecked assertionをvalidationの代用にしない。versioned discriminated unionとruntime schemaを使う。
+- PHP helperはpinned `nikic/PHP-Parser`に限定し、Campaign stateを所有させない。
+- source analysisのためにtarget PHP、autoload、Composer script、WordPress bootstrapをhost上で実行しない。
 
 ## Security and evidence
 
-- 受入sourceは信頼しない。元配布物をdataとして保存し、安全検査済みの正規化file manifestを別に作る。absolute/parent traversal、link、special file、path衝突、展開quota超過を拒否し、host上でtarget package scriptを実行しない。
-- target codeをhostで実行しない。Agent Sandboxと隔離検証環境（Verification Lab）へcontainer socketを渡さず、gVisor unavailable時にevidentiary runをplain Dockerへfallbackしない。
-- Campaign setupは版付き・型付きSetup Planの許可操作だけをgVisor内で実行する。model提案を実行権限にせず、任意shell、任意PHP、未固定dependency downloadをSetup Planへ許可しない。
-- model transportは公式配布・公式認証・固定version・安全性probeを満たすものだけを有効化し、consumer OAuthやsubscription keyを独自APIへ転用しない。
-- provider組込みshell、web、plugin、hook、ambient MCPをworkerへ公開しない。source read/search、隔離scratch計算、typed Experimentはharness所有のrole別tool manifestからだけ提供する。
-- FinderへWordPress runtime、HTTP/browser、network、任意shellを渡さない。静的に解けないmapping relationはSource Mapping内部の型付きRuntime Observationだけをfresh Lab cloneで観測し、Finding用Witnessと混同しない。
-- provider credentialをmodel-visibleなfilesystem、environment、tool、prompt、transcriptへ置かない。tool subprocessから認証状態を隔離できないtransportはproduction不適格とする。
-- egressはdefault-denyとし、外部serviceはlocal emulator、record/replay、`External Dependency Grant`の順で検討する。
-- credential、token、private target、transcript、PoC、成立証拠（Witness）をGitへcommitしない。secret値をLedger、prompt、artifact metadataへ残さない。
-- RCEの証明はdisposable Lab内のnonce付き`Execution Canary`だけを使う。reverse shell、persistence、host access、許可外egressを使わない。
-- static ruleまたはmodel verdictだけで`Finding`へ昇格させない。固定Target Snapshot、独立Verification、成立証拠、因果対照実験（Causal Control）を要求する。
-- 外部report、vendor連絡、issue、PR、公開artifactの作成・送信は明示的なuser authorizationなしに行わない。Human ConfirmationはExternal Action Authorizationではない。
-
-## Git and review
-
-- userの未関連変更を保持する。private campaign dataや生成物をstageしない。
-- red-green中は`pnpm test <test-path>`で対象Seamだけを反復し、commit前はofflineかつ決定的な全体gateとして`pnpm check`を実行する。commandが未整備なら、その不足を隠さずhand-offへ記録する。
-- reviewでは、oracle leakage、context ownership違反、Research事実のmutation、Verification bypass、raw transcript handoff、非決定的replay、model多数決によるsource-bound route消失、Runtime ObservationのWitness化、危険なtarget execution、grantなしegressをblockerとして扱う。
-- safe pathは、sanitized immutable handoff、append-only record、fresh Verification、typed Experiment、explicit grant、human decisionの分離である。
+- Target sourceはuntrusted dataとして扱う。host上でtarget package scriptを実行しない。
+- Agentへprovider credential、container socket、ambient MCP、任意network、任意shellを渡さない。
+- Finderはread-only source toolsと隔離scratchを使い、runtime attackを行わない。
+- VerificationだけがHypothesisに拘束したtyped Experimentをfresh Labで実行する。
+- gVisor unavailable時にevidentiary runをplain Dockerへfallbackしない。
+- static ruleまたはmodel verdictだけでFindingへ昇格させない。WitnessとCausal Controlを要求する。
+- credential、private target、transcript、PoC、未公開FindingをGitへcommitしない。
+- RCEの証明はdisposable Lab内のnonce付きExecution Canaryに限定し、reverse shell、persistence、host access、許可外egressを使わない。
+- external report、vendor連絡、公開artifactの送信は明示的なuser authorizationなしに行わない。
