@@ -20,6 +20,20 @@
 4. 理由が必要な時だけSeamからlinkされたADRを読む。
 5. 次の有限workと受入条件はGitHub Issueを正本とする。
 
+## Agent skills
+
+### Issue tracker
+
+IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本とし、`gh` CLIで操作する。`docs/agents/issue-tracker.md`を参照する。
+
+### Triage labels
+
+`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`の5役割を既定の文字列のまま使う。`docs/agents/triage-labels.md`を参照する。
+
+### Domain docs
+
+`CONTEXT-MAP.md`が3 contextを宣言するmulti-context構成。`docs/agents/domain.md`を参照する。
+
 ## Architecture
 
 - strict TypeScriptのmodular monolithとし、`Target Intelligence -> Research -> Human OS`をprimary flowとする。
