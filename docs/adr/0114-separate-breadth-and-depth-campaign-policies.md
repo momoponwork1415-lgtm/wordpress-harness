@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; normal-operation priority amended by ADR 0117
 ---
 
 # Separate breadth and depth Campaign policies
@@ -13,3 +13,5 @@ BreadthはTarget Intelligence、Semgrep/CodeQL、Surface Map、cheap/medium Mode
 Depthで独立検証されたFindingはPattern Extractionへ渡す。構文的に一般化でき、positiveとnegative fixtureで境界を検査できる場合だけSemgrep/CodeQL ruleへ昇格し、Breadthの安価なcoverage floorにする。wrapper、cross-request state、business logic、複数primitiveの意味接続を一つのruleで表せない場合は、途中primitiveをseedとして残し最終判断をDepthへ戻す。rule non-matchはDepth候補の反証またはCampaign closureに使わない。
 
 この判断は、Wordfenceが公開するPRISMのbreadthとArgusのdepthの役割差を設計上も分離し、Semgrep-first実務で確認されたscale上の強みとwrapper/state/multi-step上の弱みを混同しないためである。
+
+> ADR 0117以後、全Targetを最初からDepth Campaignへ入れる運行は標準ではない。raw-source-firstのSemantic Research Waveを通常運転とし、strong semantic frontierがある場合だけDepth Admissionから本ADRのDepth policyへ昇格する。BreadthとDepthを別policyにする判断自体は維持する。
