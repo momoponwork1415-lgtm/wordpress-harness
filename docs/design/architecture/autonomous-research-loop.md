@@ -1,8 +1,8 @@
 # 自由探索エージェント・ループ（Autonomous Research Loop）
 
-Status: accepted target architecture, 2026-09-02
+Status: accepted target architecture, 2026-09-03
 
-このviewは、wp2shell/CDC由来の自由な探索loopを、Anthropic型Finder、Semgrep型の隔離、Codex Security型のdurable workflowへ分解した到達形を示す。正本は[ADR 0113](../../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)と[ADR 0116](../../adr/0116-use-four-finder-slots-per-depth-wave.md)である。
+このviewは、raw-source free reasoningを通常運転にし、強いhigh-impact frontierが現れた時だけwp2shell / Argus-likeなmulti-wave深掘りへ昇格する到達形を示す。正本は[ADR 0113](../../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)、[ADR 0116](../../adr/0116-use-four-finder-slots-per-depth-wave.md)、[ADR 0117](../../adr/0117-optimize-for-high-impact-semantic-recall.md)である。
 
 ## 1. 自由にする内側、固定する外側
 
@@ -10,124 +10,134 @@ Status: accepted target architecture, 2026-09-02
 flowchart TB
     target["Target Snapshot"]
     shell["Evidence Shell<br/>scope・budget・provenance"]
-    tools["Source Tools<br/>List・Search・Read"]
-    finder["Free-reasoning Finder<br/>発想・pivot・missing link"]
+    tools["Source Tools<br/>Glob・Grep・Read"]
+    finder["Free-reasoning Finder<br/>発想・pivot・semantic reasoning"]
     output["Typed Output<br/>Hypothesis・Fragment・Unknown"]
     record[("Ledger / CAS")]
-    map["Surface Map<br/>任意のenrichment・coverage"]
+    static["Map・Program Index・AST<br/>Semgrep・CodeQL"]
 
     target --> shell --> finder --> output --> record
     tools --> finder
-    map -. "hint only" .-> finder
-    output -. "coverage update" .-> map
+    static -. "optional navigation / evidence / coverage" .-> finder
 ```
 
-Surface Mapは地図であって探索エンジンではない。粗いMapまたはMapなしでも、Finderはmanifest-boundなTarget全体を探索できる。静的解析の見落としをmodelの見落としへ変換しない。
+Harnessが所有するのはTarget、tool permission、budget ceiling、並列数、隔離、source provenance、typed artifact、persistence、fresh Verification、停止である。どのfileを見るか、何が怪しいか、どの脆弱性classを疑うか、どこへpivotするか、どのprimitiveを接続するかというresearch decisionはFinderへ残す。
+
+Surface Mapは地図であって探索エンジンではない。粗いMapまたはMapなしでも、Finderはmanifest-boundなTarget全体を探索できる。PHP Program Index、AST、Semgrep、CodeQLも同じく補助道具であり、non-matchを`safe`、candidate reject、priority downgrade、Campaign closureへ使わない。静的解析の見落としをmodelの見落としへ変換しない。
+
+### Raw-source first
 
 ```mermaid
 flowchart TB
-    source["Raw Source"]
-    nav["Bounded Glob・Grep・Read"]
-    reason["Model Reasoning"]
-    candidate["Source-anchored Candidate"]
-    static["Map・AST・Semgrep・CodeQL"]
-    expansion["Coverage・Pattern Expansion・Regression"]
-
-    source --> nav --> reason --> candidate
-    static -. "optional hints" .-> reason
-    candidate --> expansion
-    static --> expansion
-```
-
-Static toolのnon-matchから`safe`を導かない。Map nodeのないpathとcandidateを受理するBehavior Testを必須にする。Mapあり/なし比較でMapが繰り返しrecallを下げるなら、Finder inputから廃止し、offline coverageだけへ残す。
-
-### Mapを見せる順序
-
-```mermaid
-flowchart TB
-    raw["Phase 1<br/>Raw-source Discovery"]
-    blind["Mapを見ない<br/>独立idea family"]
+    raw["Phase 1<br/>Raw-source Semantic Research"]
     barrier["Independence Barrier"]
-    mapped["Phase 2<br/>Map-assisted Coverage"]
-    union["Candidate Union"]
+    mapped["Optional Phase 2<br/>Map-assisted Coverage"]
+    union["Candidate / Fragment Union"]
 
-    raw --> blind --> barrier --> mapped --> union
-    barrier --> union
+    raw --> barrier --> union
+    barrier -. "coverage debtが必要な場合" .-> mapped --> union
 ```
 
-Default FinderへMap excerpt、node priority、AST routeを見せない。Map-assisted agentは独立探索後にgapを追加するだけで、raw-source candidateを消去またはdowngradeできない。これにより詳細Mapの利点を残しつつ、ASTに表現されないWordPress/PHPのdynamic routeを探索対象外にしない。
+Default FinderへSurface Map excerpt、node priority、AST-derived routeを必須入力にしない。後段のmap-assisted workは未探索surfaceを追加できるが、raw-source candidateを削除、downgrade、反証できない。PHPのdynamic callback、string hook、cross-request database state、parser境界、機能間のsecurity assumption等、Mapへ表現されないrouteも常にin-scopeである。
 
-## 2. 一つのWork Wave
+## 2. 通常運転: Semantic Research Wave
 
 ```mermaid
 flowchart TB
-    planner["Root Planner<br/>独立idea familyを割当て"]
-    registry[("Approach Family<br/>Registry")]
-    f1["Finder A<br/>自由探索"]
-    f2["Finder B<br/>自由探索"]
-    f3["Finder C<br/>自由探索"]
-    f4["Finder D<br/>自由探索"]
+    planner["Root Planner<br/>distinct research theses"]
+    f1["Finder A"]
+    f2["Finder B"]
+    f3["Finder C"]
+    f4["Finder D"]
     barrier["Wave Barrier"]
-    artifacts[("Terminal Artifacts")]
+    artifacts[("Hypotheses / Fragments / Unknowns")]
+    evaluation{"Root Evaluation"}
+    verify["Independent Verification"]
+    depth["Depth Admission"]
+    stop["Evidence-backed Stop"]
 
-    registry --> planner
     planner --> f1 --> barrier
     planner --> f2 --> barrier
     planner --> f3 --> barrier
     planner --> f4 --> barrier
-    barrier --> artifacts --> registry
+    barrier --> artifacts --> evaluation
+    evaluation -->|"重大なsource-bound Hypothesis"| verify
+    evaluation -->|"strong semantic frontier"| depth
+    evaluation -->|"価値ある新証拠なし"| stop
 ```
 
-四つの固定診断手順を実行するのではない。Root Plannerは最大4個の重複しない開始仮説を与えるが、各FinderはTarget全体へpivotできる。到着順、多数決、同じmodelの同意数はFinding成立に使わない。
+四つの固定診断手順を実行するのではない。Root Plannerは最大4個の重複しないresearch thesisまたは開始lensを与えるが、各Finderは同じTarget Snapshot全体へ自由にpivotできる。同じmodelの同意数、到着順、多数決をFinding成立またはcandidate破棄へ使わない。
 
-`Approach Family Registry`は表面的なPrompt表現ではなく、研究ideaのmechanism単位で`thesis`、対象surface、assigned Work、round、evidence、`active / blocked / exhausted`、blocked理由、再開に必要な新mechanismを保持する。familyの意味分類とredirect案はRoot Plannerが推論し、HarnessはID、状態遷移、予算、参照artifactだけを強制する。
+通常Waveは長いchainを必須成果にしない。Unauthenticated SQLi、意味的に深いStored XSS、PrivEsc等、単独で十分重大なHypothesisはそのままVerificationへ進める。一方、単純なReflected XSS等の低優先Findingも、parser、transformation、state、authorization等の再利用可能なmechanismを示す場合はRoute Fragmentとして残せる。一つのFindingが出てもstrong frontierが残るならCampaignを自動停止しない。
 
-## 3. wp2shell由来の反復loop
+`Root Evaluation`はCVSS scoreまたはFinder confidenceだけで判断しない。high-impact potential、attacker accessibility、primitive power、trust-boundary crossing、cross-request/cross-actor state、semantic novelty、具体的な不足linkをsource evidenceとともに見る。Finder confidenceが低くてもsource-boundで重大なHypothesisはVerification候補にできる。
+
+## 3. Depth Admission
+
+Depthは全Targetへ常時適用する通常モードではない。最終RCE、ATO、PrivEscが既に見えていることも要求しない。例えば次のようなsource-bound frontierはDepth Admissionの根拠になり得る。
+
+- unauthenticatedまたはlow-privilegeな強いread / write / file / auth / state capability
+- secret、token、credential、password-reset materialへ近いread primitive
+- role、capability、identity、session、authentication stateの変更
+- persistent attacker-controlled stateが別requestまたは別actorで消費されるroute
+- decode / reparse、parser transition、producer / consumer mismatch
+- component間のsecurity assumption mismatch
+- 単独では弱いが、別機能と接続すると高impactへ伸びる具体的Route Fragment
+- Adversarial Criticが閉じればimpactが大きく変わる具体的missing link
+
+Depth Admissionは「RCE sinkを見つけた」というcategory matchではなく、**高impactへ伸びるsecurity-semantic frontierがある**という追加投資判断である。
+
+## 4. Depth Escalation: wp2shell型の反復
 
 ```mermaid
 flowchart TB
-    wave["Independent Finder Wave"]
-    synthesis["Root Synthesis<br/>routeとprimitiveを統合"]
-    critic["Adversarial Critic<br/>成立しないhopを攻撃"]
-    decision{"次の状態"}
-    missing["Missing-link Wave"]
-    verify["Fresh Verification"]
+    frontier["Admitted Frontier"]
+    registry[("Approach Family Registry")]
+    synthesis["Fresh Root Synthesis<br/>primitiveとrouteを統合"]
+    critic["Fresh Adversarial Critic<br/>premise・hop・stateを攻撃"]
+    decision{"Depth Decision"}
+    missing["Fresh Missing-link Wave"]
+    verify["Independent Verification"]
     stop["Evidence-backed Stop"]
 
-    wave --> synthesis --> critic --> decision
-    decision -->|"不足link"| missing --> wave
-    decision -->|"source-bound route"| verify
-    decision -->|"新証拠なし / budget終了"| stop
+    frontier --> registry --> synthesis --> critic --> decision
+    decision -->|"具体的missing link"| missing --> registry
+    decision -->|"source-bound high-impact route"| verify
+    decision -->|"新mechanismなし / hard ceiling"| stop
 ```
 
-旧wp2shellでは人間がprimitiveを再現し、次のmodelへ「さらに強いimpactへ伸ばせるか」を渡した。このcheckpointを`Root Synthesis → Adversarial Critic → Missing-link Wave`へ置き換え、通常運行では人間介入なしにする。意味上のchain接続はmodelへ任せ、Harnessは入力artifact、証拠binding、budget、freshnessだけを検査する。
+旧wp2shellでは人間がpartial primitiveを再現し、次のmodelへ「さらに強いimpactへ伸ばせるか」を渡した。このcheckpointを`Route Fragment -> Root Synthesis -> Adversarial Critic -> Missing-link Wave`としてdurable artifactへ変える。意味上のchain接続はmodelへ任せ、Harnessは入力artifact、source binding、freshness、budget、state transition、provenanceだけを検査する。
 
-## 4. 参照実装ごとの責任
+CriticはFindingを昇格させない。attacker premise、actor、state identity、request順序、防御、security assumption、因果hopを積極的に壊し、残った不足を具体的な次の研究課題へ変換する。成立routeはDiscoveryの会話やpayloadを共有しないfresh Independent VerificationだけがFindingへ昇格できる。
+
+`Approach Family Registry`はPromptの言い換えではなく、研究ideaのmechanism単位で`thesis`、surface、round、evidence、`active / blocked / exhausted`、blocked理由、reopen条件を保持する。familyの意味分類とredirect案はmodelが推論し、HarnessはID、状態遷移、予算、参照artifactだけを強制する。
+
+## 5. 評価と停止
+
+当面の評価優先順位は次である。
+
+1. high-impact recall
+2. root-cause quality
+3. attacker-premise closure
+4. independent Verification到達
+5. false-positive / blocked / unknownの正しい扱い
+6. token、wall time、monetary cost
+
+Budgetはhard ceilingであり消費目標ではない。cost削減を目的とする変更は、oracle-separated cohortとprospective Campaignのbaselineを作った後にFinder数、context、model、Wave数等を一変数ずつablationし、high-impact recallを落とさない場合だけ採用する。
+
+通常Waveの早期終了は単なるFinderの「もうない」という自己申告で決めない。strong frontierがなく、重大HypothesisがVerificationへ送られ、未取得dependencyと主要なunknownが記録され、追加の独立lensがmaterially new evidenceを生まない時にevidence-backed stopへ進む。DepthではApproach Familyのterminal化、具体的reopen条件、連続Waveの新証拠なし、Criticによる新mechanismなしも停止根拠に加える。
+
+## 6. 参照ごとの責任
 
 | 参照 | 採用する責任 |
 | --- | --- |
-| Anthropic | 高水準goal、modelへ方法を任せる、distinct slice、missing primitiveをfresh runへ渡す |
+| Anthropic | 高水準goal、modelへ方法を任せる、distinct slice、必要なsource tool、missing primitiveをfresh runへ渡す |
 | Semgrep harness | agentごとの隔離、独立run、fresh sibling verification、executable witness |
-| Codex Security | phase separation、inventory、coverage、partial result、resume可能なartifact |
-| wp2shell / CDC | 独立idea family、早すぎる収束の防止、missing-link pursuit、root synthesis、反復 |
-| Wordfence Argus | North Starと10設計原則。非公開実装は推測しない |
+| Codex Security | phase separation、inventory、partial result、durable workflow、resume可能なartifact |
+| wp2shell / CDC | 独立idea family、早すぎる収束の防止、partial primitiveの保存、missing-link pursuit、root synthesis、反復 |
+| Wordfence Argus | high-impactな深掘りを支える10設計原則。非公開のprompt、topology、memory、retrievalは推測しない |
+| daroo Researcher Reference | 公開portfolioから目指すhigh-impact mechanism breadthとevaluation gapを定める。非公開methodまたはAI利用を推測しない |
 
-## 5. wp2shell Promptを実装責任へ分解する
+wp2shellのinput parser、charset、upload、serialization、cache、race、crypto、typing等は発想例であり固定checklistにしない。`/flag`や最低6時間もproduction ruleにしない。known-positive benchmarkだけが肯定解motivationを利用でき、prospective Targetに特定impactの存在を保証しない。
 
-| Prompt上の意図 | 実装owner | productionでの扱い |
-| --- | --- | --- |
-| 最初から異質なapproachを保つ | Root Planner + Approach Family Registry | input parser、charset、upload、error、builtin route、serialization、cache、race、crypto、typing、mass assignment等は発想例であり固定checklistにしない |
-| 同一familyへの収束をredirectする | Diversity Planner | 4枠と過去roundを見て未探索familyを優先する。単なる言い換えを新familyにしない |
-| 有望な一案だけに独占させない | Campaign budget allocator | 少なくとも複数の相容れないfamilyをbarrierまで保持する |
-| 行き詰まったrouteをblockedにする | Approach Family Registry | concreteな新mechanismまたは新source evidenceがない再投入を拒否する |
-| 十分育つまでcross-pollinationしない | Independence Barrier | Finderへ他Finderのartifactを見せず、barrier後だけSynthesisへ渡す |
-| adversarial agentで二重確認する | Adversarial Critic + Independent Verification | Criticは論理を攻撃し、fresh Verifier/Labがsourceと実行を再導出する |
-| Rootが統合、挑戦、redirect、再開する | Campaign Reconciler | terminal artifactから次Waveを決め、1 Wave失敗だけで終了しない |
-| intermediate bugをchainする | Route Fragment + Root Synthesis | read/write/authenticate/query/output等のcapabilityとrequest間stateを保持する |
-| dependency sourceも調べる | Dependency Wishlist + Target Intake | 理由、version、provenanceを記録し、Harnessがpinしたsourceを次Snapshotへ追加する。Finder自身の任意cloneは許可しない |
-| `/flag`まで完全chainを作る | Benchmark Motivation Profile | known-positiveだけで使用する。productionではsite-wide compromiseをNorth Starにするが存在をoracleとして保証しない |
-| 最低6時間続ける | Campaign Budget Profile | 6時間を下限にしない。最大予算だけを強制し、evidence-backed closureへ先に到達すれば終了する |
-
-早期終了は単なるFinderの「もうない」という自己申告では決めない。全Approach Familyが`verified / disproved / blocked / exhausted`のterminal状態になり、blocked routeは再開条件を持ち、連続Waveで新しいsource evidence・Fragment・familyが増えず、Adversarial Criticも残存gapへmaterially new mechanismを提示できず、coverage debtと未取得dependencyが記録された時に`evidence-backed closure`とする。最大時間はhard ceilingであり、消費目標ではない。
-
-現在の実装状態とTestは[Codebase Guide](../../CODEBASE-GUIDE.md)だけを正本とする。Finder数の判断は[ADR 0116](../../adr/0116-use-four-finder-slots-per-depth-wave.md)に記録する。
+現在の実装状態とTestは[Codebase Guide](../../CODEBASE-GUIDE.md)だけを正本とする。現在動くMap-first one-wave sliceは移行元であり、この文書の到達設計と混同しない。
