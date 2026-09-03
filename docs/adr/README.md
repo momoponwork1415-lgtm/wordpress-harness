@@ -17,7 +17,6 @@ ADRは現在の実装説明ではなく、hard-to-reverseな判断履歴であ�
 - [ADR 0063 — orchestrator、agent、Targetの信頼領域を分ける](0063-separate-the-orchestrator-agent-and-target-trust-zones.md)
 - [ADR 0067 — production evidenceへgVisorを要求する](0067-require-gvisor-for-production-evidence.md)
 - [ADR 0068 — WitnessとControlをfresh sibling Labで実行する](0068-run-witness-and-control-in-sibling-labs.md)
-- [ADR 0075 — frontier compromise discoveryをNorth Starにする](0075-make-frontier-compromise-discovery-the-north-star.md)
 - [ADR 0077 — Evidence RouteでHypothesisを表す](0077-represent-each-hypothesis-with-an-evidence-route.md)
 - [ADR 0080 — Target-bound Route Fragmentだけを再利用する](0080-reuse-only-target-bound-verified-route-fragments.md)
 - [ADR 0104 — 公式Model Transportだけを受理する](0104-admit-only-official-model-transports.md)
@@ -28,5 +27,6 @@ ADRは現在の実装説明ではなく、hard-to-reverseな判断履歴であ�
 - [ADR 0114 — BreadthとDepthのCampaign policyを分ける](0114-separate-breadth-and-depth-campaign-policies.md)
 - [ADR 0115 — 公開CVEの実験結果だけをGitへ置く](0115-publish-only-public-cve-experiment-results.md)
 - [ADR 0116 — Depth Waveを4 Finderにする](0116-use-four-finder-slots-per-depth-wave.md)
+- [ADR 0117 — high-impact semantic recallを優先し、Depthを条件付き昇格にする](0117-optimize-for-high-impact-semantic-recall.md)
 
-`status: superseded`のADRは現在の規則ではなく、判断が変わった理由を残す履歴である。
+[ADR 0075 — frontier compromise discoveryをNorth Starにする](0075-make-frontier-compromise-discovery-the-north-star.md)はADR 0117でsupersedeされた履歴として残す。`status: superseded`のADRは現在の規則ではなく、判断が変わった理由を残す履歴である。
