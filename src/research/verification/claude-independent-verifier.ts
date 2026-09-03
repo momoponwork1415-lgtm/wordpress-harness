@@ -238,37 +238,28 @@ class FirstClaudeIndependentVerifier implements IndependentVerifier {
     ) {
       throw new Error("Verifier execution profile does not match Plan");
     }
-    const nodeIds = new Set(this.#surfaceMap.nodes.map((node) => node.id));
-    const relationIds = new Set(
-      this.#surfaceMap.relations.map((relation) => relation.id),
+    const inventory = new Map(
+      this.#surfaceMap.inventory.map(
+        (entry) => [entry.path, entry.digest] as const,
+      ),
     );
     if (
-      !plan.hypothesis.route.nodeIds.includes(
-        plan.hypothesis.route.anchorNodeId,
-      ) ||
-      !plan.hypothesis.route.nodeIds.every((id) => nodeIds.has(id)) ||
-      !plan.hypothesis.route.relationIds.every((id) => relationIds.has(id))
+      !plan.hypothesis.route.anchors.every(
+        (anchor) => inventory.get(anchor.path) === anchor.fileDigest,
+      )
     ) {
-      throw new Error("Verifier Hypothesis route does not match Surface Map");
+      throw new Error(
+        "Verifier Hypothesis route does not match the Target Snapshot",
+      );
     }
   }
 
   async #readBoundSources(plan: VerificationPlan): Promise<BoundSource[]> {
-    const nodeIds = new Set(plan.hypothesis.route.nodeIds);
-    const relationIds = new Set(plan.hypothesis.route.relationIds);
     const paths = new Set<string>();
     const inventory = new Map(
       this.#surfaceMap.inventory.map((entry) => [entry.path, entry] as const),
     );
-    for (const claim of [
-      ...this.#surfaceMap.nodes.filter((node) => nodeIds.has(node.id)),
-      ...this.#surfaceMap.relations.filter((relation) =>
-        relationIds.has(relation.id),
-      ),
-    ]) {
-      if (claim.evidence.kind !== "observed") continue;
-      for (const anchor of claim.evidence.evidence) paths.add(anchor.path);
-    }
+    for (const anchor of plan.hypothesis.route.anchors) paths.add(anchor.path);
     const requestedEvidence = plan.hypothesis.unknowns.map(
       (unknown) => unknown.requiredEvidence,
     );

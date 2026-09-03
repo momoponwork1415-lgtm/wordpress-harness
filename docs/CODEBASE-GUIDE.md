@@ -74,7 +74,7 @@ flowchart TB
     current --> semantic --> evaluate --> depth --> synthesis --> waves --> proof --> prospective
 ```
 
-最重要gapは、Surface Mapで先に選んだ範囲へ探索を寄せる現在経路を、raw sourceからTarget全体へ自由にpivotできるSemantic Researchへ置き換えること。Map、PHP Program Index、AST、Semgrep、CodeQLは補助に残し、Map外candidateを拒否しない。`Route Fragment`はschema出力まで存在するが、Root Evaluation、Depth Admission、Synthesis、Critic、missing-link再投入は未接続である。
+最重要gapは、Surface Mapで先に選んだ範囲へ探索を寄せる現在経路を、raw sourceからTarget全体へ自由にpivotできるSemantic Researchへ置き換えること。Map、PHP Program Index、AST、Semgrep、CodeQLは補助に残し、Map外candidateを拒否しない。Hypothesisのcausal routeはTarget Snapshotのsource anchorへ束縛済みで、Map nodeを持たないcandidateもExplorationとVerificationを通る。残るgapはWave計画とFinder contextがまだMap-first bootstrapである点と、`Route Fragment`がschema出力まで存在する一方でRoot Evaluation、Depth Admission、Synthesis、Critic、missing-link再投入が未接続である点である。
 
 ## Implementation index
 

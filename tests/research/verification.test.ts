@@ -62,9 +62,14 @@ function verificationPlan(
     attackerPremise: "unauthenticated" as const,
     impact: "stored-xss" as const,
     route: {
-      anchorNodeId: digest("a"),
-      nodeIds: [digest("a"), digest("b"), digest("c")],
-      relationIds: [digest("d"), digest("e")],
+      anchors: [
+        {
+          path: "includes/form.php",
+          fileDigest: digest("d"),
+          startLine: 12,
+          endLine: 18,
+        },
+      ],
     },
     unknowns: [
       {

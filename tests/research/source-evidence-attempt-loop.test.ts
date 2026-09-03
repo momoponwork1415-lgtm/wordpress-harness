@@ -12,7 +12,7 @@ import {
 } from "../fixtures/source-evidence.js";
 
 const leaseId = `sha256:${"b".repeat(64)}`;
-const anchorNodeId = `sha256:${"c".repeat(64)}`;
+const anchorFileDigest = `sha256:${"c".repeat(64)}`;
 
 function providerEnvelope(output: unknown): string {
   return JSON.stringify({
@@ -160,9 +160,14 @@ describe("ModelExecution.run source evidence loop", () => {
                 attackerPremise: "unauthenticated",
                 impact: "sql-injection",
                 route: {
-                  anchorNodeId,
-                  nodeIds: [anchorNodeId],
-                  relationIds: [],
+                  anchors: [
+                    {
+                      path: "entry.php",
+                      fileDigest: anchorFileDigest,
+                      startLine: 4,
+                      endLine: 12,
+                    },
+                  ],
                 },
                 unknowns: [
                   {

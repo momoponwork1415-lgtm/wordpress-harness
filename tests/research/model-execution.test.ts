@@ -13,7 +13,7 @@ import {
 } from "../../src/research/model-execution/index.js";
 
 const leaseId = sha256Digest("finder-lease");
-const anchorNodeId = sha256Digest("entry-node");
+const anchorFileDigest = sha256Digest("entry-file");
 
 function candidateHypothesis() {
   return {
@@ -27,9 +27,14 @@ function candidateHypothesis() {
     attackerPremise: "unauthenticated" as const,
     impact: "account-takeover" as const,
     route: {
-      anchorNodeId,
-      nodeIds: [anchorNodeId],
-      relationIds: [],
+      anchors: [
+        {
+          path: "entry.php",
+          fileDigest: anchorFileDigest,
+          startLine: 4,
+          endLine: 12,
+        },
+      ],
     },
     unknowns: [
       {

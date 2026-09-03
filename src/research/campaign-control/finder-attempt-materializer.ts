@@ -1029,7 +1029,7 @@ class FinderAttemptMaterializer implements AttemptPlanMaterializer {
       "- Each hypothesis must state a permitted attacker premise, broken security property, causal source route, concrete falsifier, missing evidence, and next independent experiment.",
       "- If source evidence proves a security-relevant primitive but not a complete vulnerability, preserve it in routeFragments instead of inflating its impact or discarding it.",
       "- Each route fragment must identify its preconditions, consumed and produced values, state transition, exact source evidence, falsifier, missing evidence, and next investigation so a later independent wave can connect it.",
-      "- A complete hypothesis may reference only observed node and relation IDs in the supplied excerpt; when a valid route is discovered outside that excerpt, preserve its immutable source anchors as a route fragment so the next wave can enrich and verify it.",
+      "- Anchor every hypothesis to exact source ranges of the admitted Target Snapshot by path, file digest, and 1-based inclusive line range. A route that no Surface Map node covers is a first-class hypothesis; never downgrade it because the supplied excerpt omits it.",
       `- Return at most ${input.lease.budget.maxHypotheses} hypotheses and at most ${input.lease.budget.maxHypotheses} route fragments. If no complete hypothesis is supported, return an empty hypotheses array and retain any source-bound partial primitive as a route fragment. Precision is more important than producing a result.`,
       "- Return only the JSON required by the provided schema.",
       `Assignment:\n${canonicalJson({

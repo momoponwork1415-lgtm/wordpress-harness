@@ -277,9 +277,7 @@ export const sourceBoundHypothesisSchema = z.strictObject({
     "other",
   ]),
   route: z.strictObject({
-    anchorNodeId: digestSchema,
-    nodeIds: z.array(digestSchema).min(1),
-    relationIds: z.array(digestSchema),
+    anchors: z.array(sourceEvidenceAnchorSchema).min(1),
   }),
   unknowns: z.array(unresolvedEvidenceSchema).min(1),
   falsifier: boundedTextSchema,

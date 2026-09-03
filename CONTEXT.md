@@ -321,7 +321,7 @@ _Avoid_: Finding、Exploit primitive library、Global fact
 _Avoid_: Confidence score、Missing-edge count、Speculation
 
 **Source-bound Hypothesis**:
-少なくとも一つの実在するentryまたはsecurity-relevant nodeをEvidence Route内でsource evidenceへ結び、unknown、falsifier、次のExperimentを明示したHypothesis。
+causal routeをTarget Snapshot内の実在するsource range（path、file digest、line range）へ結び、unknown、falsifier、次のExperimentを明示したHypothesis。Surface Map nodeの存在を成立条件にしない。
 _Avoid_: Suspicion、Idea
 
 **Preflight Disposition**:

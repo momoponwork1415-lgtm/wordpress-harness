@@ -104,7 +104,7 @@ function explorationPolicy(): ExplorationBootstrapPolicy {
   };
 }
 
-function hypothesis(anchorNodeId: string): SourceBoundHypothesis {
+function hypothesis(): SourceBoundHypothesis {
   return {
     kind: "source-bound-hypothesis",
     schemaVersion: 1,
@@ -116,9 +116,14 @@ function hypothesis(anchorNodeId: string): SourceBoundHypothesis {
     attackerPremise: "unauthenticated",
     impact: "stored-xss",
     route: {
-      anchorNodeId,
-      nodeIds: [anchorNodeId],
-      relationIds: [],
+      anchors: [
+        {
+          path: "includes/form.php",
+          fileDigest: digest("d"),
+          startLine: 12,
+          endLine: 18,
+        },
+      ],
     },
     unknowns: [
       {
@@ -439,7 +444,7 @@ async function openScenario(
     id: policy.id,
     digest: await artifacts.putJson(policy),
   };
-  const candidate = hypothesis(map.nodes[0]!.id);
+  const candidate = hypothesis();
   const input = {
     ...createCampaignInput(),
     targetSnapshot: {

@@ -31,7 +31,7 @@ function mapFor(
 ): {
   readonly ref: SurfaceMapRef;
   readonly value: SurfaceMap;
-  readonly nodeId: string;
+  readonly routeDigest: string;
 } {
   const routeDigest = fileDigest(routeContent);
   const excludedDigest = fileDigest(excludedContent);
@@ -94,7 +94,7 @@ function mapFor(
   };
   return {
     value,
-    nodeId,
+    routeDigest,
     ref: {
       kind: "surface-map",
       schemaVersion: 1,
@@ -107,7 +107,7 @@ function mapFor(
   };
 }
 
-function plan(nodeId: string): VerificationPlan {
+function plan(routeDigest: string): VerificationPlan {
   const hypothesis = {
     kind: "source-bound-hypothesis" as const,
     schemaVersion: 1 as const,
@@ -118,7 +118,16 @@ function plan(nodeId: string): VerificationPlan {
     },
     attackerPremise: "unauthenticated" as const,
     impact: "stored-xss" as const,
-    route: { anchorNodeId: nodeId, nodeIds: [nodeId], relationIds: [] },
+    route: {
+      anchors: [
+        {
+          path: "includes/route.php",
+          fileDigest: routeDigest,
+          startLine: 2,
+          endLine: 2,
+        },
+      ],
+    },
     unknowns: [
       {
         claim: "the stored value reaches an administrator browser",
@@ -185,8 +194,8 @@ function plan(nodeId: string): VerificationPlan {
   };
 }
 
-function sqlInjectionPlan(nodeId: string): VerificationPlan {
-  const base = plan(nodeId);
+function sqlInjectionPlan(routeDigest: string): VerificationPlan {
+  const base = plan(routeDigest);
   const hypothesis = {
     ...base.hypothesis,
     causalIdentity: {
@@ -238,7 +247,7 @@ async function createFixture(
     request: ClaudeStructuredProcessRequest,
     context: FixtureContext,
   ) => ReturnType<ClaudeStructuredProcess["execute"]>,
-  makePlan: (nodeId: string) => VerificationPlan = plan,
+  makePlan: (routeDigest: string) => VerificationPlan = plan,
 ): Promise<{
   readonly cleanup: () => Promise<void>;
   readonly context: FixtureContext;
@@ -261,7 +270,7 @@ async function createFixture(
     join(directory, "includes-excluded.php"),
     join(sourceDirectory, "includes", "excluded.php"),
   );
-  const inputPlan = makePlan(surfaceMap.nodeId);
+  const inputPlan = makePlan(surfaceMap.routeDigest);
   const context = { plan: inputPlan, routeContent };
   const process: ClaudeStructuredProcess = {
     execute: (request) => execute(request, context),
@@ -327,8 +336,8 @@ describe("ClaudeIndependentVerifier.rederive", () => {
           }),
         };
       },
-      (nodeId) => {
-        const base = plan(nodeId);
+      (routeDigest) => {
+        const base = plan(routeDigest);
         const hypothesis = {
           ...base.hypothesis,
           unknowns: [
@@ -391,8 +400,8 @@ describe("ClaudeIndependentVerifier.rederive", () => {
           }),
         };
       },
-      (nodeId) => {
-        const base = plan(nodeId);
+      (routeDigest) => {
+        const base = plan(routeDigest);
         const hypothesis = {
           ...base.hypothesis,
           unknowns: [
