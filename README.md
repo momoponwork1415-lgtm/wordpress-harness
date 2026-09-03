@@ -4,7 +4,9 @@ WordPressプラグインのsource reviewを、LLMの自由な探索力と独立�
 
 > **Do not optimize for sinks. Optimize for broken security semantics.**
 
-RCEやsite-wide compromiseは最上位impactですが、長いchainだけを成功と定義しません。Unauthenticated SQL injection、意味的に深いStored XSS、account takeover、privilege escalation、arbitrary file operation、object injectionなど、単独でも十分に重大なFindingはその時点で価値があります。研究スタイルの参照は、darooの公開実績に見られる高impact classの広さと、wp2shell / Wordfence Argusに見られる有望primitiveを深く追う姿勢です。Argus型のmulti-wave深掘りは全Targetへ常時適用せず、RCE・ATO・PrivEsc等へ伸びる強いsignalや未解決chainがある時に追加投資します。
+RCEやsite-wide compromiseは最上位impactですが、長いchainだけを成功と定義しません。Unauthenticated SQL injection、意味的に深いStored XSS、account takeover、privilege escalation、arbitrary file operation、object injectionなど、単独でも十分に重大なFindingはその時点で価値があります。darooは公開Findingのportfolioから目指すhigh-impact mechanism breadthを定める`Researcher Reference`として扱い、非公開methodやAI利用は推測しません。wp2shellとWordfence Argusからは、有望primitiveを捨てずに深く追う姿勢と反復原則を参照します。
+
+通常運転は、強いmodelがTarget全体へraw-source-firstで自由にpivotする有限の**Semantic Research Wave**です。全Targetへ最初からmulti-wave深掘りを強制せず、重大なsource-bound HypothesisはIndependent Verificationへ、強いread/write/file/auth/state primitive、persistent state、cross-request flow、decode/reparse等の**strong semantic frontier**はDepth AdmissionからArgus-likeなSynthesis・Critic・missing-link Waveへ昇格します。最終RCE/ATO/PrivEscが既に見えていることを昇格条件にはしません。
 
 最上位の設計原則は、Wordfence Argusが示した10動詞です。
 
@@ -12,16 +14,18 @@ RCEやsite-wide compromiseは最上位impactですが、長いchainだけを成�
 
 これらを標語や10段の固定pipelineではなく、所有module、永続artifact、実行時に観測できるgateを持つcontrol propertyとして実装します。Harnessはscope、budget ceiling、tool permission、isolation、provenance、persistence、fresh verificationを所有し、**どのfileを見るか、何が怪しいか、どの脆弱性classを疑うか、どこへpivotするかというresearch decisionはAgentへ残します**。Discoveryが作るものは未確認の`Hypothesis`または`Route Fragment`であり、cleanな環境で独立Verificationを通過したものだけを`Finding`と呼びます。
 
-現段階ではtoken costやwall timeを最小化するより、high-impact recallとroot-cause qualityを優先します。budgetは暴走を防ぐhard ceilingとして持ちますが、性能を落としてまで早期に削りません。コスト最適化は、公開blind benchmarkとprospective Campaignでrecall baselineを作った後にablationで行います。
+> **Harness owns the research process; agents own research decisions.**
+
+現段階ではtoken costやwall timeを最小化するより、high-impact recallとroot-cause qualityを優先します。budgetは暴走を防ぐhard ceilingとして持ちますが、性能を落としてまで早期に削りません。コスト最適化は、oracle-separated development casesとprospective Campaignでrecall baselineを作った後にablationで行います。
 
 旧`whitebox-harness`からcodeやcontractを移植せず、`wp2shell` promptの意図を小さなModuleとversioned artifactへ分解しています。Target source、prompt、provider output、payload、未公開FindingはGit外に置きます。現在の完成度は[Codebase Guide](docs/CODEBASE-GUIDE.md)、公開CVEでの実測は[experiments](docs/experiments/README.md)だけを正本とします。
 
 ## Start here
 
-- [Documentation Guide — 文書の正本と読み方](docs/README.md)
+- [Research Design Principles — high-impact semantic recallを最上位に置く](docs/design/research-design-principles.md)
 - [Module Map — コードを読まずに機能関係を把握する](docs/design/architecture/module-map.md)
-- [Autonomous Research Loop — semantic researchとdepth escalation](docs/design/architecture/autonomous-research-loop.md)
-- [Breadth and Depth — PRISM/Argusを運行として分離する](docs/design/architecture/breadth-depth-research-loop.md)
+- [Autonomous Research Loop — semantic researchとconditional depth escalation](docs/design/architecture/autonomous-research-loop.md)
+- [Semantic Research, Breadth and Depth — PRISM/Argusとの関係](docs/design/architecture/breadth-depth-research-loop.md)
 - [Harness Completeness Audit — 成功・不足・次の優先順位](docs/audits/harness-completeness-2026-09-03.md)
 - [Codebase Guide — 現在のInterface・実装・Test・設計の対応](docs/CODEBASE-GUIDE.md)
 - [Architecture overview diagram](docs/design/architecture/architecture-overview.md)
@@ -43,6 +47,7 @@ RCEやsite-wide compromiseは最上位impactですが、長いchainだけを成�
 - [daroo researcher reference](docs/research/daroo-researcher-reference.md)
 - [White-box Surface Mapping security reference](docs/research/white-box-surface-mapping-security-reference.md)
 - [Why the ten verbs are control properties](docs/adr/0001-ten-verbs-as-control-properties.md)
+- [Why high-impact semantic recall comes before cost optimization](docs/adr/0117-optimize-for-high-impact-semantic-recall.md)
 
 ## Setup
 
