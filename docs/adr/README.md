@@ -36,4 +36,11 @@
 - [ADR 0104 — 公式Model Transportだけを受理する](0104-admit-only-official-model-transports.md)
 - [ADR 0105 — Harness所有toolだけをworkerへ公開する](0105-expose-only-harness-owned-attempt-tools.md)
 
+## Legacy-to-current traceability
+
+- [ADR 0004 — legacy repositoryは移植せず設計意図だけ採る](0004-mine-the-legacy-repository-do-not-port-it.md)
+- [ADR 0029 — Prompt Setをversioned artifactとして扱う](0029-render-one-versioned-prompt-set.md)
+
+この2件は[wp2shell prompt decomposition](../research/wp2shell-prompt-decomposition.md)のtraceabilityに必要なため残す。
+
 新しいADRは、現在のPrinciplesまたはowning Seamだけでは判断理由を保持できない、hard-to-reverseなtrade-offに限って追加する。
