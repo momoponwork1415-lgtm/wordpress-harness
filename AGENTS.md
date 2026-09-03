@@ -4,8 +4,8 @@
 
 ## Mission and required reading
 
-- North Starは、oracle-freeなprospective CampaignでRCEまたは同等のsite-wide compromiseへ至る未知routeを発見し、独立VerificationとHuman Confirmationまで到達すること。
-- 作業前に[Documentation Guide](docs/README.md)と[Codebase Guide](docs/CODEBASE-GUIDE.md)から現在の実装、対象Module、公開Interface、Test、正本となるSeamを特定する。変更対象contextの`CONTEXT.md`とSeamを読み、system全体の判断が必要な場合だけ[architecture](docs/design/architecture.md)、理由の確認が必要な場合だけSeamから直接linkされたADRを読む。全ADRの通読を前提にしない。
+- North Starは、oracle-freeなprospective Campaignで**high-impactなbroken security semanticsを高recallで発見し、独立Verificationで実証すること**である。RCEやsite-wide compromiseは最上位impactだが唯一の成功条件ではない。通常運転はSemantic Research Waveとし、strong semantic frontierだけをconditional Depthへ昇格する。
+- 作業前に全ドキュメントを通読しない。[Documentation](docs/README.md)から目的別の入口を選び、通常のcode変更は[Codebase Guide](docs/CODEBASE-GUIDE.md)で対象Module・公開Interface・Behavior Testを特定してから、[Design Documentation](docs/design/README.md)経由でowning Seamだけを読む。system全体の変更時だけArchitecture OverviewやModule Architecture、理由が必要な時だけSeamからlinkされたADRを読む。
 - agentic harness全体の設計参照資料は[docs/REFERENCES.md](docs/REFERENCES.md)の3件とする。個別のsecurity methodologyは一次資料を補助根拠にできるが、外部資料が直接支持する主張とharness固有の推論を分け、3件と同列の第4の設計参照資料にしない。Codex文書やtool文書は開発手順の参考として扱う。
 - `CONTEXT.md`、code、Issueでは英語のdomain termとcode identifierを正式語として使う。user向け説明は日本語で書き、必要に応じて「正式語（日本語の意味）」を併記し、[日本語用語早見表](docs/JAPANESE-GLOSSARY.md)から意味を確認できるようにする。
 - Mermaid図の箱には短い正式語だけを置き、長い日本語説明、制約、例は図の直下へ出す。GitHub上で文字が見切れる長さのlabelを作らない。
@@ -17,7 +17,7 @@
 - context間では不変かつversionedなcontractだけを渡す。別contextのstorage、内部module、provider objectを直接参照しない。
 - `Target Intelligence`は選定と取得を所有し、oracleを除いた`Target Intake Packet`だけを`Research`へ渡す。
 - `Research`は探索だけでなく、独立Verification、記録、優先順位付け、反復を所有する。Verificationを任意の後処理にしない。
-- Explorationはraw sourceから独立Approach Familyを育て、型付き成果物だけをWave barrier後にChain Synthesisする。LaneとStrategyは観測labelまたは開始lensに限り、Finderの手順または探索範囲にしない。worker間chat、model多数決、vulnerability class別agentを探索多様性の根拠にしない。
+- Explorationの通常運転はraw-source-firstのSemantic Research Waveとする。Root Plannerは独立research thesisまたは開始lensを割り当てるが、Finderのfile、CWE、手順、探索範囲を固定しない。重大HypothesisはVerificationへ、strong semantic frontierだけをDepth Admissionへ送る。DepthではRoute Fragmentをdurableに保持し、fresh Synthesis、Adversarial Critic、missing-link Waveを反復する。worker間chat、model多数決、vulnerability class別agentを探索多様性の根拠にしない。
 - `Human OS`は人間のreviewと判断を所有する。Researchの事実を変更せず、digest固定した`Human Review Packet`への判断を追記する。
 - CLI、将来のweb UI、remote controlはadapterであり、domain policyまたはlifecycleを所有しない。
 - moduleは小さなinterfaceの背後に複雑さを隠す。二つ目の現実のadapterがない段階で汎用portやrepository abstractionを作らない。
@@ -37,9 +37,14 @@
 
 ## Documentation discipline
 
-- 文書の分類と更新責任は[Documentation Guide](docs/README.md)に従う。現在の実装状態、file path、Behavior Test対応は`docs/CODEBASE-GUIDE.md`だけへ置き、Seam、architecture、module設計へ複製しない。
+- root `README.md`はprojectの短い入口に保つ。mission、最小architecture、Quickstart、少数のDocs linkだけを置き、詳細なdesign index、research reference一覧、implementation statusを複製しない。
+- [Documentation](docs/README.md)は目的別ルーターであり、順番に全資料を読ませるtutorialにしない。[Design Documentation](docs/design/README.md)はowner別のdesign indexとする。
+- 現在の実装状態、file path、Behavior Test対応は`docs/CODEBASE-GUIDE.md`だけへ置き、Seam、architecture、module設計へ複製しない。
 - Seam文書はInterface、不変条件、所有state、許可依存、禁止依存、failure semantics、acceptance scenarioだけを扱う。実装version、LOC、run時刻、Target別成否、現在の未実装一覧、次Issueの作業順を書かない。
+- Module固有の仕様はowning Seamへ置く。cross-moduleの責務でない詳細を巨大な中央architecture文書へ追加しない。新しい文書を作る前に既存のowner Seam、Behavior Test、Issueのどれかで足りないか確認する。
+- Architecture Viewは理解用の投影に限定し、Seamの仕様を全文複製しない。通常のreading pathは少数のmain viewだけに保ち、specialized viewは変更対象になった時だけ読む。
 - 実Targetの成否と時系列は日付付き`docs/experiments/`、完成度snapshotは`docs/audits/`へ置き、既存fileを後日のcodeへ追随させない。
+- 外部資料、比較、設計根拠の生データは`docs/research/`へ置く。採用済み結論はowning designまたはADRへ短く反映し、Research Noteをproduction仕様として参照しない。
 - 完了Goal、旧baseline、旧実装図は`docs/history/`へ凍結し、active designまたは通常のreading pathから参照しない。固有の判断または証拠が他の正本へ残っていれば削除できる。
 - 次の有限work、受入条件、作業順はGitHub Issueへ置く。作業日誌をdesignへ転記しない。
 - hard-to-reverseな判断だけADRへ置く。ADR本文は実装追随で書き換えず、判断変更は新ADRでsupersedeする。
