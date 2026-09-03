@@ -29,14 +29,14 @@
 | --- | --- |
 | Confine | 隔離する。対象、出力先、通信先を閉じた実行領域に置く |
 | Constrain | 制約する。範囲、権限、予算、停止条件を先に固定する |
-| Focus | 焦点を定める。攻撃面を重複しない探索領域へ分ける |
-| Motivate | 目的を与える。成功証拠と未解決点を具体的に渡す |
-| Parallelize | 並列化する。異なる領域や方法を独立に同時探索する |
+| Focus | 焦点を定める。高水準のsecurity goalまたはmissing linkを与え、探索手順は固定しない |
+| Motivate | 目的を与える。重大Findingと高impactへ伸びる未解決点を具体的に追わせる |
+| Parallelize | 並列化する。異なるresearch thesisを独立に同時探索する |
 | Hypothesize | 仮説化する。反証可能な経路と不足証拠として表す |
 | Verify | 検証する。新しい文脈と環境で独立に成立を確かめる |
 | Record | 記録する。判断と証拠を追記型で因果関係に結び付ける |
-| Prioritize | 優先順位を付ける。影響、根拠、情報利得、費用から次を選ぶ |
-| Iterate | 反復する。各作業ウェーブの結果から地図と方針を更新する |
+| Prioritize | 優先順位を付ける。影響、根拠、semantic frontier、情報利得、費用から次を選ぶ |
+| Iterate | 反復する。必要な時だけ証拠を統合・批判し、freshな次の問いへ進む |
 
 ## 対象の選定と受入
 
@@ -77,7 +77,7 @@
 | Campaign | 調査キャンペーン |
 | Setup Blocked | セットアップ阻害 |
 | Runtime Profile | 実行環境プロファイル |
-| Budget Envelope | 予算枠 |
+| Budget Envelope | 予算枠。hard ceilingでありtoken消費目標ではない |
 | Follow-up Campaign | 後続キャンペーン |
 | Model Profile | モデルプロファイル |
 | Attempt Plan | 実行計画 |
@@ -99,40 +99,43 @@
 
 | 正式語 | 日本語での意味 |
 | --- | --- |
-| Surface Map | 攻撃面マップ |
+| Surface Map | 攻撃面マップ。探索空間そのものではなく任意のnavigation・evidence・coverage補助 |
 | Evidence State | 根拠状態。`observed`、`inferred`、`unknown`の区分 |
 | Map Delta Proposal | 地図差分提案。AI Mapperが出す未検査の追加候補 |
 | Map Delta Receipt | 地図差分検査記録。候補ごとの受理・拒否を残す記録 |
-| PHP Program Index | PHPプログラム索引 |
-| Analysis Unit | 解析単位（Finderへ渡す有限context） |
+| PHP Program Index | PHPプログラム索引。navigationやevidenceを補助するが探索範囲を決めない |
+| Analysis Unit | 解析単位。Finderへ渡す初期seedであり探索scopeではない |
 | Source Evidence Query | ソース根拠問い合わせ |
 | Tool Receipt | ツール実行記録 |
 | Context Request | 文脈要求 |
 | Context Response | 文脈応答 |
 | Mapping Evidence Request | 地図根拠要求 |
 | Runtime Observation | 実行時観測 |
-| Focus Area | 探索領域 |
-| Work Lease | 作業割当 |
+| Focus Area | coverageや有限workのための観測上の探索領域。Finderのpivotを制限しない |
+| Work Lease | 作業割当。研究thesisまたはmissing linkを有限予算でworkerへ渡す記録 |
 | Work Wave | 作業ウェーブ |
-| Iteration Decision | 反復判断。次の有限作業、阻害、評価待ち、停止を決めた記録 |
-| Exploration Lane | 探索レーン。何のために調べるか |
-| Frontier Lane | 重大侵害レーン |
+| Semantic Research Wave | 通常の意味的探索ウェーブ。raw-source-firstで最大4 FinderがTarget全体へ自由にpivotする |
+| Depth Admission | 深掘り昇格判断。strong semantic frontierへmulti-waveの追加予算を投資する判断 |
+| Depth Campaign | 深掘りキャンペーン。Synthesis、Critic、missing-link Waveを反復する条件付き運行 |
+| Iteration Decision | 反復判断。Verification、Depth Admission、次作業、阻害、停止を決めた記録 |
+| Exploration Lane | 探索レーン。偏りを観測する目的区分であり固定roleではない |
+| Frontier Lane | 高impact frontierを深く追う探索レーン |
 | Primitive Lane | 攻撃要素レーン |
 | Coverage Lane | 網羅性レーン |
-| Exploration Strategy | 探索戦略。どの方法で調べるか |
-| Strategy Portfolio | 探索戦略ポートフォリオ |
-| Wildcard Strategy | 自由探索戦略 |
+| Exploration Strategy | 探索lens。Finderへ強制する逐次手順ではない |
+| Strategy Portfolio | 探索lens・research thesisのポートフォリオ |
+| Wildcard Strategy | 自由探索lens |
 | Exploration Queue | 探索待ち行列 |
 | Hypothesis Seed | 仮説の種 |
 | Hypothesis | 仮説 |
 | Source-bound Hypothesis | ソース根拠付き仮説 |
 | Evidence Route | 証拠経路 |
-| Route Fragment | 経路断片 |
-| Chain Synthesis | 連鎖統合 |
-| Frontier Gap | 重大侵害経路の未解決点 |
+| Route Fragment | 経路断片。単独severityが低くても高impact compositionに必要なら保持する |
+| Chain Synthesis | 連鎖統合。modelがFragmentのsemanticな接続候補を作る判断 |
+| Frontier Gap | 高impact経路の具体的な未解決因果link |
 | Gap Review | 未探索点レビュー |
-| Closure Record | 探索完了記録 |
-| Coverage Closure | 網羅完了 |
+| Closure Record | research thesisまたはfrontierの探索完了記録 |
+| Coverage Closure | 根拠付き探索完了。Map完成やFinder自己申告だけでは成立しない |
 
 ## 検証と判定
 
@@ -179,8 +182,8 @@
 | Sealed Evaluation Cohort | 封印評価群 |
 | Prospective Campaign | 実戦キャンペーン |
 | Permitted Attacker | 対象攻撃者 |
-| Frontier Discovery Capability | 未知重大侵害の探索能力 |
-| Researcher Reference | 研究者参照 |
+| Frontier Discovery Capability | 未知のhigh-impactなsecurity-property破壊を意味理解から発見・実証する能力 |
+| Researcher Reference | 研究者参照。公開portfolioから成果水準とmechanism breadthを定める |
 | Researcher Reference Corpus | 研究者参照コーパス |
 
 ## 人間確認と外部行動
