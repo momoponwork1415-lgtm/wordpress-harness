@@ -1,3 +1,0 @@
-# Match calibration by structural evidence
-
-Calibration Reviewは、異なるAttemptまたはModel Profileが生成したCausal Identityの自然言語文字列をcross-run identityとして完全一致させない。固定したpositive/negative Boundary Pair同士では同じCausal Identityを要求し続ける一方、oracle-free CampaignのFindingは、Target Snapshot、重なるsource anchor、Experiment protocol、Witness/Causal Control観測から成るprivate Calibration Fingerprintで既知positiveへ照合する。文字列完全一致は同じ脆弱性を別表現したFindingを拒否し、LLM judgeは停止判定を非決定的にするため採用しない。Fingerprintはterminal evidenceだけから作り、FinderまたはVerifierへ返さない。

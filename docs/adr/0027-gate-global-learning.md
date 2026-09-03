@@ -1,7 +1,0 @@
----
-status: accepted
----
-
-# Gate global learning
-
-LearnerがCampaign evidenceから生成したLesson、rule、prompt変更はLesson Proposalとして保存し、進行中Campaignへ自動反映しない。Campaign内の次iterationではlocal evidenceに基づくFocusとpriorityの更新を許す。別Campaignに影響する通常のpromptまたはpriority変更はversionを上げ、小さなDevelopment smokeの後に少数の実戦Campaignでcanary適用する。global Knowledge、static rule、誤検出除外policyのように自己強化riskが高い変更は、DevelopmentとSealed Evaluationを通過した後だけ昇格させる。単一Caseへの過学習とfalse ruleの自己強化を防ぐためである。
