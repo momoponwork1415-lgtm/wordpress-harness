@@ -1,51 +1,53 @@
-# Documentation Guide
+# Documentation
 
-このdirectoryは文書の更新責任を分離する。コード変更のたびに複数文書へ同じ状態を書かない。
+このrepositoryの文書は**順番に全部読むものではありません**。目的から正本へ直接進みます。同じ事実を複数文書へコピーせず、現在地・設計・判断理由・実測を別々に管理します。
 
-## 最初に読むもの
+## 目的別の入口
 
-```mermaid
-flowchart LR
-    principles["Research Design Principles"] --> loop["Autonomous Research Loop"]
-    loop --> overview["Architecture Overview"]
-    overview --> modules["Module Map"]
-    modules --> current["Codebase Guide"]
-```
-
-1. [調査設計原則](design/research-design-principles.md) — high-impact semantic recall、Harness/Agent境界、通常運転とDepth Admission
-2. [自由探索エージェント・ループ](design/architecture/autonomous-research-loop.md) — Semantic Research Wave、Root Evaluation、conditional Depth Escalation
-3. [アーキテクチャ概要](design/architecture/architecture-overview.md) — system全体と信頼領域
-4. [Module Map](design/architecture/module-map.md) — Moduleの機能と関係
-5. [Codebase Guide](CODEBASE-GUIDE.md) — 現在の実装場所、状態、Test
-
-現在の完成度だけを確認する場合は、日付付きの[最新監査](audits/harness-completeness-2026-09-03.md)を読む。実Targetで何が起きたかは[実験記録](experiments/README.md)を読む。
-
-探索policyの現在のhard-to-reverse decisionは[ADR 0117](adr/0117-optimize-for-high-impact-semantic-recall.md)である。`design/architecture.md`はTen-verb architectureの広いbaselineと詳細な設計履歴を保持するが、North Star、通常運転、Surface Mapの位置付け、Depth Admissionについて衝突する記述がある場合は、`Research Design Principles`、`Autonomous Research Loop`、ADR 0113/0117を優先する。現在動くMap-first実装は`Codebase Guide`だけを正本とし、到達設計と混同しない。
-
-## 文書の種類
-
-| Directory / file | 責任 | 更新規則 |
+| やりたいこと | 最初に読むもの | 次に読むもの |
 | --- | --- | --- |
-| `CONTEXT.md` / `docs/domain/` | 正式語とdomain関係 | 用語または所有関係が変わる時だけ更新 |
-| `docs/design/` | Interface、不変条件、Module ownership、失敗意味、到達architecture | implementation path、version、LOC、run結果、現在の未実装一覧を書かない |
-| `docs/design/architecture/` | GitHubで読める小さいMermaid view | stable flowを優先し、現行と到達形を明記する |
-| `docs/CODEBASE-GUIDE.md` | 現在のproduction status、実装path、Behavior Test | 現在地を記す唯一のliving document |
-| `docs/adr/` | hard-to-reverseな判断履歴 | accepted本文を実装追随で書き換えず、新ADRでsupersedeする |
-| `docs/experiments/` | 公開CVEに対する日付付き実測 | append-only。将来のcode状態として読ませない |
-| `docs/audits/` | 日付時点の完成度・整合性snapshot | frozen。次回は新しい日付の文書を作る |
-| `docs/research/` | 外部資料、比較、設計根拠 | dated evidence。production仕様または現在地の正本にしない |
-| `docs/history/` | 完了Goal、旧設計snapshot、過去baseline | frozen。通常の読書経路または正本から参照しない |
-| GitHub Issues | 次に行う有限work、受入条件、作業順 | 完了後に設計書へ作業日誌を転記しない |
-| Behavior Test | 実行可能なbehavior | codeと同じ変更で更新する |
+| Researchの目的と判断原則を理解する | [Research Design Principles](design/research-design-principles.md) | [Autonomous Research Loop](design/architecture/autonomous-research-loop.md) |
+| system全体を理解する | [Architecture Overview](design/architecture/architecture-overview.md) | [Module Map](design/architecture/module-map.md) |
+| 現在どこまで動くか知る | [Codebase Guide](CODEBASE-GUIDE.md) | 対象ModuleのSeam |
+| あるModuleを変更する | [Design Documentation](design/README.md) | 対象Seam → Behavior Test → code |
+| 探索policyを変更する | [Research Design Principles](design/research-design-principles.md) | [Exploration Seam](design/exploration-seam.md) → relevant ADR |
+| 実Targetでの成否を見る | [Experiments](experiments/README.md) | 日付付きexperiment |
+| 日付時点の完成度を見る | [Audits](audits/README.md) | 最新のdated audit |
+| なぜその判断になったか知る | [ADR index](adr/README.md) | 必要なADRだけ |
+| 外部資料や比較根拠を調べる | [Research Notes](research/README.md) | 該当note |
+| 旧設計や完了Goalを調べる | [History](history/README.md) | 必要なsnapshotだけ |
 
-## 削除規則
+通常のcode変更では、**Codebase Guide → owning Seam → Behavior Test → implementation**の4点で十分です。全ADR、`module-architecture.md`、research noteを通読しません。
 
-次の文書は新しく作らず、見つけたら内容を正本へ移して削除または`history`へ凍結する。Git履歴が過去版を保持する。
+## Source of truth
 
-- codeのfile、helper、version、件数、現在の未実装一覧を文章で再現するだけの文書
-- 完了済みGoalやSetup Planをactive designとして残す文書
-- 同じ図またはstatus tableを別表現で複製する文書
-- ADRへ固定済みの判断をもう一度説明するだけの設計メモ
-- 実験の時刻・対象別成否をSeam文書へコピーした節
+| 種類 | 正本 | 置かないもの |
+| --- | --- | --- |
+| Mission / research policy | `docs/design/research-design-principles.md` | 現在の実装状態 |
+| System / Module design | `docs/design/` のowning Seam | run結果、LOC、Issue順 |
+| Current implementation | `docs/CODEBASE-GUIDE.md` | 長期設計判断の理由 |
+| Domain language | `CONTEXT.md`、`docs/domain/` | implementation detail |
+| Hard-to-reverse decision | `docs/adr/` | 現在地の説明 |
+| Public-CVE execution evidence | `docs/experiments/` | 将来の仕様 |
+| Dated completeness snapshot | `docs/audits/` | living status |
+| External evidence / comparison | `docs/research/` | production仕様 |
+| Completed / superseded design | `docs/history/` | active design |
+| Next finite work | GitHub Issues | design diary |
+| Executable behavior | Behavior Tests | 設計理由の長文 |
 
-文書を追加する前に、既存の正本への数行の追記、Behavior Test、Issueのいずれかで足りないか確認する。
+## 文書を追加する前に
+
+1. 既存のowner Seamへ追記できないか確認する。
+2. implementation statusならCodebase Guide、作業予定ならIssue、実測ならexperiment/auditへ置く。
+3. 判断理由だけが必要ならADRにするが、hard-to-reverseでない内部判断にADRを作らない。
+4. 完了済み計画や旧設計をactive docsへ残さず、必要なら`history/`へ凍結する。
+5. 同じ図、status table、説明を別文書へ複製しない。
+
+## Repository-specific docs
+
+- [Design Documentation](design/README.md) — stable designのowner別index
+- [Architecture Views](design/architecture/README.md) — GitHubで把握するための小さい図
+- [Japanese Glossary](JAPANESE-GLOSSARY.md) — 正式語の日本語対応
+- [References](REFERENCES.md) — harness全体の主要design references
+
+`docs/design/architecture.md`は初期Ten-verb architectureの広いbaselineであり、通常のreading pathではありません。現在のResearch policyと衝突する場合はResearch Design Principles、owning Seam、accepted ADRを優先します。完全に歴史化した段階で`docs/history/`へ移します。
