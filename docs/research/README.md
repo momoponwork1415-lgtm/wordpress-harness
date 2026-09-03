@@ -1,36 +1,10 @@
 # Research Notes
 
-ここは外部資料、比較、調査途中の証拠を保存する**evidence archive**です。Research Noteはその時点の調査結果であり、現在のproduction behaviorまたはaccepted architectureの正本ではありません。
+現在も設計・評価へ直接使う調査資料だけを残す。採用済み結論だけのnote、再取得可能な資料一覧、旧設計の証拠集はGit履歴へ任せる。
 
-通常の開発でこのdirectoryを通読しません。採用済みの結論は[Research Design Principles](../design/research-design-principles.md)、owning Seam、ADRへ短く反映し、現在の実装状態は[Codebase Guide](../CODEBASE-GUIDE.md)だけへ置きます。
+- [Free-reasoning / evidence-shell harness references](free-reasoning-evidence-shell-harness-references.md) — Anthropic等から現在のHarness境界を導いた根拠
+- [wp2shell prompt decomposition](wp2shell-prompt-decomposition.md) — wp2shellの研究プロセスをHarness責務へ分解するtraceability
+- [daroo researcher reference](daroo-researcher-reference.md) — high-impact mechanism breadthのResearcher Reference
+- [development case candidates](development-case-candidates.md) — semantic-depthの異なるdevelopment / blind evaluation候補
 
-## Harness and agent references
-
-- [Agentic harness reference inventory](agentic-harness-reference-inventory.md)
-- [Agentic source review and ten verbs](agentic-source-review-ten-verbs.md)
-- [AI-navigable codebase specification reference](ai-navigable-codebase-specification-reference.md)
-- [Codex Security development-harness reference](codex-security-development-harness-reference.md)
-- [Free-reasoning / evidence-shell harness references](free-reasoning-evidence-shell-harness-references.md)
-- [wp2shell prompt decomposition](wp2shell-prompt-decomposition.md)
-
-## Researcher and benchmark references
-
-- [daroo researcher reference](daroo-researcher-reference.md)
-- [daroo public case candidates](daroo-public-case-candidates.md)
-- [development case candidates](development-case-candidates.md)
-- [Simply Schedule Appointments source provenance](simply-schedule-appointments-cve-2026-3658-source-provenance.md)
-
-## Source understanding investigations
-
-- [Evidence-guided Finder loop design evidence](evidence-guided-finder-loop-design-evidence.md)
-- [Exploration correction traceability](exploration-correction-traceability.md)
-- [Harness source-mapping patterns](harness-source-mapping-patterns.md)
-- [Surface Map context-retrieval bottleneck](surface-map-context-retrieval-bottleneck.md)
-- [White-box Surface Mapping security reference](white-box-surface-mapping-security-reference.md)
-
-## Provider and programme research
-
-- [Model transport and subscription auth](model-transport-and-subscription-auth.md)
-- [Wordfence programme scope](wordfence-programme-scope.md)
-
-新しいnoteを作るのは、一次資料・比較結果・実験根拠を後から再確認する必要がある場合だけです。結論だけを残したい場合はResearch Noteを増やさず、owning designまたはADRへ置きます。
+Research Noteはproduction仕様ではない。採用した判断は[Research Design Principles](../design/research-design-principles.md)、owning Seam、ADRを正本とする。

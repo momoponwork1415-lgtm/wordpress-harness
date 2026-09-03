@@ -2,7 +2,7 @@
 
 Status: accepted functional view; implementation status belongs in the [Codebase Guide](../../CODEBASE-GUIDE.md)
 
-コードの詳細を追わずに「どのModuleが何を所有し、何を渡すか」を把握する図である。
+コード詳細を追わずに「どのModuleが何を所有し、何を渡すか」を把握する図である。
 
 ## Product contexts
 
@@ -55,11 +55,11 @@ flowchart TB
 | Module | Owns | Input | Output | Does not own |
 | --- | --- | --- | --- | --- |
 | [Campaign Control](../campaign-execution-seam.md) | lifecycle、budget、wave、replay | Campaign Plan | Work Lease、terminal decision | candidateの真偽、provider処理 |
-| [Source Understanding](../source-mapping-seam.md) | source inventory、Map、gap、source query | Target Snapshot | Map revision、source evidence | Finding、探索範囲 |
-| [Exploration](../exploration-seam.md) | Approach Family、Hypothesis、Fragment、next wave | raw source、任意Map hint | verification request、gap、closure | Finding昇格、runtime実験 |
+| [Source Understanding](../source-mapping-seam.md) | source inventory、Map、gap、source query | Target Snapshot | source evidence、optional Map revision | Finding、探索範囲 |
+| [Exploration](../exploration-seam.md) | research thesis、Hypothesis、Fragment、Depth Admission | raw source、optional static hints | verification request、frontier、closure | Finding昇格、runtime実験 |
 | [Verification](../verification-seam.md) | independent proof、Witness、Control、outcome | source-bound Hypothesis | Finding、Disproved、Blocked | Finder confidence、priority |
 | [Model Execution](../model-execution-seam.md) | provider isolation、tool binding、process lifecycle | Attempt Plan | normalized terminal result | domain verdict |
-| [Research Record](../module-architecture.md#research-record) | append、artifact refs、replay | versioned event | durable read model | domain decision |
+| Research Record | append-only research facts、artifact refs、replay | versioned event | durable read model | domain decision |
 
 ## One campaign
 
@@ -77,25 +77,17 @@ sequenceDiagram
     CC->>EX: request finite wave
     EX->>ME: run independent Attempts
     ME-->>EX: terminal artifacts
-    EX-->>CC: routes and gaps
+    EX-->>CC: hypotheses and frontiers
     CC->>VE: verify source-bound route
     VE-->>CC: Finding / Disproved / Blocked
     CC->>RR: record iteration decision
 ```
 
-矢印は責務間のartifact flowであり、内部helperのcall順ではない。すべての外部副作用は記録済みintentに結び付き、大きなartifactはprivate CASのdigestで参照する。
-
 ## Reading path
 
-```mermaid
-flowchart LR
-    map["Module Map"] --> guide["Codebase Guide"]
-    guide --> seam["Owning Seam"]
-    seam --> test["Behavior Test"]
-    test --> code["Implementation"]
-```
+`Codebase Guide -> owning Seam -> Behavior Test -> implementation`を通常経路とする。
 
-- 現在どこまで動くか: [Codebase Guide](../../CODEBASE-GUIDE.md)
-- system contextとtrust zone: [Architecture overview](architecture-overview.md)
-- 詳細なownershipと依存方向: [Module architecture](../module-architecture.md)
-- 分からない正式語: [日本語用語早見表](../../JAPANESE-GLOSSARY.md)
+- current implementation: [Codebase Guide](../../CODEBASE-GUIDE.md)
+- system context / trust zone: [Architecture Overview](architecture-overview.md)
+- research policy: [Research Design Principles](../research-design-principles.md)
+- glossary: [日本語用語早見表](../../JAPANESE-GLOSSARY.md)
