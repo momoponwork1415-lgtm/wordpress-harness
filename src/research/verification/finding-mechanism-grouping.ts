@@ -170,11 +170,11 @@ async function findingCandidate(
       compareText(left.path, right.path) ||
       compareText(left.fileDigest, right.fileDigest),
   );
-  const experiment = {
-    kind: rederivation.experiment.kind,
-    adapterVersion: rederivation.experiment.adapterVersion,
-    successCriterion: rederivation.experiment.successCriterion,
-  };
+  const {
+    schemaVersion: _schemaVersion,
+    causalFactor: _causalFactor,
+    ...experiment
+  } = rederivation.experiment;
   const proof = findingMechanismGroupSchema.shape.proof.parse({
     experiment,
     sourceFiles,

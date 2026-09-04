@@ -181,11 +181,12 @@ function verifier(
         status: "supported" as const,
         sourceEvidence: plan.hypothesis.route.anchors,
         experiment: {
-          kind: "stored-xss-browser" as const,
+          kind: "browser-script-execution" as const,
           schemaVersion: 1 as const,
-          adapterVersion: "stored-xss-browser@v1" as const,
+          adapterVersion: "browser-script-execution@v1" as const,
           causalFactor: "attacker-controlled-stored-value",
-          successCriterion: "privileged-browser-execution-canary" as const,
+          successCriterion: "browser-execution-canary" as const,
+          victimContext: "privileged" as const,
         },
       };
       return plan.schemaVersion === 2
@@ -260,10 +261,10 @@ function lab(
         },
         normalFunction: "preserved",
         result: {
-          kind: "stored-xss-browser",
+          kind: "browser-script-execution",
           schemaVersion: 1,
-          attackerRequestAccepted: true,
-          persistentStateObserved: isWitness && !disproved,
+          attackerSequenceExecuted: true,
+          victimContextEstablished: true,
           browserCanaryExecuted: isWitness && !disproved,
         },
         artifactRefs: [],
@@ -2132,6 +2133,16 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
       if (!("groups" in mechanismGroups)) {
         throw new Error("Expected Finding mechanism groups");
       }
+      expect(
+        mechanismGroups.groups.map((group) => group.proof.experiment),
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "browser-script-execution",
+            victimContext: "privileged",
+          }),
+        ]),
+      );
       expect(
         mechanismGroups.groups
           .map((group) => group.discoveries.length)
