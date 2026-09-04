@@ -10,9 +10,12 @@ import {
 import { targetFileManifestSchema } from "../source-mapping/contracts.js";
 import {
   LabControlBlockedError,
+  experimentExecutionRequestSchema,
   experimentObservationRefSchema,
   experimentObservationSchema,
   experimentPlanSchema,
+  sourceRouteExperimentProtocolSchema,
+  type ExperimentExecutionRequest,
   type ExperimentObservationRef,
   type ExperimentPlan,
   type LabControl,
@@ -28,6 +31,7 @@ import {
   runFreshGvisorWordPressLab,
   type LabProcessRunner,
 } from "./gvisor-wordpress-lab.js";
+import { sourceRouteProtocolSupports } from "./source-route-experiment-protocol.js";
 
 export type {
   LabProcessRequest,
@@ -45,6 +49,7 @@ const storedXssLabDefinitionSchema = z.strictObject({
   kind: z.literal("stored-xss-lab-definition"),
   schemaVersion: z.literal(1),
   bindings: experimentPlanSchema.shape.bindings,
+  protocol: sourceRouteExperimentProtocolSchema,
   images: z.strictObject({
     database: pinnedLabImageSchema,
     wordpress: pinnedLabImageSchema,
@@ -75,6 +80,20 @@ const storedXssBrowserResultSchema = z.strictObject({
   browserCanaryExecuted: z.boolean(),
 });
 
+const browserScriptExecutionResultSchema = z.strictObject({
+  kind: z.literal("browser-script-execution-result"),
+  schemaVersion: z.literal(1),
+  normalFunction: z.enum(["preserved", "broken", "unknown"]),
+  attackerSequenceExecuted: z.boolean(),
+  victimContextEstablished: z.boolean(),
+  browserCanaryExecuted: z.boolean(),
+});
+
+const browserWorkerResultSchema = z.discriminatedUnion("kind", [
+  storedXssBrowserResultSchema,
+  browserScriptExecutionResultSchema,
+]);
+
 type StoredXssLabDefinition = z.infer<typeof storedXssLabDefinitionSchema>;
 
 class GvisorStoredXssLabControl implements LabControl {
@@ -87,7 +106,10 @@ class GvisorStoredXssLabControl implements LabControl {
   async #loadDefinition(
     plan: ExperimentPlan,
   ): Promise<{ value: StoredXssLabDefinition; path: string }> {
-    if (plan.mechanism.kind !== "stored-xss-browser") {
+    if (
+      plan.mechanism.kind !== "stored-xss-browser" &&
+      plan.mechanism.kind !== "browser-script-execution"
+    ) {
       throw new LabControlBlockedError("unsupported-experiment");
     }
     const path = this.#options.definitionFile;
@@ -154,6 +176,7 @@ class GvisorStoredXssLabControl implements LabControl {
       browserInputDigest: rawLabFileDigest(
         await readFile(value.browser.inputFile),
       ),
+      protocolDigest: sha256Digest(value.protocol),
     });
     if (configurationDigest !== plan.bindings.configurationDigest) {
       throw new Error("Stored XSS Lab configuration binding mismatch");
@@ -172,13 +195,18 @@ class GvisorStoredXssLabControl implements LabControl {
     return { value, path };
   }
 
-  async execute(value: ExperimentPlan): Promise<ExperimentObservationRef> {
-    const plan = experimentPlanSchema.parse(value);
+  async execute(
+    value: ExperimentExecutionRequest,
+  ): Promise<ExperimentObservationRef> {
+    const request = experimentExecutionRequestSchema.parse(value);
+    const plan = request.plan;
+    const definition = await this.#loadDefinition(plan);
+    if (!sourceRouteProtocolSupports(definition.value.protocol, request)) {
+      throw new LabControlBlockedError("unsupported-experiment");
+    }
     if (!(await isGvisorRuntimeAvailable(this.#options.processRunner))) {
       throw new LabControlBlockedError("gvisor-unavailable");
     }
-
-    const definition = await this.#loadDefinition(plan);
     const labImages = {
       database: definition.value.images.database,
       wordpress: definition.value.images.wordpress,
@@ -224,12 +252,38 @@ class GvisorStoredXssLabControl implements LabControl {
       });
       execution = {
         labId: lab.labId,
-        result: storedXssBrowserResultSchema.parse(JSON.parse(lab.stdout)),
+        result: browserWorkerResultSchema.parse(JSON.parse(lab.stdout)),
       };
     } catch {
       throw new LabControlBlockedError("experiment-failed");
     }
 
+    let observationResult;
+    if (plan.mechanism.kind === "stored-xss-browser") {
+      if (execution.result.kind !== "stored-xss-browser-result") {
+        throw new Error("Stored XSS Lab worker result mismatch");
+      }
+      observationResult = {
+        kind: "stored-xss-browser" as const,
+        schemaVersion: 1 as const,
+        attackerRequestAccepted: execution.result.attackerRequestAccepted,
+        persistentStateObserved: execution.result.persistentStateObserved,
+        browserCanaryExecuted: execution.result.browserCanaryExecuted,
+      };
+    } else if (plan.mechanism.kind === "browser-script-execution") {
+      if (execution.result.kind !== "browser-script-execution-result") {
+        throw new Error("Browser Script Execution Lab worker result mismatch");
+      }
+      observationResult = {
+        kind: "browser-script-execution" as const,
+        schemaVersion: 1 as const,
+        attackerSequenceExecuted: execution.result.attackerSequenceExecuted,
+        victimContextEstablished: execution.result.victimContextEstablished,
+        browserCanaryExecuted: execution.result.browserCanaryExecuted,
+      };
+    } else {
+      throw new LabControlBlockedError("unsupported-experiment");
+    }
     const observation = experimentObservationSchema.parse({
       kind: "experiment-observation",
       schemaVersion: 1,
@@ -251,13 +305,7 @@ class GvisorStoredXssLabControl implements LabControl {
         state: plan.mechanism.causalFactorState,
       },
       normalFunction: execution.result.normalFunction,
-      result: {
-        kind: "stored-xss-browser",
-        schemaVersion: 1,
-        attackerRequestAccepted: execution.result.attackerRequestAccepted,
-        persistentStateObserved: execution.result.persistentStateObserved,
-        browserCanaryExecuted: execution.result.browserCanaryExecuted,
-      },
+      result: observationResult,
       artifactRefs: [],
     });
     const observationDigest =
@@ -276,3 +324,6 @@ export function openGvisorStoredXssLabControl(
 ): LabControl {
   return new GvisorStoredXssLabControl(options);
 }
+
+export const openGvisorBrowserScriptExecutionLabControl =
+  openGvisorStoredXssLabControl;

@@ -1,8 +1,8 @@
 # 自由探索エージェント・ループ（Autonomous Research Loop）
 
-Status: accepted target architecture, 2026-09-03
+Status: accepted target architecture, 2026-09-04
 
-このviewは、raw-source free reasoningを通常運転にし、強いhigh-impact frontierが現れた時だけwp2shell / Argus-likeなmulti-wave深掘りへ昇格する到達形を示す。正本は[ADR 0113](../../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)、[ADR 0116](../../adr/0116-use-four-finder-slots-per-depth-wave.md)、[ADR 0117](../../adr/0117-optimize-for-high-impact-semantic-recall.md)である。
+このviewは、raw-source free reasoningを通常運転にし、強いhigh-impact frontierが現れた時だけwp2shell / Argus-likeなmulti-wave深掘りへ昇格する到達形を示す。正本は[ADR 0113](../../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)、[ADR 0116](../../adr/0116-use-four-finder-slots-per-depth-wave.md)、[ADR 0117](../../adr/0117-optimize-for-high-impact-semantic-recall.md)、[ADR 0119](../../adr/0119-release-finder-checkpoints-before-the-wave-barrier.md)、[ADR 0120](../../adr/0120-run-source-aware-recon-alongside-a-whole-target-baseline.md)である。
 
 ## 1. 自由にする内側、固定する外側
 
@@ -44,29 +44,34 @@ Default FinderへSurface Map excerpt、node priority、AST-derived routeを必�
 
 ```mermaid
 flowchart TB
-    planner["Root Planner<br/>distinct research theses"]
-    f1["Finder A"]
-    f2["Finder B"]
-    f3["Finder C"]
-    f4["Finder D"]
-    barrier["Wave Barrier"]
-    artifacts[("Hypotheses / Fragments / Unknowns")]
-    evaluation{"Root Evaluation"}
+    input["Target Snapshot<br/>+ TargetFileManifest"]
+    recon["Source-aware Recon<br/>source-backed focus packets"]
+    baseline["Whole-target Baseline Finder"]
+    focused["Focused / Wildcard Finders<br/>up to 3"]
+    checkpoints[("Durable subject checkpoints")]
+    barrier["Wave Barrier<br/>independence / closure only"]
+    evaluation{"Iteration Evaluation"}
     verify["Independent Verification"]
     depth["Depth Admission"]
     stop["Evidence-backed Stop"]
 
-    planner --> f1 --> barrier
-    planner --> f2 --> barrier
-    planner --> f3 --> barrier
-    planner --> f4 --> barrier
-    barrier --> artifacts --> evaluation
-    evaluation -->|"重大なsource-bound Hypothesis"| verify
+    input --> recon
+    input --> baseline
+    recon --> focused
+    baseline --> checkpoints
+    focused --> checkpoints
+    checkpoints -->|"source-bound Hypothesis"| verify
+    recon --> barrier
+    baseline --> barrier
+    focused --> barrier
+    barrier --> evaluation
     evaluation -->|"strong semantic frontier"| depth
     evaluation -->|"価値ある新証拠なし"| stop
 ```
 
-四つの固定診断手順を実行するのではない。Root Plannerは最大4個の重複しないresearch thesisまたは開始lensを与えるが、各Finderは同じTarget Snapshot全体へ自由にpivotできる。同じmodelの同意数、到着順、多数決をFinding成立またはcandidate破棄へ使わない。
+最初のWaveでは、sourceを読むReconと一つのwhole-target Baseline Finderを同時に開始する。Reconは5--15個程度のinput-processing subsystem、security assumption、機能間interactionをsourceからinventoryし、初期Waveには最も強く独立した最大3個をsource anchor付きFocus Packetとして返す。Baseline Finderを待たせず、packetをfile allowlistまたは固定checklistにも変換しない。残り最大3枠のFocused / Wildcard FinderはFocus Packetを開始点にできる一方、同じTarget Snapshot全体へ自由にpivotできる。同じmodelの同意数、到着順、多数決をFinding成立またはcandidate破棄へ使わない。
+
+Finderはsource-boundなHypothesis、Route Fragment、Frontier Gapが成立するたびにterminal outputを待たずcheckpointする。checkpointはTarget、Manifest、Attempt、Work LeaseへbindしてCASとLedgerへdurableになってからworkerへackする。完全なHypothesisはWave Barrierや一括Root Evaluationを待たずIndependent Verificationへ流し、FragmentとGapはIteration EvaluationおよびDepthへ残す。Wave BarrierはFinder間の独立性、全subjectのstable union、Coverage Closureを決めるためのものであり、候補公開のgateではない。
 
 通常Waveは長いchainを必須成果にしない。Unauthenticated SQLi、意味的に深いStored XSS、PrivEsc等、単独で十分重大なHypothesisはそのままVerificationへ進める。一方、単純なReflected XSS等の低優先Findingも、parser、transformation、state、authorization等の再利用可能なmechanismを示す場合はRoute Fragmentとして残せる。一つのFindingが出てもstrong frontierが残るならCampaignを自動停止しない。
 
@@ -123,7 +128,7 @@ CriticはFindingを昇格させない。attacker premise、actor、state identit
 5. false-positive / blocked / unknownの正しい扱い
 6. token、wall time、monetary cost
 
-Budgetはhard ceilingであり消費目標ではない。cost削減を目的とする変更は、oracle-separated cohortとprospective Campaignのbaselineを作った後にFinder数、context、model、Wave数等を一変数ずつablationし、high-impact recallを落とさない場合だけ採用する。
+Budgetは研究quotaではなく安全envelopeであり、消費目標ではない。wall time、provider cost、process、output、隔離は外側から強制する一方、provider報告token、とくにcache readを含む値はusage telemetryとして保存し、それだけで完成済みcandidateを無効化しない。turnとsource queryは暴走防止に十分緩くし、通常のsource追跡を途中で切る値へ戻さない。cost削減を目的とする変更は、oracle-separated cohortとprospective Campaignのbaselineを作った後にFinder数、context、model、Wave数等を一変数ずつablationし、high-impact recallを落とさない場合だけ採用する。
 
 通常Waveの早期終了は単なるFinderの「もうない」という自己申告で決めない。strong frontierがなく、重大HypothesisがVerificationへ送られ、未取得dependencyと主要なunknownが記録され、追加の独立lensがmaterially new evidenceを生まない時にevidence-backed stopへ進む。DepthではApproach Familyのterminal化、具体的reopen条件、連続Waveの新証拠なし、Criticによる新mechanismなしも停止根拠に加える。
 
@@ -140,4 +145,4 @@ Budgetはhard ceilingであり消費目標ではない。cost削減を目的と�
 
 wp2shellのinput parser、charset、upload、serialization、cache、race、crypto、typing等は発想例であり固定checklistにしない。`/flag`や最低6時間もproduction ruleにしない。known-positive benchmarkだけが肯定解motivationを利用でき、prospective Targetに特定impactの存在を保証しない。
 
-現在の実装状態とTestは[Codebase Guide](../../CODEBASE-GUIDE.md)だけを正本とする。現在動くMap-first one-wave sliceは移行元であり、この文書の到達設計と混同しない。
+現在の実装状態とTestは[Codebase Guide](../../CODEBASE-GUIDE.md)だけを正本とする。Map-first v1の新規実行は廃止し、完了済みLedgerのread-only replay互換だけを残す。

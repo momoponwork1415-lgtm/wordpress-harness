@@ -4,7 +4,7 @@
 
 ## Mission
 
-- North Starは、oracle-freeなprospective Campaignで**high-impactなbroken security semanticsを高recallで発見し、独立Verificationで実証すること**。
+- Productの到達点は、oracle-freeなprospective Campaignで**high-impactなbroken security semanticsを高recallで発見し、独立Verificationで実証し、Human Review PacketからHuman Confirmationまで閉じること**。ResearchのNorth Starはそのうち発見から独立Verificationまでを所有する。
 - RCEやsite-wide compromiseは最上位impactだが唯一の成功条件ではない。
 - 通常運転はraw-source-firstのSemantic Research Wave。strong semantic frontierだけをconditional Depthへ昇格する。
 - **Do not optimize for sinks. Optimize for broken security semantics.**

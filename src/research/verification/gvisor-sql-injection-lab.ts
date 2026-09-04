@@ -10,9 +10,12 @@ import {
 import { targetFileManifestSchema } from "../source-mapping/contracts.js";
 import {
   LabControlBlockedError,
+  experimentExecutionRequestSchema,
   experimentObservationRefSchema,
   experimentObservationSchema,
   experimentPlanSchema,
+  sourceRouteExperimentProtocolSchema,
+  type ExperimentExecutionRequest,
   type ExperimentObservationRef,
   type ExperimentPlan,
   type LabControl,
@@ -27,6 +30,7 @@ import {
   runFreshGvisorWordPressLab,
   type LabProcessRunner,
 } from "./gvisor-wordpress-lab.js";
+import { sourceRouteProtocolSupports } from "./source-route-experiment-protocol.js";
 
 export interface OpenGvisorSqlInjectionLabControlOptions {
   readonly artifactStore: JsonArtifactStore;
@@ -38,6 +42,7 @@ const sqlInjectionLabDefinitionSchema = z.strictObject({
   kind: z.literal("sql-injection-lab-definition"),
   schemaVersion: z.literal(1),
   bindings: experimentPlanSchema.shape.bindings,
+  protocol: sourceRouteExperimentProtocolSchema,
   images: z.strictObject({
     database: pinnedLabImageSchema,
     wordpress: pinnedLabImageSchema,
@@ -67,6 +72,44 @@ const sqlInjectionDatabaseResultSchema = z.strictObject({
   databaseReadbackCanaryObserved: z.boolean(),
 });
 
+const sqlQueryEffectResultSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("database-readback-canary"),
+    observed: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.literal("database-state-change-canary"),
+    observed: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.literal("http-response-differential"),
+    relationObserved: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.literal("timing-differential"),
+    sampleCount: z.number().int().nonnegative(),
+    medianDeltaMs: z.number().finite().nonnegative(),
+  }),
+  z.strictObject({
+    kind: z.literal("target-account-authentication-canary"),
+    attackerContextInitiallyAuthenticated: z.boolean(),
+    targetAccountAuthenticationObserved: z.boolean(),
+  }),
+]);
+
+const sqlQuerySemanticEffectResultSchema = z.strictObject({
+  kind: z.literal("sql-query-semantic-effect-result"),
+  schemaVersion: z.literal(1),
+  normalFunction: z.enum(["preserved", "broken", "unknown"]),
+  attackerSequenceExecuted: z.boolean(),
+  effect: sqlQueryEffectResultSchema,
+});
+
+const sqlInjectionWorkerResultSchema = z.discriminatedUnion("kind", [
+  sqlInjectionDatabaseResultSchema,
+  sqlQuerySemanticEffectResultSchema,
+]);
+
 type SqlInjectionLabDefinition = z.infer<
   typeof sqlInjectionLabDefinitionSchema
 >;
@@ -81,7 +124,10 @@ class GvisorSqlInjectionLabControl implements LabControl {
   async #loadDefinition(
     plan: ExperimentPlan,
   ): Promise<{ value: SqlInjectionLabDefinition; path: string }> {
-    if (plan.mechanism.kind !== "sql-injection-database") {
+    if (
+      plan.mechanism.kind !== "sql-injection-database" &&
+      plan.mechanism.kind !== "sql-query-semantic-effect"
+    ) {
       throw new LabControlBlockedError("unsupported-experiment");
     }
     const path = this.#options.definitionFile;
@@ -142,6 +188,7 @@ class GvisorSqlInjectionLabControl implements LabControl {
       workerInputDigest: rawLabFileDigest(
         await readFile(value.worker.inputFile),
       ),
+      protocolDigest: sha256Digest(value.protocol),
     });
     if (configurationDigest !== plan.bindings.configurationDigest) {
       throw new Error("SQL Injection Lab configuration binding mismatch");
@@ -160,9 +207,15 @@ class GvisorSqlInjectionLabControl implements LabControl {
     return { value, path };
   }
 
-  async execute(value: ExperimentPlan): Promise<ExperimentObservationRef> {
-    const plan = experimentPlanSchema.parse(value);
+  async execute(
+    value: ExperimentExecutionRequest,
+  ): Promise<ExperimentObservationRef> {
+    const request = experimentExecutionRequestSchema.parse(value);
+    const plan = request.plan;
     const definition = await this.#loadDefinition(plan);
+    if (!sourceRouteProtocolSupports(definition.value.protocol, request)) {
+      throw new LabControlBlockedError("unsupported-experiment");
+    }
     const preflight = await preflightGvisorWordPressLab(
       this.#options.processRunner,
       definition.value.images,
@@ -202,9 +255,36 @@ class GvisorSqlInjectionLabControl implements LabControl {
     } catch {
       throw new LabControlBlockedError("experiment-failed");
     }
-    const result = sqlInjectionDatabaseResultSchema.parse(
+    const result = sqlInjectionWorkerResultSchema.parse(
       JSON.parse(execution.stdout),
     );
+    let observationResult;
+    if (plan.mechanism.kind === "sql-injection-database") {
+      if (result.kind !== "sql-injection-database-result") {
+        throw new Error("SQL Injection Lab worker result mismatch");
+      }
+      observationResult = {
+        kind: "sql-injection-database" as const,
+        schemaVersion: 1 as const,
+        attackerRequestAccepted: result.attackerRequestAccepted,
+        databaseReadbackCanaryObserved: result.databaseReadbackCanaryObserved,
+      };
+    } else if (plan.mechanism.kind === "sql-query-semantic-effect") {
+      if (
+        result.kind !== "sql-query-semantic-effect-result" ||
+        result.effect.kind !== plan.mechanism.effect.kind
+      ) {
+        throw new Error("SQL Query Effect Lab worker result mismatch");
+      }
+      observationResult = {
+        kind: "sql-query-semantic-effect" as const,
+        schemaVersion: 1 as const,
+        attackerSequenceExecuted: result.attackerSequenceExecuted,
+        effect: result.effect,
+      };
+    } else {
+      throw new LabControlBlockedError("unsupported-experiment");
+    }
     const observation = experimentObservationSchema.parse({
       kind: "experiment-observation",
       schemaVersion: 1,
@@ -226,12 +306,7 @@ class GvisorSqlInjectionLabControl implements LabControl {
         state: plan.mechanism.causalFactorState,
       },
       normalFunction: result.normalFunction,
-      result: {
-        kind: "sql-injection-database",
-        schemaVersion: 1,
-        attackerRequestAccepted: result.attackerRequestAccepted,
-        databaseReadbackCanaryObserved: result.databaseReadbackCanaryObserved,
-      },
+      result: observationResult,
       artifactRefs: [],
     });
     const observationDigest =
@@ -250,3 +325,6 @@ export function openGvisorSqlInjectionLabControl(
 ): LabControl {
   return new GvisorSqlInjectionLabControl(options);
 }
+
+export const openGvisorSqlQuerySemanticEffectLabControl =
+  openGvisorSqlInjectionLabControl;

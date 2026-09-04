@@ -14,10 +14,22 @@ interface TargetIntake {
 }
 
 type IntakeDisposition =
-  | { status: "ready"; receipt: IntakeReceiptRef; packet: TargetIntakePacketRef }
-  | { status: "deferred"; receipt: IntakeReceiptRef; reasons: readonly IntakeReason[] }
-  | { status: "rejected"; receipt: IntakeReceiptRef; reasons: readonly IntakeReason[] };
+  | {
+      status: "ready";
+      receipt: IntakeReceipt;
+      receiptRef: IntakeReceiptRef;
+      packet: TargetIntakePacket;
+      packetRef: TargetIntakePacketRef;
+    }
+  | {
+      status: "deferred" | "rejected";
+      receipt: IntakeReceipt;
+      receiptRef: IntakeReceiptRef;
+      reasons: readonly IntakeReason[];
+    };
 ```
+
+値とdigest固定refを同時に返し、callerがAcquisition内部storageを直接読む必要をなくす。context間handoffまたはdurableな関連付けにはrefを使い、その場の表示・validationには同時に返るimmutable valueを使う。
 
 `ManualTargetIntakeRequest`は、一つのlocal source locator、`wporg:<slug>`または`premium:<vendor>/<product>`の宣言plugin identity、要求version、任意のmain plugin file relative path、premium版で必須となるcanonical install directory、取得provenance、Canonical Configurationに必要な情報、明示的な環境依存、Intake Policy refだけを受け取る。WordPress.org版のcanonical install directoryはrequest値を採用せずofficial slugから確定する。local pathはinput transportでありdurable identityに含めない。自由文の選定理由、既知脆弱性、疑わしいfile・symbol・parameter、期待class・routeをfieldとして持たない。unknown fieldは無視せずdecode時に拒否する。
 

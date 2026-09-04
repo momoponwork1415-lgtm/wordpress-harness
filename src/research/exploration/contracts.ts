@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { modelAttemptUsageV2Schema } from "../model-attempt-usage-contracts.js";
 import {
   surfaceMapRefSchema,
   surfaceMapSchema,
@@ -271,6 +272,8 @@ export const sourceBoundHypothesisSchema = z.strictObject({
     "account-takeover",
     "sql-injection",
     "stored-xss",
+    "reflected-xss",
+    "dom-xss",
     "authorization-bypass",
     "file-write",
     "path-traversal",
@@ -300,6 +303,7 @@ export const finderAttemptResultSchema = z.discriminatedUnion("status", [
     leaseId: digestSchema,
     status: z.literal("completed"),
     output: finderOutputSchema,
+    usage: modelAttemptUsageV2Schema.optional(),
   }),
   z.strictObject({
     kind: z.literal("finder-attempt-result"),
@@ -316,6 +320,7 @@ export const finderAttemptResultSchema = z.discriminatedUnion("status", [
       "orphaned",
     ]),
     reason: boundedTextSchema,
+    usage: modelAttemptUsageV2Schema.optional(),
   }),
 ]);
 

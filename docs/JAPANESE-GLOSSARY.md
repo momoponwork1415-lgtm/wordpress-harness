@@ -77,10 +77,10 @@
 | Campaign | 調査キャンペーン |
 | Setup Blocked | セットアップ阻害 |
 | Runtime Profile | 実行環境プロファイル |
-| Budget Envelope | 予算枠。hard ceilingでありtoken消費目標ではない |
+| Budget Envelope | 予算枠。query、source bytes、turn、token、output、時間、Attempt / Wave / 並列数とVerification予約を固定するhard ceilingであり、消費目標ではない |
 | Follow-up Campaign | 後続キャンペーン |
 | Model Profile | モデルプロファイル |
-| Attempt Plan | 実行計画 |
+| Attempt Plan | 実行計画。Target、Manifest、role-specific assignment、Prompt Set、Model Profile、tool、schema、予算を固定し、workerへ何を見せどの条件で実行するかを記録する正本 |
 | Source Tool Policy | ソース取得方針 |
 | Attempt | 実行試行 |
 | Segment | 実行区間 |
@@ -104,20 +104,26 @@
 | Map Delta Proposal | 地図差分提案。AI Mapperが出す未検査の追加候補 |
 | Map Delta Receipt | 地図差分検査記録。候補ごとの受理・拒否を残す記録 |
 | PHP Program Index | PHPプログラム索引。navigationやevidenceを補助するが探索範囲を決めない |
-| Analysis Unit | 解析単位。Finderへ渡す初期seedであり探索scopeではない |
+| Analysis Unit | 解析単位。map-assisted coverageへ渡す初期seedであり探索scopeではない。Default raw-sourceでは必須にしない |
 | Source Evidence Query | ソース根拠問い合わせ |
 | Tool Receipt | ツール実行記録 |
 | Context Request | 文脈要求 |
 | Context Response | 文脈応答 |
 | Mapping Evidence Request | 地図根拠要求 |
 | Runtime Observation | 実行時観測 |
-| Focus Area | coverageや有限workのための観測上の探索領域。Finderのpivotを制限しない |
-| Work Lease | 作業割当。研究thesisまたはmissing linkを有限予算でworkerへ渡す記録 |
+| Research Thesis | 研究方向。security assumptionや機能間interactionを調べる未検証の問いであり、Hypothesisやfile scopeではない |
+| Focus Area | optionalなmap-assisted coverageのための観測上の探索領域。Finderのpivotを制限しない |
+| Work Lease | 作業割当。Research Thesis、Frontier GapまたはFocus Areaを有限予算でworkerへ渡す記録 |
 | Work Wave | 作業ウェーブ |
 | Semantic Research Wave | 通常の意味的探索ウェーブ。raw-source-firstで最大4 FinderがTarget全体へ自由にpivotする |
-| Depth Admission | 深掘り昇格判断。strong semantic frontierへmulti-waveの追加予算を投資する判断 |
+| Root Evaluation | 根本評価。Wave barrierまたはDepth Critique後に型付き成果物をfresh contextで評価し、非排他的なIteration Decisionを作るmodel-owned判断 |
+| Depth Admission | 深掘り昇格判断。source-boundなstrong mechanismとhigh-impactへ伸びる具体的frontierへmulti-waveの追加予算を投資する判断 |
+| Approach Family | 探索系統。同じcore security assumptionとstate/capability transition mechanismを追うresearch lineage |
+| Approach Family Registry | 探索系統台帳。Campaign内のFamily、evidence、round、状態、blocked理由、Reopen Conditionを再構築したview |
+| Reopen Condition | 再開条件。blocked/exhausted Familyをactiveへ戻せる具体的な新fact、evidence、次action |
 | Depth Campaign | 深掘りキャンペーン。Synthesis、Critic、missing-link Waveを反復する条件付き運行 |
-| Iteration Decision | 反復判断。Verification、Depth Admission、次作業、阻害、停止を決めた記録 |
+| Depth Work Queue | Depth Admissionと有限next workをTarget / Manifest / predecessorへbindし、4件ずつの後続batchへ保持する待機集合 |
+| Iteration Decision | 反復判断。Verification、Depth Admission、次作業、retain、Closure、阻害を同時に持てる記録 |
 | Exploration Lane | 探索レーン。偏りを観測する目的区分であり固定roleではない |
 | Frontier Lane | 高impact frontierを深く追う探索レーン |
 | Primitive Lane | 攻撃要素レーン |
@@ -130,31 +136,35 @@
 | Hypothesis | 仮説 |
 | Source-bound Hypothesis | ソース根拠付き仮説 |
 | Evidence Route | 証拠経路 |
-| Route Fragment | 経路断片。単独severityが低くても高impact compositionに必要なら保持する |
+| Route Fragment | 不変な経路断片。特定Familyに所属せず、複数HypothesisまたはFamilyから参照できる |
 | Chain Synthesis | 連鎖統合。modelがFragmentのsemanticな接続候補を作る判断 |
-| Frontier Gap | 高impact経路の具体的な未解決因果link |
+| Chain Proposal | 連鎖提案。Synthesisが作る未検証の順序付きsemantic connectionであり、Evidence RouteやFindingではない |
+| Adversarial Critique | 敵対的批評。fresh Criticが全Chain Proposalの前提、防御、因果hopを攻撃したtypedな処遇 |
+| Frontier Gap | 高impact経路のsource evidence、falsifier、次actionを持つ具体的な未解決因果link |
 | Gap Review | 未探索点レビュー |
 | Closure Record | research thesisまたはfrontierの探索完了記録 |
-| Coverage Closure | 根拠付き探索完了。Map完成やFinder自己申告だけでは成立しない |
+| Coverage Closure | 根拠付き探索完了。全active workのterminal化と独立gap passを要求し、Map完成や一Waveの空振りだけでは成立しない |
 
 ## 検証と判定
 
 | 正式語 | 日本語での意味 |
 | --- | --- |
 | Preflight Disposition | 事前検査結果 |
-| Verification Queue | 検証待ち行列 |
+| Verification Queue | 検証待ち行列。当該Iterationや予算内で選ばれなくても候補を削除しない |
 | Experiment | 検証実験 |
 | Witness | 成立証拠 |
 | Execution Canary | 実行カナリア |
+| Security Effect | 安全な隔離Labで機械観測するsecurity propertyのterminalな変化。脆弱性名、payload文字列、delivery分類、中間状態そのものではない |
 | Causal Control | 因果対照実験 |
 | Skeptic Review | 反証レビュー |
 | Independent Reproduction | 独立再現 |
 | Model Separation Exception | モデル分離例外 |
 | Finding | 確認済み脆弱性 |
+| Finding Mechanism Group | 脆弱性機構グループ。同じ独立再導出routeと実験証拠を持つ複数Findingを、元記録を残したまま一機構として数えるderived view |
 | Causal Identity | 原因同一性 |
 | Blocked | 検証不能 |
 | Disproved | 反証済み |
-| Incomplete Campaign | 未完了キャンペーン |
+| Incomplete Campaign | 未完了キャンペーン。Findingがあってもactive frontierや検証待ちが残れば成立し得る |
 | Programme Disposition | プログラム適格性判定 |
 | Known Duplicate Disposition | 既知重複判定 |
 

@@ -12,6 +12,8 @@
 - [ADR 0114 — BreadthとDepthのpolicyを分ける](0114-separate-breadth-and-depth-campaign-policies.md)
 - [ADR 0116 — Depth Waveを最大4 Finderにする](0116-use-four-finder-slots-per-depth-wave.md)
 - [ADR 0117 — high-impact semantic recallを優先する](0117-optimize-for-high-impact-semantic-recall.md)
+- [ADR 0119 — Finder checkpointをWave Barrier前に公開する](0119-release-finder-checkpoints-before-the-wave-barrier.md)
+- [ADR 0120 — source-aware Reconとwhole-target baselineを並行する](0120-run-source-aware-recon-alongside-a-whole-target-baseline.md)
 
 ## Evidence and isolation
 
@@ -23,6 +25,8 @@
 - [ADR 0067 — production evidenceへgVisorを要求する](0067-require-gvisor-for-production-evidence.md)
 - [ADR 0068 — WitnessとControlをfresh sibling Labで実行する](0068-run-witness-and-control-in-sibling-labs.md)
 - [ADR 0115 — 公開CVEの実験結果だけをGitへ置く](0115-publish-only-public-cve-experiment-results.md)
+- [ADR 0118 — source provenanceをTargetFileManifestへbindする](0118-bind-source-provenance-to-the-target-file-manifest.md)
+- [ADR 0121 — Verificationを観測可能なsecurity effectへbindする](0121-bind-verification-to-observable-security-effects.md)
 
 ## Technology and boundaries
 

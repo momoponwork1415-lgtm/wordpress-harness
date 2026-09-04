@@ -56,10 +56,10 @@ flowchart TB
 | --- | --- | --- | --- | --- |
 | [Campaign Control](../campaign-execution-seam.md) | lifecycle、budget、wave、replay | Campaign Plan | Work Lease、terminal decision | candidateの真偽、provider処理 |
 | [Source Understanding](../source-mapping-seam.md) | source inventory、Map、gap、source query | Target Snapshot | source evidence、optional Map revision | Finding、探索範囲 |
-| [Exploration](../exploration-seam.md) | research thesis、Hypothesis、Fragment、Depth Admission | raw source、optional static hints | verification request、frontier、closure | Finding昇格、runtime実験 |
+| [Exploration](../exploration-seam.md) | research thesis、Hypothesis、Fragment、Approach Familyの意味と状態、Depth Admission | raw source、optional static hints | verification request、frontier、family change、closure | Finding昇格、runtime実験、durable event storage |
 | [Verification](../verification-seam.md) | independent proof、Witness、Control、outcome | source-bound Hypothesis | Finding、Disproved、Blocked | Finder confidence、priority |
 | [Model Execution](../model-execution-seam.md) | provider isolation、tool binding、process lifecycle | Attempt Plan | normalized terminal result | domain verdict |
-| Research Record | append-only research facts、artifact refs、replay | versioned event | durable read model | domain decision |
+| Research Record | append-only research facts、artifact refs、replay、Registry projection | versioned event | durable read model | Familyのsemantic identity、delta、reopen判断 |
 
 ## One campaign
 

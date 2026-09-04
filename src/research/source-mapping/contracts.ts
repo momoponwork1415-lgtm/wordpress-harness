@@ -1,6 +1,10 @@
 import { z } from "zod";
 
 import { targetSnapshotRefSchema } from "../contracts.js";
+import {
+  normalizedRelativePathSchema,
+  sourceFileEntrySchema,
+} from "../source-file-contracts.js";
 import { phpProgramIndexRefSchema } from "./php-program-index/index.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
@@ -9,16 +13,7 @@ const identifierSchema = z
   .min(1)
   .max(128)
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
-const relativePathSchema = z
-  .string()
-  .min(1)
-  .refine(
-    (path) =>
-      !path.startsWith("/") &&
-      !path.includes("\\") &&
-      !path.split("/").includes(".."),
-    { message: "File path must be a normalized relative path" },
-  );
+const relativePathSchema = normalizedRelativePathSchema;
 
 export const targetFileManifestSchema = z.strictObject({
   kind: z.literal("target-file-manifest"),
@@ -27,13 +22,7 @@ export const targetFileManifestSchema = z.strictObject({
     id: identifierSchema,
     digest: digestSchema,
   }),
-  entries: z.array(
-    z.strictObject({
-      path: relativePathSchema,
-      digest: digestSchema,
-      size: z.number().int().nonnegative(),
-    }),
-  ),
+  entries: z.array(sourceFileEntrySchema),
 });
 
 export const targetFileManifestRefSchema = z.strictObject({

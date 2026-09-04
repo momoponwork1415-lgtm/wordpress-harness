@@ -12,6 +12,10 @@ import {
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 
+import type {
+  SourceEvidenceReceipt,
+  SourceEvidenceReceiptV2,
+} from "../source-mapping/source-evidence-contracts.js";
 import type { AttemptSourceEvidence } from "./contracts.js";
 
 const desiredRelationSchema = z.enum([
@@ -51,6 +55,59 @@ const sourceReadInputSchema = z
     path: ["endLine"],
   });
 
+const v2ScopeSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("root") }),
+  z.strictObject({
+    kind: z.literal("directory"),
+    path: z.string().min(1).max(4096),
+  }),
+]);
+
+const sourceListInputV2Schema = z.strictObject({
+  selector: z
+    .strictObject({
+      scope: v2ScopeSchema,
+      traversal: z.enum(["children", "recursive"]),
+    })
+    .optional(),
+  cursor: z.string().min(1).max(16_384).optional(),
+  reason: z.string().min(1).max(1024),
+});
+
+const sourceSearchInputV2Schema = z.strictObject({
+  selector: z
+    .strictObject({
+      literal: z.string().min(1).max(256),
+      scope: z.discriminatedUnion("kind", [
+        ...v2ScopeSchema.options,
+        z.strictObject({
+          kind: z.literal("files"),
+          paths: z.array(z.string().min(1).max(4096)).min(1),
+        }),
+      ]),
+    })
+    .optional(),
+  cursor: z.string().min(1).max(16_384).optional(),
+  reason: z.string().min(1).max(1024),
+});
+
+const sourceReadInputV2Schema = z.strictObject({
+  selector: z
+    .strictObject({
+      path: z.string().min(1).max(4096),
+      fileDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+      startLine: z.number().int().positive(),
+      endLine: z.number().int().positive(),
+    })
+    .optional(),
+  cursor: z.string().min(1).max(16_384).optional(),
+  reason: z.string().min(1).max(1024),
+});
+
+const researchCheckpointInputSchema = z.strictObject({
+  subject: z.record(z.string(), z.unknown()),
+});
+
 export const claudeSourceEvidenceToolNames = [
   "mcp__source_evidence__source_list",
   "mcp__source_evidence__source_search",
@@ -59,13 +116,12 @@ export const claudeSourceEvidenceToolNames = [
 
 export interface ClaudeSourceEvidenceBridge {
   readonly mcpConfigPath: string;
+  readonly allowedToolNames: readonly string[];
   observedConnection(): boolean;
   close(): Promise<void>;
 }
 
-function toolResult(
-  receipt: Awaited<ReturnType<AttemptSourceEvidence["query"]>>,
-): {
+function toolResult(receipt: SourceEvidenceReceipt | SourceEvidenceReceiptV2): {
   content: [{ type: "text"; text: string }];
 } {
   return {
@@ -125,10 +181,25 @@ export async function openClaudeSourceEvidenceBridge(
       {
         description:
           "List manifest-bound files in the admitted immutable Target Snapshot, optionally below a normalized directory prefix. This is navigation evidence, not proof of reachability or safety.",
-        inputSchema: sourceListInputSchema,
+        inputSchema:
+          sourceEvidence.schemaVersion === 2
+            ? sourceListInputV2Schema
+            : sourceListInputSchema,
         annotations,
       },
-      async (input) => {
+      async (input: unknown) => {
+        if (sourceEvidence.schemaVersion === 2) {
+          const { selector, cursor, reason } =
+            sourceListInputV2Schema.parse(input);
+          return toolResult(
+            await sourceEvidence.query({
+              kind: "source-list",
+              ...(selector === undefined ? {} : { selector }),
+              ...(cursor === undefined ? {} : { cursor }),
+              reason,
+            }),
+          );
+        }
         const { prefix, reason } = sourceListInputSchema.parse(input);
         return toolResult(
           await sourceEvidence.query({
@@ -146,10 +217,25 @@ export async function openClaudeSourceEvidenceBridge(
       {
         description:
           "Search an exact literal in the admitted immutable Target Snapshot. Returns source anchors and a durable receipt; it does not prove reachability or safety.",
-        inputSchema: sourceSearchInputSchema,
+        inputSchema:
+          sourceEvidence.schemaVersion === 2
+            ? sourceSearchInputV2Schema
+            : sourceSearchInputSchema,
         annotations,
       },
-      async (input) => {
+      async (input: unknown) => {
+        if (sourceEvidence.schemaVersion === 2) {
+          const { selector, cursor, reason } =
+            sourceSearchInputV2Schema.parse(input);
+          return toolResult(
+            await sourceEvidence.query({
+              kind: "source-search",
+              ...(selector === undefined ? {} : { selector }),
+              ...(cursor === undefined ? {} : { cursor }),
+              reason,
+            }),
+          );
+        }
         const { literal, paths, desiredRelation, reason } =
           sourceSearchInputSchema.parse(input);
         return toolResult(
@@ -174,10 +260,25 @@ export async function openClaudeSourceEvidenceBridge(
       {
         description:
           "Read a line range from one manifest-bound source file using its digest. Returns untrusted Target source and a durable receipt.",
-        inputSchema: sourceReadInputSchema,
+        inputSchema:
+          sourceEvidence.schemaVersion === 2
+            ? sourceReadInputV2Schema
+            : sourceReadInputSchema,
         annotations,
       },
-      async (input) => {
+      async (input: unknown) => {
+        if (sourceEvidence.schemaVersion === 2) {
+          const { selector, cursor, reason } =
+            sourceReadInputV2Schema.parse(input);
+          return toolResult(
+            await sourceEvidence.query({
+              kind: "source-read",
+              ...(selector === undefined ? {} : { selector }),
+              ...(cursor === undefined ? {} : { cursor }),
+              reason,
+            }),
+          );
+        }
         const {
           path,
           fileDigest,
@@ -202,6 +303,36 @@ export async function openClaudeSourceEvidenceBridge(
         );
       },
     );
+    if (sourceEvidence.checkpoint !== undefined) {
+      server.registerTool(
+        "checkpoint_research",
+        {
+          description:
+            "Durably checkpoint one source-bound research subject before continuing exploration. This records a candidate, fragment, or gap; it does not validate a Finding.",
+          inputSchema: researchCheckpointInputSchema,
+          annotations: {
+            readOnlyHint: false,
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: false,
+          },
+        },
+        async (input: unknown) => {
+          const { subject } = researchCheckpointInputSchema.parse(input);
+          const checkpoint = await sourceEvidence.checkpoint?.(subject);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  checkpoint,
+                }),
+              },
+            ],
+          };
+        },
+      );
+    }
     return server;
   });
   const nodeHandler = toNodeHandler(handler);
@@ -273,6 +404,12 @@ export async function openClaudeSourceEvidenceBridge(
 
     return {
       mcpConfigPath,
+      allowedToolNames: [
+        ...claudeSourceEvidenceToolNames,
+        ...(sourceEvidence.checkpoint === undefined
+          ? []
+          : ["mcp__source_evidence__checkpoint_research"]),
+      ],
       observedConnection: () => connectionObserved,
       close: async () => {
         try {

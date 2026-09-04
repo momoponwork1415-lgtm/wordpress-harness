@@ -1,7 +1,13 @@
-import { createHash } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { TextDecoder } from "node:util";
+import { z } from "zod";
 
 import type { JsonArtifactStore } from "../research-record/contracts.js";
 import {
@@ -16,8 +22,16 @@ import {
 } from "./contracts.js";
 import {
   sourceEvidenceQuerySchema,
+  sourceListSelectorSchema,
+  sourceListResponseV2Schema,
+  sourceSearchSelectorV2Schema,
+  sourceSearchResponseV2Schema,
+  sourceReadSelectorV2Schema,
+  sourceReadResponseV2Schema,
   sourceEvidenceReceiptRefSchema,
+  sourceEvidenceReceiptRefV2Schema,
   sourceEvidenceReceiptValueSchema,
+  sourceEvidenceReceiptValueV2Schema,
   sourceInventoryResponseSchema,
   sourceRangeResponseSchema,
   sourceSearchResponseSchema,
@@ -28,15 +42,62 @@ import {
   type SourceEvidenceGateway,
   type SourceEvidencePolicyDecision,
   type SourceEvidenceQuery,
+  type SourceEvidenceQueryV1,
+  type SourceEvidenceQueryV2,
+  type SourceEvidencePolicyDecisionV2,
   type SourceEvidenceReceipt,
+  type SourceEvidenceReceiptV2,
   type SourceEvidenceResponse,
   type SourceEvidenceResult,
+  type SourceEvidenceResultV2,
   type SourceInventoryResponse,
   type SourceRangeResponse,
   type SourceSearchResponse,
   type SourceToolPolicy,
   type SourceToolPolicyRef,
 } from "./source-evidence-contracts.js";
+
+const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+const listCursorPayloadSchema = z.strictObject({
+  schemaVersion: z.literal(2),
+  operation: z.literal("list"),
+  targetSnapshotDigest: digestSchema,
+  manifestDigest: digestSchema,
+  policyDigest: digestSchema,
+  assignmentDigest: digestSchema,
+  selector: sourceListSelectorSchema,
+  nextIndex: z.number().int().nonnegative(),
+});
+
+type ListCursorPayload = z.infer<typeof listCursorPayloadSchema>;
+const searchCursorPayloadSchema = z.strictObject({
+  schemaVersion: z.literal(2),
+  operation: z.literal("search"),
+  targetSnapshotDigest: digestSchema,
+  manifestDigest: digestSchema,
+  policyDigest: digestSchema,
+  assignmentDigest: digestSchema,
+  selector: sourceSearchSelectorV2Schema,
+  entryIndex: z.number().int().nonnegative(),
+  offset: z.number().int().nonnegative(),
+  matchesSeen: z.number().int().nonnegative(),
+});
+
+type SearchCursorPayload = z.infer<typeof searchCursorPayloadSchema>;
+const readCursorPayloadSchema = z.strictObject({
+  schemaVersion: z.literal(2),
+  operation: z.literal("read"),
+  targetSnapshotDigest: digestSchema,
+  manifestDigest: digestSchema,
+  policyDigest: digestSchema,
+  assignmentDigest: digestSchema,
+  selector: sourceReadSelectorV2Schema,
+  rangeStartOffset: z.number().int().nonnegative(),
+  rangeEndOffset: z.number().int().nonnegative(),
+  nextOffset: z.number().int().nonnegative(),
+});
+
+type ReadCursorPayload = z.infer<typeof readCursorPayloadSchema>;
 
 export interface OpenSourceEvidenceGatewayOptions {
   readonly sourceDirectory: string;
@@ -87,6 +148,10 @@ function isNormalizedDirectoryPrefix(prefix: string): boolean {
   return prefix.endsWith("/") && isNormalizedRelativePath(prefix.slice(0, -1));
 }
 
+function escapesSourceRoot(path: string): boolean {
+  return isAbsolute(path) || path.split("/").includes("..");
+}
+
 function sourceLines(content: Buffer): readonly SourceLine[] {
   const lines: SourceLine[] = [];
   let startOffset = 0;
@@ -123,6 +188,7 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
   readonly #manifestRef: TargetFileManifestRef;
   readonly #manifest: TargetFileManifest;
   readonly #policyValue: SourceToolPolicy;
+  readonly #cursorKey = randomBytes(32);
 
   constructor(options: OpenSourceEvidenceGatewayOptions) {
     if (!isAbsolute(options.sourceDirectory)) {
@@ -138,9 +204,16 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
   }
 
   async query(
+    requestInput: SourceEvidenceQueryV1,
+  ): Promise<SourceEvidenceReceipt>;
+  async query(
+    requestInput: SourceEvidenceQueryV2,
+  ): Promise<SourceEvidenceReceiptV2>;
+  async query(
     requestInput: SourceEvidenceQuery,
-  ): Promise<SourceEvidenceReceipt> {
+  ): Promise<SourceEvidenceReceipt | SourceEvidenceReceiptV2> {
     const request = sourceEvidenceQuerySchema.parse(requestInput);
+    if (request.schemaVersion === 2) return this.#queryV2(request);
     if (
       request.budget !== undefined &&
       request.budget.queryOrdinal > request.budget.maxQueries
@@ -167,6 +240,630 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
       return this.#listFiles(request);
     }
     return this.#readRange(request);
+  }
+
+  async #queryV2(
+    request: SourceEvidenceQueryV2,
+  ): Promise<SourceEvidenceReceiptV2> {
+    const operation = this.#operationV2(request);
+    if (
+      request.assignment.kind === "research-thesis" &&
+      (request.assignment.thesis.targetSnapshotDigest !==
+        request.targetSnapshot.digest ||
+        request.assignment.thesis.manifestDigest !== request.manifest.digest)
+    ) {
+      return this.#invalidQueryV2(request, "assignment-mismatch");
+    }
+    if (request.queryOrdinal > request.budget.maxQueries) {
+      return this.#storeReceiptV2(
+        request,
+        operation,
+        { outcome: "denied", reason: "query-budget-exhausted" },
+        {
+          status: "budget-exhausted",
+          reason: "source-query-limit-exceeded",
+        },
+        { files: 0, bytes: 0, matches: 0 },
+        null,
+      );
+    }
+    const deniedReason = this.#deniedReasonV2(request);
+    if (deniedReason !== undefined) {
+      return this.#storeReceiptV2(
+        request,
+        operation,
+        { outcome: "denied", reason: deniedReason },
+        { status: "policy-denied", reason: deniedReason },
+        { files: 0, bytes: 0, matches: 0 },
+        null,
+      );
+    }
+    const operationAllowed =
+      request.kind === "source-list"
+        ? this.#policyValue.operations.inventory !== undefined
+        : request.kind === "source-search"
+          ? this.#policyValue.operations.search !== undefined
+          : this.#policyValue.operations.read !== undefined;
+    if (!operationAllowed) {
+      return this.#storeReceiptV2(
+        request,
+        operation,
+        { outcome: "denied", reason: "operation-not-allowed" },
+        { status: "policy-denied", reason: "operation-not-allowed" },
+        { files: 0, bytes: 0, matches: 0 },
+        null,
+      );
+    }
+    if (request.kind === "source-list") return this.#listV2(request);
+    if (request.kind === "source-search") return this.#searchV2(request);
+    return this.#readV2(request);
+  }
+
+  async #listV2(
+    request: Extract<SourceEvidenceQueryV2, { kind: "source-list" }>,
+  ): Promise<SourceEvidenceReceiptV2> {
+    if (request.selector !== undefined && request.cursor !== undefined) {
+      return this.#invalidQueryV2(request, "selector-cursor-conflict");
+    }
+    if (request.selector === undefined && request.cursor === undefined) {
+      return this.#invalidQueryV2(request, "selector-or-cursor-required");
+    }
+
+    let selector = request.selector;
+    let startIndex = 0;
+    if (request.cursor !== undefined) {
+      const decoded = this.#decodeListCursor(request.cursor);
+      if (
+        decoded === undefined ||
+        decoded.targetSnapshotDigest !== request.targetSnapshot.digest ||
+        decoded.manifestDigest !== request.manifest.digest ||
+        decoded.policyDigest !== request.policy.digest ||
+        decoded.assignmentDigest !== sha256Digest(request.assignment)
+      ) {
+        return this.#invalidQueryV2(request, "invalid-cursor");
+      }
+      selector = decoded.selector;
+      startIndex = decoded.nextIndex;
+    }
+    if (selector === undefined) {
+      return this.#invalidQueryV2(request, "invalid-cursor");
+    }
+    if (
+      selector.scope.kind === "directory" &&
+      escapesSourceRoot(selector.scope.path)
+    ) {
+      return this.#policyDeniedV2(request, "path-outside-snapshot");
+    }
+    if (
+      selector.scope.kind === "directory" &&
+      !isNormalizedRelativePath(selector.scope.path)
+    ) {
+      return this.#invalidQueryV2(request, "invalid-path");
+    }
+
+    const entries = this.#listEntries(selector);
+    if (entries === undefined) {
+      return this.#storeReceiptV2(
+        request,
+        "list",
+        { outcome: "allowed", reason: "list-allowed" },
+        { status: "not-found", reason: "directory-not-found" },
+        { files: 0, bytes: 0, matches: 0 },
+        null,
+      );
+    }
+    if (startIndex >= entries.length && entries.length > 0) {
+      return this.#invalidQueryV2(request, "invalid-cursor");
+    }
+    const pageSize = this.#policyValue.operations.inventory?.maxResults ?? 0;
+    const page = entries.slice(startIndex, startIndex + pageSize);
+    const nextIndex = startIndex + page.length;
+    const hasNext = nextIndex < entries.length;
+    const nextCursor = hasNext
+      ? this.#encodeListCursor({
+          schemaVersion: 2,
+          operation: "list",
+          targetSnapshotDigest: request.targetSnapshot.digest,
+          manifestDigest: request.manifest.digest,
+          policyDigest: request.policy.digest,
+          assignmentDigest: sha256Digest(request.assignment),
+          selector,
+          nextIndex,
+        })
+      : undefined;
+    const response = sourceListResponseV2Schema.parse({
+      kind: "source-list-response",
+      schemaVersion: 2,
+      scope: selector.scope,
+      traversal: selector.traversal,
+      entries: page,
+      ...(nextCursor === undefined ? {} : { nextCursor }),
+    });
+    const responseDigest = await this.#artifactStore.putJson(response);
+    return this.#storeReceiptV2(
+      request,
+      "list",
+      { outcome: "allowed", reason: "list-allowed" },
+      nextCursor === undefined
+        ? { status: "completed", responseDigest }
+        : {
+            status: "partial",
+            reason: "page-limit",
+            responseDigest,
+            continuationDigest: sha256Digest({ nextCursor }),
+          },
+      {
+        files: page.filter((entry) => entry.kind === "file").length,
+        bytes: 0,
+        matches: 0,
+      },
+      response,
+    );
+  }
+
+  #operationV2(request: SourceEvidenceQueryV2): "list" | "search" | "read" {
+    return request.kind === "source-list"
+      ? "list"
+      : request.kind === "source-search"
+        ? "search"
+        : "read";
+  }
+
+  #listEntries(selector: z.infer<typeof sourceListSelectorSchema>):
+    | readonly (
+        | { readonly kind: "directory"; readonly path: string }
+        | {
+            readonly kind: "file";
+            readonly path: string;
+            readonly fileDigest: string;
+            readonly size: number;
+          }
+      )[]
+    | undefined {
+    const directory =
+      selector.scope.kind === "root" ? undefined : selector.scope.path;
+    const prefix = directory === undefined ? "" : `${directory}/`;
+    const files = this.#manifest.entries
+      .filter((entry) => entry.path.startsWith(prefix))
+      .sort((left, right) => compareText(left.path, right.path));
+    if (directory !== undefined && files.length === 0) return undefined;
+    if (selector.traversal === "recursive") {
+      return files.map((entry) => ({
+        kind: "file" as const,
+        path: entry.path,
+        fileDigest: entry.digest,
+        size: entry.size,
+      }));
+    }
+
+    const children = new Map<
+      string,
+      | { readonly kind: "directory"; readonly path: string }
+      | {
+          readonly kind: "file";
+          readonly path: string;
+          readonly fileDigest: string;
+          readonly size: number;
+        }
+    >();
+    for (const entry of files) {
+      const remainder = entry.path.slice(prefix.length);
+      const slash = remainder.indexOf("/");
+      if (slash >= 0) {
+        const childPath = `${prefix}${remainder.slice(0, slash)}`;
+        children.set(childPath, { kind: "directory", path: childPath });
+      } else {
+        children.set(entry.path, {
+          kind: "file",
+          path: entry.path,
+          fileDigest: entry.digest,
+          size: entry.size,
+        });
+      }
+    }
+    return [...children.values()].sort((left, right) =>
+      compareText(left.path, right.path),
+    );
+  }
+
+  async #searchV2(
+    request: Extract<SourceEvidenceQueryV2, { kind: "source-search" }>,
+  ): Promise<SourceEvidenceReceiptV2> {
+    if (request.selector !== undefined && request.cursor !== undefined) {
+      return this.#invalidQueryV2(request, "selector-cursor-conflict");
+    }
+    if (request.selector === undefined && request.cursor === undefined) {
+      return this.#invalidQueryV2(request, "selector-or-cursor-required");
+    }
+
+    let selector = request.selector;
+    let entryIndex = 0;
+    let offset = 0;
+    let matchesSeen = 0;
+    if (request.cursor !== undefined) {
+      const decoded = this.#decodeSearchCursor(request.cursor);
+      if (
+        decoded === undefined ||
+        decoded.targetSnapshotDigest !== request.targetSnapshot.digest ||
+        decoded.manifestDigest !== request.manifest.digest ||
+        decoded.policyDigest !== request.policy.digest ||
+        decoded.assignmentDigest !== sha256Digest(request.assignment)
+      ) {
+        return this.#invalidQueryV2(request, "invalid-cursor");
+      }
+      selector = decoded.selector;
+      entryIndex = decoded.entryIndex;
+      offset = decoded.offset;
+      matchesSeen = decoded.matchesSeen;
+    }
+    if (selector === undefined) {
+      return this.#invalidQueryV2(request, "invalid-cursor");
+    }
+    const searchPaths =
+      selector.scope.kind === "root"
+        ? []
+        : selector.scope.kind === "directory"
+          ? [selector.scope.path]
+          : selector.scope.paths;
+    if (searchPaths.some(escapesSourceRoot)) {
+      return this.#policyDeniedV2(request, "path-outside-snapshot");
+    }
+    if (searchPaths.some((path) => !isNormalizedRelativePath(path))) {
+      return this.#invalidQueryV2(request, "invalid-path");
+    }
+    const selected = this.#searchEntries(selector);
+    if (selected.kind === "invalid") {
+      return this.#invalidQueryV2(request, "invalid-path");
+    }
+    if (selected.kind === "not-found") {
+      return this.#storeReceiptV2(
+        request,
+        "search",
+        { outcome: "allowed", reason: "search-allowed" },
+        { status: "not-found", reason: selected.reason },
+        { files: 0, bytes: 0, matches: 0 },
+        null,
+      );
+    }
+    const entries = selected.entries;
+    if (entryIndex >= entries.length && entries.length > 0) {
+      return this.#invalidQueryV2(request, "invalid-cursor");
+    }
+
+    const policy = this.#policyValue.operations.search;
+    if (policy === undefined) {
+      throw new Error("Search policy disappeared after admission");
+    }
+    const literal = Buffer.from(selector.literal, "utf8");
+    const matches: z.infer<typeof sourceSearchResponseV2Schema>["matches"] = [];
+    let scannedFiles = 0;
+    let scannedBytes = 0;
+    let next: { readonly entryIndex: number; readonly offset: number } | null =
+      null;
+
+    while (entryIndex < entries.length) {
+      const entry = entries[entryIndex];
+      if (entry === undefined) break;
+      const remaining = policy.maxScanBytes - scannedBytes;
+      if (remaining <= 0) {
+        next = { entryIndex, offset };
+        break;
+      }
+      let content: Buffer;
+      try {
+        content = await this.#loadEntry(entry);
+      } catch (error: unknown) {
+        if (error instanceof SourceEntryFailure) {
+          return this.#sourceEntryFailureV2(request, "search", error.reason);
+        }
+        throw error;
+      }
+      if (offset > content.byteLength) {
+        return this.#invalidQueryV2(request, "invalid-cursor");
+      }
+      scannedFiles += 1;
+      const scanEnd = Math.min(content.byteLength, offset + remaining);
+      let position = offset;
+      while (position < scanEnd) {
+        const found = content.indexOf(literal, position);
+        if (found < 0 || found + literal.byteLength > scanEnd) break;
+        matches.push({
+          anchor: {
+            kind: "source-anchor",
+            targetSnapshotDigest: this.#manifest.targetSnapshot.digest,
+            path: entry.path,
+            fileDigest: entry.digest,
+            startLine: 1 + countNewlines(content.subarray(0, found)),
+            endLine: 1 + countNewlines(content.subarray(0, found)),
+            startOffset: found,
+            endOffset: found + literal.byteLength,
+          },
+        });
+        position = found + literal.byteLength;
+        if (matches.length >= policy.maxResults) {
+          scannedBytes += position - offset;
+          next =
+            position < content.byteLength
+              ? { entryIndex, offset: position }
+              : entryIndex + 1 < entries.length
+                ? { entryIndex: entryIndex + 1, offset: 0 }
+                : null;
+          break;
+        }
+      }
+      if (matches.length >= policy.maxResults) break;
+      scannedBytes += scanEnd - offset;
+      if (scanEnd < content.byteLength) {
+        next = {
+          entryIndex,
+          offset: Math.max(
+            offset + 1,
+            scanEnd - Math.max(0, literal.byteLength - 1),
+          ),
+        };
+        break;
+      }
+      entryIndex += 1;
+      offset = 0;
+    }
+
+    const hasNext = next !== null;
+    const nextCursor =
+      next === null
+        ? undefined
+        : this.#encodeSearchCursor({
+            schemaVersion: 2,
+            operation: "search",
+            targetSnapshotDigest: request.targetSnapshot.digest,
+            manifestDigest: request.manifest.digest,
+            policyDigest: request.policy.digest,
+            assignmentDigest: sha256Digest(request.assignment),
+            selector,
+            entryIndex: next.entryIndex,
+            offset: next.offset,
+            matchesSeen: matchesSeen + matches.length,
+          });
+    const response = sourceSearchResponseV2Schema.parse({
+      kind: "source-search-response",
+      schemaVersion: 2,
+      literal: selector.literal,
+      scope: selector.scope,
+      scanned: { files: scannedFiles, bytes: scannedBytes },
+      matches,
+      ...(nextCursor === undefined ? {} : { nextCursor }),
+    });
+    const responseDigest = await this.#artifactStore.putJson(response);
+    const result: SourceEvidenceResultV2 = hasNext
+      ? {
+          status: "partial",
+          reason:
+            matches.length >= policy.maxResults ? "page-limit" : "scan-limit",
+          responseDigest,
+          continuationDigest: sha256Digest({ nextCursor }),
+        }
+      : matchesSeen + matches.length === 0
+        ? {
+            status: "not-found",
+            reason: "literal-not-found",
+            responseDigest,
+          }
+        : { status: "completed", responseDigest };
+    return this.#storeReceiptV2(
+      request,
+      "search",
+      { outcome: "allowed", reason: "search-allowed" },
+      result,
+      { files: scannedFiles, bytes: scannedBytes, matches: matches.length },
+      response,
+    );
+  }
+
+  #searchEntries(selector: z.infer<typeof sourceSearchSelectorV2Schema>):
+    | {
+        readonly kind: "ok";
+        readonly entries: readonly TargetFileManifest["entries"][number][];
+      }
+    | {
+        readonly kind: "not-found";
+        readonly reason: "directory-not-found" | "file-not-found";
+      }
+    | { readonly kind: "invalid" } {
+    if (selector.scope.kind === "root") {
+      return {
+        kind: "ok",
+        entries: [...this.#manifest.entries].sort((left, right) =>
+          compareText(left.path, right.path),
+        ),
+      };
+    }
+    if (selector.scope.kind === "directory") {
+      if (!isNormalizedRelativePath(selector.scope.path)) {
+        return { kind: "invalid" };
+      }
+      const prefix = `${selector.scope.path}/`;
+      const entries = this.#manifest.entries
+        .filter((entry) => entry.path.startsWith(prefix))
+        .sort((left, right) => compareText(left.path, right.path));
+      return entries.length === 0
+        ? { kind: "not-found", reason: "directory-not-found" }
+        : { kind: "ok", entries };
+    }
+    if (selector.scope.paths.some((path) => !isNormalizedRelativePath(path))) {
+      return { kind: "invalid" };
+    }
+    const selectedPaths = new Set(selector.scope.paths);
+    const entries = this.#manifest.entries
+      .filter((entry) => selectedPaths.has(entry.path))
+      .sort((left, right) => compareText(left.path, right.path));
+    return entries.length !== selectedPaths.size
+      ? { kind: "not-found", reason: "file-not-found" }
+      : { kind: "ok", entries };
+  }
+
+  async #readV2(
+    request: Extract<SourceEvidenceQueryV2, { kind: "source-read" }>,
+  ): Promise<SourceEvidenceReceiptV2> {
+    if (request.selector !== undefined && request.cursor !== undefined) {
+      return this.#invalidQueryV2(request, "selector-cursor-conflict");
+    }
+    if (request.selector === undefined && request.cursor === undefined) {
+      return this.#invalidQueryV2(request, "selector-or-cursor-required");
+    }
+
+    let selector = request.selector;
+    let rangeStartOffset: number | undefined;
+    let rangeEndOffset: number | undefined;
+    let nextOffset: number | undefined;
+    if (request.cursor !== undefined) {
+      const decoded = this.#decodeReadCursor(request.cursor);
+      if (
+        decoded === undefined ||
+        decoded.targetSnapshotDigest !== request.targetSnapshot.digest ||
+        decoded.manifestDigest !== request.manifest.digest ||
+        decoded.policyDigest !== request.policy.digest ||
+        decoded.assignmentDigest !== sha256Digest(request.assignment)
+      ) {
+        return this.#invalidQueryV2(request, "invalid-cursor");
+      }
+      selector = decoded.selector;
+      rangeStartOffset = decoded.rangeStartOffset;
+      rangeEndOffset = decoded.rangeEndOffset;
+      nextOffset = decoded.nextOffset;
+    }
+    if (selector === undefined) {
+      return this.#invalidQueryV2(request, "invalid-cursor");
+    }
+    if (escapesSourceRoot(selector.path)) {
+      return this.#policyDeniedV2(request, "path-outside-snapshot");
+    }
+    if (!isNormalizedRelativePath(selector.path)) {
+      return this.#invalidQueryV2(request, "invalid-path");
+    }
+    const entry = this.#manifest.entries.find(
+      (candidate) => candidate.path === selector.path,
+    );
+    if (entry === undefined) {
+      return this.#storeReceiptV2(
+        request,
+        "read",
+        { outcome: "allowed", reason: "read-allowed" },
+        { status: "not-found", reason: "file-not-found" },
+        { files: 0, bytes: 0, matches: 0 },
+        null,
+      );
+    }
+    if (entry.digest !== selector.fileDigest) {
+      return this.#storeReceiptV2(
+        request,
+        "read",
+        { outcome: "allowed", reason: "read-allowed" },
+        { status: "identity-mismatch", reason: "file-digest-mismatch" },
+        { files: 0, bytes: 0, matches: 0 },
+        null,
+      );
+    }
+    let content: Buffer;
+    try {
+      content = await this.#loadEntry(entry);
+    } catch (error: unknown) {
+      if (error instanceof SourceEntryFailure) {
+        return this.#sourceEntryFailureV2(request, "read", error.reason);
+      }
+      throw error;
+    }
+
+    if (
+      rangeStartOffset === undefined ||
+      rangeEndOffset === undefined ||
+      nextOffset === undefined
+    ) {
+      const lines = sourceLines(content);
+      const start = lines[selector.startLine - 1];
+      if (start === undefined) {
+        return this.#storeReceiptV2(
+          request,
+          "read",
+          { outcome: "allowed", reason: "read-allowed" },
+          { status: "not-found", reason: "range-not-found" },
+          { files: 1, bytes: 0, matches: 0 },
+          null,
+        );
+      }
+      const requestedEndLine = Math.min(selector.endLine, lines.length);
+      const end = lines[requestedEndLine - 1];
+      if (end === undefined) {
+        throw new Error("Source range end could not be resolved");
+      }
+      rangeStartOffset = start.startOffset;
+      rangeEndOffset = end.endOffset;
+      nextOffset = rangeStartOffset;
+    }
+    if (
+      rangeStartOffset > nextOffset ||
+      nextOffset > rangeEndOffset ||
+      rangeEndOffset > content.byteLength
+    ) {
+      return this.#invalidQueryV2(request, "invalid-cursor");
+    }
+
+    const requested = content.subarray(nextOffset, rangeEndOffset);
+    const selected = decodeUtf8Prefix(
+      requested,
+      this.#policyValue.operations.read.maxResponseBytes,
+    );
+    if (selected.byteLength === 0 && requested.byteLength > 0) {
+      throw new Error("Source read policy cannot return one UTF-8 code point");
+    }
+    const endOffset = nextOffset + selected.byteLength;
+    const hasNext = endOffset < rangeEndOffset;
+    const nextCursor = hasNext
+      ? this.#encodeReadCursor({
+          schemaVersion: 2,
+          operation: "read",
+          targetSnapshotDigest: request.targetSnapshot.digest,
+          manifestDigest: request.manifest.digest,
+          policyDigest: request.policy.digest,
+          assignmentDigest: sha256Digest(request.assignment),
+          selector,
+          rangeStartOffset,
+          rangeEndOffset,
+          nextOffset: endOffset,
+        })
+      : undefined;
+    const startLine = 1 + countNewlines(content.subarray(0, nextOffset));
+    const response = sourceReadResponseV2Schema.parse({
+      kind: "source-read-response",
+      schemaVersion: 2,
+      anchor: {
+        kind: "source-anchor",
+        targetSnapshotDigest: this.#manifest.targetSnapshot.digest,
+        path: entry.path,
+        fileDigest: entry.digest,
+        startLine,
+        endLine: startLine + countNewlines(selected),
+        startOffset: nextOffset,
+        endOffset,
+      },
+      bytes: selected.byteLength,
+      content: selected.toString("utf8"),
+      ...(nextCursor === undefined ? {} : { nextCursor }),
+    });
+    const responseDigest = await this.#artifactStore.putJson(response);
+    return this.#storeReceiptV2(
+      request,
+      "read",
+      { outcome: "allowed", reason: "read-allowed" },
+      nextCursor === undefined
+        ? { status: "completed", responseDigest }
+        : {
+            status: "partial",
+            reason: "response-limit",
+            responseDigest,
+            continuationDigest: sha256Digest({ nextCursor }),
+          },
+      { files: 1, bytes: selected.byteLength, matches: 0 },
+      response,
+    );
   }
 
   async #listFiles(
@@ -423,8 +1120,26 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
     }
   }
 
+  #deniedReasonV2(
+    request: SourceEvidenceQueryV2,
+  ): "snapshot-mismatch" | "manifest-mismatch" | "policy-mismatch" | undefined {
+    if (
+      canonicalJson(request.targetSnapshot) !==
+      canonicalJson(this.#manifest.targetSnapshot)
+    ) {
+      return "snapshot-mismatch";
+    }
+    if (canonicalJson(request.manifest) !== canonicalJson(this.#manifestRef)) {
+      return "manifest-mismatch";
+    }
+    if (canonicalJson(request.policy) !== canonicalJson(this.policy)) {
+      return "policy-mismatch";
+    }
+    return undefined;
+  }
+
   #deniedReason(
-    request: SourceEvidenceQuery,
+    request: SourceEvidenceQueryV1,
   ):
     | "snapshot-mismatch"
     | "policy-mismatch"
@@ -467,7 +1182,7 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
   }
 
   #policyDenied(
-    request: SourceEvidenceQuery,
+    request: SourceEvidenceQueryV1,
     reason: Extract<
       SourceEvidencePolicyDecision,
       { outcome: "denied" }
@@ -482,7 +1197,7 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
   }
 
   async #respond(
-    request: SourceEvidenceQuery,
+    request: SourceEvidenceQueryV1,
     policyDecision: SourceEvidencePolicyDecision,
     status: "completed" | "truncated",
     response:
@@ -498,7 +1213,7 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
   }
 
   async #storeReceipt(
-    request: SourceEvidenceQuery,
+    request: SourceEvidenceQueryV1,
     policyDecision: SourceEvidencePolicyDecision,
     result: SourceEvidenceResult,
     response: SourceEvidenceResponse | null,
@@ -525,6 +1240,228 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
       digest,
     });
     return { ref, value, response };
+  }
+
+  #invalidQueryV2(
+    request: SourceEvidenceQueryV2,
+    reason: Extract<
+      SourceEvidenceResultV2,
+      { status: "invalid-query" }
+    >["reason"],
+  ): Promise<SourceEvidenceReceiptV2> {
+    return this.#storeReceiptV2(
+      request,
+      this.#operationV2(request),
+      { outcome: "not-evaluated", reason: "invalid-query" },
+      { status: "invalid-query", reason },
+      { files: 0, bytes: 0, matches: 0 },
+      null,
+    );
+  }
+
+  #policyDeniedV2(
+    request: SourceEvidenceQueryV2,
+    reason:
+      | "snapshot-mismatch"
+      | "manifest-mismatch"
+      | "policy-mismatch"
+      | "operation-not-allowed"
+      | "path-outside-snapshot"
+      | "query-budget-exhausted",
+  ): Promise<SourceEvidenceReceiptV2> {
+    return this.#storeReceiptV2(
+      request,
+      this.#operationV2(request),
+      { outcome: "denied", reason },
+      { status: "policy-denied", reason },
+      { files: 0, bytes: 0, matches: 0 },
+      null,
+    );
+  }
+
+  #sourceEntryFailureV2(
+    request: SourceEvidenceQueryV2,
+    operation: "search" | "read",
+    reason: SourceEntryFailureReason,
+  ): Promise<SourceEvidenceReceiptV2> {
+    return reason === "path-outside-snapshot"
+      ? this.#storeReceiptV2(
+          request,
+          operation,
+          { outcome: "denied", reason },
+          { status: "policy-denied", reason },
+          { files: 0, bytes: 0, matches: 0 },
+          null,
+        )
+      : this.#storeReceiptV2(
+          request,
+          operation,
+          {
+            outcome: "allowed",
+            reason: operation === "search" ? "search-allowed" : "read-allowed",
+          },
+          { status: "identity-mismatch", reason: "source-bytes-mismatch" },
+          { files: 0, bytes: 0, matches: 0 },
+          null,
+        );
+  }
+
+  async #storeReceiptV2(
+    request: SourceEvidenceQueryV2,
+    operation: "list" | "search" | "read",
+    policyDecision: SourceEvidencePolicyDecisionV2,
+    result: SourceEvidenceResultV2,
+    usage: {
+      readonly files: number;
+      readonly bytes: number;
+      readonly matches: number;
+    },
+    response: SourceEvidenceReceiptV2["response"],
+  ): Promise<SourceEvidenceReceiptV2> {
+    const queryDigest = sha256Digest(request);
+    const value = sourceEvidenceReceiptValueV2Schema.parse({
+      kind: "source-evidence-receipt",
+      schemaVersion: 2,
+      attemptId: request.attemptId,
+      assignment: request.assignment,
+      targetSnapshot: request.targetSnapshot,
+      manifest: request.manifest,
+      policy: request.policy,
+      queryOrdinal: request.queryOrdinal,
+      queryDigest,
+      operation,
+      policyDecision,
+      usage,
+      result,
+    });
+    const digest = await this.#artifactStore.putJson(value);
+    const ref = sourceEvidenceReceiptRefV2Schema.parse({
+      kind: "source-evidence-receipt",
+      schemaVersion: 2,
+      attemptId: request.attemptId,
+      assignmentDigest: sha256Digest(request.assignment),
+      manifestDigest: request.manifest.digest,
+      queryDigest,
+      digest,
+    });
+    return { ref, value, response };
+  }
+
+  #encodeListCursor(payload: ListCursorPayload): string {
+    const encoded = Buffer.from(canonicalJson(payload), "utf8").toString(
+      "base64url",
+    );
+    const signature = createHmac("sha256", this.#cursorKey)
+      .update(encoded)
+      .digest("base64url");
+    return `${encoded}.${signature}`;
+  }
+
+  #decodeListCursor(cursor: string): ListCursorPayload | undefined {
+    const parts = cursor.split(".");
+    if (parts.length !== 2) return undefined;
+    const [encoded, signature] = parts;
+    if (encoded === undefined || signature === undefined) return undefined;
+    const expected = createHmac("sha256", this.#cursorKey)
+      .update(encoded)
+      .digest();
+    let observed: Buffer;
+    try {
+      observed = Buffer.from(signature, "base64url");
+    } catch {
+      return undefined;
+    }
+    if (
+      observed.byteLength !== expected.byteLength ||
+      !timingSafeEqual(observed, expected)
+    ) {
+      return undefined;
+    }
+    try {
+      return listCursorPayloadSchema.parse(
+        JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")),
+      );
+    } catch {
+      return undefined;
+    }
+  }
+
+  #encodeSearchCursor(payload: SearchCursorPayload): string {
+    const encoded = Buffer.from(canonicalJson(payload), "utf8").toString(
+      "base64url",
+    );
+    const signature = createHmac("sha256", this.#cursorKey)
+      .update(encoded)
+      .digest("base64url");
+    return `${encoded}.${signature}`;
+  }
+
+  #decodeSearchCursor(cursor: string): SearchCursorPayload | undefined {
+    const parts = cursor.split(".");
+    if (parts.length !== 2) return undefined;
+    const [encoded, signature] = parts;
+    if (encoded === undefined || signature === undefined) return undefined;
+    const expected = createHmac("sha256", this.#cursorKey)
+      .update(encoded)
+      .digest();
+    let observed: Buffer;
+    try {
+      observed = Buffer.from(signature, "base64url");
+    } catch {
+      return undefined;
+    }
+    if (
+      observed.byteLength !== expected.byteLength ||
+      !timingSafeEqual(observed, expected)
+    ) {
+      return undefined;
+    }
+    try {
+      return searchCursorPayloadSchema.parse(
+        JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")),
+      );
+    } catch {
+      return undefined;
+    }
+  }
+
+  #encodeReadCursor(payload: ReadCursorPayload): string {
+    const encoded = Buffer.from(canonicalJson(payload), "utf8").toString(
+      "base64url",
+    );
+    const signature = createHmac("sha256", this.#cursorKey)
+      .update(encoded)
+      .digest("base64url");
+    return `${encoded}.${signature}`;
+  }
+
+  #decodeReadCursor(cursor: string): ReadCursorPayload | undefined {
+    const parts = cursor.split(".");
+    if (parts.length !== 2) return undefined;
+    const [encoded, signature] = parts;
+    if (encoded === undefined || signature === undefined) return undefined;
+    const expected = createHmac("sha256", this.#cursorKey)
+      .update(encoded)
+      .digest();
+    let observed: Buffer;
+    try {
+      observed = Buffer.from(signature, "base64url");
+    } catch {
+      return undefined;
+    }
+    if (
+      observed.byteLength !== expected.byteLength ||
+      !timingSafeEqual(observed, expected)
+    ) {
+      return undefined;
+    }
+    try {
+      return readCursorPayloadSchema.parse(
+        JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")),
+      );
+    } catch {
+      return undefined;
+    }
   }
 }
 

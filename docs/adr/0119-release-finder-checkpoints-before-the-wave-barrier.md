@@ -1,0 +1,15 @@
+---
+status: accepted
+---
+
+# Release Finder checkpoints before the Wave Barrier
+
+Finderの成果をterminal structured outputだけで受け取る構成をやめ、source-boundなHypothesis、Route Fragment、Frontier Gapを一件ずつcheckpointできるようにする。checkpointはTarget、Manifest、Attempt、Work Lease、Attempt内ordinalへbindし、全source anchorを検査してCAS artifactとLedger eventの両方がdurableになった後だけworkerへackする。同じidentityとpayloadの再送は同じrefへ収束し、同じidentityの上書きは拒否する。
+
+checkpointされたSource-bound Hypothesisは、他Finder、Wave Barrier、Root Evaluationのterminalを待たずIndependent Verification Queueへ入る。これはFinder verdictによるFinding昇格ではない。Verificationはfresh source re-derivation、Witness、Causal Control、normal-function observationを従来どおり要求する。duplicate candidateはTarget、Manifest、attacker premise、broken security property、causal route、source anchorsから作るstable Verification identityで一度だけ実行する。
+
+Wave Barrierは残す。ただし責任をFinder間の独立性、checkpoint集合とterminal outputの整合、stable ordering、全subject処遇、Coverage Closureへ限定する。Root EvaluationはFragment / Gapの統合、Depth Admission、追加work、retain、Closure / Blockedを所有するが、既にdurableなHypothesisまたはVerificationを取り消さない。
+
+この順序によりVerificationの並列workと重複抑止が必要になる一方、長時間Finderまたは中央Evaluatorのfailureで全candidateを失う単一障害点を除ける。provider sessionはCampaign stateの正本にせず、transient failure時にPlan identityと残budgetが一致する場合だけ同じAttemptをresumeする。resumeできなければ元Attemptを閉じ、raw transcriptではなくack済みtyped checkpointを参照するfresh Attemptを作る。
+
+本ADRは、ADR 0113とADR 0116にある「Wave Barrier後に候補を統合してからVerificationへ進む」という順序だけを置き換える。Finderの方法を自由にするEvidence Shell、最大4 Finder、支持数で候補を捨てない原則は維持する。

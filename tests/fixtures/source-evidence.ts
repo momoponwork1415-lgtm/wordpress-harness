@@ -22,6 +22,8 @@ export function sourceFileDigest(content: string): string {
 }
 
 export interface SourceEvidenceFixture {
+  readonly artifactDirectory: string;
+  readonly sourceDirectory: string;
   readonly attemptArtifactDirectory: string;
   readonly artifacts: JsonArtifactStore;
   readonly gateway: SourceEvidenceGateway;
@@ -75,7 +77,8 @@ export async function openSourceEvidenceFixture(options: {
       ...(options.search === undefined ? {} : { search: options.search }),
     },
   };
-  const artifacts = openFileJsonArtifactStore(join(directory, "artifacts"));
+  const artifactDirectory = join(directory, "artifacts");
+  const artifacts = openFileJsonArtifactStore(artifactDirectory);
   const gateway = openSourceEvidenceGateway({
     sourceDirectory,
     artifactStore: artifacts,
@@ -100,6 +103,8 @@ export async function openSourceEvidenceFixture(options: {
     },
   });
   return {
+    artifactDirectory,
+    sourceDirectory,
     attemptArtifactDirectory: join(directory, "attempts"),
     artifacts,
     gateway,

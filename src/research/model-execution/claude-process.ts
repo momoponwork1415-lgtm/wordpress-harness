@@ -1,12 +1,14 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { isAbsolute } from "node:path";
+import { randomUUID } from "node:crypto";
+import { chmod, copyFile, lstat, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { isAbsolute, join } from "node:path";
 
 import { z } from "zod";
 
 import type { SourceEvidenceGateway } from "../source-mapping/source-evidence-contracts.js";
 import { openModelExecution } from "./model-execution.js";
 import {
-  claudeSourceEvidenceToolNames,
   openClaudeSourceEvidenceBridge,
   type ClaudeSourceEvidenceBridge,
 } from "./claude-source-evidence-bridge.js";
@@ -19,7 +21,11 @@ import {
   type ModelProcessRequest,
   type StructuredModelExecution,
 } from "./contracts.js";
-import { decodeClaudeEnvelope } from "./claude-envelope.js";
+import {
+  decodeClaudeEnvelope,
+  decodeClaudeErrorEnvelope,
+  type ClaudeProviderUsage,
+} from "./claude-envelope.js";
 
 export interface OpenClaudeModelExecutionOptions {
   readonly artifactDirectory: string;
@@ -27,12 +33,16 @@ export interface OpenClaudeModelExecutionOptions {
   readonly executableVersion: string;
   readonly workingDirectory: string;
   readonly sourceEvidenceGateway?: SourceEvidenceGateway;
+  readonly maxTransientResumeAttempts?: number;
+  readonly claudeConfigDirectory?: string;
 }
 
 export interface OpenClaudeStructuredProcessOptions {
   readonly executablePath: string;
   readonly executableVersion: string;
   readonly workingDirectory: string;
+  readonly maxTransientResumeAttempts?: number;
+  readonly claudeConfigDirectory?: string;
 }
 
 export interface ClaudeStructuredProcessRequest {
@@ -41,6 +51,7 @@ export interface ClaudeStructuredProcessRequest {
   readonly budget: {
     readonly maxWallTimeMs: number;
     readonly maxOutputBytes: number;
+    readonly maxProviderCostUsd?: number;
   };
   readonly outputJsonSchema: object;
   readonly sourceEvidence?: AttemptSourceEvidence;
@@ -76,8 +87,62 @@ const inheritedEnvironment = [
 ] as const;
 
 const claudeAuthStatusSchema = z.object({ loggedIn: z.boolean() });
+const maximumCredentialFileBytes = 1024 * 1024;
+const transientApiStatuses = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
 
-function minimalEnvironment(): NodeJS.ProcessEnv {
+function isFileSystemError(
+  error: unknown,
+  code: string,
+): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && error.code === code;
+}
+
+async function copyBoundedRegularFile(
+  source: string,
+  destination: string,
+  required: boolean,
+): Promise<boolean> {
+  let metadata;
+  try {
+    metadata = await lstat(source);
+  } catch (error: unknown) {
+    if (!required && isFileSystemError(error, "ENOENT")) return false;
+    throw error;
+  }
+  if (!metadata.isFile() || metadata.size > maximumCredentialFileBytes) {
+    throw new Error("Claude credential source must be a bounded regular file");
+  }
+  await copyFile(source, destination);
+  await chmod(destination, 0o600);
+  return true;
+}
+
+async function openEphemeralClaudeConfig(
+  sourceDirectory: string,
+): Promise<string | undefined> {
+  const directory = await mkdtemp(join(tmpdir(), "wordpress-harness-claude-"));
+  await chmod(directory, 0o700);
+  try {
+    await copyBoundedRegularFile(
+      join(sourceDirectory, ".credentials.json"),
+      join(directory, ".credentials.json"),
+      true,
+    );
+    await copyBoundedRegularFile(
+      join(sourceDirectory, ".claude.json"),
+      join(directory, ".claude.json"),
+      false,
+    );
+    return directory;
+  } catch {
+    await rm(directory, { force: true, recursive: true });
+    return undefined;
+  }
+}
+
+function minimalEnvironment(
+  overrides: Readonly<NodeJS.ProcessEnv> = {},
+): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = {
     CI: "1",
     NO_COLOR: "1",
@@ -91,7 +156,7 @@ function minimalEnvironment(): NodeJS.ProcessEnv {
   if (environment.HOME === undefined || environment.PATH === undefined) {
     throw new Error("Claude process requires HOME and PATH");
   }
-  return environment;
+  return { ...environment, ...overrides };
 }
 
 function redactProviderCredential(text: string): string {
@@ -123,10 +188,172 @@ function signalProcessTree(
   }
 }
 
+function isUsageReportedTransientError(result: NativeProcessResult):
+  | {
+      readonly usage: ClaudeProviderUsage & {
+        readonly estimatedCostUsd: number;
+      };
+    }
+  | undefined {
+  if (result.kind !== "exited" || result.exitCode === 0) return undefined;
+  const envelope = decodeClaudeErrorEnvelope(result.stdout);
+  if (
+    envelope?.usage?.measurement !== "reported" ||
+    envelope.usage.estimatedCostUsd === undefined
+  ) {
+    return undefined;
+  }
+  const numericStatus =
+    typeof envelope.apiErrorStatus === "number"
+      ? envelope.apiErrorStatus
+      : typeof envelope.apiErrorStatus === "string" &&
+          /^\d{3}$/u.test(envelope.apiErrorStatus)
+        ? Number(envelope.apiErrorStatus)
+        : undefined;
+  if (numericStatus === undefined || !transientApiStatuses.has(numericStatus)) {
+    return undefined;
+  }
+  return {
+    usage: {
+      ...envelope.usage,
+      estimatedCostUsd: envelope.usage.estimatedCostUsd,
+    },
+  };
+}
+
+function aggregateClaudeUsage(
+  usages: readonly ClaudeProviderUsage[],
+): ClaudeProviderUsage | undefined {
+  if (usages.length === 0) return undefined;
+  const models = new Map<
+    string,
+    {
+      canonicalModel: string;
+      input: number;
+      cacheCreation: number;
+      cacheRead: number;
+      output: number;
+      total: number;
+    }
+  >();
+  for (const usage of usages) {
+    for (const model of usage.models) {
+      const prior = models.get(model.id);
+      if (
+        prior !== undefined &&
+        prior.canonicalModel !== model.canonicalModel
+      ) {
+        return undefined;
+      }
+      models.set(model.id, {
+        canonicalModel: model.canonicalModel,
+        input: (prior?.input ?? 0) + model.tokens.input,
+        cacheCreation: (prior?.cacheCreation ?? 0) + model.tokens.cacheCreation,
+        cacheRead: (prior?.cacheRead ?? 0) + model.tokens.cacheRead,
+        output: (prior?.output ?? 0) + model.tokens.output,
+        total: (prior?.total ?? 0) + model.tokens.total,
+      });
+    }
+  }
+  const allCostsReported = usages.every(
+    (usage) => usage.estimatedCostUsd !== undefined,
+  );
+  const allDurationsReported = usages.every(
+    (usage) => usage.providerDurationMs !== undefined,
+  );
+  return {
+    measurement: usages.every((usage) => usage.measurement === "reported")
+      ? "reported"
+      : "partial",
+    ...(allCostsReported
+      ? {
+          estimatedCostUsd: usages.reduce(
+            (total, usage) => total + (usage.estimatedCostUsd ?? 0),
+            0,
+          ),
+        }
+      : {}),
+    ...(allDurationsReported
+      ? {
+          providerDurationMs: usages.reduce(
+            (total, usage) => total + (usage.providerDurationMs ?? 0),
+            0,
+          ),
+        }
+      : {}),
+    modelTurns: usages.reduce((total, usage) => total + usage.modelTurns, 0),
+    models: [...models.entries()]
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([id, model]) => ({
+        id,
+        canonicalModel: model.canonicalModel,
+        tokens: {
+          input: model.input,
+          cacheCreation: model.cacheCreation,
+          cacheRead: model.cacheRead,
+          output: model.output,
+          total: model.total,
+        },
+      })),
+  };
+}
+
+function replaceClaudeEnvelopeUsage(
+  stdout: string,
+  usage: ClaudeProviderUsage,
+): string | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return undefined;
+  }
+  const envelope = parsed as Record<string, unknown>;
+  if (usage.estimatedCostUsd === undefined) {
+    delete envelope.total_cost_usd;
+  } else {
+    envelope.total_cost_usd = usage.estimatedCostUsd;
+  }
+  if (usage.providerDurationMs === undefined) {
+    delete envelope.duration_ms;
+  } else {
+    envelope.duration_ms = usage.providerDurationMs;
+  }
+  envelope.num_turns = usage.modelTurns;
+  envelope.modelUsage = Object.fromEntries(
+    usage.models.map((model) => [
+      model.id,
+      {
+        canonicalModel: model.canonicalModel,
+        inputTokens: model.tokens.input,
+        outputTokens: model.tokens.output,
+        cacheReadInputTokens: model.tokens.cacheRead,
+        cacheCreationInputTokens: model.tokens.cacheCreation,
+      },
+    ]),
+  );
+  return JSON.stringify(envelope);
+}
+
+async function waitForResumeBackoff(
+  resumeOrdinal: number,
+  remainingTimeMs: number,
+): Promise<boolean> {
+  const delayMs = Math.min(250 * 2 ** resumeOrdinal, 2_000);
+  if (remainingTimeMs <= delayMs) return false;
+  await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+  return true;
+}
+
 class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
   readonly #executablePath;
   readonly #executableVersion;
   readonly #workingDirectory;
+  readonly #maxTransientResumeAttempts;
+  readonly #claudeConfigDirectory;
 
   constructor(options: OpenClaudeStructuredProcessOptions) {
     if (!isAbsolute(options.executablePath)) {
@@ -135,9 +362,27 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
     if (!isAbsolute(options.workingDirectory)) {
       throw new Error("Claude working directory must be absolute");
     }
+    const maxTransientResumeAttempts = options.maxTransientResumeAttempts ?? 0;
+    if (
+      !Number.isSafeInteger(maxTransientResumeAttempts) ||
+      maxTransientResumeAttempts < 0 ||
+      maxTransientResumeAttempts > 3
+    ) {
+      throw new Error(
+        "Claude transient resume attempts must be an integer from 0 to 3",
+      );
+    }
+    if (
+      options.claudeConfigDirectory !== undefined &&
+      !isAbsolute(options.claudeConfigDirectory)
+    ) {
+      throw new Error("Claude config directory must be absolute");
+    }
     this.#executablePath = options.executablePath;
     this.#executableVersion = options.executableVersion;
     this.#workingDirectory = options.workingDirectory;
+    this.#maxTransientResumeAttempts = maxTransientResumeAttempts;
+    this.#claudeConfigDirectory = options.claudeConfigDirectory;
   }
 
   async execute(
@@ -223,12 +468,36 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
       return { kind: "timed-out", stderr: "" };
     }
 
-    const args = [
+    const sourceConfigDirectory =
+      this.#claudeConfigDirectory ??
+      process.env.CLAUDE_CONFIG_DIR ??
+      (process.env.HOME === undefined
+        ? undefined
+        : join(process.env.HOME, ".claude"));
+    const resumeRequested =
+      this.#maxTransientResumeAttempts > 0 &&
+      request.sourceEvidence?.checkpoint !== undefined &&
+      request.budget.maxProviderCostUsd !== undefined &&
+      sourceConfigDirectory !== undefined &&
+      isAbsolute(sourceConfigDirectory);
+    const ephemeralConfigDirectory = resumeRequested
+      ? await openEphemeralClaudeConfig(sourceConfigDirectory)
+      : undefined;
+    const sessionId =
+      ephemeralConfigDirectory === undefined ? undefined : randomUUID();
+    const processEnvironment =
+      ephemeralConfigDirectory === undefined
+        ? undefined
+        : { CLAUDE_CONFIG_DIR: ephemeralConfigDirectory };
+    const baseArgs = (maxProviderCostUsd: number | undefined): string[] => [
       "-p",
       "--model",
       request.modelProfile.model,
       "--effort",
       request.modelProfile.effort,
+      ...(maxProviderCostUsd === undefined
+        ? []
+        : ["--max-budget-usd", String(maxProviderCostUsd)]),
       "--restricted",
       "--strict-mcp-config",
       "--disable-slash-commands",
@@ -242,9 +511,8 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
             "--permission-mode",
             "dontAsk",
             "--allowedTools",
-            claudeSourceEvidenceToolNames.join(","),
+            sourceBridge.allowedToolNames.join(","),
           ]),
-      "--no-session-persistence",
       "--no-chrome",
       "--prompt-suggestions",
       "false",
@@ -254,25 +522,78 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
       JSON.stringify(request.outputJsonSchema),
     ];
     try {
-      const result = await this.#run(
-        args,
-        request.prompt,
-        remainingTime(),
-        request.budget.maxOutputBytes,
-      );
-      if (
-        sourceBridge !== undefined &&
-        result.kind === "exited" &&
-        !sourceBridge.observedConnection()
-      ) {
-        return {
-          kind: "policy-denied",
-          reason: "source-evidence-bridge-not-connected",
-        };
+      let resumeOrdinal = 0;
+      let remainingProviderCostUsd = request.budget.maxProviderCostUsd;
+      const priorUsage: ClaudeProviderUsage[] = [];
+      while (true) {
+        const sessionArgs =
+          sessionId === undefined
+            ? ["--no-session-persistence"]
+            : resumeOrdinal === 0
+              ? ["--session-id", sessionId]
+              : ["--resume", sessionId];
+        const result = await this.#run(
+          [...baseArgs(remainingProviderCostUsd), ...sessionArgs],
+          resumeOrdinal === 0
+            ? request.prompt
+            : "Continue the same Attempt from its durable checkpoints and complete the required terminal JSON.",
+          remainingTime(),
+          request.budget.maxOutputBytes,
+          processEnvironment,
+        );
+        if (
+          sourceBridge !== undefined &&
+          result.kind === "exited" &&
+          !sourceBridge.observedConnection()
+        ) {
+          return {
+            kind: "policy-denied",
+            reason: "source-evidence-bridge-not-connected",
+          };
+        }
+        if (result.kind === "exited" && result.exitCode === 0) {
+          if (priorUsage.length === 0) return result;
+          const completed = decodeClaudeEnvelope(
+            result.stdout,
+            request.modelProfile.model,
+          );
+          if (completed.kind !== "accepted") return result;
+          const aggregate = aggregateClaudeUsage([
+            ...priorUsage,
+            completed.usage,
+          ]);
+          const stdout =
+            aggregate === undefined
+              ? undefined
+              : replaceClaudeEnvelopeUsage(result.stdout, aggregate);
+          return stdout === undefined ? result : { ...result, stdout };
+        }
+        const transient = isUsageReportedTransientError(result);
+        if (
+          transient === undefined ||
+          sessionId === undefined ||
+          resumeOrdinal >= this.#maxTransientResumeAttempts ||
+          remainingProviderCostUsd === undefined
+        ) {
+          return result;
+        }
+        remainingProviderCostUsd -= transient.usage.estimatedCostUsd;
+        priorUsage.push(transient.usage);
+        if (remainingProviderCostUsd <= 0 || remainingTime() <= 0) {
+          return result;
+        }
+        resumeOrdinal += 1;
+        if (!(await waitForResumeBackoff(resumeOrdinal, remainingTime()))) {
+          return result;
+        }
       }
-      return result;
     } finally {
-      await sourceBridge?.close();
+      await Promise.all([
+        sourceBridge?.close(),
+        ephemeralConfigDirectory === undefined
+          ? Promise.resolve()
+          : rm(ephemeralConfigDirectory, { force: true, recursive: true }),
+      ]);
     }
   }
 
@@ -281,12 +602,13 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
     stdin: string | undefined,
     timeoutMs: number,
     maxOutputBytes: number,
+    environmentOverrides?: Readonly<NodeJS.ProcessEnv>,
   ): Promise<NativeProcessResult> {
     return new Promise((resolve, reject) => {
       const child = spawn(this.#executablePath, args, {
         cwd: this.#workingDirectory,
         detached: process.platform !== "win32",
-        env: minimalEnvironment(),
+        env: minimalEnvironment(environmentOverrides),
         stdio: ["pipe", "pipe", "pipe"],
       });
       const stdout: Buffer[] = [];

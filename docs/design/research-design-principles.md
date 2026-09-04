@@ -87,7 +87,7 @@ BreadthはWordfence PRISMが示すbreadth-first運行への対応であり、sin
 5. 一つのFindingが出てもstrong frontierが残る場合は自動終了しない。低優先Findingもsemantic mechanismまたはRoute Fragmentとして意味があれば記録する。
 6. Depth Admissionは既知の最終impactではなくhigh-impact potentialで決める。強いread/write/file/auth/state capability、cross-request/cross-actor flow、persistent state、decode/reparse、producer/consumer mismatch、concrete missing link等を根拠にできる。
 7. 通常のResearch loopは人間介入なしで進める。Human OSはFinding後の外部提出判断と例外的なEvidence Requestを所有し、探索方法を操作しない。
-8. 実装済みのMap-first bootstrapまたは固定Strategy記述は移行元の現状説明であり、到達設計ではない。ADR 0113、0117以後の判断が優先する。
+8. Map-first bootstrapまたは固定Strategy記述は移行元の履歴であり、新規Campaignには使わない。Map-first v1は完了済みLedgerのread-only replay互換だけを残し、ADR 0113、0117以後の判断を優先する。
 
 ## 5. 設計変更の受入条件
 

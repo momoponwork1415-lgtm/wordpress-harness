@@ -7,4 +7,5 @@ export type {
   RecordPreparationResult,
   RecordVerificationStartResult,
   ResearchRecord,
+  SemanticFinderCheckpointRecordView,
 } from "./contracts.js";

@@ -1,6 +1,6 @@
 # WordPress Harness
 
-WordPressプラグインを対象に、LLMの自由なsource reasoningと独立Verificationを反復するresearch harnessです。第一目的は、既知脆弱性のoracleなしに**high-impactなbroken security semanticsを取りこぼさず発見すること**です。
+WordPressプラグインを対象に、LLMの自由なsource reasoningと独立Verificationを反復するbug bounty research harnessです。Productの到達点は、既知脆弱性のoracleなしに**high-impactなbroken security semanticsを取りこぼさず発見し、独立実証と人間の再確認まで閉じること**です。
 
 > **Do not optimize for sinks. Optimize for broken security semantics.**
 >
@@ -47,4 +47,4 @@ node dist/cli.js campaign inspect --database .private/research.sqlite --campaign
 
 ## Scope
 
-現在のResearch対象はWordPress pluginsです。Target Intelligenceによる自動選定、Human OS、submission、vendor communication、patch generation、dashboardはResearch capabilityの外側または後段に置きます。能力の拡張順は[Roadmap](docs/design/roadmap.md)を参照してください。
+現在のResearch対象はWordPress pluginsです。最初のproduct goalは、手動投入した最新TargetのProspective CampaignからHuman Confirmationまでです。Target Intelligenceによる自動選定、自動submission、vendor communication、patch generation、dashboardは後段に置きます。外部行動はHuman Confirmationと分離し、案件ごとの明示承認なしに行いません。能力の拡張順は[Roadmap](docs/design/roadmap.md)を参照してください。

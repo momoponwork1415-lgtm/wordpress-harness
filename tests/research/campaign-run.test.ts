@@ -10,6 +10,7 @@ import {
   type AttemptPlanMaterializer,
   type CampaignRunPlan,
 } from "../../src/research/index.js";
+import { openLegacyMapFirstResearchForTests } from "../../src/research/open-research.js";
 import type {
   AttemptExecutionResult,
   ModelExecution,
@@ -142,6 +143,9 @@ function finder(
 ): ModelExecution {
   return {
     run: async (plan): Promise<AttemptExecutionResult> => {
+      if (plan.schemaVersion !== 1) {
+        throw new Error("Legacy Finder fixture received a version 2 plan");
+      }
       const value = {
         kind: "finder-attempt-result" as const,
         schemaVersion: 1 as const,
@@ -174,6 +178,9 @@ function finder(
 function emptyFinder(artifacts: JsonArtifactStore): ModelExecution {
   return {
     run: async (plan) => {
+      if (plan.schemaVersion !== 1) {
+        throw new Error("Legacy Finder fixture received a version 2 plan");
+      }
       const value = {
         kind: "finder-attempt-result" as const,
         schemaVersion: 1 as const,
@@ -206,6 +213,9 @@ function emptyFinder(artifacts: JsonArtifactStore): ModelExecution {
 function providerFailedFinder(artifacts: JsonArtifactStore): ModelExecution {
   return {
     run: async (plan) => {
+      if (plan.schemaVersion !== 1) {
+        throw new Error("Legacy Finder fixture received a version 2 plan");
+      }
       const value = {
         kind: "finder-attempt-result" as const,
         schemaVersion: 1 as const,
@@ -327,12 +337,16 @@ function sourcePolicyBoundFinder(
   const enabled = finder(artifacts, candidate);
   const unavailable = providerFailedFinder(artifacts);
   return {
-    run: (plan) =>
-      plan.sourceToolPolicy?.id === "finder-source-evidence-v1" &&
-      plan.sourceToolPolicy.digest === digest("c") &&
-      plan.budget.maxSourceQueries === 12
+    run: (plan) => {
+      if (plan.schemaVersion !== 1) {
+        throw new Error("Legacy Finder fixture received a version 2 plan");
+      }
+      return plan.sourceToolPolicy?.id === "finder-source-evidence-v1" &&
+        plan.sourceToolPolicy.digest === digest("c") &&
+        plan.budget.maxSourceQueries === 12
         ? enabled.run(plan)
-        : unavailable.run(plan),
+        : unavailable.run(plan);
+    },
   };
 }
 
@@ -366,7 +380,7 @@ function verifier(): IndependentVerifier {
 
 function lab(artifacts: JsonArtifactStore): LabControl {
   return {
-    execute: async (plan) => {
+    execute: async ({ plan }) => {
       const isWitness = plan.role === "witness";
       const observation: ExperimentObservation = {
         kind: "experiment-observation",
@@ -557,7 +571,7 @@ async function openScenario(
           },
         }),
   };
-  const research = openResearch({
+  const research = openLegacyMapFirstResearchForTests({
     databasePath,
     clock: () => new Date(fixedNow),
     campaignExecution: {
@@ -574,6 +588,24 @@ async function openScenario(
 }
 
 describe("CampaignRunner.run", () => {
+  it("rejects a new Map-first v1 run through the public CampaignRunner", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "campaign-map-first-off-"));
+    const scenario = await openScenario(directory, finder);
+    const publicResearch = openResearch({
+      databasePath: scenario.databasePath,
+    });
+
+    try {
+      await expect(publicResearch.runner.run(scenario.plan)).rejects.toThrow(
+        "Map-first Campaign execution is retired",
+      );
+    } finally {
+      publicResearch.close();
+      scenario.research.close();
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("admits four Finder attempts per Wave and rejects a fifth", async () => {
     const directory = await mkdtemp(join(tmpdir(), "campaign-finder-cap-"));
     const scenario = await openScenario(directory, finder, 4);
@@ -841,7 +873,7 @@ describe("CampaignRunner.run", () => {
 
       let freshExecutions = 0;
       const recoveredFinder = finder(scenario.artifacts, scenario.candidate);
-      const recovered = openResearch({
+      const recovered = openLegacyMapFirstResearchForTests({
         databasePath: scenario.databasePath,
         clock: () => new Date(fixedNow),
         campaignExecution: {
