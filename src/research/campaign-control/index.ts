@@ -110,6 +110,10 @@ import { closeSemanticWaveBarrier } from "./semantic-wave-barrier.js";
 import { materializeSemanticSubject } from "./semantic-subject-materializer.js";
 import { openSemanticVerificationQueue } from "./semantic-verification-queue.js";
 import { executeSemanticCoverageReview } from "./semantic-coverage-review-runner.js";
+import {
+  materializeTargetIntakeCampaignInput,
+  validatePreparedTargetIntake,
+} from "./target-intake-campaign-handoff.js";
 
 export interface CampaignControl {
   readonly runner: CampaignRunner;
@@ -214,7 +218,8 @@ async function preflightSemanticFinderWave(
   if (
     preparation === undefined ||
     !("schemaVersion" in preparation.input) ||
-    preparation.input.schemaVersion !== 2 ||
+    (preparation.input.schemaVersion !== 2 &&
+      preparation.input.schemaVersion !== 3) ||
     preparation.targetFileManifest === undefined ||
     preparation.inputDigest !== plan.preparationDigest ||
     canonicalJson(preparation.input.targetSnapshot) !==
@@ -537,7 +542,8 @@ async function openSemanticFinderCheckpointObserver(
     preparation === undefined ||
     preparation.targetFileManifest === undefined ||
     !("schemaVersion" in preparation.input) ||
-    preparation.input.schemaVersion !== 2 ||
+    (preparation.input.schemaVersion !== 2 &&
+      preparation.input.schemaVersion !== 3) ||
     !sameCampaignValue(preparation.input.targetSnapshot, plan.target) ||
     !sameCampaignValue(preparation.targetFileManifest, plan.manifest)
   ) {
@@ -791,7 +797,8 @@ async function executeDefaultSemanticCampaign(
     preparation === undefined ||
     preparation.targetFileManifest === undefined ||
     !("schemaVersion" in preparation.input) ||
-    preparation.input.schemaVersion !== 2 ||
+    (preparation.input.schemaVersion !== 2 &&
+      preparation.input.schemaVersion !== 3) ||
     preparation.inputDigest !== plan.preparationDigest ||
     !sameCampaignValue(preparation.input.targetSnapshot, plan.target) ||
     !sameCampaignValue(preparation.targetFileManifest, plan.manifest)
@@ -2535,33 +2542,74 @@ export function openCampaignControl(
   preparationArtifactStore?: JsonArtifactStore,
   allowLegacyMapFirstExecution = false,
 ): CampaignControl {
+  const validatePreparationHandoff = async (
+    preparation: PreparationRecord,
+  ): Promise<void> => {
+    if (
+      !("schemaVersion" in preparation.input) ||
+      preparation.input.schemaVersion !== 3
+    ) {
+      return;
+    }
+    if (preparationArtifactStore === undefined) {
+      throw new CampaignPreparationIntegrityError("artifact-store-unavailable");
+    }
+    await validatePreparedTargetIntake(
+      preparation.input,
+      preparationArtifactStore,
+    );
+  };
+
+  const prepareCampaign: CampaignRunner["prepare"] = async (input) => {
+    const parsedInput = newCampaignInputSchema.parse(input);
+    let targetFileManifest;
+    if (
+      "schemaVersion" in parsedInput &&
+      (parsedInput.schemaVersion === 2 || parsedInput.schemaVersion === 3)
+    ) {
+      if (preparationArtifactStore === undefined) {
+        throw new CampaignPreparationIntegrityError(
+          "artifact-store-unavailable",
+        );
+      }
+      if (parsedInput.schemaVersion === 3) {
+        await validatePreparedTargetIntake(
+          parsedInput,
+          preparationArtifactStore,
+        );
+      }
+      targetFileManifest = await persistTargetFileManifest(
+        preparationArtifactStore,
+        parsedInput,
+      );
+    }
+    const result = await record.recordPreparation(
+      parsedInput,
+      targetFileManifest,
+    );
+    if (
+      result.disposition === "occupied" &&
+      result.preparation.inputDigest !== result.requestedInputDigest
+    ) {
+      throw new CampaignPreparationConflictError(parsedInput.campaignId);
+    }
+    return projectCampaign(result.preparation);
+  };
+
   return {
     runner: {
-      prepare: async (input) => {
-        const parsedInput = newCampaignInputSchema.parse(input);
-        let targetFileManifest;
-        if ("schemaVersion" in parsedInput && parsedInput.schemaVersion === 2) {
-          if (preparationArtifactStore === undefined) {
-            throw new CampaignPreparationIntegrityError(
-              "artifact-store-unavailable",
-            );
-          }
-          targetFileManifest = await persistTargetFileManifest(
-            preparationArtifactStore,
-            parsedInput,
+      prepare: prepareCampaign,
+      prepareFromTargetIntake: async (input) => {
+        if (preparationArtifactStore === undefined) {
+          throw new CampaignPreparationIntegrityError(
+            "artifact-store-unavailable",
           );
         }
-        const result = await record.recordPreparation(
-          parsedInput,
-          targetFileManifest,
+        const campaignInput = await materializeTargetIntakeCampaignInput(
+          input,
+          preparationArtifactStore,
         );
-        if (
-          result.disposition === "occupied" &&
-          result.preparation.inputDigest !== result.requestedInputDigest
-        ) {
-          throw new CampaignPreparationConflictError(parsedInput.campaignId);
-        }
-        return projectCampaign(result.preparation);
+        return prepareCampaign(campaignInput);
       },
       run: async (value) => {
         if (
@@ -2574,6 +2622,11 @@ export function openCampaignControl(
           if (dependencies === undefined) {
             throw new Error("Campaign execution dependencies are unavailable");
           }
+          const preparation = await record.readPreparation(plan.campaignId);
+          if (preparation === undefined) {
+            throw new Error(`Campaign not found: ${plan.campaignId}`);
+          }
+          await validatePreparationHandoff(preparation);
           return (
             await ("workWave" in plan
               ? executeSemanticFinderWave(record, dependencies, plan)
@@ -2612,6 +2665,7 @@ export function openCampaignControl(
         if (preparation === undefined) {
           throw new Error(`Campaign not found: ${campaignId}`);
         }
+        await validatePreparationHandoff(preparation);
         return projectCampaign(preparation);
       },
       inspect: async (campaignId, subject): Promise<SubjectView> => {
@@ -2677,6 +2731,7 @@ export function openCampaignControl(
         if (preparation === undefined) {
           throw new Error(`Campaign not found: ${campaignId}`);
         }
+        await validatePreparationHandoff(preparation);
         return {
           kind: subject.kind,
           campaignId,

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { readyIntakeDispositionSchema } from "../target-intelligence/acquisition/contracts.js";
 import type {
   CampaignExecutionDependencies,
   AnyCampaignRunPlan,
@@ -8,6 +9,7 @@ import type {
 } from "./campaign-control/contracts.js";
 import {
   canonicalFileManifestSchema,
+  normalizedRelativePathSchema,
   type CanonicalFileManifest,
 } from "./source-file-contracts.js";
 import type { TargetFileManifestRef } from "./source-mapping/contracts.js";
@@ -40,9 +42,8 @@ const campaignBudgetSchema = z.strictObject({
   maxModelTokens: z.number().int().positive(),
 });
 
-const newCampaignInputShape = {
+const campaignConfigurationShape = {
   campaignId: identifierSchema,
-  targetSnapshot: targetSnapshotRefSchema,
   campaignPolicy: immutableRefSchema,
   runtimeProfile: immutableRefSchema,
   promptSet: immutableRefSchema,
@@ -50,6 +51,11 @@ const newCampaignInputShape = {
   knowledgeCapsules: z.array(immutableRefSchema),
   experimentRegistry: immutableRefSchema,
   budget: campaignBudgetSchema,
+};
+
+const newCampaignInputShape = {
+  ...campaignConfigurationShape,
+  targetSnapshot: targetSnapshotRefSchema,
 };
 
 export const newCampaignInputV1Schema = z.strictObject(newCampaignInputShape);
@@ -60,7 +66,32 @@ export const newCampaignInputV2Schema = z.strictObject({
   canonicalFileManifest: canonicalFileManifestSchema,
 });
 
+export const targetIntakeBindingSchema = z.strictObject({
+  packet: immutableRefSchema,
+  receipt: immutableRefSchema,
+  pluginIdentity: z.string().min(1),
+  canonicalInstallDirectory: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
+  mainPluginFile: normalizedRelativePathSchema,
+  pluginBasename: normalizedRelativePathSchema,
+  sourceTreeDigest: digestSchema,
+});
+
+export const newCampaignInputV3Schema = z.strictObject({
+  schemaVersion: z.literal(3),
+  ...newCampaignInputShape,
+  canonicalFileManifest: canonicalFileManifestSchema,
+  targetIntake: targetIntakeBindingSchema,
+});
+
+export const targetIntakeCampaignPreparationInputSchema = z.strictObject({
+  kind: z.literal("target-intake-campaign-preparation"),
+  schemaVersion: z.literal(1),
+  ...campaignConfigurationShape,
+  intake: readyIntakeDispositionSchema,
+});
+
 export const newCampaignInputSchema = z.union([
+  newCampaignInputV3Schema,
   newCampaignInputV2Schema,
   newCampaignInputV1Schema,
 ]);
@@ -72,6 +103,11 @@ export function decodeNewCampaignInput(value: unknown): NewCampaignInput {
 export type NewCampaignInput = z.infer<typeof newCampaignInputSchema>;
 export type NewCampaignInputV1 = z.infer<typeof newCampaignInputV1Schema>;
 export type NewCampaignInputV2 = z.infer<typeof newCampaignInputV2Schema>;
+export type NewCampaignInputV3 = z.infer<typeof newCampaignInputV3Schema>;
+export type TargetIntakeBinding = z.infer<typeof targetIntakeBindingSchema>;
+export type TargetIntakeCampaignPreparationInput = z.infer<
+  typeof targetIntakeCampaignPreparationInputSchema
+>;
 export type { CanonicalFileManifest };
 export type TargetSnapshotRef = z.infer<typeof targetSnapshotRefSchema>;
 
@@ -89,6 +125,9 @@ export type PreparedCampaign = CampaignView;
 
 export interface CampaignRunner {
   prepare(input: NewCampaignInput): Promise<PreparedCampaign>;
+  prepareFromTargetIntake(
+    input: TargetIntakeCampaignPreparationInput,
+  ): Promise<PreparedCampaign>;
   run(plan: AnyCampaignRunPlan): Promise<AnyCampaignRunRecordRef>;
 }
 

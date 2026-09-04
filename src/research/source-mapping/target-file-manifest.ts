@@ -1,4 +1,8 @@
-import type { NewCampaignInputV2, TargetSnapshotRef } from "../contracts.js";
+import type {
+  NewCampaignInputV2,
+  NewCampaignInputV3,
+  TargetSnapshotRef,
+} from "../contracts.js";
 import { sha256Digest } from "../research-record/canonical-json.js";
 import type { JsonArtifactStore } from "../research-record/contracts.js";
 import {
@@ -27,7 +31,7 @@ export class TargetFileManifestIntegrityError extends Error {
 
 export function projectTargetFileManifest(
   targetSnapshot: TargetSnapshotRef,
-  canonical: NewCampaignInputV2["canonicalFileManifest"],
+  canonical: (NewCampaignInputV2 | NewCampaignInputV3)["canonicalFileManifest"],
 ): TargetFileManifest {
   return targetFileManifestSchema.parse({
     kind: "target-file-manifest",
@@ -42,7 +46,7 @@ export function projectTargetFileManifest(
 
 export async function persistTargetFileManifest(
   artifactStore: JsonArtifactStore,
-  input: NewCampaignInputV2,
+  input: NewCampaignInputV2 | NewCampaignInputV3,
 ): Promise<TargetFileManifestRef> {
   const manifest = projectTargetFileManifest(
     input.targetSnapshot,

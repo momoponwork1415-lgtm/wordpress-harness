@@ -8,7 +8,8 @@ Status: accepted design; current implementation is tracked only in the [Codebase
 
 ```ts
 interface CampaignRunner {
-  prepare(input: NewCampaignInputV1 | NewCampaignInputV2): Promise<PreparedCampaign>;
+  prepare(input: NewCampaignInputV1 | NewCampaignInputV2 | NewCampaignInputV3): Promise<PreparedCampaign>;
+  prepareFromTargetIntake(input: TargetIntakeCampaignPreparationInput): Promise<PreparedCampaign>;
   run(plan: CampaignRunPlanV1 | CampaignRunPlanV2): Promise<CampaignRunRecordRefV1 | CampaignRunRecordRefV2>;
 }
 ```
@@ -19,7 +20,9 @@ terminal Runの読み取りでは、`CampaignReader.inspect`がRun recordに加�
 
 v1 Runは記録済みCampaignのreplay専用であり、新規Campaignはv2だけを生成する。
 
-`NewCampaignInputV2`はTarget Intelligence由来の`Canonical File Manifest`を持つ。`prepare`はpath、原文bytes digest、sizeを変更せず`TargetFileManifest`へ一度だけ投影し、Target SnapshotへbindしたartifactをCASへ保存してからschema version 2のprepared eventへrefを記録する。CAS digest、Target binding、Ledger上の再導出結果が一致しなければ外部worker前に拒否する。schema version 1のinputとprepared eventは既存Campaignのreplay用に読み続ける。
+`prepareFromTargetIntake`はreadyな`Target Intake Packet`とReceiptをResearch CASへdigest固定で複製し、PacketのTarget SnapshotとCanonical File Manifestをcallerに再入力させず`NewCampaignInputV3`へ投影する。v3 preparation identityはPacket / Receipt ref、source tree digest、Plugin Identity、Plugin Basenameを保持する。Packet、Receipt、ReceiptからPacketへのref、source tree、Target Snapshot、Manifestのbindingを検査してから`TargetFileManifest`と`campaign.prepared@3`を保存する。replayとworker起動前にもResearch CASだけから同じbindingを再検査し、Target Intelligence内部storage、local source path、受入policyの再実行へ戻らない。CAS artifactの欠落・改変またはbinding不一致はtyped integrity errorとなりCampaign Ledgerを新規作成しない。
+
+`NewCampaignInputV2`の直接prepareは既存のManifest-bound caller用に維持する。schema version 1 / 2のinputとprepared eventは既存Campaignのreplay用に読み続ける。
 
 ## Campaign lifecycle
 

@@ -41,7 +41,7 @@ function createFutureLedger(databasePath: string): void {
         'campaign-from-future',
         1,
         'campaign.prepared',
-        3,
+        4,
         '2030-01-01T00:00:00.000Z',
         '{}'
       );
@@ -69,7 +69,7 @@ describe("CampaignReader Ledger compatibility", () => {
       expect(rejection).toMatchObject({
         name: "UnsupportedLedgerSchemaError",
         eventKind: "campaign.prepared",
-        schemaVersion: 3,
+        schemaVersion: 4,
       });
     } finally {
       research.close();

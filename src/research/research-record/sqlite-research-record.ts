@@ -7,6 +7,7 @@ import {
   newCampaignInputSchema,
   newCampaignInputV1Schema,
   newCampaignInputV2Schema,
+  newCampaignInputV3Schema,
   type NewCampaignInput,
 } from "../contracts.js";
 import {
@@ -215,6 +216,12 @@ const campaignPreparedPayloadV1Schema = z.strictObject({
 
 const campaignPreparedPayloadV2Schema = z.strictObject({
   input: newCampaignInputV2Schema,
+  inputDigest: digestSchema,
+  targetFileManifest: targetFileManifestRefSchema,
+});
+
+const campaignPreparedPayloadV3Schema = z.strictObject({
+  input: newCampaignInputV3Schema,
   inputDigest: digestSchema,
   targetFileManifest: targetFileManifestRefSchema,
 });
@@ -570,8 +577,10 @@ class SqliteResearchRecord implements ResearchRecord {
       }
 
       const occurredAt = this.#clock().toISOString();
-      const isV2 = "schemaVersion" in input && input.schemaVersion === 2;
-      if (isV2 !== (targetFileManifest !== undefined)) {
+      const schemaVersion =
+        "schemaVersion" in input ? input.schemaVersion : (1 as const);
+      const hasManifest = schemaVersion === 2 || schemaVersion === 3;
+      if (hasManifest !== (targetFileManifest !== undefined)) {
         throw new Error("Campaign preparation manifest version mismatch");
       }
       this.#insertEvent(
@@ -582,7 +591,7 @@ class SqliteResearchRecord implements ResearchRecord {
         targetFileManifest === undefined
           ? { input, inputDigest: requestedInputDigest }
           : { input, inputDigest: requestedInputDigest, targetFileManifest },
-        isV2 ? 2 : 1,
+        schemaVersion,
       );
 
       return {
@@ -811,7 +820,7 @@ class SqliteResearchRecord implements ResearchRecord {
         );
         if (
           !("schemaVersion" in input) ||
-          input.schemaVersion !== 2 ||
+          (input.schemaVersion !== 2 && input.schemaVersion !== 3) ||
           manifest === undefined ||
           preparation.inputDigest !== plan.preparationDigest ||
           canonicalJson(plan.target) !== canonicalJson(input.targetSnapshot) ||
@@ -1881,7 +1890,9 @@ class SqliteResearchRecord implements ResearchRecord {
     }
     if (
       first.kind !== "campaign.prepared" ||
-      (first.schema_version !== 1 && first.schema_version !== 2)
+      (first.schema_version !== 1 &&
+        first.schema_version !== 2 &&
+        first.schema_version !== 3)
     ) {
       throw new UnsupportedLedgerSchemaError(first.kind, first.schema_version);
     }
@@ -1897,9 +1908,10 @@ class SqliteResearchRecord implements ResearchRecord {
       preparationInput = payload.input;
       preparationInputDigest = payload.inputDigest;
     } else {
-      const payload = campaignPreparedPayloadV2Schema.parse(
-        rawPreparationPayload,
-      );
+      const payload =
+        first.schema_version === 2
+          ? campaignPreparedPayloadV2Schema.parse(rawPreparationPayload)
+          : campaignPreparedPayloadV3Schema.parse(rawPreparationPayload);
       preparationInput = payload.input;
       preparationInputDigest = payload.inputDigest;
       targetFileManifest = payload.targetFileManifest;

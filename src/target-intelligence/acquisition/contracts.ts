@@ -150,13 +150,15 @@ const dispositionBase = {
   receiptRef: immutableArtifactRefSchema,
 };
 
+export const readyIntakeDispositionSchema = z.strictObject({
+  status: z.literal("ready"),
+  ...dispositionBase,
+  packet: targetIntakePacketSchema,
+  packetRef: immutableArtifactRefSchema,
+});
+
 export const intakeDispositionSchema = z.discriminatedUnion("status", [
-  z.strictObject({
-    status: z.literal("ready"),
-    ...dispositionBase,
-    packet: targetIntakePacketSchema,
-    packetRef: immutableArtifactRefSchema,
-  }),
+  readyIntakeDispositionSchema,
   z.strictObject({
     status: z.literal("deferred"),
     ...dispositionBase,
@@ -175,6 +177,9 @@ export type ManualTargetIntakeRequest = z.infer<
 export type TargetIntakeReason = z.infer<typeof targetIntakeReasonSchema>;
 export type TargetIntakePacket = z.infer<typeof targetIntakePacketSchema>;
 export type IntakeReceipt = z.infer<typeof intakeReceiptSchema>;
+export type ReadyIntakeDisposition = z.infer<
+  typeof readyIntakeDispositionSchema
+>;
 export type IntakeDisposition = z.infer<typeof intakeDispositionSchema>;
 
 export interface TargetIntake {

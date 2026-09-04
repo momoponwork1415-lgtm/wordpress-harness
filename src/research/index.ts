@@ -8,6 +8,7 @@ export type {
   NewCampaignInput,
   NewCampaignInputV1,
   NewCampaignInputV2,
+  NewCampaignInputV3,
   FindingMechanismGroupsSubjectRef,
   FindingMechanismGroupsSubjectView,
   OpenResearchOptions,
@@ -18,6 +19,8 @@ export type {
   SubjectRef,
   SubjectView,
   TargetSnapshotRef,
+  TargetIntakeBinding,
+  TargetIntakeCampaignPreparationInput,
 } from "./contracts.js";
 export type {
   AttemptPlanMaterializationInput,
@@ -101,8 +104,12 @@ export {
   CampaignPreparationConflictError,
   decodeNewCampaignInput,
   LedgerIntegrityError,
+  newCampaignInputV3Schema,
+  targetIntakeBindingSchema,
+  targetIntakeCampaignPreparationInputSchema,
   UnsupportedLedgerSchemaError,
 } from "./contracts.js";
+export { TargetIntakeHandoffIntegrityError } from "./campaign-control/target-intake-campaign-handoff.js";
 export { TargetFileManifestIntegrityError } from "./source-mapping/target-file-manifest.js";
 export { openResearch } from "./open-research.js";
 export {

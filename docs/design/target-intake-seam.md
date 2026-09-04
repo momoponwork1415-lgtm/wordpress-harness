@@ -78,7 +78,7 @@ Campaign setupはcanonical Plugin Basenameどおりにmaterialize・activateす�
 
 ## Runtime setup seam
 
-readyなpacketだけがResearchのCampaign preparationへ進める。Campaign setupはTarget Snapshot、Runtime Profile、Canonical ConfigurationからgVisor内でLab Baselineを作り、install・activateと最小smokeを行う。失敗はセットアップ阻害の未完了Campaign outcomeであり、過去のready receiptを変更しない。
+readyなpacketだけが`CampaignRunner.prepareFromTargetIntake`からResearchのCampaign preparationへ進める。ResearchはPacketとReceiptを自分のCASへdigest固定で複製し、Target SnapshotとCanonical File Manifestをcallerに再入力させず`campaign.prepared@3`へ結び付ける。Packet / Receipt ref、ReceiptからPacketへのbinding、source tree、Target Snapshot、Manifestをworker起動前とreplay時に再検査するが、Acquisition policyまたは選定判断は再実行しない。Campaign setupはTarget Snapshot、Runtime Profile、Canonical ConfigurationからgVisor内でLab Baselineを作り、install・activateと最小smokeを行う。失敗はセットアップ阻害の未完了Campaign outcomeであり、過去のready receiptを変更しない。
 
 AcquisitionはVerification Lab interfaceを呼ばず、Researchはarchiveを再展開または受入policyを再判定しない。Target-controlled codeを実行する最初の場所はCampaign setupが所有するgVisor内である。
 
