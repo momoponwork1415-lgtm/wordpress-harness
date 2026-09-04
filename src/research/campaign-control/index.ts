@@ -1835,7 +1835,10 @@ async function executeDefaultSemanticCampaign(
     if (roundBatches.length > 0) {
       depthRounds.push({
         kind: "semantic-depth-round",
-        schemaVersion: 1,
+        schemaVersion:
+          plan.budgetPolicy.id === "semantic-research-recall-baseline-v5"
+            ? 2
+            : 1,
         ordinal: depthRounds.length + 1,
         queue: currentQueue.ref,
         batches: roundBatches,
@@ -1847,7 +1850,10 @@ async function executeDefaultSemanticCampaign(
       ? undefined
       : semanticDepthResearchSchema.parse({
           kind: "semantic-depth-research",
-          schemaVersion: 2,
+          schemaVersion:
+            plan.budgetPolicy.id === "semantic-research-recall-baseline-v5"
+              ? 3
+              : 2,
           rounds: depthRounds,
         });
 

@@ -436,7 +436,34 @@ const semanticResearchBudgetPolicyV4Schema = z.strictObject({
   }),
 });
 
+const semanticResearchBudgetPolicyV5Schema = z.strictObject({
+  kind: z.literal("semantic-research-budget"),
+  schemaVersion: z.literal(1),
+  id: z.literal("semantic-research-recall-baseline-v5"),
+  maxWorkWaves: z.literal(12),
+  maxFinderAttempts: z.literal(48),
+  maxConcurrentFinders: z.literal(4),
+  maxModelAttempts: z.literal(128),
+  maxModelTokens: z.literal(4_000_000),
+  maxProviderCostUsd: z.literal(150),
+  maxWallTimeMs: z.literal(43_200_000),
+  reportedUsageEnforcement: z.literal("telemetry-only"),
+  exploration: z.strictObject({
+    maxModelTokens: z.literal(3_600_000),
+    maxProviderCostUsd: z.literal(120),
+    maxWallTimeMs: z.literal(36_000_000),
+  }),
+  verificationReserve: z.strictObject({
+    maxModelTokens: z.literal(400_000),
+    maxProviderCostUsd: z.literal(30),
+    maxWallTimeMs: z.literal(7_200_000),
+    maxVerifierAttempts: z.literal(96),
+    maxExperiments: z.literal(8),
+  }),
+});
+
 export const semanticResearchBudgetPolicySchema = z.union([
+  semanticResearchBudgetPolicyV5Schema,
   semanticResearchBudgetPolicyV4Schema,
   semanticResearchBudgetPolicyV3Schema,
   semanticResearchBudgetPolicyV2Schema,
@@ -788,7 +815,7 @@ const semanticDepthBatchIncompleteSchema = z.strictObject({
   reason: z.string().min(1).max(1_000),
 });
 
-const semanticDepthRoundSchema = z.strictObject({
+const semanticDepthRoundV1Schema = z.strictObject({
   kind: z.literal("semantic-depth-round"),
   schemaVersion: z.literal(1),
   ordinal: z.number().int().positive().max(3),
@@ -803,11 +830,27 @@ const semanticDepthRoundSchema = z.strictObject({
     .min(1),
 });
 
-export const semanticDepthResearchSchema = z.strictObject({
+const semanticDepthResearchV2Schema = z.strictObject({
   kind: z.literal("semantic-depth-research"),
   schemaVersion: z.literal(2),
-  rounds: z.array(semanticDepthRoundSchema).min(1).max(3),
+  rounds: z.array(semanticDepthRoundV1Schema).min(1).max(3),
 });
+
+const semanticDepthRoundV2Schema = semanticDepthRoundV1Schema.extend({
+  schemaVersion: z.literal(2),
+  ordinal: z.number().int().positive().max(12),
+});
+
+const semanticDepthResearchV3Schema = z.strictObject({
+  kind: z.literal("semantic-depth-research"),
+  schemaVersion: z.literal(3),
+  rounds: z.array(semanticDepthRoundV2Schema).min(1).max(12),
+});
+
+export const semanticDepthResearchSchema = z.union([
+  semanticDepthResearchV3Schema,
+  semanticDepthResearchV2Schema,
+]);
 
 export const semanticCoverageReviewTraceSchema = z
   .strictObject({
@@ -1101,7 +1144,7 @@ export class LegacyMapFirstExecutionDisabledError extends Error {
 export class RetiredSemanticBudgetPolicyError extends Error {
   constructor() {
     super(
-      "Semantic Research budget policy is retired; use semantic-research-recall-baseline-v4 for new Campaigns",
+      "Semantic Research budget policy is retired; use semantic-research-recall-baseline-v5 for new Campaigns",
     );
     this.name = "RetiredSemanticBudgetPolicyError";
   }

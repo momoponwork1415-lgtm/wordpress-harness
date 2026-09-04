@@ -20,11 +20,11 @@ const targets = [
   { slug: "translatepress-multilingual", version: "3.2.5" },
 ] as const;
 
-describe("semantic-research-recall-baseline-v4", () => {
+describe("semantic-research-recall-baseline-v5", () => {
   it.each(targets)(
     "dry-checks $slug without starting a model or Lab",
     async ({ slug, version }) => {
-      const directory = await mkdtemp(join(tmpdir(), "semantic-v4-dry-"));
+      const directory = await mkdtemp(join(tmpdir(), "semantic-v5-dry-"));
       const record = openSqliteResearchRecord({
         databasePath: join(directory, "research.sqlite"),
       });
@@ -39,10 +39,10 @@ describe("semantic-research-recall-baseline-v4", () => {
         schemaVersion: 2 as const,
         targetSnapshot,
         modelProfiles: [
-          { id: "opus-planner-v4", digest: digest("5") },
-          { id: "opus-finder-v4", digest: digest("6") },
-          { id: "opus-evaluator-v4", digest: digest("7") },
-          { id: "opus-verifier-v4", digest: digest("8") },
+          { id: "opus-planner-v5", digest: digest("5") },
+          { id: "opus-finder-v5", digest: digest("6") },
+          { id: "opus-evaluator-v5", digest: digest("7") },
+          { id: "opus-verifier-v5", digest: digest("8") },
         ],
         canonicalFileManifest: {
           kind: "canonical-file-manifest" as const,
@@ -114,7 +114,7 @@ describe("semantic-research-recall-baseline-v4", () => {
         semanticPolicy: {
           kind: "semantic-root-planning-policy",
           schemaVersion: 1,
-          id: "semantic-research-recall-baseline-v4",
+          id: "semantic-research-recall-baseline-v5",
           maxTargetSpecificTheses: 3,
           minWildcardTheses: 1,
           maxLeases: 4,
@@ -145,18 +145,18 @@ describe("semantic-research-recall-baseline-v4", () => {
           },
         },
         planner: {
-          modelProfile: profile("opus-planner-v4", digest("5")),
+          modelProfile: profile("opus-planner-v5", digest("5")),
           promptSet,
           sourceToolPolicy,
         },
         finder: {
-          modelProfile: profile("opus-finder-v4", digest("6")),
+          modelProfile: profile("opus-finder-v5", digest("6")),
           promptSet,
           selectedKnowledge: [],
           sourceToolPolicy,
         },
         evaluator: {
-          modelProfile: profile("opus-evaluator-v4", digest("7")),
+          modelProfile: profile("opus-evaluator-v5", digest("7")),
           promptSet,
           budget: {
             maxWallTimeMs: 3_600_000,
@@ -178,7 +178,7 @@ describe("semantic-research-recall-baseline-v4", () => {
             setupPlanDigest: digest("e"),
             configurationDigest: digest("f"),
           },
-          verifierModelProfile: profile("opus-verifier-v4", digest("8")).ref,
+          verifierModelProfile: profile("opus-verifier-v5", digest("8")).ref,
           promptSet,
           verificationPolicy: {
             kind: "verification-policy",
@@ -207,9 +207,9 @@ describe("semantic-research-recall-baseline-v4", () => {
         budgetPolicy: {
           kind: "semantic-research-budget",
           schemaVersion: 1,
-          id: "semantic-research-recall-baseline-v4",
-          maxWorkWaves: 3,
-          maxFinderAttempts: 12,
+          id: "semantic-research-recall-baseline-v5",
+          maxWorkWaves: 12,
+          maxFinderAttempts: 48,
           maxConcurrentFinders: 4,
           maxModelAttempts: 128,
           maxModelTokens: 4_000_000,

@@ -135,10 +135,14 @@ function semanticPlanBudgetMismatch(
       policy.verificationReserve.maxWallTimeMs;
   if (
     policy.id === "semantic-research-recall-baseline-v3" ||
-    policy.id === "semantic-research-recall-baseline-v4"
+    policy.id === "semantic-research-recall-baseline-v4" ||
+    policy.id === "semantic-research-recall-baseline-v5"
   ) {
     const expectedVerifierAttempts =
-      policy.id === "semantic-research-recall-baseline-v4" ? 96 : 4;
+      policy.id === "semantic-research-recall-baseline-v4" ||
+      policy.id === "semantic-research-recall-baseline-v5"
+        ? 96
+        : 4;
     return (
       sharedMismatch ||
       plan.semanticPolicy.finderLeaseBudget.maxWallTimeMs !== 10_800_000 ||
@@ -1086,7 +1090,7 @@ class SqliteResearchRecord implements ResearchRecord {
         }
         if (
           !("workWave" in plan) &&
-          plan.budgetPolicy.id !== "semantic-research-recall-baseline-v4"
+          plan.budgetPolicy.id !== "semantic-research-recall-baseline-v5"
         ) {
           throw new RetiredSemanticBudgetPolicyError();
         }

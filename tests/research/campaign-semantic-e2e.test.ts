@@ -340,6 +340,7 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
       | "invalid-evaluation"
       | "critic-failure"
       | "multiple-depth-batches"
+      | "multiple-depth-missing-links"
       | "no-chain-depth"
       | "missing-link-depth"
       | "missing-link-overflow"
@@ -761,7 +762,8 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
           }
           if (
             scenario === "missing-link-depth" ||
-            scenario === "unbound-depth-genesis"
+            scenario === "unbound-depth-genesis" ||
+            scenario === "multiple-depth-missing-links"
           ) {
             missingLinkCriticCalls += 1;
           }
@@ -778,6 +780,8 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
                 : ((scenario === "missing-link-depth" ||
                       scenario === "unbound-depth-genesis") &&
                       missingLinkCriticCalls === 1) ||
+                    (scenario === "multiple-depth-missing-links" &&
+                      missingLinkCriticCalls <= 3) ||
                     scenario === "missing-link-overflow"
                   ? {
                       proposalId,
@@ -842,6 +846,7 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
           if (
             scenario === "missing-link-depth" ||
             scenario === "unbound-depth-genesis" ||
+            scenario === "multiple-depth-missing-links" ||
             scenario === "missing-link-overflow"
           ) {
             const prefix = "Depth evaluation context: ";
@@ -1027,6 +1032,31 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
         if (hypothesis === undefined || fragment === undefined) {
           throw new Error("Expected semantic subjects were not supplied");
         }
+        if (scenario === "multiple-depth-missing-links") {
+          return completedResult(plan, {
+            kind: "root-evaluator-output",
+            schemaVersion: 1,
+            actions: [
+              ...Array.from({ length: 10 }, (_, index) => ({
+                kind: "admit-depth" as const,
+                subjectDigests: [hypothesis.ref.digest, fragment.ref.digest],
+                admission: {
+                  highImpactPotential: `Independent high-impact route ${index + 1}.`,
+                  composition: `Challenge independent composition ${index + 1}.`,
+                  falsifier: `Independent route ${index + 1} does not compose.`,
+                  nextAction: `Synthesize independent route ${index + 1}.`,
+                },
+              })),
+              {
+                kind: "retain" as const,
+                subjectDigests: theses.map((thesis) => thesis.ref.digest),
+                reason:
+                  "Keep the research theses while independent Depth routes run.",
+              },
+            ],
+            campaignDisposition: "continue",
+          });
+        }
         if (scenario === "unbound-depth-genesis") {
           if (theses.length === 0) {
             throw new Error("Expected research theses");
@@ -1190,7 +1220,7 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
         semanticPolicy: {
           kind: "semantic-root-planning-policy" as const,
           schemaVersion: 1 as const,
-          id: "semantic-research-recall-baseline-v4",
+          id: "semantic-research-recall-baseline-v5",
           maxTargetSpecificTheses: 1,
           minWildcardTheses: 1,
           maxLeases: 2,
@@ -1319,9 +1349,9 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
         budgetPolicy: {
           kind: "semantic-research-budget" as const,
           schemaVersion: 1 as const,
-          id: "semantic-research-recall-baseline-v4",
-          maxWorkWaves: 3,
-          maxFinderAttempts: 12,
+          id: "semantic-research-recall-baseline-v5",
+          maxWorkWaves: 12,
+          maxFinderAttempts: 48,
           maxConcurrentFinders: 4,
           maxModelAttempts: 128,
           maxModelTokens: 4_000_000,
@@ -1395,7 +1425,7 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
             },
             depthResearch: {
               kind: "semantic-depth-research",
-              schemaVersion: 2,
+              schemaVersion: 3,
               rounds: [
                 {
                   ordinal: 1,
@@ -1845,7 +1875,7 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
         kind: "run",
         value: {
           depthResearch: {
-            schemaVersion: 2,
+            schemaVersion: 3,
             rounds: [
               {
                 ordinal: 1,
@@ -1990,6 +2020,62 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
       await expect(research.runner.run(multipleDepthPlan)).resolves.toEqual(
         multipleDepthRef,
       );
+
+      scenario = "multiple-depth-missing-links";
+      missingLinkCriticCalls = 0;
+      const multipleDepthMissingLinksPlan =
+        campaignDefaultSemanticRunPlanV2Schema.parse({
+          ...plan,
+          runId: "semantic-e2e-multiple-depth-missing-links",
+        });
+      await research.runner.run(multipleDepthMissingLinksPlan);
+      const multipleDepthMissingLinksRun = await research.reader.inspect(
+        input.campaignId,
+        { kind: "run", runId: multipleDepthMissingLinksPlan.runId },
+      );
+      expect(multipleDepthMissingLinksRun).toMatchObject({
+        kind: "run",
+        value: {
+          depthWorkQueue: { items: 10, batches: 3 },
+          depthResearch: {
+            rounds: [
+              {
+                batches: [
+                  { missingLinkWaves: [{ plan: { gaps: 1 } }] },
+                  { missingLinkWaves: [{ plan: { gaps: 1 } }] },
+                  { missingLinkWaves: [{ plan: { gaps: 1 } }] },
+                ],
+              },
+              { batches: [{ kind: "semantic-depth-batch-result" }] },
+              { batches: [{ kind: "semantic-depth-batch-result" }] },
+              { batches: [{ kind: "semantic-depth-batch-result" }] },
+            ],
+          },
+        },
+      });
+      const multipleDepthMissingLinksState = z
+        .object({
+          value: z.object({
+            depthResearch: z.object({
+              rounds: z.array(
+                z.object({
+                  batches: z.array(
+                    z.object({
+                      unscheduledGaps: z.array(z.unknown()).optional(),
+                    }),
+                  ),
+                }),
+              ),
+            }),
+          }),
+        })
+        .parse(multipleDepthMissingLinksRun);
+      expect(
+        multipleDepthMissingLinksState.value.depthResearch.rounds.flatMap(
+          (round) =>
+            round.batches.flatMap((batch) => batch.unscheduledGaps ?? []),
+        ),
+      ).toEqual([]);
 
       scenario = "verification-volume";
       const verifierCallsBeforeVolume = verifierCalls;
@@ -2408,6 +2494,23 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
       await expect(research.runner.run(retiredBudgetPlan)).rejects.toThrow(
         "Semantic Research budget policy is retired",
       );
+      const retiredRecallV4Plan = campaignDefaultSemanticRunPlanV2Schema.parse({
+        ...plan,
+        runId: "semantic-e2e-retired-recall-v4",
+        semanticPolicy: {
+          ...plan.semanticPolicy,
+          id: "semantic-research-recall-baseline-v4",
+        },
+        budgetPolicy: {
+          ...plan.budgetPolicy,
+          id: "semantic-research-recall-baseline-v4",
+          maxWorkWaves: 3,
+          maxFinderAttempts: 12,
+        },
+      });
+      await expect(research.runner.run(retiredRecallV4Plan)).rejects.toThrow(
+        "Semantic Research budget policy is retired",
+      );
       const retiredRecallV3Plan = campaignDefaultSemanticRunPlanV2Schema.parse({
         ...plan,
         runId: "semantic-e2e-retired-recall-v3",
@@ -2425,6 +2528,8 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
         budgetPolicy: {
           ...plan.budgetPolicy,
           id: "semantic-research-recall-baseline-v3",
+          maxWorkWaves: 3,
+          maxFinderAttempts: 12,
           maxModelAttempts: 32,
           verificationReserve: {
             ...plan.budgetPolicy.verificationReserve,
@@ -2440,5 +2545,5 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
       research.close();
       await rm(directory, { force: true, recursive: true });
     }
-  }, 15_000);
+  }, 30_000);
 });
