@@ -15,6 +15,10 @@ import {
 import type { TargetFileManifestRef } from "./source-mapping/contracts.js";
 import type { JsonArtifactStore } from "./research-record/contracts.js";
 import type { FindingMechanismGroups } from "./verification/contracts.js";
+import type {
+  CampaignProgressSubjectRef,
+  CampaignProgressView,
+} from "./campaign-progress-contracts.js";
 
 const identifierSchema = z
   .string()
@@ -153,7 +157,8 @@ export interface FindingMechanismGroupsSubjectRef {
 export type SubjectRef =
   | PreparationSubjectRef
   | CampaignRunSubjectRef
-  | FindingMechanismGroupsSubjectRef;
+  | FindingMechanismGroupsSubjectRef
+  | CampaignProgressSubjectRef;
 
 export interface PreparationSubjectView {
   readonly kind: "preparation";
@@ -177,7 +182,8 @@ export type FindingMechanismGroupsSubjectView = FindingMechanismGroups;
 export type SubjectView =
   | PreparationSubjectView
   | CampaignRunSubjectView
-  | FindingMechanismGroupsSubjectView;
+  | FindingMechanismGroupsSubjectView
+  | CampaignProgressView;
 
 export interface ResearchModule {
   readonly runner: CampaignRunner;

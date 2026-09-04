@@ -121,6 +121,38 @@ export interface ClaudeSourceEvidenceBridge {
   close(): Promise<void>;
 }
 
+export type ClaudeSourceEvidenceToolObservation =
+  | {
+      readonly kind: "model-tool-started";
+      readonly toolName: string;
+      readonly toolOrdinal: number;
+    }
+  | {
+      readonly kind: "model-tool-completed";
+      readonly toolName: string;
+      readonly toolOrdinal: number;
+      readonly resultStatus:
+        | "completed"
+        | "identity-mismatch"
+        | "invalid-query"
+        | "truncated"
+        | "not-found"
+        | "partial"
+        | "policy-denied"
+        | "budget-exhausted";
+      readonly receiptDigest?: string;
+    }
+  | {
+      readonly kind: "model-tool-failed";
+      readonly toolName: string;
+      readonly toolOrdinal: number;
+      readonly reason: "tool-call-threw";
+    };
+
+export interface ClaudeSourceEvidenceToolObserver {
+  observe(event: ClaudeSourceEvidenceToolObservation): void;
+}
+
 function toolResult(receipt: SourceEvidenceReceipt | SourceEvidenceReceiptV2): {
   content: [{ type: "text"; text: string }];
 } {
@@ -162,8 +194,76 @@ function matchesBearerCredential(
 
 export async function openClaudeSourceEvidenceBridge(
   sourceEvidence: AttemptSourceEvidence,
+  toolObserver?: ClaudeSourceEvidenceToolObserver,
 ): Promise<ClaudeSourceEvidenceBridge> {
   let connectionObserved = false;
+  let toolOrdinal = 0;
+  const observe = (event: ClaudeSourceEvidenceToolObservation): void => {
+    try {
+      toolObserver?.observe(event);
+    } catch {
+      // Observability must not change source evidence collection.
+    }
+  };
+  const runSourceTool = async (
+    toolName: string,
+    query: () => Promise<SourceEvidenceReceipt | SourceEvidenceReceiptV2>,
+  ): Promise<SourceEvidenceReceipt | SourceEvidenceReceiptV2> => {
+    const ordinal = (toolOrdinal += 1);
+    observe({
+      kind: "model-tool-started",
+      toolName,
+      toolOrdinal: ordinal,
+    });
+    try {
+      const receipt = await query();
+      observe({
+        kind: "model-tool-completed",
+        toolName,
+        toolOrdinal: ordinal,
+        resultStatus: receipt.value.result.status,
+        receiptDigest: receipt.ref.digest,
+      });
+      return receipt;
+    } catch (error: unknown) {
+      observe({
+        kind: "model-tool-failed",
+        toolName,
+        toolOrdinal: ordinal,
+        reason: "tool-call-threw",
+      });
+      throw error;
+    }
+  };
+  const runCheckpointTool = async (
+    checkpoint: () => Promise<unknown>,
+  ): Promise<unknown> => {
+    const toolName = "checkpoint_research";
+    const ordinal = (toolOrdinal += 1);
+    observe({
+      kind: "model-tool-started",
+      toolName,
+      toolOrdinal: ordinal,
+    });
+    try {
+      const result = await checkpoint();
+      observe({
+        kind: "model-tool-completed",
+        toolName,
+        toolOrdinal: ordinal,
+        resultStatus: "completed",
+      });
+      return result;
+    } catch (error: unknown) {
+      observe({
+        kind: "model-tool-failed",
+        toolName,
+        toolOrdinal: ordinal,
+        reason: "tool-call-threw",
+      });
+      throw error;
+    }
+  };
   const handler = createMcpHandler(() => {
     connectionObserved = true;
     const server = new McpServer({
@@ -192,23 +292,27 @@ export async function openClaudeSourceEvidenceBridge(
           const { selector, cursor, reason } =
             sourceListInputV2Schema.parse(input);
           return toolResult(
-            await sourceEvidence.query({
-              kind: "source-list",
-              ...(selector === undefined ? {} : { selector }),
-              ...(cursor === undefined ? {} : { cursor }),
-              reason,
-            }),
+            await runSourceTool("source_list", () =>
+              sourceEvidence.query({
+                kind: "source-list",
+                ...(selector === undefined ? {} : { selector }),
+                ...(cursor === undefined ? {} : { cursor }),
+                reason,
+              }),
+            ),
           );
         }
         const { prefix, reason } = sourceListInputSchema.parse(input);
         return toolResult(
-          await sourceEvidence.query({
-            kind: "list-snapshot-files",
-            schemaVersion: 1,
-            subject: prefix === undefined ? {} : { prefix },
-            desiredRelation: "inventory",
-            reason,
-          }),
+          await runSourceTool("source_list", () =>
+            sourceEvidence.query({
+              kind: "list-snapshot-files",
+              schemaVersion: 1,
+              subject: prefix === undefined ? {} : { prefix },
+              desiredRelation: "inventory",
+              reason,
+            }),
+          ),
         );
       },
     );
@@ -228,30 +332,34 @@ export async function openClaudeSourceEvidenceBridge(
           const { selector, cursor, reason } =
             sourceSearchInputV2Schema.parse(input);
           return toolResult(
-            await sourceEvidence.query({
-              kind: "source-search",
-              ...(selector === undefined ? {} : { selector }),
-              ...(cursor === undefined ? {} : { cursor }),
-              reason,
-            }),
+            await runSourceTool("source_search", () =>
+              sourceEvidence.query({
+                kind: "source-search",
+                ...(selector === undefined ? {} : { selector }),
+                ...(cursor === undefined ? {} : { cursor }),
+                reason,
+              }),
+            ),
           );
         }
         const { literal, paths, desiredRelation, reason } =
           sourceSearchInputSchema.parse(input);
         return toolResult(
-          await sourceEvidence.query({
-            kind: "search-snapshot",
-            schemaVersion: 1,
-            subject: {
-              literal,
-              scope:
-                paths === undefined
-                  ? { kind: "snapshot" }
-                  : { kind: "paths", paths },
-            },
-            desiredRelation,
-            reason,
-          }),
+          await runSourceTool("source_search", () =>
+            sourceEvidence.query({
+              kind: "search-snapshot",
+              schemaVersion: 1,
+              subject: {
+                literal,
+                scope:
+                  paths === undefined
+                    ? { kind: "snapshot" }
+                    : { kind: "paths", paths },
+              },
+              desiredRelation,
+              reason,
+            }),
+          ),
         );
       },
     );
@@ -271,12 +379,14 @@ export async function openClaudeSourceEvidenceBridge(
           const { selector, cursor, reason } =
             sourceReadInputV2Schema.parse(input);
           return toolResult(
-            await sourceEvidence.query({
-              kind: "source-read",
-              ...(selector === undefined ? {} : { selector }),
-              ...(cursor === undefined ? {} : { cursor }),
-              reason,
-            }),
+            await runSourceTool("source_read", () =>
+              sourceEvidence.query({
+                kind: "source-read",
+                ...(selector === undefined ? {} : { selector }),
+                ...(cursor === undefined ? {} : { cursor }),
+                reason,
+              }),
+            ),
           );
         }
         const {
@@ -288,22 +398,25 @@ export async function openClaudeSourceEvidenceBridge(
           reason,
         } = sourceReadInputSchema.parse(input);
         return toolResult(
-          await sourceEvidence.query({
-            kind: "read-source-range",
-            schemaVersion: 1,
-            subject: {
-              path,
-              fileDigest,
-              startLine,
-              endLine,
-            },
-            desiredRelation,
-            reason,
-          }),
+          await runSourceTool("source_read", () =>
+            sourceEvidence.query({
+              kind: "read-source-range",
+              schemaVersion: 1,
+              subject: {
+                path,
+                fileDigest,
+                startLine,
+                endLine,
+              },
+              desiredRelation,
+              reason,
+            }),
+          ),
         );
       },
     );
     if (sourceEvidence.checkpoint !== undefined) {
+      const checkpointResearch = sourceEvidence.checkpoint;
       server.registerTool(
         "checkpoint_research",
         {
@@ -319,7 +432,9 @@ export async function openClaudeSourceEvidenceBridge(
         },
         async (input: unknown) => {
           const { subject } = researchCheckpointInputSchema.parse(input);
-          const checkpoint = await sourceEvidence.checkpoint?.(subject);
+          const checkpoint = await runCheckpointTool(() =>
+            checkpointResearch(subject),
+          );
           return {
             content: [
               {

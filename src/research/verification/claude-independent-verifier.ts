@@ -184,6 +184,7 @@ class FirstClaudeIndependentVerifier implements IndependentVerifier {
     let processResult;
     try {
       processResult = await this.#process.execute({
+        operationId: plan.verificationId,
         modelProfile: this.#verifierModelProfile.execution,
         prompt: this.#renderPrompt(plan, sources),
         budget: {

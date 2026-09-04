@@ -14,30 +14,49 @@ Status: living implementation map, 2026-09-05
 
 schema field、SQLite table、provider argv、全ADR、内部helperは暗記しない。
 
+## v0.1 product goal
+
+手動で選定したWordPress pluginとCanonical Campaign Configurationから、Map-free Semantic Research、必要時のconditional Depth、fresh LabでのIndependent Verification、Human Review Packet、Human Confirmationまでを一つのoperator workflowとして閉じる。Development Cohortの各mechanismを反復基準で通過した後、既知答えを持ち込まない3件のProspective Campaignをdurable terminalまで完走できた時点をv0.1とする。
+
+v0.1ではtarget選定の自動化、multi-model、完全なDashboardを要求しない。Finding件数も完了条件にせず、Finding、Disproved、理由付きIncompleteを同じ証拠規則で再生できることを要求する。
+
 ## Current completion map
 
 ```mermaid
-flowchart TB
-    ti["Target Intelligence<br/>partial"]
-    campaign["Campaign Control<br/>partial"]
-    source["Source Understanding<br/>partial"]
-    explore["Exploration<br/>partial"]
-    verify["Verification<br/>partial"]
-    model["Model Execution<br/>partial"]
-    record["Research Record<br/>partial"]
-    human["Human OS<br/>planned"]
+flowchart LR
+    local["Manual Target selection / intake<br/>local intake実装済み"]
+    prepare["Canonical Campaign preparation<br/>実装済み<br/>Lab setupはpartial"]
+    research["Semantic Research<br/>Map-free + conditional Depth実装済み<br/>cohort未合格"]
+    proof["Independent Verification<br/>effect adapter実装済み<br/>Target Lab setupはpartial"]
+    packet["Human Review Packet<br/>未実装"]
+    confirm["Human Confirmation<br/>未実装"]
 
-    ti --> campaign --> source --> explore --> verify --> human
-    campaign --> model
-    source --> model
-    explore --> model
-    verify --> model
-    campaign --> record
-    source --> record
-    explore --> record
-    verify --> record
-    model --> record
+    local --> prepare --> research --> proof --> packet --> confirm
+
+    auto["Archive acquisition / ranking<br/>後続"] -.-> local
+    observe["Ledger live progress / private transcript<br/>実装済み"] -.-> research
 ```
+
+```mermaid
+flowchart LR
+    cohort["Development Cohort<br/>各3 run・mechanism別2-of-3<br/>進行中"]
+    prospective["Prospective Campaign<br/>異なる3 Target<br/>未実行"]
+    v01["v0.1 exit"]
+
+    cohort --> prospective --> v01
+```
+
+上段はproductのruntime path、下段はその能力を判定するevaluation gateである。主経路のResearch codeはDepthと独立Verificationまで接続済みだが、接続済みを発見能力の証明とは数えない。Brizy、SSA、TranslatePressの各mechanismが反復基準を満たすまではProspectiveへ進まない。
+
+残作業は次の三群に分ける。
+
+| 群 | 状態 | 次の有限work |
+| --- | --- | --- |
+| **いま閉じる** | live progressとprivate provider transcriptは接続済み、cohortは未完了 | [Development Cohort #33](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/33)を各3 runで完了する。失敗時はprogress / transcriptから最初に衝突したSeamだけを修正する |
+| **最初のproduct goalまで** | arbitrary TargetのLab setup、Prospective実測、Human OSがない | Canonical ConfigurationからLab Baselineを作るCampaign setup、Human Review Packet、[Prospective Campaign #32](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/32)、fresh Human Confirmationを順に閉じる |
+| **到達後に広げる** | 自動選定、multi-model、breadth、cost最適化は未着手 | archive acquisition、eligibility / ranking、`3 baseline + 1 challenger`、Semgrep / CodeQL横展開、recall-preserving ablationを実測順に追加する |
+
+Surface Map、PHP Program Index、追加provider、完全なDashboardは主経路の前提ではない。実TargetのHypothesisが要求していないExperiment frameworkも先回りして作らない。
 
 ## Current vertical slice
 
@@ -75,24 +94,21 @@ flowchart TB
 
 これはDefault Map-free Semantic Waveのproduction vertical sliceである。Root EvaluationのIteration DecisionはCASと単一Ledger eventへ固定し、modelが選んだ`admit-depth` action groupingからCampaign-localなactive Approach Familyを開く。Research Recordはeventから同じRegistry digestを再構築し、この境界より前にRoot Synthesisを開始させない。Depth AdmissionとDepth Work Queue、Queue全batchのtool-freeなRoot Synthesis、各immutable artifactをfresh source readで攻撃するAdversarial Critic、全Proposalを処遇するfresh Depth Root Evaluation、具体的Critic Gapへbindしたfresh Missing-link Finder WaveをCampaignへdurableに接続済みである。Depth DecisionをCASとLedgerへ先に固定してからMissing-link Waveを開始し、そのHypothesis、Route Fragment、Frontier Gapを元のApproach Familyへattachしたfollow-up Queueでfresh Synthesis / Critic / Evaluationを反復する。Missing-link WaveもTarget全体へpivotでき、checkpoint Hypothesisを既存Verification Queueへ先行投入し、最大3 WaveのCampaign envelopeを越えない。容量を越えたGapは`unscheduledGaps`としてRun recordに残してIncompleteにし、黙示的に捨てない。batchはstable orderで処理し、各artifactをCASへ置く前に次roleを始めない。Proposal 0件またはtyped incompleteでは完了roundとVerificationを保持する。既存v1 CampaignのMap-first one-wave sliceはreplay専用で残す。target-specificな成否、Waveの時系列、所要時間は[公開CVEのE2E実験記録](experiments/e2e-campaign-results-2026-09-02.md)にだけ置く。
 
-`CampaignRunner.prepareFromTargetIntake`はreadyなPacket / ReceiptをResearch CASへ複製し、PacketのTarget SnapshotとCanonical File Manifestをcallerによる再入力なしで`campaign.prepared@3`へ固定する。Packet / Receipt / source tree / Manifest bindingはreplayとworker起動前にもResearch CASだけから検査され、改変または欠落はtyped integrity errorになる。v2入力の直接prepareとv1/v2 replayも維持する。`CampaignRunner.run`はMapなしでwhole-target Baseline Finderを直ちに開始し、同時にmanifest-boundな`list / search / read`を持つSource-aware Reconを実行する。Recon完了をBaselineの開始条件にせず、実source readがないRecon結果は受理しない。Reconが返す最大3個のsource-backed Focus Packetは開始点に限り、Focused Finderも同じTarget Snapshot全体へpivotできる。Recon failure時もBaseline AttemptとcheckpointはRunへ残る。その後、最大4個の独立Finder、Wave Barrier、fresh Root Evaluation、Independent Verification、terminal recordまでを一つのdurable Runとして接続する。各model Attemptは外部実行より先にintentを記録し、result、Wave terminal、Iteration Decisionを次stageより先にCASとLedgerへ固定する。FinderはClaude bridgeの`checkpoint_research`からHypothesis、Route Fragment、Frontier Gapを一件ずつ提出でき、Campaign ControlがManifest検査、subject CAS、checkpoint CAS、Ledger eventを完了してからackする。同一subjectの再送は同じrefへ収束し、後続provider failure後もcheckpointはreplayできる。source-bound Hypothesisはcheckpoint直後にstable identityでVerification Queueへ入り、Finder terminal、Wave Barrier、Root Evaluatorを待たない。同じcandidateをterminal outputまたはEvaluatorが再要求しても一つのVerificationへ収束し、Evaluator failure時も完了済みVerification refをRunへ残す。ReconとFinderのTool Receipt valueはtrusted-sideで全件検証してCAS / Ledgerへ保持し、Root EvaluationへはFinder Receiptのdigest-bound ref、query ordinal、operation、terminal resultとAttempt別集計を渡す。provider failure、partial/invalid Finder output、invalid Evaluation、Verification blockerと予約枠超過は区別して保持し、一件のFinding後もretainまたはDepthのactive frontierがあれば`Incomplete`にする。`CampaignReader.inspect`は全Finding recordを保持したまま、source rederivation、Experiment、Lab binding、Witness / Control effectが一致する別subjectをversioned `Finding Mechanism Group`へまとめ、Blockedを除外した`1 mechanism / N discoveries` viewを決定的に再構築する。完了済みPlan replayはproviderを再起動しない。
+`CampaignRunner.prepareFromTargetIntake`はreadyなPacket / ReceiptをResearch CASへ複製し、PacketのTarget SnapshotとCanonical File Manifestをcallerによる再入力なしで`campaign.prepared@3`へ固定する。Packet / Receipt / source tree / Manifest bindingはreplayとworker起動前にもResearch CASだけから検査され、改変または欠落はtyped integrity errorになる。v2入力の直接prepareとv1/v2 replayも維持する。`CampaignRunner.run`はMapなしでwhole-target Baseline Finderを直ちに開始し、同時にmanifest-boundな`list / search / read`を持つSource-aware Reconを実行する。Recon完了をBaselineの開始条件にせず、実source readがないRecon結果は受理しない。Reconが返す最大3個のsource-backed Focus Packetは開始点に限り、Focused Finderも同じTarget Snapshot全体へpivotできる。Recon failure時もBaseline AttemptとcheckpointはRunへ残る。その後、最大4個の独立Finder、Wave Barrier、fresh Root Evaluation、Independent Verification、terminal recordまでを一つのdurable Runとして接続する。各model Attemptは外部実行より先にintentを記録し、result、Wave terminal、Iteration Decisionを次stageより先にCASとLedgerへ固定する。FinderはClaude bridgeの`checkpoint_research`からHypothesis、Route Fragment、Frontier Gapを一件ずつ提出でき、Campaign ControlがManifest検査、subject CAS、checkpoint CAS、Ledger eventを完了してからackする。同一subjectの再送は同じrefへ収束し、後続provider failure後もcheckpointはreplayできる。source-bound Hypothesisはcheckpoint直後にstable identityでVerification Queueへ入り、Finder terminal、Wave Barrier、Root Evaluatorを待たない。同じcandidateをterminal outputまたはEvaluatorが再要求しても一つのVerificationへ収束し、Evaluator failure時も完了済みVerification refをRunへ残す。ReconとFinderのTool Receipt valueはtrusted-sideで全件検証してCAS / Ledgerへ保持し、Root EvaluationへはFinder Receiptのdigest-bound ref、query ordinal、operation、terminal resultとAttempt別集計を渡す。provider failure、partial/invalid Finder output、invalid Evaluation、Verification blockerと予約枠超過は区別して保持し、一件のFinding後もretainまたはDepthのactive frontierがあれば`Incomplete`にする。`CampaignReader.inspect`は全Finding recordを保持したまま、source rederivation、Experiment、Lab binding、Witness / Control effectが一致する別subjectをversioned `Finding Mechanism Group`へまとめ、Blockedを除外した`1 mechanism / N discoveries` viewを決定的に再構築する。実行中は同じReaderの`progress` viewがLedger / CASだけからstatus、active role、checkpoint、Verification、Depth、usageを再構築する。private runnerは変更時と25秒heartbeatでstderrへ表示し、provider process segmentとSource Evidence tool lifecycleをrun-local private JSONLへflushする。観測先の失敗はCampaign outcomeを変えない。完了済みPlan replayはproviderを再起動しない。
 
 Wave BarrierはFinderOutputV2のHypothesis、Route Fragment、Frontier GapをManifest検査し、Attempt / Lease / Wave / Target / Manifest provenanceを持つimmutable CAS artifactとしてstable orderでRun viewへ公開する。欠けた配列、partial output、Manifest外anchorはtyped `incomplete`となる。途中checkpointはBarrier前にdurableで、HypothesisのVerificationだけはここから先行する。Wave terminal集合とRoot Evaluation inputは引き続きterminal FinderOutputに依存する。`Exploration.decide`はBarrierの全subject、Finder outcome、Tool Receiptをstableなfresh Root Evaluatorへ渡し、Verification、Depth、next work、retain、close、blockを非排他的なIteration Decision v2として返せる。silent omission、foreign ref、binding不正、早すぎるCoverage Closureはfresh retry後にtyped `evaluation-incomplete`となる。v1 preparationとMap-first Runは既存Campaignのreplay用に読み続ける。
 
 ## Main capability gap
 
 ```mermaid
-flowchart TB
-    current["Current<br/>Map-free Semantic Wave"]
-    depth["Conditional Depth"]
-    synthesis["Synthesis + Critic"]
-    waves["Missing-link waves"]
-    proof["More proof mechanisms"]
-    prospective["Prospective operation"]
+flowchart LR
+    cohort["Development Cohort<br/>current default engine"]
+    setup["Configuration-driven<br/>Lab setup"]
     review["Human Review Packet"]
+    prospective["Prospective ×3"]
     confirmation["Human Confirmation"]
 
-    current --> depth --> synthesis --> waves --> proof --> prospective --> review --> confirmation
+    cohort --> setup --> review --> prospective --> confirmation
 ```
 
 二段Coverage Closureはproduction sliceへ接続済みである。初回complete WaveまたはterminalなDepth後の評価を一回目の観測とし、一回のno-material-deltaだけでは閉じない。後段は既知subjectやclosure hintをassignmentへ渡さないfresh Wildcard Finderとfresh Root Evaluatorを起動する。最後のmaterial evidence以後にcompleteなno-material-deltaが二回連続し、後者がfresh Wildcardで、active / blocked Family、pending Verification、未解決workがない時だけdigest固定したClosure Recordから`coverage-closed`を作る。review plan、terminal、decision、observation、closureはRun replayへ残り、新subject、provider failure、Wave issue、容量不足は`coverage-review-incomplete`になる。直近の実装gapは、複数WaveをまたぐExploration実消費のhard enforcement、archive acquisition、Canonical ConfigurationからLab Baselineを作るCampaign setupである。Map、PHP Program Index、AST、Semgrep、CodeQLは補助に残し、Map外candidateを拒否しない。
@@ -108,13 +124,13 @@ Manual local-directory Target IntakeからCampaign preparationへのversioned co
 | Capability | Status | Public or owner Interface | Source | Behavior Tests | Design |
 | --- | --- | --- | --- | --- | --- |
 | Manual Target Intake | partial; local directoryのraw-byte capture、stable manifest、WordPress.org identity / header version照合、link / hardlink / path collision / quota拒否、曖昧なmain fileのdeferred、CAS-first Packet / Receipt、Packet / ReceiptをResearch CASへ複製するv3 Campaign handoff。archive acquisitionは未実装 | `TargetIntake.intake` / `CampaignRunner.prepareFromTargetIntake` | [`target-intelligence/acquisition/`](../src/target-intelligence/acquisition), [`target-intake-campaign-handoff.ts`](../src/research/campaign-control/target-intake-campaign-handoff.ts) | [`local-directory intake`](../tests/target-intelligence/local-directory-target-intake.test.ts), [`Campaign handoff`](../tests/research/target-intake-campaign-handoff.test.ts) | [Target Intake seam](design/target-intake-seam.md) |
-| Campaign prepare、run、replay | partial; Default Map-free Semantic Wave E2E、recall baseline v4 preflight、v2 Manifest-bound prepare、v1/v2/v3 replay | `openResearch` / `CampaignRunner` | [`campaign-control/`](../src/research/campaign-control), [`target-file-manifest.ts`](../src/research/source-mapping/target-file-manifest.ts), [`open-research.ts`](../src/research/open-research.ts) | [`semantic E2E`](../tests/research/campaign-semantic-e2e.test.ts), [`v4 budget dry-check`](../tests/research/semantic-recall-budget.test.ts), [`campaign-prepare`](../tests/research/campaign-prepare.test.ts), [`semantic run`](../tests/research/campaign-semantic-run.test.ts), [`campaign-run`](../tests/research/campaign-run.test.ts) | [Campaign seam](design/campaign-execution-seam.md) |
-| Research Ledger and CAS | partial; Finder checkpoint eventとclose/reopen replay | internal `ResearchRecord` | [`research-record/`](../src/research/research-record) | [`semantic run`](../tests/research/campaign-semantic-run.test.ts), [`ledger compatibility`](../tests/research/ledger-compatibility.test.ts) | [Module Map](design/architecture/module-map.md) |
+| Campaign prepare、run、replay | partial; Default Map-free Semantic Wave E2E、recall baseline v4 preflight、v2 Manifest-bound prepare、v1/v2/v3 replay、Ledger-derived live progress | `openResearch` / `CampaignRunner` / `CampaignReader.inspect(progress)` | [`campaign-control/`](../src/research/campaign-control), [`campaign-progress-reporter.ts`](../src/research/campaign-progress-reporter.ts), [`target-file-manifest.ts`](../src/research/source-mapping/target-file-manifest.ts), [`open-research.ts`](../src/research/open-research.ts) | [`semantic E2E`](../tests/research/campaign-semantic-e2e.test.ts), [`v4 budget dry-check`](../tests/research/semantic-recall-budget.test.ts), [`campaign-prepare`](../tests/research/campaign-prepare.test.ts), [`semantic run`](../tests/research/campaign-semantic-run.test.ts), [`campaign-run`](../tests/research/campaign-run.test.ts), [`progress reporter`](../tests/research/campaign-progress-reporter.test.ts) | [Campaign seam](design/campaign-execution-seam.md) |
+| Research Ledger and CAS | partial; Finder checkpoint event、close/reopen replay、Ledger / CAS prefixからの決定的progress projection | internal `ResearchRecord` | [`research-record/`](../src/research/research-record) | [`campaign run`](../tests/research/campaign-run.test.ts), [`semantic run`](../tests/research/campaign-semantic-run.test.ts), [`ledger compatibility`](../tests/research/ledger-compatibility.test.ts) | [Module Map](design/architecture/module-map.md) |
 | PHP Program Index | implemented internal slice | `PhpSourceAnalysis` | [`php-program-index/`](../src/research/source-mapping/php-program-index) | [`php-program-index`](../tests/research/php-program-index.test.ts) | [Index seam](design/php-program-index-seam.md) |
 | Surface Map and AI delta | partial | `SourceMapping.build` | [`source-mapping/`](../src/research/source-mapping) | [`source-mapping`](../tests/research/source-mapping.test.ts), [`map-delta`](../tests/research/map-delta-synthesizer.test.ts) | [Source Mapping seam](design/source-mapping-seam.md) |
 | Target-bound source queries | partial; Recon / Finder向けv2 paginated `list/search/read`、Claude v2 binding、v1 replay | `SourceEvidenceGateway.query` / `ModelExecution.run` | [`source-evidence-gateway.ts`](../src/research/source-mapping/source-evidence-gateway.ts), [`claude-source-evidence-bridge.ts`](../src/research/model-execution/claude-source-evidence-bridge.ts) | [`v2 gateway`](../tests/research/source-evidence-gateway-v2.test.ts), [`Claude bridge`](../tests/research/claude-source-evidence-bridge.test.ts), [`v1 gateway`](../tests/research/source-evidence-gateway.test.ts) | [Source Mapping seam](design/source-mapping-seam.md) |
 | Planning and Hypothesis intake | partial; Source-aware Reconとwhole-target Baselineの並行開始、source-backed Focus Packet、Manifest-bound Wave Barrier、checkpoint Hypothesisの先行Verification、fresh Root Evaluation、atomic Iteration Decision、active Approach Family Registry、全Depth Admission / next workを失わないversioned Depth Work Queue、tool-freeなfresh Root SynthesisとManifest-bound Chain Proposal、fresh source readを必須にするAdversarial Critique、fresh Depth Root Evaluation、Gap-boundなMissing-link Wave、Family evidence attachment、最大3 Waveのfresh反復、容量超過Gapのtyped incomplete、Depth Chain ProposalからSource-bound Hypothesisへの変換、Verification outcomeのFamily feedback、fresh Wildcardによる二段Coverage ClosureをCampaign E2Eで実装済み | `Exploration.decide` / `SemanticChainSynthesis.synthesize` / `SemanticAdversarialCritique.critique` / `CampaignRunner.run` | [`exploration/`](../src/research/exploration), [`campaign-control/`](../src/research/campaign-control) | [`semantic E2E`](../tests/research/campaign-semantic-e2e.test.ts), [`Depth work queue`](../tests/research/semantic-depth-work-queue.test.ts), [`Root Synthesis`](../tests/research/semantic-chain-synthesis.test.ts), [`Adversarial Critic`](../tests/research/semantic-adversarial-critique.test.ts), [`semantic-root-planning`](../tests/research/semantic-root-planning.test.ts), [`root evaluation`](../tests/research/semantic-root-evaluation.test.ts), [`semantic run`](../tests/research/campaign-semantic-run.test.ts), [`wave barrier`](../tests/research/semantic-wave-barrier.test.ts), [`exploration-bootstrap`](../tests/research/exploration-bootstrap.test.ts) | [Exploration seam](design/exploration-seam.md) |
-| Provider execution | partial; Claude process、planner/finder/evaluator/root-synthesizer/adversarial-critic AttemptPlan v2、Recon / Finder / Critic source tools v2、tool-free Synthesis、Critic fresh-read gate、checkpoint observer、Receipt伝播、Exploration / Verifier共通usage正規化、v3 reported turn/token telemetry、source byte / provider cost ceiling、usage付き429/5xxのcredential-safeなsame-session resume、usage不明crashのcheckpoint-preserving non-resume | `ModelExecution.run(plan, observer?)` | [`model-execution/`](../src/research/model-execution) | [`model-execution`](../tests/research/model-execution.test.ts), [`Root Synthesis`](../tests/research/semantic-chain-synthesis.test.ts), [`Adversarial Critic`](../tests/research/semantic-adversarial-critique.test.ts), [`Claude bridge`](../tests/research/claude-source-evidence-bridge.test.ts) | [Model seam](design/model-execution-seam.md) |
+| Provider execution | partial; Claude process、planner/finder/evaluator/root-synthesizer/adversarial-critic AttemptPlan v2、Recon / Finder / Critic source tools v2、tool-free Synthesis、Critic fresh-read gate、checkpoint observer、Receipt伝播、Exploration / Verifier共通usage正規化、v3 reported turn/token telemetry、source byte / provider cost ceiling、usage付き429/5xxのcredential-safeなsame-session resume、usage不明crashのcheckpoint-preserving non-resume、process heartbeat / redacted raw segment / tool lifecycleのprivate transcript | `ModelExecution.run(plan, observer?)` / `ModelProcessObserver` | [`model-execution/`](../src/research/model-execution) | [`model-execution`](../tests/research/model-execution.test.ts), [`Root Synthesis`](../tests/research/semantic-chain-synthesis.test.ts), [`Adversarial Critic`](../tests/research/semantic-adversarial-critique.test.ts), [`Claude bridge`](../tests/research/claude-source-evidence-bridge.test.ts) | [Model seam](design/model-execution-seam.md) |
 | Independent proof | partial; TargetFileManifest-boundでMap-freeなIndependent Verifier、browser execution（Stored / Reflected / DOM）とSQL query semantics（readback / state change / response / timing / authentication）のSecurity Effect Adapter、方式中立なAccount Takeover authentication-state Adapter、v1 replay decode、exact SourceRederivation-bound Experiment、固定Labのsource-route protocol検査、Plan v2予算、Lab前usage gate、durable owner別集計、evidence-derived Finding Mechanism Group view。Target固有Lab strategyの汎用typed DSL化とTranslatePress private experimentは未接続 | `Verification.verify` / `CampaignReader.inspect(finding-mechanism-groups)` | [`verification/`](../src/research/verification) | [`verification`](../tests/research/verification.test.ts), [`Claude verifier`](../tests/research/claude-independent-verifier.test.ts), [`semantic E2E grouping`](../tests/research/campaign-semantic-e2e.test.ts), [`ATO Lab`](../tests/research/gvisor-account-takeover-lab.test.ts), [`XSS Lab`](../tests/research/gvisor-stored-xss-lab.test.ts), [`SQLi Lab`](../tests/research/gvisor-sql-injection-lab.test.ts) | [Verification seam](design/verification-seam.md) |
 | Operator CLI | partial; prepare/inspect only | `runCli` | [`cli.ts`](../src/cli.ts) | [`campaign-cli`](../tests/cli/campaign-cli.test.ts) | [ADR 0054](adr/0054-keep-the-cli-as-a-thin-adapter.md) |
 | Target Selection / Human OS | planned | not implemented | — | — | [Module Map](design/architecture/module-map.md) |

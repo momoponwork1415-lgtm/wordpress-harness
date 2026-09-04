@@ -18,6 +18,8 @@ interface AttemptObserver {
 
 observerはowner Moduleがrole schemaとsource bindingを検査し、CAS / Ledgerへdurable writeしてからackする一方向のseamである。provider event stream、token chunk、session、transport retryを公開しない。checkpointを使わないroleはobserverを省略する。callerはprovider executable、argv、credential path、PID、session、retry timingを渡さない。model、provider、effort、tool、budgetはversioned `Model Profile`とPlanで固定する。
 
+このdurable checkpoint observerとは別に、provider Adapterはoperator専用のbest-effortな`ModelProcessObserver`を持てる。processのstart、既定25秒heartbeat、terminal、toolのstart / completion / failureをAttemptまたはVerification identityとsegment ordinalへbindして一方向に通知する。terminal process eventには上限内で収集しcredentialをredactしたstdout / stderrを含められる。これはprivate運用seamであり、Owner Moduleへprovider event streamを公開するものでも、ExplorationやVerificationの入力でもない。
+
 新規`AttemptPlanV2`はownerとroleで判別するversioned unionである。Explorationは`finder / root-planner / root-evaluator / root-synthesizer / adversarial-critic`のvariantを持ち、それぞれowner-defined assignmentとoutput schemaを固定する。Finder assignmentだけがWork Leaseを参照し、通常WaveではResearch Thesis、Missing-link WaveではCritic Frontier Gapへbindする。どちらもTarget全体へのpivotを制限しない。判断roleは評価対象となるimmutable artifact refを参照する。共通envelopeはTarget Snapshot、TargetFileManifest、role、assignment、Prompt Set、Model Profile、Source Tool Policy、Budget Envelopeを一つのdigestへ固定する。公開Interfaceはrole別methodへ分裂させず、引き続き一つの`run(plan)`とする。
 
 Model Executionはroleとassignmentの組合せ、Planが要求するtool capability、Profileのrole eligibilityをprovider起動前に検査するが、Synthesis connection、Critique、Root Evaluationの意味を判定しない。同じmodel familyをrole間で使う場合もAttempt ID、provider session、conversation、scratchは共有しない。
@@ -149,6 +151,8 @@ Attempt terminal resultは現行recall baselineのFinder上限512 queryに対応
 - transient transport failureだけをbounded backoff付きでresumeする。失敗segmentのcostを含むusageがない、sessionを安全に隔離できない等のresume条件不足時は再開せず、元Attemptを未完了として閉じる。fresh retryはraw transcriptではなくdurable checkpoint refを入力に持つfresh IDで再割当する。
 - provider sessionをCampaign stateの正本にしない。
 
+run-local private transcriptはoperational eventをJSON Linesとして各event後にflushする。directoryとfileはprivate permissionで作り、Git、Research Ledger、CAS、Human Review Packetへ入れない。observerまたはtranscript writeがthrowしてもAdapterが握りつぶして一度だけ診断し、provider processとnormalized terminal resultを変えない。欠落または破損したtranscriptからCampaignをreplayせず、recoveryはdurable Ledger、CAS、checkpointだけを使う。
+
 ## Invariants
 
 1. provider固有のmodel名やeffort尺度をdomain contractへ埋め込まない。
@@ -160,12 +164,13 @@ Attempt terminal resultは現行recall baselineのFinder上限512 queryに対応
 7. role間でprovider session、conversation、scratchを共有しない。
 8. checkpoint ackより先にsubject artifactとLedger eventをdurableにする。
 9. terminal failureはack済みcheckpointを削除またはinvalid化しない。
+10. operational observerとprivate transcriptの失敗はresearch outcomeを変更しない。
 
 ## Behavior test surface
 
 Testは`run(plan, observer?)`、durable checkpoint、provider-neutral receiptだけを観測する。argv、PID、stdout chunk順、内部timerを固定しない。
 
-contract suiteは、launch identity、role / assignment mismatch、role-specific schema failure、auth failure、tool allowlist、secret isolation、checkpoint durable-before-ack、checkpoint idempotency、terminal failure後のcheckpoint保持、budget termination、process-tree cleanup、同一Attemptのbounded transient resume、checkpointからのfresh retry、crash recovery、redaction、role間session非共有を保護する。provider固有のlive capability probeはfixture testと分け、成功結果を恒久的なEligibilityへ読み替えない。
+contract suiteは、launch identity、role / assignment mismatch、role-specific schema failure、auth failure、tool allowlist、secret isolation、checkpoint durable-before-ack、checkpoint idempotency、terminal failure後のcheckpoint保持、budget termination、process-tree cleanup、同一Attemptのbounded transient resume、checkpointからのfresh retry、crash recovery、redaction、role間session非共有、process heartbeat、tool lifecycle、observer failure isolationを保護する。provider固有のlive capability probeはfixture testと分け、成功結果を恒久的なEligibilityへ読み替えない。
 
 Recon / Finder / Critic contractは、provider Adapterが変わっても同じPrompt Setとassignmentから同じ論理contextを受け取ること、Default contextにSurface Map、Analysis Unit、TargetFileManifest全件、別Finderのassignmentが混入しないこと、全source responseがAttempt PlanとManifestへbindしたTool Receiptを持つことも保護する。ReconとCriticは少なくとも一回の成功したsource readなしにcompletedにならない。
 

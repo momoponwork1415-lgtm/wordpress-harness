@@ -14,7 +14,9 @@ interface CampaignRunner {
 }
 ```
 
-terminal Runの読み取りでは、`CampaignReader.inspect`がRun recordに加え、Verificationの構造証拠から投影した`finding-mechanism-groups` viewを公開する。derived viewはRunやFindingを上書きせず、同じLedgerとCASから決定的に再構築する。groupingの証拠境界とfailure semanticsは[Verification seam](verification-seam.md)を正本とする。
+`CampaignReader.inspect`はterminal Run recordと、Verificationの構造証拠から投影した`finding-mechanism-groups` viewに加え、実行中Campaignの`progress` viewを公開する。progressはLedger prefixと参照先CASだけからResearch Recordが決定的に再構築し、status、直近のdurable event、role別active Attempt、checkpoint、Verification、Depth、累積usageを返す。projection table、poller state、表示時刻を正本にせず、同じLedger prefixはclose/reopen後も同じviewになる。
+
+progress reporterはこのread-only viewをpollし、Ledger headが変わった時と既定25秒のheartbeat時だけ短いoperator streamへ書く。reporter、sink、projection readの失敗は一度だけ診断して表示を停止するが、Campaignの実行、terminal result、Ledgerへ影響させない。progress自体をresearch factとしてappendせず、phase別のcontrol methodも追加しない。Finding groupingの証拠境界とfailure semanticsは[Verification seam](verification-seam.md)を正本とする。
 
 `advanceWave`、`runFinder`、`verifyHypothesis`等のphase別methodは公開しない。安全な順序、予算、再開、stable orderingは`run`の背後へ隠す。
 

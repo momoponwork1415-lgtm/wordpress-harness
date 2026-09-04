@@ -17,6 +17,7 @@ import {
   openClaudeModelExecution,
   type AttemptPlan,
   type AttemptPlanV2,
+  type ModelProcessObservation,
 } from "../../src/research/model-execution/index.js";
 import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
 import {
@@ -705,12 +706,16 @@ describe("ModelExecution.run Claude source evidence bridge", () => {
     const executablePath = join(directory, "fake-claude");
     await writeFile(executablePath, fakeClaudeSourceV2(), "utf8");
     await chmod(executablePath, 0o700);
+    const observations: ModelProcessObservation[] = [];
     const execution = openClaudeModelExecution({
       artifactDirectory: fixture.attemptArtifactDirectory,
       executablePath,
       executableVersion: "2.1.258",
       workingDirectory: directory,
       sourceEvidenceGateway: fixture.gateway,
+      processObserver: {
+        observe: (event) => observations.push(event),
+      },
     });
     const plan = attemptPlanV2(fixture);
 
@@ -744,6 +749,34 @@ describe("ModelExecution.run Claude source evidence bridge", () => {
       });
       expect(result.value.usage?.source.scanBytes).toBeGreaterThan(0);
       expect(result.value.usage?.source.responseBytes).toBeGreaterThan(0);
+      expect(
+        observations
+          .filter(
+            (event) =>
+              event.kind === "model-tool-started" ||
+              event.kind === "model-tool-completed",
+          )
+          .map((event) => [event.kind, event.toolName, event.toolOrdinal]),
+      ).toEqual([
+        ["model-tool-started", "source_list", 1],
+        ["model-tool-completed", "source_list", 1],
+        ["model-tool-started", "source_search", 2],
+        ["model-tool-completed", "source_search", 2],
+        ["model-tool-started", "source_read", 3],
+        ["model-tool-completed", "source_read", 3],
+      ]);
+      expect(observations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "model-tool-completed",
+            operationId: plan.attemptId,
+            phase: "inference",
+            toolName: "source_read",
+            resultStatus: "completed",
+            receiptDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+          }),
+        ]),
+      );
     } finally {
       await Promise.all([
         fixture.close(),

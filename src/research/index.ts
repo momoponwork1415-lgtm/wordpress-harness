@@ -1,4 +1,18 @@
 export type {
+  CampaignProgressSubjectRef,
+  CampaignProgressView,
+  CampaignProgressUsage,
+  CampaignProgressRole,
+} from "./campaign-progress-contracts.js";
+export {
+  formatCampaignProgress,
+  openCampaignProgressReporter,
+} from "./campaign-progress-reporter.js";
+export type {
+  CampaignProgressReporter,
+  OpenCampaignProgressReporterOptions,
+} from "./campaign-progress-reporter.js";
+export type {
   CampaignReader,
   CampaignRunSubjectRef,
   CampaignRunSubjectView,

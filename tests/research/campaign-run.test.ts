@@ -678,8 +678,11 @@ describe("CampaignRunner.run", () => {
         kind: "run",
         runId: plan.runId,
       });
+      const progress = await first.reader.inspect(input.campaignId, {
+        kind: "progress",
+      });
 
-      expect({ terminalRef, terminal }).toMatchObject({
+      expect({ terminalRef, terminal, progress }).toMatchObject({
         terminalRef: {
           kind: "campaign-run-record",
           schemaVersion: 1,
@@ -699,6 +702,27 @@ describe("CampaignRunner.run", () => {
             },
           },
         },
+        progress: {
+          kind: "progress",
+          schemaVersion: 1,
+          campaignId: input.campaignId,
+          status: "completed",
+          counts: {
+            runs: { started: 1, completed: 1, active: 0 },
+            attempts: { started: 2, completed: 2, active: 0 },
+            verifications: {
+              started: 1,
+              completed: 1,
+              active: 0,
+              finding: 1,
+              disproved: 0,
+              blocked: 0,
+            },
+          },
+          activeAttempts: [],
+          activeVerifications: [],
+          lastDurableEvent: { kind: "campaign.run-completed" },
+        },
       });
       first.close();
 
@@ -710,6 +734,9 @@ describe("CampaignRunner.run", () => {
             runId: plan.runId,
           }),
         ).resolves.toEqual(terminal);
+        await expect(
+          reopened.reader.inspect(input.campaignId, { kind: "progress" }),
+        ).resolves.toEqual(progress);
         await expect(reopened.runner.run(plan)).resolves.toEqual(terminalRef);
       } finally {
         reopened.close();

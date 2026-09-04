@@ -10,11 +10,17 @@ function openResearchWithLegacyMapFirst(
   options: OpenResearchOptions,
   allowLegacyMapFirstExecution: boolean,
 ): ResearchModule {
-  const record = openSqliteResearchRecord(options);
+  const artifactStore =
+    options.artifactStore ?? options.campaignExecution?.artifactStore;
+  const record = openSqliteResearchRecord({
+    databasePath: options.databasePath,
+    ...(options.clock === undefined ? {} : { clock: options.clock }),
+    ...(artifactStore === undefined ? {} : { artifactStore }),
+  });
   const campaign = openCampaignControl(
     record,
     options.campaignExecution,
-    options.artifactStore ?? options.campaignExecution?.artifactStore,
+    artifactStore,
     allowLegacyMapFirstExecution,
   );
   return {

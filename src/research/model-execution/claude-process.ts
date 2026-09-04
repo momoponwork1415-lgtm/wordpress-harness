@@ -26,6 +26,10 @@ import {
   decodeClaudeErrorEnvelope,
   type ClaudeProviderUsage,
 } from "./claude-envelope.js";
+import type {
+  ModelProcessObservation,
+  ModelProcessObserver,
+} from "./model-process-observability.js";
 
 export interface OpenClaudeModelExecutionOptions {
   readonly artifactDirectory: string;
@@ -35,6 +39,8 @@ export interface OpenClaudeModelExecutionOptions {
   readonly sourceEvidenceGateway?: SourceEvidenceGateway;
   readonly maxTransientResumeAttempts?: number;
   readonly claudeConfigDirectory?: string;
+  readonly processObserver?: ModelProcessObserver;
+  readonly processHeartbeatIntervalMs?: number;
 }
 
 export interface OpenClaudeStructuredProcessOptions {
@@ -43,9 +49,12 @@ export interface OpenClaudeStructuredProcessOptions {
   readonly workingDirectory: string;
   readonly maxTransientResumeAttempts?: number;
   readonly claudeConfigDirectory?: string;
+  readonly processObserver?: ModelProcessObserver;
+  readonly processHeartbeatIntervalMs?: number;
 }
 
 export interface ClaudeStructuredProcessRequest {
+  readonly operationId?: string;
   readonly modelProfile: ModelProcessRequest["plan"]["modelProfile"];
   readonly prompt: string;
   readonly budget: {
@@ -354,6 +363,8 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
   readonly #workingDirectory;
   readonly #maxTransientResumeAttempts;
   readonly #claudeConfigDirectory;
+  readonly #processObserver;
+  readonly #processHeartbeatIntervalMs;
 
   constructor(options: OpenClaudeStructuredProcessOptions) {
     if (!isAbsolute(options.executablePath)) {
@@ -383,6 +394,19 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
     this.#workingDirectory = options.workingDirectory;
     this.#maxTransientResumeAttempts = maxTransientResumeAttempts;
     this.#claudeConfigDirectory = options.claudeConfigDirectory;
+    const processHeartbeatIntervalMs =
+      options.processHeartbeatIntervalMs ?? 25_000;
+    if (
+      !Number.isSafeInteger(processHeartbeatIntervalMs) ||
+      processHeartbeatIntervalMs <= 0 ||
+      processHeartbeatIntervalMs > 30_000
+    ) {
+      throw new Error(
+        "Claude process heartbeat interval must be an integer from 1 to 30000",
+      );
+    }
+    this.#processObserver = options.processObserver;
+    this.#processHeartbeatIntervalMs = processHeartbeatIntervalMs;
   }
 
   async execute(
@@ -392,6 +416,8 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
       throw new Error("Attempt Plan Claude version does not match adapter");
     }
     const startedAt = performance.now();
+    const operationId =
+      request.operationId ?? `structured-model:${randomUUID()}`;
     const remainingTime = (): number =>
       Math.max(
         0,
@@ -402,6 +428,8 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
       undefined,
       Math.min(remainingTime(), 10_000),
       64 * 1024,
+      undefined,
+      { operationId, phase: "version-probe", segmentOrdinal: 0 },
     );
     if (
       version.kind !== "exited" ||
@@ -422,6 +450,8 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
       undefined,
       Math.min(remainingTime(), 10_000),
       64 * 1024,
+      undefined,
+      { operationId, phase: "auth-probe", segmentOrdinal: 1 },
     );
     if (auth.kind === "timed-out") return auth;
     if (auth.kind === "output-limit-exceeded") {
@@ -450,11 +480,23 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
       return { kind: "timed-out", stderr: "" };
     }
 
+    let inferenceSegmentOrdinal = 2;
     let sourceBridge: ClaudeSourceEvidenceBridge | undefined;
     if (request.sourceEvidence !== undefined) {
       try {
         sourceBridge = await openClaudeSourceEvidenceBridge(
           request.sourceEvidence,
+          {
+            observe: (event) =>
+              this.#observe({
+                ...event,
+                schemaVersion: 1,
+                operationId,
+                phase: "inference",
+                segmentOrdinal: inferenceSegmentOrdinal,
+                occurredAt: new Date().toISOString(),
+              }),
+          },
         );
       } catch {
         return {
@@ -526,6 +568,7 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
       let remainingProviderCostUsd = request.budget.maxProviderCostUsd;
       const priorUsage: ClaudeProviderUsage[] = [];
       while (true) {
+        inferenceSegmentOrdinal = resumeOrdinal + 2;
         const sessionArgs =
           sessionId === undefined
             ? ["--no-session-persistence"]
@@ -540,6 +583,11 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
           remainingTime(),
           request.budget.maxOutputBytes,
           processEnvironment,
+          {
+            operationId,
+            phase: "inference",
+            segmentOrdinal: resumeOrdinal + 2,
+          },
         );
         if (
           sourceBridge !== undefined &&
@@ -603,8 +651,22 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
     timeoutMs: number,
     maxOutputBytes: number,
     environmentOverrides?: Readonly<NodeJS.ProcessEnv>,
+    observation?: {
+      readonly operationId: string;
+      readonly phase: ModelProcessObservation["phase"];
+      readonly segmentOrdinal: number;
+    },
   ): Promise<NativeProcessResult> {
     return new Promise((resolve, reject) => {
+      const processStartedAt = performance.now();
+      if (observation !== undefined) {
+        this.#observe({
+          kind: "model-process-started",
+          schemaVersion: 1,
+          ...observation,
+          occurredAt: new Date().toISOString(),
+        });
+      }
       const child = spawn(this.#executablePath, args, {
         cwd: this.#workingDirectory,
         detached: process.platform !== "win32",
@@ -617,6 +679,19 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
       let stderrBytes = 0;
       let terminalKind: "timed-out" | "output-limit-exceeded" | undefined;
       let killTimer: NodeJS.Timeout | undefined;
+      const heartbeat =
+        observation === undefined
+          ? undefined
+          : setInterval(() => {
+              this.#observe({
+                kind: "model-process-heartbeat",
+                schemaVersion: 1,
+                ...observation,
+                occurredAt: new Date().toISOString(),
+                elapsedMs: Math.ceil(performance.now() - processStartedAt),
+              });
+            }, this.#processHeartbeatIntervalMs);
+      heartbeat?.unref();
 
       const terminate = (kind: "timed-out" | "output-limit-exceeded"): void => {
         if (terminalKind !== undefined) return;
@@ -647,36 +722,81 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
       });
       child.once("error", (error) => {
         clearTimeout(timeout);
+        if (heartbeat !== undefined) clearInterval(heartbeat);
         if (killTimer !== undefined) clearTimeout(killTimer);
+        if (observation !== undefined) {
+          this.#observe({
+            kind: "model-process-failed",
+            schemaVersion: 1,
+            ...observation,
+            occurredAt: new Date().toISOString(),
+            elapsedMs: Math.ceil(performance.now() - processStartedAt),
+            reason: "spawn-failed",
+          });
+        }
         reject(error);
       });
       child.stdin.once("error", (error: NodeJS.ErrnoException) => {
         if (error.code === "EPIPE") return;
         clearTimeout(timeout);
+        if (heartbeat !== undefined) clearInterval(heartbeat);
         if (killTimer !== undefined) clearTimeout(killTimer);
         signalProcessTree(child, "SIGKILL");
+        if (observation !== undefined) {
+          this.#observe({
+            kind: "model-process-failed",
+            schemaVersion: 1,
+            ...observation,
+            occurredAt: new Date().toISOString(),
+            elapsedMs: Math.ceil(performance.now() - processStartedAt),
+            reason: "stdin-failed",
+          });
+        }
         reject(error);
       });
       child.once("close", (exitCode) => {
         clearTimeout(timeout);
+        if (heartbeat !== undefined) clearInterval(heartbeat);
         const stderrText = redactProviderCredential(
           Buffer.concat(stderr).toString("utf8"),
         );
         if (terminalKind !== undefined) {
           signalProcessTree(child, "SIGKILL");
           if (killTimer !== undefined) clearTimeout(killTimer);
-          resolve({ kind: terminalKind, stderr: stderrText });
+          const result = { kind: terminalKind, stderr: stderrText } as const;
+          if (observation !== undefined) {
+            this.#observe({
+              kind: "model-process-completed",
+              schemaVersion: 1,
+              ...observation,
+              occurredAt: new Date().toISOString(),
+              elapsedMs: Math.ceil(performance.now() - processStartedAt),
+              result,
+            });
+          }
+          resolve(result);
           return;
         }
         if (killTimer !== undefined) clearTimeout(killTimer);
-        resolve({
+        const result = {
           kind: "exited",
           exitCode: exitCode ?? -1,
           stdout: redactProviderCredential(
             Buffer.concat(stdout).toString("utf8"),
           ),
           stderr: stderrText,
-        });
+        } as const;
+        if (observation !== undefined) {
+          this.#observe({
+            kind: "model-process-completed",
+            schemaVersion: 1,
+            ...observation,
+            occurredAt: new Date().toISOString(),
+            elapsedMs: Math.ceil(performance.now() - processStartedAt),
+            result,
+          });
+        }
+        resolve(result);
       });
 
       if (stdin === undefined) {
@@ -685,6 +805,14 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
         child.stdin.end(stdin, "utf8");
       }
     });
+  }
+
+  #observe(event: ModelProcessObservation): void {
+    try {
+      this.#processObserver?.observe(event);
+    } catch {
+      // Observability must not change provider execution.
+    }
   }
 }
 
@@ -697,6 +825,7 @@ export function openClaudeModelExecution(
     process: {
       execute: (request: ModelProcessRequest) =>
         process.execute({
+          operationId: request.plan.attemptId,
           modelProfile: request.plan.modelProfile,
           prompt: request.plan.prompt,
           budget: request.plan.budget,

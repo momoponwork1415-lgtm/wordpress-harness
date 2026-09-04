@@ -8,6 +8,7 @@ import { sha256Digest } from "../../src/research/research-record/canonical-json.
 import {
   openClaudeModelExecution,
   openModelExecution,
+  openPrivateModelTranscript,
   type AttemptPlan,
   type AttemptPlanV2,
   type ModelProcess,
@@ -1316,6 +1317,11 @@ fi
       executablePath,
       executableVersion: "2.1.251",
       workingDirectory: directory,
+      processObserver: {
+        observe() {
+          throw new Error("synthetic observer failure");
+        },
+      },
     });
 
     try {
@@ -1326,6 +1332,123 @@ fi
         value: { status: "completed", output },
       });
     } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("flushes process lifecycle, heartbeat, and redacted raw segments to a private transcript", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "claude-transcript-"));
+    const executablePath = join(directory, "fake-claude");
+    const transcriptPath = join(directory, "model-transcript.private.jsonl");
+    const output = {
+      kind: "finder-output",
+      schemaVersion: 1,
+      leaseId,
+      hypotheses: [],
+    };
+    const envelope = providerEnvelope(output);
+    await writeFile(
+      executablePath,
+      `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf '%s\\n' '2.1.251 (Claude Code)'
+elif [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  printf '%s' '{"loggedIn":true}'
+else
+  cat >/dev/null
+  sleep 0.05
+  printf '%s' 'provider diagnostic' >&2
+  printf '%s' '${JSON.stringify(envelope)}'
+fi
+`,
+      "utf8",
+    );
+    await chmod(executablePath, 0o700);
+    const diagnostics: string[] = [];
+    const transcript = openPrivateModelTranscript({
+      filePath: transcriptPath,
+      onDiagnostic: (message) => diagnostics.push(message),
+    });
+    const execution = openClaudeModelExecution({
+      artifactDirectory: join(directory, "artifacts"),
+      executablePath,
+      executableVersion: "2.1.251",
+      workingDirectory: directory,
+      processObserver: transcript.observer,
+      processHeartbeatIntervalMs: 10,
+    });
+
+    try {
+      await expect(execution.run(attemptPlan())).resolves.toMatchObject({
+        status: "completed",
+      });
+      await transcript.close();
+      const events = (await readFile(transcriptPath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+
+      expect(diagnostics).toEqual([]);
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "model-process-started",
+            operationId: attemptPlan().attemptId,
+            phase: "inference",
+          }),
+          expect.objectContaining({
+            kind: "model-process-heartbeat",
+            operationId: attemptPlan().attemptId,
+            phase: "inference",
+          }),
+          expect.objectContaining({
+            kind: "model-process-completed",
+            operationId: attemptPlan().attemptId,
+            phase: "inference",
+            result: expect.objectContaining({
+              kind: "exited",
+              exitCode: 0,
+              stderr: "provider diagnostic",
+              stdout: JSON.stringify(envelope),
+            }),
+          }),
+        ]),
+      );
+    } finally {
+      await transcript.close();
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("disables a failing private transcript without throwing into model execution", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "claude-transcript-failure-"),
+    );
+    const blockedParent = join(directory, "not-a-directory");
+    await writeFile(blockedParent, "synthetic blocker", "utf8");
+    const diagnostics: string[] = [];
+    const transcript = openPrivateModelTranscript({
+      filePath: join(blockedParent, "model-transcript.private.jsonl"),
+      onDiagnostic: (message) => diagnostics.push(message),
+    });
+
+    try {
+      expect(() =>
+        transcript.observer.observe({
+          kind: "model-process-started",
+          schemaVersion: 1,
+          operationId: "attempt-observability-failure",
+          phase: "inference",
+          segmentOrdinal: 2,
+          occurredAt: new Date(0).toISOString(),
+        }),
+      ).not.toThrow();
+      await expect(transcript.close()).resolves.toBeUndefined();
+      expect(diagnostics).toEqual([
+        expect.stringContaining("Private model transcript disabled"),
+      ]);
+    } finally {
+      await transcript.close();
       await rm(directory, { force: true, recursive: true });
     }
   });

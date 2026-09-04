@@ -2669,6 +2669,13 @@ export function openCampaignControl(
         return projectCampaign(preparation);
       },
       inspect: async (campaignId, subject): Promise<SubjectView> => {
+        if (subject.kind === "progress") {
+          const progress = await record.readCampaignProgress(campaignId);
+          if (progress === undefined) {
+            throw new Error(`Campaign not found: ${campaignId}`);
+          }
+          return progress;
+        }
         if (subject.kind === "finding-mechanism-groups") {
           const run = await record.readCampaignRun(campaignId, subject.runId);
           if (run === undefined) {

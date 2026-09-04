@@ -88,6 +88,13 @@ import {
   type TargetFileManifestRef,
 } from "../source-mapping/contracts.js";
 import { projectTargetFileManifest } from "../source-mapping/target-file-manifest.js";
+import type {
+  CampaignProgressRole,
+  CampaignProgressUsage,
+  CampaignProgressView,
+} from "../campaign-progress-contracts.js";
+import { modelAttemptResultV2Schema } from "../model-execution/contracts.js";
+import type { ModelAttemptUsageV2 } from "../model-attempt-usage-contracts.js";
 import { canonicalJson, sha256Digest } from "./canonical-json.js";
 import type {
   OpenResearchRecordOptions,
@@ -102,6 +109,7 @@ import type {
   ApproachFamilyRegistryRecordView,
   SemanticFinderCheckpointRecordView,
   SemanticIterationDecisionRecordView,
+  JsonArtifactStore,
 } from "./contracts.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
@@ -373,6 +381,197 @@ interface LedgerProjection {
   readonly verifications: ReadonlyMap<string, StoredVerification>;
 }
 
+function aggregateProgressUsage(
+  modelAttempts: number,
+  usages: readonly ModelAttemptUsageV2[],
+  incomplete: boolean,
+): CampaignProgressUsage {
+  const modelTokens = usages.reduce(
+    (total, usage) => ({
+      input: total.input + usage.modelTokens.input,
+      cacheCreation: total.cacheCreation + usage.modelTokens.cacheCreation,
+      cacheRead: total.cacheRead + usage.modelTokens.cacheRead,
+      output: total.output + usage.modelTokens.output,
+      total: total.total + usage.modelTokens.total,
+    }),
+    { input: 0, cacheCreation: 0, cacheRead: 0, output: 0, total: 0 },
+  );
+  return {
+    measurement:
+      !incomplete &&
+      usages.length === modelAttempts &&
+      usages.every((usage) => usage.measurement === "reported")
+        ? "reported"
+        : "partial",
+    modelAttempts,
+    reportedModelAttempts: usages.filter(
+      (usage) => usage.measurement === "reported",
+    ).length,
+    modelTurns: usages.reduce((total, usage) => total + usage.modelTurns, 0),
+    modelTokens,
+    estimatedCostUsd: usages.reduce(
+      (total, usage) => total + (usage.estimatedCostUsd ?? 0),
+      0,
+    ),
+    source: usages.reduce(
+      (total, usage) => ({
+        queries: total.queries + usage.source.queries,
+        scanBytes: total.scanBytes + usage.source.scanBytes,
+        responseBytes: total.responseBytes + usage.source.responseBytes,
+      }),
+      { queries: 0, scanBytes: 0, responseBytes: 0 },
+    ),
+  };
+}
+
+async function projectCampaignProgress(
+  campaignId: string,
+  rows: readonly StoredEventRow[],
+  ledger: LedgerProjection,
+  artifactStore: JsonArtifactStore | undefined,
+): Promise<CampaignProgressView> {
+  const runs = [...ledger.runs.values(), ...ledger.semanticRuns.values()];
+  const completedRuns = runs.filter((run) => run.completed !== undefined);
+  const activeRuns = runs.length - completedRuns.length;
+  const attempts = [
+    ...[...ledger.attempts.values()].map((attempt) => ({
+      attempt,
+      role: "finder" as const,
+    })),
+    ...[...ledger.semanticAttempts.values()].map((attempt) => ({
+      attempt,
+      role: attempt.intent.role,
+    })),
+  ];
+  const completedAttempts = attempts.filter(
+    ({ attempt }) => attempt.completion !== undefined,
+  );
+  const activeAttempts = attempts
+    .filter(({ attempt }) => attempt.completion === undefined)
+    .map(({ attempt, role }) => ({
+      attemptId: attempt.intent.attemptId,
+      role: role as CampaignProgressRole,
+      startedAt: attempt.occurredAt,
+      ledgerHead: attempt.ledgerHead,
+    }))
+    .sort((left, right) => left.ledgerHead - right.ledgerHead)
+    .map(({ ledgerHead: _ledgerHead, ...attempt }) => attempt);
+  const verifications = [...ledger.verifications.values()];
+  const completedVerifications = verifications.filter(
+    (verification) => verification.completed !== undefined,
+  );
+  const activeVerifications = verifications
+    .filter((verification) => verification.completed === undefined)
+    .sort((left, right) => left.startedLedgerHead - right.startedLedgerHead)
+    .map((verification) => ({
+      verificationId: verification.plan.verificationId,
+      startedAt: verification.startedAt,
+    }));
+  const outcomes = completedVerifications.map(
+    (verification) => verification.completed!.ref.outcome,
+  );
+  const checkpoints = [...ledger.semanticFinderCheckpoints.values()];
+  const usages: ModelAttemptUsageV2[] = [];
+  let usageIncomplete =
+    activeAttempts.length > 0 || activeVerifications.length > 0;
+  for (const { attempt } of attempts) {
+    const completion = attempt.completion;
+    if (completion === undefined || !("role" in completion.value)) continue;
+    if (artifactStore === undefined) {
+      usageIncomplete = true;
+      continue;
+    }
+    try {
+      const artifact = modelAttemptResultV2Schema.parse(
+        await artifactStore.readJson(completion.value.result.digest),
+      );
+      if (artifact.usage === undefined) usageIncomplete = true;
+      else usages.push(artifact.usage);
+    } catch {
+      usageIncomplete = true;
+    }
+  }
+  for (const verification of completedVerifications) {
+    const value = verification.completed!.value;
+    if (
+      value.schemaVersion === 2 &&
+      value.evidence.verifierUsage !== undefined
+    ) {
+      usages.push(value.evidence.verifierUsage);
+    }
+  }
+  const lastEvent = rows.at(-1);
+  if (lastEvent === undefined) {
+    throw new Error(`Campaign progress has no events: ${campaignId}`);
+  }
+  return {
+    kind: "progress",
+    schemaVersion: 1,
+    campaignId,
+    status:
+      activeRuns > 0
+        ? "running"
+        : completedRuns.length > 0
+          ? "completed"
+          : "prepared",
+    ledgerHead: lastEvent.campaign_sequence,
+    counts: {
+      runs: {
+        started: runs.length,
+        completed: completedRuns.length,
+        active: activeRuns,
+      },
+      attempts: {
+        started: attempts.length,
+        completed: completedAttempts.length,
+        active: activeAttempts.length,
+      },
+      checkpoints: {
+        total: checkpoints.length,
+        hypotheses: checkpoints.filter(
+          (checkpoint) =>
+            checkpoint.checkpoint.subject.kind === "source-bound-hypothesis",
+        ).length,
+        routeFragments: checkpoints.filter(
+          (checkpoint) =>
+            checkpoint.checkpoint.subject.kind === "route-fragment",
+        ).length,
+        frontierGaps: checkpoints.filter(
+          (checkpoint) => checkpoint.checkpoint.subject.kind === "frontier-gap",
+        ).length,
+      },
+      verifications: {
+        started: verifications.length,
+        completed: completedVerifications.length,
+        active: activeVerifications.length,
+        finding: outcomes.filter((outcome) => outcome === "finding").length,
+        disproved: outcomes.filter((outcome) => outcome === "disproved").length,
+        blocked: outcomes.filter((outcome) => outcome === "blocked").length,
+      },
+      depthIterations: rows.filter(
+        (row) => row.kind === "exploration.depth-iteration-decided",
+      ).length,
+    },
+    activeAttempts,
+    activeVerifications,
+    usage: aggregateProgressUsage(
+      completedAttempts.length +
+        completedVerifications.filter(
+          (verification) =>
+            verification.completed!.value.schemaVersion === 2 &&
+            verification.completed!.value.evidence.verifierUsage !== undefined,
+        ).length,
+      usages,
+      usageIncomplete,
+    ),
+    lastDurableEvent: {
+      sequence: lastEvent.campaign_sequence,
+      kind: lastEvent.kind,
+      occurredAt: lastEvent.occurred_at,
+    },
+  };
+}
+
 function campaignRunRef(
   runId: string,
   recordDigest: string,
@@ -540,10 +739,12 @@ function verificationRef(
 class SqliteResearchRecord implements ResearchRecord {
   readonly #database: Database.Database;
   readonly #clock: () => Date;
+  readonly #artifactStore: JsonArtifactStore | undefined;
 
   constructor(options: OpenResearchRecordOptions) {
     this.#database = new Database(options.databasePath);
     this.#clock = options.clock ?? (() => new Date());
+    this.#artifactStore = options.artifactStore;
     this.#database.pragma("journal_mode = WAL");
     this.#database.pragma("busy_timeout = 5000");
     this.#database.exec(`
@@ -1826,6 +2027,19 @@ class SqliteResearchRecord implements ResearchRecord {
     return this.#decodeLedger(campaignId, rows).verifications.get(
       verificationId,
     )?.completed;
+  }
+
+  async readCampaignProgress(
+    campaignId: string,
+  ): Promise<CampaignProgressView | undefined> {
+    const rows = this.#readRows(campaignId);
+    if (rows.length === 0) return undefined;
+    return projectCampaignProgress(
+      campaignId,
+      rows,
+      this.#decodeLedger(campaignId, rows),
+      this.#artifactStore,
+    );
   }
 
   close(): void {

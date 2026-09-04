@@ -8,6 +8,13 @@ export {
   openClaudeModelExecution,
   openClaudeStructuredProcess,
 } from "./claude-process.js";
+export { openPrivateModelTranscript } from "./model-process-observability.js";
+export type {
+  ModelProcessObservation,
+  ModelProcessObserver,
+  OpenPrivateModelTranscriptOptions,
+  PrivateModelTranscript,
+} from "./model-process-observability.js";
 export type {
   AttemptExecutionResult,
   AttemptExecutionResultV1,

@@ -31,6 +31,7 @@ import type {
   VerificationRecordRef,
   VerificationRecordView,
 } from "../verification/contracts.js";
+import type { CampaignProgressView } from "../campaign-progress-contracts.js";
 
 export interface PreparationRecord {
   readonly campaignId: string;
@@ -138,6 +139,9 @@ export interface ResearchRecord {
     campaignId: string,
     verificationId: string,
   ): Promise<VerificationRecordView | undefined>;
+  readCampaignProgress(
+    campaignId: string,
+  ): Promise<CampaignProgressView | undefined>;
   close(): void;
 }
 
@@ -229,6 +233,7 @@ export interface ApproachFamilyRegistryRecordView {
 export interface OpenResearchRecordOptions {
   readonly databasePath: string;
   readonly clock?: () => Date;
+  readonly artifactStore?: JsonArtifactStore;
 }
 
 export interface JsonArtifactStore {
