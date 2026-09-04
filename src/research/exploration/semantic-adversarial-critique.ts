@@ -87,29 +87,26 @@ const criticGapOutputSchema = z.strictObject({
   nextAction: boundedTextSchema,
 });
 
-const criticDispositionOutputSchema = z
-  .strictObject({
-    proposalId: digestSchema,
-    verdict: z.enum(["survives", "needs-evidence", "contradicted"]),
-    challenges: z.array(criticChallengeSchema).max(64),
-    gap: criticGapOutputSchema.optional(),
-  })
-  .superRefine((value, context) => {
-    if (value.verdict === "needs-evidence" && value.gap === undefined) {
-      context.addIssue({
-        code: "custom",
-        path: ["gap"],
-        message: "A needs-evidence disposition requires a Frontier Gap",
-      });
-    }
-    if (value.verdict !== "needs-evidence" && value.gap !== undefined) {
-      context.addIssue({
-        code: "custom",
-        path: ["gap"],
-        message: "Only needs-evidence may create a Frontier Gap",
-      });
-    }
-  });
+const criticDispositionOutputBase = {
+  proposalId: digestSchema,
+  challenges: z.array(criticChallengeSchema).max(64),
+};
+
+const criticDispositionOutputSchema = z.discriminatedUnion("verdict", [
+  z.strictObject({
+    ...criticDispositionOutputBase,
+    verdict: z.literal("survives"),
+  }),
+  z.strictObject({
+    ...criticDispositionOutputBase,
+    verdict: z.literal("needs-evidence"),
+    gap: criticGapOutputSchema,
+  }),
+  z.strictObject({
+    ...criticDispositionOutputBase,
+    verdict: z.literal("contradicted"),
+  }),
+]);
 
 export const adversarialCriticOutputSchema = z.strictObject({
   kind: z.literal("adversarial-critic-output"),
@@ -526,7 +523,9 @@ function materialize(
     }
     const anchors = [
       ...disposition.challenges.flatMap((challenge) => challenge.evidence),
-      ...(disposition.gap?.sourceEvidence ?? []),
+      ...(disposition.verdict === "needs-evidence"
+        ? disposition.gap.sourceEvidence
+        : []),
     ];
     if (
       anchors.some((anchor) => !manifestContains(input.manifest.value, anchor))
@@ -551,9 +550,6 @@ function materialize(
         verdict: disposition.verdict,
         challenges: disposition.challenges,
       });
-    }
-    if (disposition.gap === undefined) {
-      throw new Error("Validated needs-evidence disposition lost its gap");
     }
     const gapIdentity = {
       kind: "critic-frontier-gap",

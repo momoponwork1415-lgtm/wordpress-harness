@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import {
   openSemanticAdversarialCritique,
@@ -280,6 +281,46 @@ describe("SemanticAdversarialCritique.critique", () => {
         proposalIds: [proposal.id],
       },
     });
+    const providerSchema = z
+      .object({
+        properties: z.object({
+          dispositions: z.object({
+            items: z.object({
+              oneOf: z.array(
+                z.object({
+                  properties: z.record(z.string(), z.unknown()),
+                  required: z.array(z.string()),
+                }),
+              ),
+            }),
+          }),
+        }),
+      })
+      .parse(observedPlan?.outputJsonSchema);
+    const dispositionBranches = new Map(
+      providerSchema.properties.dispositions.items.oneOf.map((branch) => {
+        const verdict = z
+          .object({ const: z.string() })
+          .parse(branch.properties.verdict).const;
+        return [verdict, branch] as const;
+      }),
+    );
+    expect([...dispositionBranches.keys()].sort()).toEqual([
+      "contradicted",
+      "needs-evidence",
+      "survives",
+    ]);
+    for (const verdict of ["survives", "contradicted"]) {
+      const branch = dispositionBranches.get(verdict);
+      expect(branch?.required).not.toContain("gap");
+      expect(branch?.properties).not.toHaveProperty("gap");
+    }
+    expect(dispositionBranches.get("needs-evidence")?.required).toContain(
+      "gap",
+    );
+    expect(
+      dispositionBranches.get("needs-evidence")?.properties,
+    ).toHaveProperty("gap");
     expect(result).toMatchObject({
       kind: "adversarial-critique",
       schemaVersion: 1,
