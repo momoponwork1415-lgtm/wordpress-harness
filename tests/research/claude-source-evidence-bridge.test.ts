@@ -56,6 +56,7 @@ function attemptPlan(fixture: SourceEvidenceFixture): AttemptPlan {
 
 function attemptPlanV2(
   fixture: SourceEvidenceFixture,
+  assignmentKind: "research-thesis" | "frontier-gap" = "research-thesis",
 ): Extract<AttemptPlanV2, { role: "finder" }> {
   const manifestDigest = sha256Digest(fixture.manifest);
   return {
@@ -76,20 +77,30 @@ function attemptPlanV2(
       targetSnapshotDigest: fixture.manifest.targetSnapshot.digest,
       digest: manifestDigest,
     },
-    assignment: {
-      kind: "research-thesis",
-      schemaVersion: 1,
-      workWaveId: `sha256:${"1".repeat(64)}`,
-      leaseId,
-      thesis: {
-        kind: "research-thesis",
-        schemaVersion: 1,
-        id: `sha256:${"2".repeat(64)}`,
-        digest: `sha256:${"3".repeat(64)}`,
-        targetSnapshotDigest: fixture.manifest.targetSnapshot.digest,
-        manifestDigest,
-      },
-    },
+    assignment:
+      assignmentKind === "research-thesis"
+        ? {
+            kind: "research-thesis",
+            schemaVersion: 1,
+            workWaveId: `sha256:${"1".repeat(64)}`,
+            leaseId,
+            thesis: {
+              kind: "research-thesis",
+              schemaVersion: 1,
+              id: `sha256:${"2".repeat(64)}`,
+              digest: `sha256:${"3".repeat(64)}`,
+              targetSnapshotDigest: fixture.manifest.targetSnapshot.digest,
+              manifestDigest,
+            },
+          }
+        : {
+            kind: "frontier-gap",
+            schemaVersion: 1,
+            workWaveId: `sha256:${"1".repeat(64)}`,
+            leaseId,
+            gapId: `sha256:${"2".repeat(64)}`,
+            predecessorDecisionDigest: `sha256:${"3".repeat(64)}`,
+          },
     promptSet: {
       id: "research-prompts-v2",
       digest: `sha256:${"4".repeat(64)}`,
@@ -691,99 +702,102 @@ describe("ModelExecution.run Claude source evidence bridge", () => {
     }
   });
 
-  it("runs a Finder AttemptPlanV2 through only the v2 List, Search, and Read tools", async () => {
-    const fixture = await openSourceEvidenceFixture({
-      files: {
-        "includes/dispatcher.php":
-          "<?php\nreturn custom_db_query($_POST['id']);\n",
-        "includes/wrapper.php":
-          "<?php\nfunction custom_db_query($id) {\n  return $GLOBALS['wpdb']->get_results('SELECT ' . $id);\n}\n",
-      },
-      search: { maxScanBytes: 4096, maxResults: 8 },
-      inventoryMaxResults: 64,
-    });
-    const directory = await mkdtemp(join(tmpdir(), "claude-source-v2-"));
-    const executablePath = join(directory, "fake-claude");
-    await writeFile(executablePath, fakeClaudeSourceV2(), "utf8");
-    await chmod(executablePath, 0o700);
-    const observations: ModelProcessObservation[] = [];
-    const execution = openClaudeModelExecution({
-      artifactDirectory: fixture.attemptArtifactDirectory,
-      executablePath,
-      executableVersion: "2.1.258",
-      workingDirectory: directory,
-      sourceEvidenceGateway: fixture.gateway,
-      processObserver: {
-        observe: (event) => observations.push(event),
-      },
-    });
-    const plan = attemptPlanV2(fixture);
+  it.each(["research-thesis", "frontier-gap"] as const)(
+    "runs a %s Finder AttemptPlanV2 through only the v2 List, Search, and Read tools",
+    async (assignmentKind) => {
+      const fixture = await openSourceEvidenceFixture({
+        files: {
+          "includes/dispatcher.php":
+            "<?php\nreturn custom_db_query($_POST['id']);\n",
+          "includes/wrapper.php":
+            "<?php\nfunction custom_db_query($id) {\n  return $GLOBALS['wpdb']->get_results('SELECT ' . $id);\n}\n",
+        },
+        search: { maxScanBytes: 4096, maxResults: 8 },
+        inventoryMaxResults: 64,
+      });
+      const directory = await mkdtemp(join(tmpdir(), "claude-source-v2-"));
+      const executablePath = join(directory, "fake-claude");
+      await writeFile(executablePath, fakeClaudeSourceV2(), "utf8");
+      await chmod(executablePath, 0o700);
+      const observations: ModelProcessObservation[] = [];
+      const execution = openClaudeModelExecution({
+        artifactDirectory: fixture.attemptArtifactDirectory,
+        executablePath,
+        executableVersion: "2.1.258",
+        workingDirectory: directory,
+        sourceEvidenceGateway: fixture.gateway,
+        processObserver: {
+          observe: (event) => observations.push(event),
+        },
+      });
+      const plan = attemptPlanV2(fixture, assignmentKind);
 
-    try {
-      const result = await execution.run(plan);
-      expect(result).toMatchObject({
-        status: "completed",
-        ref: {
-          schemaVersion: 2,
-          attemptId: plan.attemptId,
-          role: "finder",
-          planDigest: sha256Digest(plan),
-        },
-        value: {
+      try {
+        const result = await execution.run(plan);
+        expect(result).toMatchObject({
           status: "completed",
-          output: { kind: "finder-output", leaseId, hypotheses: [] },
-        },
-      });
-      expect(
-        result.value.schemaVersion === 2
-          ? result.value.sourceEvidenceReceipts
-          : undefined,
-      ).toHaveLength(3);
-      expect(result.value.schemaVersion).toBe(2);
-      if (result.value.schemaVersion !== 2) {
-        throw new Error("Expected a v2 Model Attempt result");
+          ref: {
+            schemaVersion: 2,
+            attemptId: plan.attemptId,
+            role: "finder",
+            planDigest: sha256Digest(plan),
+          },
+          value: {
+            status: "completed",
+            output: { kind: "finder-output", leaseId, hypotheses: [] },
+          },
+        });
+        expect(
+          result.value.schemaVersion === 2
+            ? result.value.sourceEvidenceReceipts
+            : undefined,
+        ).toHaveLength(3);
+        expect(result.value.schemaVersion).toBe(2);
+        if (result.value.schemaVersion !== 2) {
+          throw new Error("Expected a v2 Model Attempt result");
+        }
+        expect(result.value.usage).toMatchObject({
+          measurement: "reported",
+          source: { queries: 3 },
+        });
+        expect(result.value.usage?.source.scanBytes).toBeGreaterThan(0);
+        expect(result.value.usage?.source.responseBytes).toBeGreaterThan(0);
+        expect(
+          observations
+            .filter(
+              (event) =>
+                event.kind === "model-tool-started" ||
+                event.kind === "model-tool-completed",
+            )
+            .map((event) => [event.kind, event.toolName, event.toolOrdinal]),
+        ).toEqual([
+          ["model-tool-started", "source_list", 1],
+          ["model-tool-completed", "source_list", 1],
+          ["model-tool-started", "source_search", 2],
+          ["model-tool-completed", "source_search", 2],
+          ["model-tool-started", "source_read", 3],
+          ["model-tool-completed", "source_read", 3],
+        ]);
+        expect(observations).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              kind: "model-tool-completed",
+              operationId: plan.attemptId,
+              phase: "inference",
+              toolName: "source_read",
+              resultStatus: "completed",
+              receiptDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+            }),
+          ]),
+        );
+      } finally {
+        await Promise.all([
+          fixture.close(),
+          rm(directory, { force: true, recursive: true }),
+        ]);
       }
-      expect(result.value.usage).toMatchObject({
-        measurement: "reported",
-        source: { queries: 3 },
-      });
-      expect(result.value.usage?.source.scanBytes).toBeGreaterThan(0);
-      expect(result.value.usage?.source.responseBytes).toBeGreaterThan(0);
-      expect(
-        observations
-          .filter(
-            (event) =>
-              event.kind === "model-tool-started" ||
-              event.kind === "model-tool-completed",
-          )
-          .map((event) => [event.kind, event.toolName, event.toolOrdinal]),
-      ).toEqual([
-        ["model-tool-started", "source_list", 1],
-        ["model-tool-completed", "source_list", 1],
-        ["model-tool-started", "source_search", 2],
-        ["model-tool-completed", "source_search", 2],
-        ["model-tool-started", "source_read", 3],
-        ["model-tool-completed", "source_read", 3],
-      ]);
-      expect(observations).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            kind: "model-tool-completed",
-            operationId: plan.attemptId,
-            phase: "inference",
-            toolName: "source_read",
-            resultStatus: "completed",
-            receiptDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
-          }),
-        ]),
-      );
-    } finally {
-      await Promise.all([
-        fixture.close(),
-        rm(directory, { force: true, recursive: true }),
-      ]);
-    }
-  });
+    },
+  );
 
   it("turns a v2 path escape into a distinct policy terminal with a durable Tool Receipt", async () => {
     const fixture = await openSourceEvidenceFixture({

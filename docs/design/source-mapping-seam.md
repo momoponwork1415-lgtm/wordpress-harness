@@ -33,7 +33,7 @@ Source UnderstandingはTargetFileManifestへ拘束した論理的な`list / sear
 
 ## Manifest-bound source query v2
 
-worker-visibleなtoolは`source_list / source_search / source_read`の三つに限定する。Attempt、role-specific assignment、Target Snapshot、TargetFileManifest、Source Tool Policy、query ordinal、残budgetはtrusted control planeが注入し、model入力にしない。各入力は初回queryまたはopaque continuation cursorのどちらかであり、cursorと新しいselectorを同時に受理しない。
+worker-visibleなtoolは`source_list / source_search / source_read`の三つに限定する。Attempt、role-specific assignment、Target Snapshot、TargetFileManifest、Source Tool Policy、query ordinal、残budgetはtrusted control planeが注入し、model入力にしない。assignmentはRoot Plannerの`initial-research-planning`、通常Finderの`research-thesis`、missing-link Finderの`frontier-gap`、Adversarial Criticの`chain-critique`を同じversioned unionで拘束し、Depthだけがsource tool bindingから外れない。各入力は初回queryまたはopaque continuation cursorのどちらかであり、cursorと新しいselectorを同時に受理しない。
 
 pathはTarget Snapshot rootからのcase-sensitiveなPOSIX相対pathである。先頭`/`、backslash、空segment、`.`、`..`は許可しない。file pathはManifest entryとの完全一致、directory pathは末尾`/`を持たない正規形とし、rootは空文字や`.`ではなく`{ kind: "root" }`で表す。directoryはManifestにdirectory entryを要求せず、`directory + "/"`をprefixに持つfileの存在から導出する。自由な文字列prefixによる部分一致は行わない。
 

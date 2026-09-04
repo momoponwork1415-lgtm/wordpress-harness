@@ -247,6 +247,15 @@ const finderSourceEvidenceAssignmentSchema = z.strictObject({
   }),
 });
 
+const missingLinkSourceEvidenceAssignmentSchema = z.strictObject({
+  kind: z.literal("frontier-gap"),
+  schemaVersion: z.literal(1),
+  workWaveId: digestSchema,
+  leaseId: digestSchema,
+  gapId: digestSchema,
+  predecessorDecisionDigest: digestSchema,
+});
+
 const reconSourceEvidenceAssignmentSchema = z.strictObject({
   kind: z.literal("initial-research-planning"),
   schemaVersion: z.literal(1),
@@ -271,6 +280,7 @@ const criticSourceEvidenceAssignmentSchema = z.strictObject({
 
 export const sourceEvidenceAssignmentSchema = z.discriminatedUnion("kind", [
   finderSourceEvidenceAssignmentSchema,
+  missingLinkSourceEvidenceAssignmentSchema,
   reconSourceEvidenceAssignmentSchema,
   criticSourceEvidenceAssignmentSchema,
 ]);
