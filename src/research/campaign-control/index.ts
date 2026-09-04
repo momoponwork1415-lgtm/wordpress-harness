@@ -15,6 +15,7 @@ import {
   closeSemanticCoverage,
   materializeCoverageReviewWave,
   projectCoverageObservation,
+  depthApproachFamilyId,
   projectMissingLinkDepthWorkQueue,
   projectSemanticDepthWorkQueue,
   materializeMissingLinkWaves,
@@ -1621,6 +1622,23 @@ async function executeDefaultSemanticCampaign(
           ),
         );
         if (familyIds.size === 0) {
+          const openedFamilyId = depthApproachFamilyId({
+            campaignId: currentFamilyRegistry.value.campaignId,
+            runId: currentFamilyRegistry.value.runId,
+            targetSnapshotDigest: evaluation.target.digest,
+            manifestDigest: evaluation.manifest.digest,
+            openingDecisionDigest: evaluationRef.digest,
+            proposalId: proposal.id,
+          });
+          if (
+            currentFamilyRegistry.value.families.some(
+              (family) => family.id === openedFamilyId,
+            )
+          ) {
+            familyIds.add(openedFamilyId);
+          }
+        }
+        if (familyIds.size === 0) {
           throw new Error("Depth Verification is not bound to a Family");
         }
         const verificationId = `verification:${hypothesis.ref.id.slice("sha256:".length)}`;
@@ -1752,6 +1770,7 @@ async function executeDefaultSemanticCampaign(
         }
         const projected = projectMissingLinkDepthWorkQueue({
           sourceQueue: currentQueue.value,
+          registry: currentFamilyRegistry.value,
           synthesis,
           decision: evaluation,
           wave: missingLinkWave,

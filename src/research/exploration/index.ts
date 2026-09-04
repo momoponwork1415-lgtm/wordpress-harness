@@ -35,14 +35,17 @@ export {
   referenceSemanticMissingLinkWavePlan,
 } from "./semantic-missing-link-wave.js";
 export {
+  approachFamilyOpeningDecisionRefSchema,
   approachFamilyRefSchema,
   approachFamilyRegistryRefSchema,
   approachFamilyRegistrySchema,
   approachFamilySchema,
+  depthApproachFamilyId,
   projectApproachFamilyRegistry,
   projectInitialApproachFamilies,
   referenceApproachFamily,
   referenceSemanticIterationDecision,
+  semanticDepthIterationDecisionOpeningRefSchema,
   semanticIterationDecisionRefSchema,
 } from "./semantic-approach-family-registry.js";
 import type { Exploration, OpenExplorationOptions } from "./contracts.js";
@@ -51,6 +54,7 @@ import type {
   SemanticExploration,
 } from "./semantic-contracts.js";
 export type {
+  ApproachFamilyOpeningDecisionRef,
   ApproachFamily,
   ApproachFamilyRef,
   ApproachFamilyRegistry,

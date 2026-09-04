@@ -346,6 +346,7 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
       | "depth-verification"
       | "depth-blocked"
       | "depth-disproved"
+      | "unbound-depth-genesis"
       | "coverage-closure"
       | "coverage-after-material-delta"
       | "depth-closed-then-coverage"
@@ -595,6 +596,104 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
               proposals: [],
             });
           }
+          if (scenario === "unbound-depth-genesis") {
+            const prefix = "Depth synthesis context: ";
+            const contextLine = plan.prompt
+              .split("\n")
+              .find((line) => line.startsWith(prefix));
+            if (contextLine === undefined) {
+              throw new Error("Depth synthesis context is missing");
+            }
+            const context = z
+              .object({
+                items: z.array(
+                  z.object({
+                    id: z.string(),
+                    families: z.array(z.unknown()),
+                    subjects: z.array(z.object({ digest: z.string() })),
+                  }),
+                ),
+              })
+              .parse(JSON.parse(contextLine.slice(prefix.length)));
+            const unboundItem = context.items.find(
+              (item) => item.families.length === 0,
+            );
+            if (unboundItem !== undefined && unboundItem.subjects.length < 2) {
+              throw new Error("Expected an unbound multi-subject Depth item");
+            }
+            if (unboundItem !== undefined) {
+              return completedResult(plan, {
+                kind: "root-synthesis-output",
+                schemaVersion: 1,
+                itemDispositions: context.items.map((item) => ({
+                  itemId: item.id,
+                  disposition:
+                    item.id === unboundItem.id
+                      ? ("used" as const)
+                      : ("retained-no-connection" as const),
+                  reason:
+                    item.id === unboundItem.id
+                      ? "The unbound work item supplies both sides of a new route."
+                      : "This admitted route is independent of the new connection.",
+                })),
+                proposals: [
+                  {
+                    itemIds: [unboundItem.id],
+                    subjectDigests: unboundItem.subjects.map(
+                      (subject) => subject.digest,
+                    ),
+                    attackerPremise: "unauthenticated",
+                    securityProperty:
+                      "Target-account authentication integrity.",
+                    steps: [
+                      {
+                        ordinal: 1,
+                        relation: "observed",
+                        actor: "target-system",
+                        request: "Persist a cross-request value.",
+                        stateIdentity: "unbound-shared-option",
+                        consumedValues: ["public-input"],
+                        producedValues: ["stored-value"],
+                        evidence: [
+                          {
+                            path: "plugin.php",
+                            fileDigest: digest("a"),
+                            startLine: 10,
+                            endLine: 20,
+                          },
+                        ],
+                      },
+                      {
+                        ordinal: 2,
+                        relation: "proposed-connection",
+                        actor: "unauthenticated-attacker",
+                        request: "Redeem the cross-request value.",
+                        stateIdentity: "unbound-shared-option",
+                        consumedValues: ["stored-value"],
+                        producedValues: ["target-session"],
+                        evidence: [
+                          {
+                            path: "plugin.php",
+                            fileDigest: digest("a"),
+                            startLine: 10,
+                            endLine: 20,
+                          },
+                        ],
+                      },
+                    ],
+                    unknowns: [
+                      {
+                        claim: "Both requests address the same option value.",
+                        requiredEvidence: "Fresh witness and causal control.",
+                      },
+                    ],
+                    falsifier: "The requests use different state identities.",
+                    nextAction: "Verify the proposed state transition.",
+                  },
+                ],
+              });
+            }
+          }
           const proposalCount = scenario === "missing-link-overflow" ? 9 : 1;
           return completedResult(plan, {
             kind: "root-synthesis-output",
@@ -660,7 +759,10 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
           if (scenario === "critic-failure") {
             return failedResult(plan, "critic-provider-exit-1");
           }
-          if (scenario === "missing-link-depth") {
+          if (
+            scenario === "missing-link-depth" ||
+            scenario === "unbound-depth-genesis"
+          ) {
             missingLinkCriticCalls += 1;
           }
           return completedResult(plan, {
@@ -673,7 +775,8 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
                     verdict: "contradicted" as const,
                     challenges: [],
                   }
-                : (scenario === "missing-link-depth" &&
+                : ((scenario === "missing-link-depth" ||
+                      scenario === "unbound-depth-genesis") &&
                       missingLinkCriticCalls === 1) ||
                     scenario === "missing-link-overflow"
                   ? {
@@ -738,6 +841,7 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
           };
           if (
             scenario === "missing-link-depth" ||
+            scenario === "unbound-depth-genesis" ||
             scenario === "missing-link-overflow"
           ) {
             const prefix = "Depth evaluation context: ";
@@ -922,6 +1026,43 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
         }
         if (hypothesis === undefined || fragment === undefined) {
           throw new Error("Expected semantic subjects were not supplied");
+        }
+        if (scenario === "unbound-depth-genesis") {
+          if (theses.length === 0) {
+            throw new Error("Expected research theses");
+          }
+          return completedResult(plan, {
+            kind: "root-evaluator-output",
+            schemaVersion: 1,
+            actions: [
+              {
+                kind: "admit-depth",
+                subjectDigests: [hypothesis.ref.digest],
+                admission: {
+                  highImpactPotential:
+                    "The primary hypothesis may reach another privileged consumer.",
+                  composition: "Challenge the primary route independently.",
+                  falsifier: "No privileged consumer accepts the value.",
+                  nextAction: "Run bounded Synthesis and Critic work.",
+                },
+              },
+              {
+                kind: "schedule-work",
+                subjectDigests: [
+                  fragment.ref.digest,
+                  ...theses.map((thesis) => thesis.ref.digest),
+                ],
+                work: {
+                  requiredFact:
+                    "Determine whether the separate fragment composes with the research thesis.",
+                  falsifier:
+                    "The fragment and thesis describe unrelated state.",
+                  nextAction: "Synthesize the cross-request state transition.",
+                },
+              },
+            ],
+            campaignDisposition: "continue",
+          });
         }
         return completedResult(plan, {
           kind: "root-evaluator-output",
@@ -1524,6 +1665,45 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
         },
       });
       expect(verifierCalls - verifierCallsBeforeDepth).toBe(1);
+
+      scenario = "unbound-depth-genesis";
+      missingLinkCriticCalls = 0;
+      const unboundDepthPlan = campaignDefaultSemanticRunPlanV2Schema.parse({
+        ...plan,
+        runId: "semantic-e2e-unbound-depth-genesis",
+      });
+      await research.runner.run(unboundDepthPlan);
+      const unboundDepthRun = await research.reader.inspect(input.campaignId, {
+        kind: "run",
+        runId: unboundDepthPlan.runId,
+      });
+      expect(unboundDepthRun).toMatchObject({
+        kind: "run",
+        value: {
+          approachFamilyRegistry: {
+            depthDecisions: 2,
+            families: 2,
+            maxRound: 2,
+            pendingVerifications: 0,
+            verificationOutcomes: 1,
+            states: { active: 2, blocked: 0, exhausted: 0 },
+          },
+          decision: { kind: "incomplete", reason: "active-research-remains" },
+        },
+      });
+      const replayReader = openResearch({
+        databasePath: join(directory, "research.sqlite"),
+      });
+      try {
+        await expect(
+          replayReader.reader.inspect(input.campaignId, {
+            kind: "run",
+            runId: unboundDepthPlan.runId,
+          }),
+        ).resolves.toEqual(unboundDepthRun);
+      } finally {
+        replayReader.close();
+      }
 
       scenario = "depth-blocked";
       const depthBlockedPlan = campaignDefaultSemanticRunPlanV2Schema.parse({

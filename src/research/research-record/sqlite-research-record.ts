@@ -294,12 +294,22 @@ const semanticIterationDecidedPayloadSchema = z.strictObject({
   registry: approachFamilyRegistryRefSchema,
 });
 
-const semanticDepthIterationDecidedPayloadSchema = z.strictObject({
+const semanticDepthIterationDecidedPayloadV1Schema = z.strictObject({
   runId: z.string().min(1).max(128),
   predecessorRegistryDigest: digestSchema,
   decision: depthIterationDecisionRefSchema,
   transitions: z.array(approachFamilyTransitionSchema).min(1).max(64),
   updatedFamilies: z.array(approachFamilySchema).min(1).max(64),
+  registry: approachFamilyRegistryRefSchema,
+});
+
+const semanticDepthIterationDecidedPayloadV2Schema = z.strictObject({
+  runId: z.string().min(1).max(128),
+  predecessorRegistryDigest: digestSchema,
+  decision: depthIterationDecisionRefSchema,
+  transitions: z.array(approachFamilyTransitionSchema).max(64),
+  openedFamilies: z.array(approachFamilySchema).max(64),
+  updatedFamilies: z.array(approachFamilySchema).max(64),
   registry: approachFamilyRegistryRefSchema,
 });
 
@@ -1747,10 +1757,11 @@ class SqliteResearchRecord implements ResearchRecord {
             predecessorRegistryDigest: current.ref.digest,
             decision: decisionRef,
             transitions: advanced.transitions,
+            openedFamilies: advanced.openedFamilies,
             updatedFamilies,
             registry: advanced.ref,
           },
-          1,
+          2,
         );
         return { ref: advanced.ref, value: advanced.value };
       },
@@ -2450,15 +2461,27 @@ class SqliteResearchRecord implements ResearchRecord {
         continue;
       }
       if (event.kind === "exploration.depth-iteration-decided") {
-        if (event.schema_version !== 1) {
+        if (event.schema_version !== 1 && event.schema_version !== 2) {
           throw new UnsupportedLedgerSchemaError(
             event.kind,
             event.schema_version,
           );
         }
-        const payload = semanticDepthIterationDecidedPayloadSchema.parse(
-          this.#parsePayload(event),
-        );
+        const rawPayload = this.#parsePayload(event);
+        let payload: z.infer<
+          typeof semanticDepthIterationDecidedPayloadV1Schema
+        >;
+        let openedFamilies: z.infer<typeof approachFamilySchema>[];
+        if (event.schema_version === 1) {
+          payload =
+            semanticDepthIterationDecidedPayloadV1Schema.parse(rawPayload);
+          openedFamilies = [];
+        } else {
+          const current =
+            semanticDepthIterationDecidedPayloadV2Schema.parse(rawPayload);
+          payload = current;
+          openedFamilies = current.openedFamilies;
+        }
         const run = semanticRuns.get(payload.runId);
         const previous = approachFamilyRegistries.get(payload.runId);
         if (
@@ -2509,6 +2532,25 @@ class SqliteResearchRecord implements ResearchRecord {
         if (updated.size > 0 || transitions.size > 0) {
           throw new LedgerIntegrityError(campaignId, "invalid-event-order");
         }
+        const opened = new Map(
+          openedFamilies.map((family) => [family.id, family]),
+        );
+        if (
+          opened.size !== openedFamilies.length ||
+          openedFamilies.some(
+            (family) =>
+              previous.value.families.some(
+                (existing) => existing.id === family.id,
+              ) ||
+              family.campaignId !== campaignId ||
+              family.runId !== payload.runId ||
+              family.openingDecision.kind !== "depth-iteration-decision" ||
+              canonicalJson(family.openingDecision) !==
+                canonicalJson(payload.decision),
+          )
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
         const registry = projectApproachFamilyRegistry({
           campaignId,
           runId: payload.runId,
@@ -2519,7 +2561,7 @@ class SqliteResearchRecord implements ResearchRecord {
             ...previous.value.depthDecisions,
             payload.decision.digest,
           ],
-          families,
+          families: [...families, ...openedFamilies],
         });
         if (canonicalJson(registry.ref) !== canonicalJson(payload.registry)) {
           throw new LedgerIntegrityError(campaignId, "invalid-event-order");

@@ -4,6 +4,7 @@ import { sha256Digest } from "../research-record/canonical-json.js";
 import {
   approachFamilyRefSchema,
   approachFamilyRegistrySchema,
+  depthApproachFamilyId,
   projectApproachFamilyRegistry,
   referenceApproachFamily,
 } from "./semantic-approach-family-registry.js";
@@ -79,6 +80,9 @@ export function advanceApproachFamilyRegistry(input: {
   readonly decision: z.infer<typeof depthIterationDecisionSchema>;
 }): ReturnType<typeof projectApproachFamilyRegistry> & {
   readonly transitions: readonly ApproachFamilyTransition[];
+  readonly openedFamilies: readonly z.infer<
+    typeof approachFamilyRegistrySchema.shape.families.element
+  >[];
 } {
   const registry = approachFamilyRegistrySchema.parse(input.registry);
   const queue = semanticDepthWorkQueueSchema.parse(input.queue);
@@ -102,6 +106,13 @@ export function advanceApproachFamilyRegistry(input: {
   >();
   const reasons = new Map<string, string>();
   const requestedVerificationIds = new Map<string, Set<string>>();
+  const unbound = new Map<
+    string,
+    {
+      readonly action: (typeof decision.actions)[number];
+      readonly proposal: (typeof synthesis.proposals)[number];
+    }
+  >();
   for (const action of decision.actions) {
     const proposal = proposals.get(action.proposal.id);
     if (proposal === undefined) {
@@ -114,7 +125,11 @@ export function advanceApproachFamilyRegistry(input: {
       ),
     );
     if (families.size === 0) {
-      throw new Error("Depth action is not bound to an Approach Family");
+      if (unbound.has(proposal.id)) {
+        throw new Error("Depth action repeated an unbound Chain Proposal");
+      }
+      unbound.set(proposal.id, { action, proposal });
+      continue;
     }
     for (const familyId of families) {
       const kinds = actionKinds.get(familyId) ?? new Set();
@@ -170,6 +185,61 @@ export function advanceApproachFamilyRegistry(input: {
     );
     return updated;
   });
+  const openedFamilies = [...unbound.values()]
+    .sort((left, right) => compareText(left.proposal.id, right.proposal.id))
+    .map(({ action, proposal }, index) => {
+      const proposedConnection = proposal.steps.find(
+        (step) => step.relation === "proposed-connection",
+      );
+      if (proposedConnection === undefined) {
+        throw new Error("Unbound Chain Proposal has no proposed connection");
+      }
+      const pendingVerifications =
+        action.kind === "request-verification"
+          ? [
+              `verification:${sha256Digest({
+                kind: "source-bound-hypothesis",
+                targetSnapshotDigest: decision.target.digest,
+                manifestDigest: decision.manifest.digest,
+                value: action.hypothesis,
+              }).slice("sha256:".length)}`,
+            ]
+          : [];
+      const state =
+        action.kind === "block-route"
+          ? "blocked"
+          : action.kind === "close-route"
+            ? "exhausted"
+            : "active";
+      const identity = {
+        campaignId: registry.campaignId,
+        runId: registry.runId,
+        targetSnapshotDigest: decision.target.digest,
+        manifestDigest: decision.manifest.digest,
+        openingDecisionDigest: decisionRef.digest,
+        proposalId: proposal.id,
+      } as const;
+      return approachFamilyRegistrySchema.shape.families.element.parse({
+        kind: "approach-family",
+        schemaVersion: 2,
+        id: depthApproachFamilyId(identity),
+        campaignId: registry.campaignId,
+        runId: registry.runId,
+        target: decision.target,
+        manifest: decision.manifest,
+        openingDecision: decisionRef,
+        ordinal: registry.families.length + index + 1,
+        state,
+        pendingVerifications,
+        verificationOutcomes: [],
+        round: 1,
+        evidence: proposal.subjects,
+        thesis: proposal.securityProperty,
+        mechanism: proposedConnection.stateIdentity,
+        falsifier: proposal.falsifier,
+        nextAction: proposal.nextAction,
+      });
+    });
   const projected = projectApproachFamilyRegistry({
     campaignId: registry.campaignId,
     runId: registry.runId,
@@ -177,10 +247,11 @@ export function advanceApproachFamilyRegistry(input: {
     manifest: registry.manifest,
     decisions: registry.decisions,
     depthDecisions: [...registry.depthDecisions, decisionRef.digest],
-    families,
+    families: [...families, ...openedFamilies],
   });
   return {
     ...projected,
+    openedFamilies,
     transitions: transitions.sort((left, right) =>
       compareText(left.familyId, right.familyId),
     ),

@@ -29,6 +29,27 @@ export const semanticIterationDecisionRefSchema = z.strictObject({
   workWaveDigest: digestSchema,
 });
 
+export const semanticDepthIterationDecisionOpeningRefSchema = z.strictObject({
+  kind: z.literal("depth-iteration-decision"),
+  schemaVersion: z.literal(1),
+  id: digestSchema,
+  digest: digestSchema,
+  targetSnapshotDigest: digestSchema,
+  manifestDigest: digestSchema,
+  registryDigest: digestSchema,
+  synthesisId: digestSchema,
+  critiqueId: digestSchema,
+  actions: z.number().int().positive().max(32),
+});
+
+export const approachFamilyOpeningDecisionRefSchema = z.discriminatedUnion(
+  "kind",
+  [
+    semanticIterationDecisionRefSchema,
+    semanticDepthIterationDecisionOpeningRefSchema,
+  ],
+);
+
 export const approachFamilySchema = z.strictObject({
   kind: z.literal("approach-family"),
   schemaVersion: z.literal(2),
@@ -37,7 +58,7 @@ export const approachFamilySchema = z.strictObject({
   runId: identifierSchema,
   target: targetSnapshotRefSchema,
   manifest: targetFileManifestRefSchema,
-  openingDecision: semanticIterationDecisionRefSchema,
+  openingDecision: approachFamilyOpeningDecisionRefSchema,
   ordinal: z.number().int().positive(),
   state: z.enum(["active", "blocked", "exhausted"]),
   pendingVerifications: z.array(identifierSchema).max(32),
@@ -107,6 +128,9 @@ export const approachFamilyRegistryRefSchema = z.strictObject({
 export type SemanticIterationDecisionRef = z.infer<
   typeof semanticIterationDecisionRefSchema
 >;
+export type ApproachFamilyOpeningDecisionRef = z.infer<
+  typeof approachFamilyOpeningDecisionRefSchema
+>;
 export type ApproachFamily = z.infer<typeof approachFamilySchema>;
 export type ApproachFamilyRef = z.infer<typeof approachFamilyRefSchema>;
 export type ApproachFamilyRegistry = z.infer<
@@ -118,6 +142,17 @@ export type ApproachFamilyRegistryRef = z.infer<
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+export function depthApproachFamilyId(input: {
+  readonly campaignId: string;
+  readonly runId: string;
+  readonly targetSnapshotDigest: string;
+  readonly manifestDigest: string;
+  readonly openingDecisionDigest: string;
+  readonly proposalId: string;
+}): string {
+  return sha256Digest({ kind: "approach-family", ...input });
 }
 
 function sortedEvidence(
@@ -239,9 +274,11 @@ export function projectApproachFamilyRegistry(input: {
         family.runId !== input.runId ||
         canonicalJson(family.target) !== canonicalJson(input.target) ||
         canonicalJson(family.manifest) !== canonicalJson(input.manifest) ||
-        !decisions.some(
-          (decision) => decision.digest === family.openingDecision.digest,
-        ),
+        (family.openingDecision.kind === "iteration-decision"
+          ? !decisions.some(
+              (decision) => decision.digest === family.openingDecision.digest,
+            )
+          : !depthDecisions.includes(family.openingDecision.digest)),
     )
   ) {
     throw new Error("Approach Family Registry binding mismatch");

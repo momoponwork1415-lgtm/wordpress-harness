@@ -242,6 +242,8 @@ Reopen Conditionは自由なboolean式にせず、必要fact、期待するevide
 
 Approach Family Registryは別のmutable storeではなく、versioned `exploration.iteration-decided`、`exploration.depth-iteration-decided`、`exploration.family-evidence-attached`、`exploration.family-verification-resolved` eventから作るprojectionである。Depth Decision eventはVerificationとMissing-link Waveより先にappendし、evidence attachment eventはterminal subjectとfollow-up QueueがCASへ固定された後、Verification resolution eventはVerification recordがdurableになった後にappendする。Research Recordはevent sequence、schema、digest、Target binding、参照artifact、状態遷移を検査してviewを再構築するが、Familyの意味、delta、reopenの妥当性を決めない。検索用cacheまたはindexを置く場合も、削除してLedgerから同じRegistry digestを再生成できなければならない。
 
+Root Synthesisが既存Familyへbindされていない`schedule-work`だけからChain Proposalを作り、fresh Depth Root EvaluationがそのProposalを継続、検証、blockまたはcloseした場合、そのDepth Decisionをopening decisionとする新しいFamilyを一つ開く。thesis、mechanism、falsifier、next action、evidenceはChain ProposalとDepth dispositionのmodel出力だけから決定論的にprojectionし、Harnessが近い既存Family、支持数、多数決でattach先を推測しない。`exploration.depth-iteration-decided` v2は既存Familyのtransitionと新Family genesisを分けて記録し、v1 eventのread-only replay互換を保つ。
+
 既存v1 LedgerとCAS artifactは書き換えず、v1 `routeFragments`からFamily eventを遡及生成しない。v1 readerはFragmentを`legacy-unclassified`として閲覧できるだけにし、同一Snapshot / Manifestへbindした明示的Follow-up Campaignがv2 Root Evaluationを通した時だけ新しいFamily evidenceとしてimportする。
 
 ## Freedom inside the Evidence Shell

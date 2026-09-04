@@ -8,6 +8,12 @@ import {
   referenceDepthIterationDecision,
 } from "./semantic-depth-evaluation.js";
 import {
+  approachFamilyRegistrySchema,
+  depthApproachFamilyId,
+  referenceApproachFamily,
+  type ApproachFamilyRegistry,
+} from "./semantic-approach-family-registry.js";
+import {
   semanticDepthWorkItemSchema,
   semanticDepthWorkQueueRefSchema,
   semanticDepthWorkQueueSchema,
@@ -48,12 +54,14 @@ function compareText(left: string, right: string): number {
 
 export function projectMissingLinkDepthWorkQueue(input: {
   readonly sourceQueue: SemanticDepthWorkQueue;
+  readonly registry: ApproachFamilyRegistry;
   readonly synthesis: z.infer<typeof chainSynthesisSchema>;
   readonly decision: z.infer<typeof depthIterationDecisionSchema>;
   readonly wave: z.infer<typeof semanticMissingLinkWavePlanSchema>;
   readonly terminal: z.infer<typeof semanticWaveTerminalRefSchema>;
 }): MissingLinkDepthQueueProjection {
   const sourceQueue = semanticDepthWorkQueueSchema.parse(input.sourceQueue);
+  const registry = approachFamilyRegistrySchema.parse(input.registry);
   const synthesis = chainSynthesisSchema.parse(input.synthesis);
   const decision = depthIterationDecisionSchema.parse(input.decision);
   const wave = semanticMissingLinkWavePlanSchema.parse(input.wave);
@@ -65,7 +73,10 @@ export function projectMissingLinkDepthWorkQueue(input: {
     wave.predecessor.digest !== decisionRef.digest ||
     terminal.waveId !== wave.id ||
     terminal.targetSnapshotDigest !== sourceQueue.target.digest ||
-    terminal.manifestDigest !== sourceQueue.manifest.digest
+    terminal.manifestDigest !== sourceQueue.manifest.digest ||
+    registry.target.digest !== sourceQueue.target.digest ||
+    registry.manifest.digest !== sourceQueue.manifest.digest ||
+    !registry.depthDecisions.includes(decisionRef.digest)
   ) {
     throw new Error("Missing-link Depth Queue binding mismatch");
   }
@@ -111,13 +122,30 @@ export function projectMissingLinkDepthWorkQueue(input: {
           compareText(left.id, right.id) ||
           compareText(left.digest, right.digest),
       );
-    const families = [
+    const inheritedFamilies = [
       ...new Map(
         proposal.itemIds
           .flatMap((itemId) => sourceItems.get(itemId)?.families ?? [])
           .map((family) => [family.id, family]),
       ).values(),
     ].sort((left, right) => compareText(left.id, right.id));
+    const families =
+      inheritedFamilies.length > 0
+        ? inheritedFamilies
+        : registry.families
+            .filter(
+              (family) =>
+                family.id ===
+                depthApproachFamilyId({
+                  campaignId: registry.campaignId,
+                  runId: registry.runId,
+                  targetSnapshotDigest: decision.target.digest,
+                  manifestDigest: decision.manifest.digest,
+                  openingDecisionDigest: decisionRef.digest,
+                  proposalId: proposal.id,
+                }),
+            )
+            .map(referenceApproachFamily);
     if (subjects.length === 0 || families.length === 0) {
       unresolvedGaps.push(action.gap);
       continue;
