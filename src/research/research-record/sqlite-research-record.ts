@@ -307,6 +307,8 @@ function currentSemanticPlanBudgetMismatch(
     plan.evaluator.budget.maxProviderCostUsd !== 10 ||
     plan.evaluator.budget.maxOutputBytes !== 2 * MEBIBYTE ||
     plan.evaluator.budget.reportedUsageEnforcement !== "telemetry-only" ||
+    plan.validation.validatorModelProfile.execution.model !== "claude-opus-5" ||
+    plan.validation.synthesisModelProfile.execution.model !== "claude-opus-5" ||
     validator.maxModelTokens * 3 + synthesis.maxModelTokens >
       policy.validationReserve.maxModelTokens ||
     validator.maxProviderCostUsd * 3 + synthesis.maxProviderCostUsd >

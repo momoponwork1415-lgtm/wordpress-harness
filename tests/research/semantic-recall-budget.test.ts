@@ -4,7 +4,10 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { campaignDefaultSemanticRunPlanV3Schema } from "../../src/research/campaign-control/contracts.js";
+import {
+  CampaignRunConflictError,
+  campaignDefaultSemanticRunPlanV3Schema,
+} from "../../src/research/campaign-control/contracts.js";
 import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
 import { openSqliteResearchRecord } from "../../src/research/research-record/index.js";
 import { projectTargetFileManifest } from "../../src/research/source-mapping/target-file-manifest.js";
@@ -241,6 +244,38 @@ describe("semantic-research-recall-baseline-v6", () => {
         await expect(
           record.recordSemanticCampaignRunStart(plan),
         ).resolves.toEqual(started);
+        await expect(
+          record.recordSemanticCampaignRunStart({
+            ...plan,
+            runId: `${plan.runId}-non-opus-validation`,
+            validation: {
+              ...plan.validation,
+              validatorModelProfile: {
+                ...plan.validation.validatorModelProfile,
+                execution: {
+                  ...plan.validation.validatorModelProfile.execution,
+                  model: "claude-sonnet-5",
+                },
+              },
+            },
+          }),
+        ).rejects.toBeInstanceOf(CampaignRunConflictError);
+        await expect(
+          record.recordSemanticCampaignRunStart({
+            ...plan,
+            runId: `${plan.runId}-non-opus-synthesis`,
+            validation: {
+              ...plan.validation,
+              synthesisModelProfile: {
+                ...plan.validation.synthesisModelProfile,
+                execution: {
+                  ...plan.validation.synthesisModelProfile.execution,
+                  model: "claude-sonnet-5",
+                },
+              },
+            },
+          }),
+        ).rejects.toBeInstanceOf(CampaignRunConflictError);
       } finally {
         record.close();
         await rm(directory, { force: true, recursive: true });
