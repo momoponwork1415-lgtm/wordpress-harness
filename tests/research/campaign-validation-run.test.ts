@@ -5,6 +5,11 @@ import { join } from "node:path";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 
+import { openHumanVerification } from "../../src/human-os/index.js";
+import {
+  openFileHumanOsArtifactStore,
+  openSqliteHumanOsRecord,
+} from "../../src/human-os/human-os-record/index.js";
 import {
   campaignDefaultSemanticRunPlanV3Schema,
   openResearch,
@@ -144,6 +149,14 @@ describe("CampaignRunner.run source-only Validation", () => {
     const directory = await mkdtemp(join(tmpdir(), "campaign-validation-"));
     const databasePath = join(directory, "research.sqlite");
     const artifacts = openFileJsonArtifactStore(join(directory, "artifacts"));
+    const humanOsDatabasePath = join(directory, "human-os.sqlite");
+    const humanOsArtifactsDirectory = join(directory, "human-os-artifacts");
+    const humanVerification = openHumanVerification({
+      record: openSqliteHumanOsRecord({
+        databasePath: humanOsDatabasePath,
+        artifactStore: openFileHumanOsArtifactStore(humanOsArtifactsDirectory),
+      }),
+    });
     const input = {
       ...createCampaignInput("campaign-validation-run"),
       schemaVersion: 2 as const,
@@ -551,18 +564,7 @@ describe("CampaignRunner.run source-only Validation", () => {
             if (packetDelivery === "failure") {
               throw new Error("Injected Human OS delivery failure");
             }
-            const receiptIdentity = {
-              kind: "human-review-packet-delivery-receipt" as const,
-              schemaVersion: 1 as const,
-              deliveryRequestDigest: request.digest,
-              packetDigest: sha256Digest(packet),
-              caseId: sha256Digest({ packetId: packet.id }),
-              admission: "active" as const,
-            };
-            return {
-              ...receiptIdentity,
-              receiptDigest: sha256Digest(receiptIdentity),
-            };
+            return humanVerification.deliver(request);
           },
         },
       },
@@ -1063,6 +1065,28 @@ describe("CampaignRunner.run source-only Validation", () => {
       ).toEqual([]);
       expect(deliveredPacketDigests).toHaveLength(2);
       expect(new Set(deliveredPacketDigests)).toHaveProperty("size", 1);
+
+      const replayedHumanOs = openHumanVerification({
+        record: openSqliteHumanOsRecord({
+          databasePath: humanOsDatabasePath,
+          artifactStore: openFileHumanOsArtifactStore(
+            humanOsArtifactsDirectory,
+          ),
+        }),
+      });
+      await expect(
+        replayedHumanOs.readQueue(input.campaignId),
+      ).resolves.toMatchObject({
+        active: [
+          {
+            reviewCase: {
+              packet: { digest: deliveredPacketDigests.at(-1) },
+              queueStatus: "active",
+            },
+          },
+        ],
+        humanDeferred: [],
+      });
     } finally {
       research.close();
       await rm(directory, { force: true, recursive: true });
