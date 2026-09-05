@@ -7,16 +7,17 @@ import { describe, expect, it, vi } from "vitest";
 import {
   defineHumanVerificationEnvironmentPolicy,
   defineHumanVerificationEnvironmentRequest,
-  defineHumanVerificationRecord,
   defineHumanVerificationRuntimeProfile,
   defineHumanVerificationSetupPlan,
-  openHumanVerification,
+  openLegacyHumanVerificationReplay,
   openHumanVerificationEnvironmentBuilder,
   setupStageNames,
   type HumanVerificationEnvironmentProvisioner,
   type HumanVerificationEnvironmentRequest,
   type HumanVerificationRecordIdentity,
 } from "../../src/human-os/index.js";
+import { defineHumanVerificationRecord } from "../../src/human-os/human-verification-contracts.js";
+import { openHumanVerification } from "../../src/human-os/human-verification.js";
 import {
   openFileHumanOsArtifactStore,
   openSqliteHumanOsRecord,
@@ -487,7 +488,7 @@ describe("HumanVerification", () => {
         databasePath,
         artifactStore: openFileHumanOsArtifactStore(artifactsDirectory),
       });
-      const replay = await openHumanVerification({
+      const replay = await openLegacyHumanVerificationReplay({
         record: replayRecord,
       }).readCase(receipt.caseId);
       expect(replay?.verifications).toHaveLength(1);

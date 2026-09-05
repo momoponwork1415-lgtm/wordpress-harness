@@ -36,6 +36,56 @@ export type {
   OpenAIReproductionOptions,
 } from "./ai-reproduction.js";
 export {
+  currentFindingSchema,
+  currentHumanReviewCaseSchema,
+  currentHumanReviewDispositionSchema,
+  currentHumanReviewPolicySchema,
+  currentHumanReviewResultSchema,
+  currentHumanReviewScheduleEventSchema,
+  currentVersionReviewProviderOutputSchema,
+  currentVersionReviewSchema,
+  defineCurrentHumanReviewPolicy,
+  defineHumanReproductionRecord,
+  humanReproductionEnvironmentOutcomeSchema,
+  humanReproductionPreparationSchema,
+  humanReproductionRecordSchema,
+  humanReproductionRuntimeIdentitySchema,
+} from "./current-human-review-contracts.js";
+export type {
+  CurrentFinding,
+  CurrentHumanReviewCase,
+  CurrentHumanReviewDisposition,
+  CurrentHumanReviewPolicy,
+  CurrentHumanReviewResult,
+  CurrentHumanReviewScheduleEvent,
+  CurrentVersionReview,
+  CurrentVersionReviewProviderOutput,
+  HumanReproductionEnvironmentOutcome,
+  HumanReproductionPreparation,
+  HumanReproductionRecord,
+  HumanReproductionRecordIdentity,
+  HumanReproductionRuntimeIdentity,
+} from "./current-human-review-contracts.js";
+export { openCurrentHumanReview } from "./current-human-review.js";
+export type {
+  CurrentHumanReviewAdmission,
+  CurrentHumanReviewCaseView,
+  CurrentHumanReviewQueueStatus,
+  CurrentHumanReviewQueueView,
+  CurrentHumanReviewRunner,
+  CurrentVersionReviewer,
+  HumanReproductionEnvironment,
+  HumanReviewAIReproductionReader,
+  OpenCurrentHumanReviewOptions,
+} from "./current-human-review.js";
+export { openLegacyHumanVerificationReplay } from "./legacy-human-verification-replay.js";
+export type {
+  LegacyHumanReviewCaseView,
+  LegacyHumanVerificationQueueView,
+  LegacyHumanVerificationReplay,
+  OpenLegacyHumanVerificationReplayOptions,
+} from "./legacy-human-verification-replay.js";
+export {
   defineExternalDependencyGrant,
   defineHumanVerificationEnvironmentPolicy,
   defineHumanVerificationEnvironmentRequest,
@@ -82,8 +132,6 @@ export type {
   ProvisionedTargetRuntimeIdentity,
 } from "./human-verification-environment.js";
 export {
-  defineHumanReviewCase,
-  defineHumanVerificationRecord,
   evidenceRequestSchema,
   findingSchema,
   humanReviewCaseId,
@@ -103,13 +151,6 @@ export type {
   HumanVerificationRecordIdentity,
   HumanVerificationResult,
 } from "./human-verification-contracts.js";
-export { openHumanVerification } from "./human-verification.js";
-export type {
-  HumanReviewCaseView,
-  HumanVerification,
-  HumanVerificationQueueView,
-  OpenHumanVerificationOptions,
-} from "./human-verification.js";
 export {
   humanVerificationSourceTreeDigest,
   openGvisorWordPressEnvironmentProvisioner,

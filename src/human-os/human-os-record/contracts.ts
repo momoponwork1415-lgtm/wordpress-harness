@@ -9,6 +9,12 @@ import type {
   TriageReproductionPacket,
 } from "../ai-reproduction-contracts.js";
 import type {
+  CurrentHumanReviewCase,
+  CurrentHumanReviewResult,
+  CurrentHumanReviewScheduleEvent,
+  HumanReproductionPreparation,
+} from "../current-human-review-contracts.js";
+import type {
   HumanReviewCase,
   HumanReviewPacketDeliveryRequest,
   HumanVerificationResult,
@@ -94,6 +100,9 @@ export interface AIReproductionRecord {
   readAIReproductionIntake(
     deliveryRequestDigest: string,
   ): Promise<AIReproductionIntakeRecordView | undefined>;
+  readAIReproductionIntakeById(
+    intakeId: string,
+  ): Promise<AIReproductionIntakeRecordView | undefined>;
   recordAIReproductionIntake(
     request: RuntimeVerificationPacketDeliveryRequest,
     intake: AIReproductionIntake,
@@ -108,7 +117,82 @@ export interface AIReproductionRecord {
   ): Promise<RecordAIReproductionResultResult>;
 }
 
-export interface HumanOsRecord extends AIReproductionRecord {
+export interface CurrentHumanReviewCaseRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly artifactDigest: string;
+  readonly reviewCase: CurrentHumanReviewCase;
+}
+
+export interface CurrentHumanReviewScheduleRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly artifactDigest: string;
+  readonly event: CurrentHumanReviewScheduleEvent;
+}
+
+export interface HumanReproductionPreparationRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly artifactDigest: string;
+  readonly preparation: HumanReproductionPreparation;
+}
+
+export interface CurrentHumanReviewResultRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly artifactDigest: string;
+  readonly result: CurrentHumanReviewResult;
+}
+
+export interface CurrentHumanReviewStore {
+  readCurrentHumanReviewCase(
+    caseId: string,
+  ): Promise<CurrentHumanReviewCaseRecordView | undefined>;
+  readCurrentHumanReviewCaseByAttempt(
+    attemptId: string,
+  ): Promise<CurrentHumanReviewCaseRecordView | undefined>;
+  listCurrentHumanReviewCases(
+    campaignId: string,
+  ): Promise<readonly CurrentHumanReviewCaseRecordView[]>;
+  recordCurrentHumanReviewCase(reviewCase: CurrentHumanReviewCase): Promise<{
+    readonly status: "appended" | "occupied";
+    readonly view: CurrentHumanReviewCaseRecordView;
+  }>;
+  listCurrentHumanReviewSchedule(
+    caseId: string,
+  ): Promise<readonly CurrentHumanReviewScheduleRecordView[]>;
+  recordCurrentHumanReviewScheduleEvent(
+    reviewCase: CurrentHumanReviewCase,
+    event: CurrentHumanReviewScheduleEvent,
+  ): Promise<{
+    readonly status: "appended" | "occupied";
+    readonly view: CurrentHumanReviewScheduleRecordView;
+  }>;
+  listHumanReproductionPreparations(
+    caseId: string,
+  ): Promise<readonly HumanReproductionPreparationRecordView[]>;
+  recordHumanReproductionPreparation(
+    reviewCase: CurrentHumanReviewCase,
+    preparation: HumanReproductionPreparation,
+  ): Promise<{
+    readonly status: "appended" | "occupied";
+    readonly view: HumanReproductionPreparationRecordView;
+  }>;
+  listCurrentHumanReviewResults(
+    caseId: string,
+  ): Promise<readonly CurrentHumanReviewResultRecordView[]>;
+  recordCurrentHumanReviewResult(
+    reviewCase: CurrentHumanReviewCase,
+    result: CurrentHumanReviewResult,
+  ): Promise<{
+    readonly status: "appended" | "occupied";
+    readonly view: CurrentHumanReviewResultRecordView;
+  }>;
+}
+
+export interface HumanOsRecord
+  extends AIReproductionRecord, CurrentHumanReviewStore {
   readEnvironmentDisposition(
     requestDigest: string,
   ): Promise<HumanVerificationEnvironmentRecordView | undefined>;

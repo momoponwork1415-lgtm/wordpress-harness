@@ -12,6 +12,16 @@ import {
   type AIReproductionResult,
 } from "../ai-reproduction-contracts.js";
 import {
+  currentHumanReviewCaseSchema,
+  currentHumanReviewResultSchema,
+  currentHumanReviewScheduleEventSchema,
+  humanReproductionPreparationSchema,
+  type CurrentHumanReviewCase,
+  type CurrentHumanReviewResult,
+  type CurrentHumanReviewScheduleEvent,
+  type HumanReproductionPreparation,
+} from "../current-human-review-contracts.js";
+import {
   humanVerificationEnvironmentDispositionSchema,
   humanVerificationEnvironmentRequestSchema,
   type HumanVerificationEnvironmentDisposition,
@@ -32,8 +42,12 @@ import {
 import type {
   AIReproductionIntakeRecordView,
   AIReproductionResultRecordView,
+  CurrentHumanReviewCaseRecordView,
+  CurrentHumanReviewResultRecordView,
+  CurrentHumanReviewScheduleRecordView,
   HumanOsRecord,
   HumanReviewAdmissionRecordView,
+  HumanReproductionPreparationRecordView,
   HumanVerificationResultRecordView,
   HumanVerificationEnvironmentRecordView,
   OpenHumanOsRecordOptions,
@@ -101,6 +115,18 @@ interface StoredAIReproductionResultRow {
   readonly attempt_artifact_digest: string;
   readonly result_artifact_digest: string;
   readonly triage_packet_artifact_digest: string | null;
+}
+
+interface StoredCurrentHumanReviewEventRow {
+  readonly global_sequence: number;
+  readonly event_id: string;
+  readonly kind: string;
+  readonly case_id: string;
+  readonly campaign_id: string;
+  readonly attempt_id: string;
+  readonly status: string;
+  readonly occurred_at: string;
+  readonly artifact_digest: string;
 }
 
 function assertDispositionMatchesRequest(
@@ -220,6 +246,21 @@ class SqliteHumanOsRecord implements HumanOsRecord {
       ) STRICT;
       CREATE INDEX IF NOT EXISTS ai_reproduction_events_intake
         ON ai_reproduction_events (intake_id, global_sequence);
+      CREATE TABLE IF NOT EXISTS human_review_v2_events (
+        global_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id TEXT NOT NULL UNIQUE,
+        kind TEXT NOT NULL,
+        case_id TEXT NOT NULL,
+        campaign_id TEXT NOT NULL,
+        attempt_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        occurred_at TEXT NOT NULL,
+        artifact_digest TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS human_review_v2_case
+        ON human_review_v2_events (case_id, global_sequence);
+      CREATE INDEX IF NOT EXISTS human_review_v2_campaign
+        ON human_review_v2_events (campaign_id, global_sequence);
     `);
   }
 
@@ -233,6 +274,14 @@ class SqliteHumanOsRecord implements HumanOsRecord {
       "delivery_request_digest = ?",
       deliveryRequestDigest,
     );
+    return row === undefined ? undefined : this.#decodeAIIntake(row);
+  }
+
+  async readAIReproductionIntakeById(
+    intakeIdValue: string,
+  ): Promise<AIReproductionIntakeRecordView | undefined> {
+    const intakeId = digestSchema.parse(intakeIdValue);
+    const row = this.#selectAIIntake("intake_id = ?", intakeId);
     return row === undefined ? undefined : this.#decodeAIIntake(row);
   }
 
@@ -384,6 +433,214 @@ class SqliteHumanOsRecord implements HumanOsRecord {
     return {
       status: recorded.status,
       view: await this.#decodeAIResult(recorded.row),
+    };
+  }
+
+  async readCurrentHumanReviewCase(
+    caseIdValue: string,
+  ): Promise<CurrentHumanReviewCaseRecordView | undefined> {
+    const caseId = digestSchema.parse(caseIdValue);
+    const row = this.#selectCurrentHumanReviewEvent(
+      "case_id = ? AND kind = 'case-admitted'",
+      caseId,
+    );
+    return row === undefined ? undefined : this.#decodeCurrentCase(row);
+  }
+
+  async readCurrentHumanReviewCaseByAttempt(
+    attemptIdValue: string,
+  ): Promise<CurrentHumanReviewCaseRecordView | undefined> {
+    const attemptId = digestSchema.parse(attemptIdValue);
+    const row = this.#selectCurrentHumanReviewEvent(
+      "attempt_id = ? AND kind = 'case-admitted'",
+      attemptId,
+    );
+    return row === undefined ? undefined : this.#decodeCurrentCase(row);
+  }
+
+  async listCurrentHumanReviewCases(
+    campaignId: string,
+  ): Promise<readonly CurrentHumanReviewCaseRecordView[]> {
+    const rows = this.#database
+      .prepare(
+        `SELECT global_sequence, event_id, kind, case_id, campaign_id,
+                attempt_id, status, occurred_at, artifact_digest
+           FROM human_review_v2_events
+          WHERE campaign_id = ? AND kind = 'case-admitted'
+          ORDER BY global_sequence`,
+      )
+      .all(campaignId) as StoredCurrentHumanReviewEventRow[];
+    return Promise.all(rows.map((row) => this.#decodeCurrentCase(row)));
+  }
+
+  async recordCurrentHumanReviewCase(
+    reviewCaseValue: CurrentHumanReviewCase,
+  ): Promise<{
+    readonly status: "appended" | "occupied";
+    readonly view: CurrentHumanReviewCaseRecordView;
+  }> {
+    const reviewCase = currentHumanReviewCaseSchema.parse(reviewCaseValue);
+    const existing = this.#selectCurrentHumanReviewEvent(
+      "attempt_id = ? AND kind = 'case-admitted'",
+      reviewCase.originAttempt.id,
+    );
+    if (existing !== undefined) {
+      const view = await this.#decodeCurrentCase(existing);
+      if (view.reviewCase.id !== reviewCase.id) {
+        throw new Error("AI Attempt is already bound to another Review Case");
+      }
+      return { status: "occupied", view };
+    }
+    const row = await this.#appendCurrentHumanReviewEvent({
+      eventId: reviewCase.id,
+      kind: "case-admitted",
+      reviewCase,
+      attemptId: reviewCase.originAttempt.id,
+      status: reviewCase.initialQueueStatus,
+      artifact: reviewCase,
+    });
+    return {
+      status: row.status,
+      view: await this.#decodeCurrentCase(row.row),
+    };
+  }
+
+  async listCurrentHumanReviewSchedule(
+    caseIdValue: string,
+  ): Promise<readonly CurrentHumanReviewScheduleRecordView[]> {
+    const caseId = digestSchema.parse(caseIdValue);
+    const rows = this.#listCurrentHumanReviewEvents(
+      caseId,
+      "schedule-recorded",
+    );
+    return Promise.all(rows.map((row) => this.#decodeCurrentSchedule(row)));
+  }
+
+  async recordCurrentHumanReviewScheduleEvent(
+    reviewCaseValue: CurrentHumanReviewCase,
+    eventValue: CurrentHumanReviewScheduleEvent,
+  ): Promise<{
+    readonly status: "appended" | "occupied";
+    readonly view: CurrentHumanReviewScheduleRecordView;
+  }> {
+    const reviewCase = currentHumanReviewCaseSchema.parse(reviewCaseValue);
+    const event = currentHumanReviewScheduleEventSchema.parse(eventValue);
+    if (event.caseId !== reviewCase.id) {
+      throw new Error("Human Review Schedule Event binding mismatch");
+    }
+    const existingKind = this.#database
+      .prepare(
+        `SELECT global_sequence, event_id, kind, case_id, campaign_id,
+                attempt_id, status, occurred_at, artifact_digest
+           FROM human_review_v2_events
+          WHERE case_id = ? AND kind = 'schedule-recorded' AND status = ?
+          ORDER BY global_sequence
+          LIMIT 1`,
+      )
+      .get(reviewCase.id, event.event) as
+      StoredCurrentHumanReviewEventRow | undefined;
+    if (existingKind !== undefined) {
+      return {
+        status: "occupied",
+        view: await this.#decodeCurrentSchedule(existingKind),
+      };
+    }
+    const row = await this.#appendCurrentHumanReviewEvent({
+      eventId: event.id,
+      kind: "schedule-recorded",
+      reviewCase,
+      attemptId: reviewCase.originAttempt.id,
+      status: event.event,
+      artifact: event,
+    });
+    return {
+      status: row.status,
+      view: await this.#decodeCurrentSchedule(row.row),
+    };
+  }
+
+  async listHumanReproductionPreparations(
+    caseIdValue: string,
+  ): Promise<readonly HumanReproductionPreparationRecordView[]> {
+    const caseId = digestSchema.parse(caseIdValue);
+    const rows = this.#listCurrentHumanReviewEvents(
+      caseId,
+      "preparation-recorded",
+    );
+    return Promise.all(
+      rows.map((row) => this.#decodeHumanReproductionPreparation(row)),
+    );
+  }
+
+  async recordHumanReproductionPreparation(
+    reviewCaseValue: CurrentHumanReviewCase,
+    preparationValue: HumanReproductionPreparation,
+  ): Promise<{
+    readonly status: "appended" | "occupied";
+    readonly view: HumanReproductionPreparationRecordView;
+  }> {
+    const reviewCase = currentHumanReviewCaseSchema.parse(reviewCaseValue);
+    const preparation =
+      humanReproductionPreparationSchema.parse(preparationValue);
+    if (preparation.caseId !== reviewCase.id) {
+      throw new Error("Human Reproduction Preparation binding mismatch");
+    }
+    const row = await this.#appendCurrentHumanReviewEvent({
+      eventId: preparation.id,
+      kind: "preparation-recorded",
+      reviewCase,
+      attemptId: preparation.selectedAttempt?.id ?? reviewCase.originAttempt.id,
+      status: preparation.status,
+      artifact: preparation,
+    });
+    return {
+      status: row.status,
+      view: await this.#decodeHumanReproductionPreparation(row.row),
+    };
+  }
+
+  async listCurrentHumanReviewResults(
+    caseIdValue: string,
+  ): Promise<readonly CurrentHumanReviewResultRecordView[]> {
+    const caseId = digestSchema.parse(caseIdValue);
+    const rows = this.#listCurrentHumanReviewEvents(caseId, "result-recorded");
+    return Promise.all(rows.map((row) => this.#decodeCurrentResult(row)));
+  }
+
+  async recordCurrentHumanReviewResult(
+    reviewCaseValue: CurrentHumanReviewCase,
+    resultValue: CurrentHumanReviewResult,
+  ): Promise<{
+    readonly status: "appended" | "occupied";
+    readonly view: CurrentHumanReviewResultRecordView;
+  }> {
+    const reviewCase = currentHumanReviewCaseSchema.parse(reviewCaseValue);
+    const result = currentHumanReviewResultSchema.parse(resultValue);
+    if (result.verification.caseId !== reviewCase.id) {
+      throw new Error("Current Human Review Result binding mismatch");
+    }
+    const existing = this.#selectCurrentHumanReviewEvent(
+      "case_id = ? AND kind = 'result-recorded'",
+      reviewCase.id,
+    );
+    if (existing !== undefined) {
+      const view = await this.#decodeCurrentResult(existing);
+      if (view.result.verification.id !== result.verification.id) {
+        throw new Error("Current Human Review Case is already complete");
+      }
+      return { status: "occupied", view };
+    }
+    const row = await this.#appendCurrentHumanReviewEvent({
+      eventId: result.verification.id,
+      kind: "result-recorded",
+      reviewCase,
+      attemptId: result.verification.attempt.id,
+      status: result.verification.disposition.status,
+      artifact: result,
+    });
+    return {
+      status: row.status,
+      view: await this.#decodeCurrentResult(row.row),
     };
   }
 
@@ -715,6 +972,193 @@ class SqliteHumanOsRecord implements HumanOsRecord {
     return {
       status: recorded.status,
       view: await this.#decodeVerification(recorded.row),
+    };
+  }
+
+  async #appendCurrentHumanReviewEvent(input: {
+    readonly eventId: string;
+    readonly kind:
+      | "case-admitted"
+      | "schedule-recorded"
+      | "preparation-recorded"
+      | "result-recorded";
+    readonly reviewCase: CurrentHumanReviewCase;
+    readonly attemptId: string;
+    readonly status: string;
+    readonly artifact: unknown;
+  }): Promise<{
+    readonly status: "appended" | "occupied";
+    readonly row: StoredCurrentHumanReviewEventRow;
+  }> {
+    const artifactDigest = await this.#artifactStore.putJson(input.artifact);
+    if (artifactDigest !== humanOsDigest(input.artifact)) {
+      throw new Error("Human OS Artifact Store returned a foreign digest");
+    }
+    const transact = this.#database.transaction(() => {
+      const existing = this.#selectCurrentHumanReviewEvent(
+        "event_id = ?",
+        input.eventId,
+      );
+      if (existing !== undefined)
+        return { status: "occupied" as const, row: existing };
+      const recordedCase = this.#selectCurrentHumanReviewEvent(
+        "case_id = ? AND kind = 'case-admitted'",
+        input.reviewCase.id,
+      );
+      if (input.kind !== "case-admitted" && recordedCase === undefined) {
+        throw new Error("Current Human Review event requires an admitted Case");
+      }
+      const occurredAt = this.#clock().toISOString();
+      this.#database
+        .prepare(
+          `INSERT INTO human_review_v2_events (
+             event_id, kind, case_id, campaign_id, attempt_id, status,
+             occurred_at, artifact_digest
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          input.eventId,
+          input.kind,
+          input.reviewCase.id,
+          input.reviewCase.campaignId,
+          input.attemptId,
+          input.status,
+          occurredAt,
+          artifactDigest,
+        );
+      const row = this.#selectCurrentHumanReviewEvent(
+        "event_id = ?",
+        input.eventId,
+      );
+      if (row === undefined) throw new Error("Human Review v2 append failed");
+      return { status: "appended" as const, row };
+    });
+    return transact();
+  }
+
+  #selectCurrentHumanReviewEvent(
+    predicate:
+      | "event_id = ?"
+      | "case_id = ? AND kind = 'case-admitted'"
+      | "attempt_id = ? AND kind = 'case-admitted'"
+      | "case_id = ? AND kind = 'result-recorded'",
+    value: string,
+  ): StoredCurrentHumanReviewEventRow | undefined {
+    return this.#database
+      .prepare(
+        `SELECT global_sequence, event_id, kind, case_id, campaign_id,
+                attempt_id, status, occurred_at, artifact_digest
+           FROM human_review_v2_events
+          WHERE ${predicate}
+          ORDER BY global_sequence
+          LIMIT 1`,
+      )
+      .get(value) as StoredCurrentHumanReviewEventRow | undefined;
+  }
+
+  #listCurrentHumanReviewEvents(
+    caseId: string,
+    kind: "schedule-recorded" | "preparation-recorded" | "result-recorded",
+  ): readonly StoredCurrentHumanReviewEventRow[] {
+    return this.#database
+      .prepare(
+        `SELECT global_sequence, event_id, kind, case_id, campaign_id,
+                attempt_id, status, occurred_at, artifact_digest
+           FROM human_review_v2_events
+          WHERE case_id = ? AND kind = ?
+          ORDER BY global_sequence`,
+      )
+      .all(caseId, kind) as StoredCurrentHumanReviewEventRow[];
+  }
+
+  async #decodeCurrentCase(
+    row: StoredCurrentHumanReviewEventRow,
+  ): Promise<CurrentHumanReviewCaseRecordView> {
+    const value = await this.#artifactStore.readJson(row.artifact_digest);
+    const reviewCase = currentHumanReviewCaseSchema.parse(value);
+    if (
+      row.kind !== "case-admitted" ||
+      humanOsDigest(reviewCase) !== row.artifact_digest ||
+      reviewCase.id !== row.event_id ||
+      reviewCase.id !== row.case_id ||
+      reviewCase.campaignId !== row.campaign_id ||
+      reviewCase.originAttempt.id !== row.attempt_id ||
+      reviewCase.initialQueueStatus !== row.status
+    ) {
+      throw new Error("Current Human Review Case artifact integrity mismatch");
+    }
+    return {
+      ledgerHead: row.global_sequence,
+      occurredAt: row.occurred_at,
+      artifactDigest: row.artifact_digest,
+      reviewCase,
+    };
+  }
+
+  async #decodeCurrentSchedule(
+    row: StoredCurrentHumanReviewEventRow,
+  ): Promise<CurrentHumanReviewScheduleRecordView> {
+    const value = await this.#artifactStore.readJson(row.artifact_digest);
+    const event = currentHumanReviewScheduleEventSchema.parse(value);
+    if (
+      row.kind !== "schedule-recorded" ||
+      humanOsDigest(event) !== row.artifact_digest ||
+      event.id !== row.event_id ||
+      event.caseId !== row.case_id ||
+      event.event !== row.status
+    ) {
+      throw new Error("Human Review Schedule artifact integrity mismatch");
+    }
+    return {
+      ledgerHead: row.global_sequence,
+      occurredAt: row.occurred_at,
+      artifactDigest: row.artifact_digest,
+      event,
+    };
+  }
+
+  async #decodeHumanReproductionPreparation(
+    row: StoredCurrentHumanReviewEventRow,
+  ): Promise<HumanReproductionPreparationRecordView> {
+    const value = await this.#artifactStore.readJson(row.artifact_digest);
+    const preparation = humanReproductionPreparationSchema.parse(value);
+    if (
+      row.kind !== "preparation-recorded" ||
+      humanOsDigest(preparation) !== row.artifact_digest ||
+      preparation.id !== row.event_id ||
+      preparation.caseId !== row.case_id ||
+      preparation.status !== row.status
+    ) {
+      throw new Error("Human Reproduction Preparation integrity mismatch");
+    }
+    return {
+      ledgerHead: row.global_sequence,
+      occurredAt: row.occurred_at,
+      artifactDigest: row.artifact_digest,
+      preparation,
+    };
+  }
+
+  async #decodeCurrentResult(
+    row: StoredCurrentHumanReviewEventRow,
+  ): Promise<CurrentHumanReviewResultRecordView> {
+    const value = await this.#artifactStore.readJson(row.artifact_digest);
+    const result = currentHumanReviewResultSchema.parse(value);
+    if (
+      row.kind !== "result-recorded" ||
+      humanOsDigest(result) !== row.artifact_digest ||
+      result.verification.id !== row.event_id ||
+      result.verification.caseId !== row.case_id ||
+      result.verification.attempt.id !== row.attempt_id ||
+      result.verification.disposition.status !== row.status
+    ) {
+      throw new Error("Current Human Review Result integrity mismatch");
+    }
+    return {
+      ledgerHead: row.global_sequence,
+      occurredAt: row.occurred_at,
+      artifactDigest: row.artifact_digest,
+      result,
     };
   }
 

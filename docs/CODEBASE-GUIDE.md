@@ -11,22 +11,22 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Manual Target Intake | local directoryは実装済み | archive acquisition、selection / ranking |
 | Semantic Research | v6 initial Wave、Decision@3、conditional Depth実行まで実装済み | Missing-link / Closure |
 | Source-only Validation | v6 single fresh Attemptと4 dispositionを実装済み | Frontier Gapの次Wave |
-| Runtime handoff | Runtime Verification Packet v2とAI Reproduction intakeを実装済み | Human Queue handoff |
+| Runtime handoff | Runtime Verification Packet v2とAI Reproduction intakeを実装済み | 実Targetでのhandoff実測 |
 | AI Reproduction | typed attempt、class別・generic Recipe、private evidence、Triage Packetを実装済み | 実Targetでのruntime実測 |
-| Human Verification | Environment、有限queue、human disposition、known-plugin smokeを完走 | mandatory fresh再実行、二車線Queue |
+| Human Verification | mandatory fresh再実行、二車線Queue、Current Version Review、human-only Finding gateを実装済み | 実Targetでの再現実測 |
 | Finding | Human Verification gateとknown-pluginでの成立を実測済み | Prospective Campaignでの成立実測 |
 
-現在のproduction sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / single source Validation -> Risk Assessment / Runtime Verification Packet -> AI Reproduction / Triage Reproduction Packet`である。既存Human OSのv1 Human Review Packet flowは#110移行前のcompatibility implementationとして残る。v6 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Packet delivery failureはPacketを保持したままResearch failureと分ける。Missing-link / Closureはlegacy v5に実装済みだがv6へ未接続。
+現在のproduction sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / single source Validation -> Risk Assessment / Runtime Verification Packet -> AI Reproduction / Triage Reproduction Packet -> mandatory fresh Human reproduction -> Finding`である。Human OSのv1 Human Review Packet flowはread-only replay境界に残す。v6 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Packet delivery failureはPacketを保持したままResearch failureと分ける。Missing-link / Closureはlegacy v5に実装済みだがv6へ未接続。
 
-採用済みtarget flowのうち`single source screen -> Runtime Verification Packet -> AI Reproduction -> Triage Reproduction Packet`までを実装済みである。次にmandatory fresh Human reproductionへ接続する。完成度をpercentでは表さない。まず実plugin一件を早期に完走し、その実測後にCoverage policy、Development Cohort、三件のProspectiveへ広げる。
+採用済みtarget flowをversioned contractとpublic seamで接続済みである。次に実plugin一件を早期に完走し、その実測後にCoverage policy、Development Cohort、三件のProspectiveへ広げる。完成度をpercentでは表さない。
 
 残作業の実行順と完了条件は[Issue #86](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/86)を正本とする。
 
 | Order | Work |
 | --- | --- |
 | 1 | [#106 current write Interface](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/106)（完了） |
-| 2 | [#107 single Source Validation / Runtime Packet](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/107) -> [#108 AI Reproduction / Triage Packet](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/108) |
-| 3 | [#110 mandatory Human reproduction](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/110) -> [#109 実plugin一件のearly Prospective](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/109) |
+| 2 | [#107 single Source Validation / Runtime Packet](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/107) -> [#108 AI Reproduction / Triage Packet](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/108)（完了） |
+| 3 | [#110 mandatory Human reproduction](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/110)（完了） -> [#109 実plugin一件のearly Prospective](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/109) |
 | 4 | [#81 Validation Gap loop](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/81)、[#82 Coverage policy](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/82)、[#33 Development Cohort](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/33) |
 | 5 | [#111 measured budget defaults](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/111)、[#32 三件のProspective Campaign](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/32) |
 
@@ -144,18 +144,18 @@ Internal Module。immutable CAS artifact、append-only Ledger event、checkpoint
 
 ### Human Verification
 
-**Interface:** `HumanVerification.admit`、`HumanVerification.record`
+**Interface:** `CurrentHumanReviewRunner.admit`、`prepare`、`record`、`readQueue`
 
 - **Purpose:** Triage Reproduction Packetを人間がAIと別のfresh instanceで必ず再実行し、Findingまたは理由付きnegativeまで閉じる。
-- **Current implementation:** Human Review Packet v1のadmission、最大3 active mechanism、manual record、Finding gateを実装。deferred Caseの自動繰り上げとAI evidence bindingはない。
-- **Accepted target:** runtime-confirmedを通常Queue、high-impact runtime-inconclusiveを人間選択のEscalation Queueへ置く。総件数を制限せずactive concurrencyだけを設定し、完了後に繰り上げる。[#110](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/110)
+- **Queue:** runtime-confirmedを通常Queue、policy指定のhigh-impact runtime-inconclusiveを人間選択のEscalation Queueへ置く。総件数を制限せずactive concurrencyだけを設定し、完了後はimpact、attacker premise、Recipe cost、Case IDのstable priorityで繰り上げる。
+- **Preparation:** 人間の直前にCurrent Version Reviewを実行する。新stableは同じCampaign、plugin、Causal Identity、Security Effect、attacker premiseにbindされた新しいruntime-confirmed Attemptだけを選べる。Human environmentは選択Target、Runtime Profile、Setup Planと一致し、AI environmentとは異なるfresh IDを要求する。
 - **Failure semantics:** 前提一致かつRecipe完走後のeffect非観測だけを`rejected`にする。環境不一致は`blocked`、曖昧な観測は`runtime-inconclusive`、不足証拠は`more-evidence-required`。
-- **Finding gate:** `verified-finding`だけがFindingを生成する。生成時のexternal actionは`not-authorized`であり、report、vendor contact、公開は別承認を必要とする。
-- **Status / Tests:** v1 queue、Human Review Case、Verification Record、Finding / Evidence Request、Human OS replayを実装。mandatory fresh再実行を含むv2 flowは未実装 · [code](../src/human-os/human-verification.ts), [tests](../tests/human-os/human-verification.test.ts)
+- **Finding gate:** 全Recipe stepとexact payloadの人間によるfresh再実行を記録した`verified-finding`だけがFindingを生成する。Findingは元Campaign Target、検証Target、Triage Packet、Recipe / Private Evidence refs、人間のRecordへbindする。external actionは`not-authorized`であり、report、vendor contact、公開は別承認を必要とする。
+- **Status / Tests:** v2 append-only Case stream、二車線Queue、promotion、version refresh、fresh environment gate、Disposition、Finding、reopen replayを実装 · [runner](../src/human-os/current-human-review.ts), [contracts](../src/human-os/current-human-review-contracts.ts), [behavior](../tests/human-os/current-human-review.test.ts) · [#110](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/110)
 
 ### Legacy Verification
 
-ADR 0122以前の`VerificationRecord / Finding / Disproved / Blocked`を元の意味でread/replayする互換境界。
+ADR 0122以前のHuman Review Packet v1、Human Verification、Findingを元の意味でread/replayする互換境界。現行Human OS contextは`openLegacyHumanVerificationReplay`だけを公開し、v1 writerを公開しない。[replay](../src/human-os/legacy-human-verification-replay.ts)
 
 - 旧Findingを`ready-for-runtime`や現行Findingへ自動変換しない。
 - gVisor Lab、Witness、Causal Control、固定mechanism Adapterはlegacy replayと参考実装に限定する。

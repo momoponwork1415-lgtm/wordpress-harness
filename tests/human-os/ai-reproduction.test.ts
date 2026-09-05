@@ -489,6 +489,7 @@ describe("AI Reproduction", () => {
       packet: { digest: sha256Digest(fixture.packet) },
       target: { snapshot: fixture.packet.target },
       attackerPremise: fixture.packet.attackerPremise,
+      causalIdentity: fixture.packet.causalIdentity,
       securityEffect: fixture.packet.securityEffect,
       sourceRoute: fixture.packet.sourceRoute,
       toolPolicy: {
