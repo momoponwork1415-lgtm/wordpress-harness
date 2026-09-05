@@ -5,7 +5,7 @@ import {
   approachFamilyAdmissionRefSchema,
   approachFamilyAdmissionSchema,
   iterationDecisionV3Schema,
-  projectApproachFamilyRegistryV3,
+  projectInitialApproachFamilyRegistryV3,
   sourceBoundHypothesisArtifactRefSchema,
   sourceBoundHypothesisArtifactSchema,
 } from "../../src/research/exploration/index.js";
@@ -272,7 +272,7 @@ describe("Campaign Validation Candidate admission", () => {
       new Set(first[0]!.origins.map((origin) => origin.approachFamilyId)).size,
     ).toBe(2);
 
-    const registry = projectApproachFamilyRegistryV3(
+    const registry = projectInitialApproachFamilyRegistryV3(
       "campaign-candidate-admission",
       "run-candidate-admission",
       decision,

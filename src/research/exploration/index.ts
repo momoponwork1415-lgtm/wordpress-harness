@@ -54,7 +54,9 @@ export {
   approachFamilyRegistryRefV3Schema,
   approachFamilyRegistryV3Schema,
   approachFamilyV3Schema,
+  projectInitialApproachFamilyRegistryV3,
   projectApproachFamilyRegistryV3,
+  referenceApproachFamilyV3,
   referenceSemanticIterationDecisionV3,
   semanticIterationDecisionRefV3Schema,
 } from "./semantic-approach-family-registry-v3.js";

@@ -43,7 +43,9 @@ import {
 import {
   semanticFinderCheckpointRefSchema,
   iterationDecisionV2Schema,
+  iterationDecisionV3Schema,
   type IterationDecisionV2,
+  type IterationDecisionV3,
   type SemanticFinderCheckpointRef,
 } from "../exploration/semantic-contracts.js";
 import {
@@ -55,6 +57,14 @@ import {
   referenceSemanticIterationDecision,
   semanticIterationDecisionRefSchema,
 } from "../exploration/semantic-approach-family-registry.js";
+import {
+  approachFamilyRegistryRefV3Schema,
+  approachFamilyV3Schema,
+  projectApproachFamilyRegistryV3,
+  projectInitialApproachFamilyRegistryV3,
+  referenceSemanticIterationDecisionV3,
+  semanticIterationDecisionRefV3Schema,
+} from "../exploration/semantic-approach-family-registry-v3.js";
 import {
   advanceApproachFamilyRegistry,
   approachFamilyEvidenceAttachmentSchema,
@@ -107,8 +117,10 @@ import type {
   RecordVerificationStartResult,
   ResearchRecord,
   ApproachFamilyRegistryRecordView,
+  ApproachFamilyRegistryRecordViewV3,
   SemanticFinderCheckpointRecordView,
   SemanticIterationDecisionRecordView,
+  SemanticIterationDecisionRecordViewV3,
   JsonArtifactStore,
 } from "./contracts.js";
 
@@ -298,6 +310,13 @@ const semanticIterationDecidedPayloadSchema = z.strictObject({
   registry: approachFamilyRegistryRefSchema,
 });
 
+const semanticIterationDecidedPayloadV3Schema = z.strictObject({
+  runId: z.string().min(1).max(128),
+  decision: semanticIterationDecisionRefV3Schema,
+  openedFamilies: z.array(approachFamilyV3Schema).max(64),
+  registry: approachFamilyRegistryRefV3Schema,
+});
+
 const semanticDepthIterationDecidedPayloadV1Schema = z.strictObject({
   runId: z.string().min(1).max(128),
   predecessorRegistryDigest: digestSchema,
@@ -388,9 +407,17 @@ interface LedgerProjection {
     string,
     SemanticIterationDecisionRecordView
   >;
+  readonly semanticIterationDecisionsV3: ReadonlyMap<
+    string,
+    SemanticIterationDecisionRecordViewV3
+  >;
   readonly approachFamilyRegistries: ReadonlyMap<
     string,
     ApproachFamilyRegistryRecordView
+  >;
+  readonly approachFamilyRegistriesV3: ReadonlyMap<
+    string,
+    ApproachFamilyRegistryRecordViewV3
   >;
   readonly verifications: ReadonlyMap<string, StoredVerification>;
 }
@@ -1684,6 +1711,102 @@ class SqliteResearchRecord implements ResearchRecord {
     return transact();
   }
 
+  async recordSemanticIterationDecisionV3(
+    campaignId: string,
+    runId: string,
+    value: IterationDecisionV3,
+  ): Promise<SemanticIterationDecisionRecordViewV3> {
+    const decision = iterationDecisionV3Schema.parse(value);
+    const decisionRef = referenceSemanticIterationDecisionV3(decision);
+    const registry = projectInitialApproachFamilyRegistryV3(
+      campaignId,
+      runId,
+      decision,
+    );
+    if (this.#artifactStore === undefined) {
+      throw new Error("Iteration Decision v3 requires an Artifact Store");
+    }
+    const decisionArtifactDigest = await this.#artifactStore.putJson(decision);
+    const registryArtifactDigest = await this.#artifactStore.putJson(
+      registry.value,
+    );
+    if (
+      decisionArtifactDigest !== decisionRef.digest ||
+      registryArtifactDigest !== registry.ref.digest
+    ) {
+      throw new Error("Iteration Decision v3 CAS mismatch");
+    }
+
+    const transact = this.#database.transaction(
+      (): SemanticIterationDecisionRecordViewV3 => {
+        const rows = this.#readRows(campaignId);
+        if (rows.length === 0) {
+          throw new Error(`Campaign not found: ${campaignId}`);
+        }
+        const ledger = this.#decodeLedger(campaignId, rows);
+        const run = ledger.semanticRuns.get(runId);
+        if (
+          run === undefined ||
+          run.completed !== undefined ||
+          canonicalJson(run.plan.target) !== canonicalJson(decision.target) ||
+          canonicalJson(run.plan.manifest) !==
+            canonicalJson(decision.manifest) ||
+          ledger.semanticIterationDecisions.has(decisionRef.digest) ||
+          ledger.approachFamilyRegistries.has(runId)
+        ) {
+          throw new CampaignRunConflictError(campaignId, runId);
+        }
+        const existing = ledger.semanticIterationDecisionsV3.get(
+          decisionRef.digest,
+        );
+        if (existing !== undefined) return existing;
+        if (ledger.approachFamilyRegistriesV3.has(runId)) {
+          throw new CampaignRunConflictError(campaignId, runId);
+        }
+        const completedEvaluatorRefs = new Set(
+          [...ledger.semanticAttempts.values()]
+            .filter(
+              (attempt) =>
+                attempt.intent.runId === runId &&
+                attempt.intent.role === "root-evaluator" &&
+                attempt.completion !== undefined,
+            )
+            .map((attempt) => attempt.completion!.value.result.digest),
+        );
+        if (
+          decision.context.rootEvaluatorAttempts.some(
+            (attempt) => !completedEvaluatorRefs.has(attempt.digest),
+          )
+        ) {
+          throw new CampaignRunConflictError(campaignId, runId);
+        }
+
+        const occurredAt = this.#clock().toISOString();
+        const ledgerHead = rows.length + 1;
+        this.#insertEvent(
+          campaignId,
+          ledgerHead,
+          "exploration.iteration-decided",
+          occurredAt,
+          {
+            runId,
+            decision: decisionRef,
+            openedFamilies: registry.value.families,
+            registry: registry.ref,
+          },
+          3,
+        );
+        return {
+          ledgerHead,
+          occurredAt,
+          decision: decisionRef,
+          registry: registry.ref,
+        };
+      },
+    );
+    return transact();
+  }
+
   async readApproachFamilyRegistry(
     campaignId: string,
     runId: string,
@@ -1691,6 +1814,17 @@ class SqliteResearchRecord implements ResearchRecord {
     const rows = this.#readRows(campaignId);
     if (rows.length === 0) return undefined;
     return this.#decodeLedger(campaignId, rows).approachFamilyRegistries.get(
+      runId,
+    );
+  }
+
+  async readApproachFamilyRegistryV3(
+    campaignId: string,
+    runId: string,
+  ): Promise<ApproachFamilyRegistryRecordViewV3 | undefined> {
+    const rows = this.#readRows(campaignId);
+    if (rows.length === 0) return undefined;
+    return this.#decodeLedger(campaignId, rows).approachFamilyRegistriesV3.get(
       runId,
     );
   }
@@ -2181,9 +2315,17 @@ class SqliteResearchRecord implements ResearchRecord {
       string,
       SemanticIterationDecisionRecordView
     >();
+    const semanticIterationDecisionsV3 = new Map<
+      string,
+      SemanticIterationDecisionRecordViewV3
+    >();
     const approachFamilyRegistries = new Map<
       string,
       ApproachFamilyRegistryRecordView
+    >();
+    const approachFamilyRegistriesV3 = new Map<
+      string,
+      ApproachFamilyRegistryRecordViewV3
     >();
     const verifications = new Map<string, StoredVerification>();
     for (const event of rows.slice(1)) {
@@ -2412,6 +2554,43 @@ class SqliteResearchRecord implements ResearchRecord {
         continue;
       }
       if (event.kind === "exploration.iteration-decided") {
+        if (event.schema_version === 3) {
+          const payload = semanticIterationDecidedPayloadV3Schema.parse(
+            this.#parsePayload(event),
+          );
+          const run = semanticRuns.get(payload.runId);
+          if (
+            run === undefined ||
+            run.completed !== undefined ||
+            payload.decision.targetSnapshotDigest !== run.plan.target.digest ||
+            payload.decision.manifestDigest !== run.plan.manifest.digest ||
+            semanticIterationDecisions.has(payload.decision.digest) ||
+            semanticIterationDecisionsV3.has(payload.decision.digest) ||
+            approachFamilyRegistries.has(payload.runId) ||
+            approachFamilyRegistriesV3.has(payload.runId)
+          ) {
+            throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+          }
+          const registry = projectApproachFamilyRegistryV3({
+            campaignId,
+            runId: payload.runId,
+            target: run.plan.target,
+            manifest: run.plan.manifest,
+            decisions: [payload.decision],
+            families: payload.openedFamilies,
+          });
+          if (canonicalJson(registry.ref) !== canonicalJson(payload.registry)) {
+            throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+          }
+          semanticIterationDecisionsV3.set(payload.decision.digest, {
+            ledgerHead: event.campaign_sequence,
+            occurredAt: event.occurred_at,
+            decision: payload.decision,
+            registry: payload.registry,
+          });
+          approachFamilyRegistriesV3.set(payload.runId, registry);
+          continue;
+        }
         if (event.schema_version !== 2) {
           throw new UnsupportedLedgerSchemaError(
             event.kind,
@@ -2940,7 +3119,9 @@ class SqliteResearchRecord implements ResearchRecord {
       semanticAttempts,
       semanticFinderCheckpoints,
       semanticIterationDecisions,
+      semanticIterationDecisionsV3,
       approachFamilyRegistries,
+      approachFamilyRegistriesV3,
       verifications,
     };
   }

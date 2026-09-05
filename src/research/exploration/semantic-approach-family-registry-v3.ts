@@ -144,7 +144,127 @@ export function referenceSemanticIterationDecisionV3(
   });
 }
 
-export function projectApproachFamilyRegistryV3(
+export function referenceApproachFamilyV3(
+  value: ApproachFamilyV3,
+): ApproachFamilyRefV3 {
+  const family = approachFamilyV3Schema.parse(value);
+  return approachFamilyRefV3Schema.parse({
+    kind: family.kind,
+    schemaVersion: family.schemaVersion,
+    id: family.id,
+    digest: sha256Digest(family),
+    targetSnapshotDigest: family.target.digest,
+    manifestDigest: family.manifest.digest,
+    openingDecisionDigest: family.openingDecision.digest,
+    openingAdmissionDigest: family.openingAdmission.digest,
+    state: family.state,
+    pendingValidations: family.pendingValidations.length,
+    validationOutcomes: family.validationOutcomes.length,
+  });
+}
+
+export function projectApproachFamilyRegistryV3(input: {
+  readonly campaignId: string;
+  readonly runId: string;
+  readonly target: ApproachFamilyRegistryV3["target"];
+  readonly manifest: ApproachFamilyRegistryV3["manifest"];
+  readonly decisions: readonly SemanticIterationDecisionRefV3[];
+  readonly depthDecisions?: readonly string[];
+  readonly families: readonly ApproachFamilyV3[];
+}): {
+  readonly value: ApproachFamilyRegistryV3;
+  readonly ref: ApproachFamilyRegistryRefV3;
+} {
+  const decisions = [...input.decisions].sort((left, right) =>
+    compareText(left.digest, right.digest),
+  );
+  const depthDecisions = [...(input.depthDecisions ?? [])].sort(compareText);
+  const families = [...input.families].sort((left, right) =>
+    compareText(left.id, right.id),
+  );
+  if (
+    decisions.some(
+      (decision) =>
+        decision.targetSnapshotDigest !== input.target.digest ||
+        decision.manifestDigest !== input.manifest.digest,
+    ) ||
+    families.some(
+      (family) =>
+        family.campaignId !== input.campaignId ||
+        family.runId !== input.runId ||
+        canonicalJson(family.target) !== canonicalJson(input.target) ||
+        canonicalJson(family.manifest) !== canonicalJson(input.manifest) ||
+        !decisions.some(
+          (decision) => decision.digest === family.openingDecision.digest,
+        ) ||
+        family.id !==
+          admittedApproachFamilyId({
+            campaignId: input.campaignId,
+            runId: input.runId,
+            targetSnapshotDigest: input.target.digest,
+            manifestDigest: input.manifest.digest,
+            openingDecisionDigest: family.openingDecision.digest,
+            admissionId: family.openingAdmission.id,
+          }),
+    )
+  ) {
+    throw new Error("Approach Family Registry v3 binding mismatch");
+  }
+  if (
+    new Set(decisions.map((decision) => decision.digest)).size !==
+      decisions.length ||
+    new Set(depthDecisions).size !== depthDecisions.length ||
+    new Set(families.map((family) => family.id)).size !== families.length
+  ) {
+    throw new Error("Approach Family Registry v3 contains duplicate entries");
+  }
+  const registry = approachFamilyRegistryV3Schema.parse({
+    kind: "approach-family-registry",
+    schemaVersion: 3,
+    campaignId: input.campaignId,
+    runId: input.runId,
+    target: input.target,
+    manifest: input.manifest,
+    decisions,
+    depthDecisions,
+    families,
+  });
+  return {
+    value: registry,
+    ref: approachFamilyRegistryRefV3Schema.parse({
+      kind: registry.kind,
+      schemaVersion: registry.schemaVersion,
+      campaignId: input.campaignId,
+      runId: input.runId,
+      targetSnapshotDigest: input.target.digest,
+      manifestDigest: input.manifest.digest,
+      digest: sha256Digest(registry),
+      decisions: decisions.length,
+      depthDecisions: depthDecisions.length,
+      families: families.length,
+      maxRound: families.reduce(
+        (maximum, family) => Math.max(maximum, family.round),
+        0,
+      ),
+      states: {
+        active: families.filter((family) => family.state === "active").length,
+        blocked: families.filter((family) => family.state === "blocked").length,
+        exhausted: families.filter((family) => family.state === "exhausted")
+          .length,
+      },
+      pendingValidations: families.reduce(
+        (total, family) => total + family.pendingValidations.length,
+        0,
+      ),
+      validationOutcomes: families.reduce(
+        (total, family) => total + family.validationOutcomes.length,
+        0,
+      ),
+    }),
+  };
+}
+
+export function projectInitialApproachFamilyRegistryV3(
   campaignId: string,
   runId: string,
   value: IterationDecisionV3,
@@ -261,9 +381,7 @@ export function projectApproachFamilyRegistryV3(
         nextAction: admission.nextAction,
       });
     });
-  const registry = approachFamilyRegistryV3Schema.parse({
-    kind: "approach-family-registry",
-    schemaVersion: 3,
+  return projectApproachFamilyRegistryV3({
     campaignId,
     runId,
     target: decision.target,
@@ -272,27 +390,4 @@ export function projectApproachFamilyRegistryV3(
     depthDecisions: [],
     families,
   });
-  return {
-    value: registry,
-    ref: approachFamilyRegistryRefV3Schema.parse({
-      kind: registry.kind,
-      schemaVersion: registry.schemaVersion,
-      campaignId,
-      runId,
-      targetSnapshotDigest: decision.target.digest,
-      manifestDigest: decision.manifest.digest,
-      digest: sha256Digest(registry),
-      decisions: 1,
-      depthDecisions: 0,
-      families: families.length,
-      maxRound: families.length === 0 ? 0 : 1,
-      states: {
-        active: families.length,
-        blocked: 0,
-        exhausted: 0,
-      },
-      pendingValidations: 0,
-      validationOutcomes: 0,
-    }),
-  };
 }

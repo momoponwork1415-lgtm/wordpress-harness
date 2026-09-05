@@ -5,7 +5,15 @@ import type {
   ApproachFamilyRegistryRef,
   SemanticIterationDecisionRef,
 } from "../exploration/semantic-approach-family-registry.js";
-import type { IterationDecisionV2 } from "../exploration/semantic-contracts.js";
+import type {
+  ApproachFamilyRegistryRefV3,
+  ApproachFamilyRegistryV3,
+  SemanticIterationDecisionRefV3,
+} from "../exploration/semantic-approach-family-registry-v3.js";
+import type {
+  IterationDecisionV2,
+  IterationDecisionV3,
+} from "../exploration/semantic-contracts.js";
 import type { ChainSynthesis } from "../exploration/semantic-chain-synthesis.js";
 import type { DepthIterationDecision } from "../exploration/semantic-depth-evaluation.js";
 import type { SemanticDepthWorkQueue } from "../exploration/semantic-depth-work-queue.js";
@@ -102,6 +110,11 @@ export interface ResearchRecord {
     runId: string,
     decision: IterationDecisionV2,
   ): Promise<SemanticIterationDecisionRecordView>;
+  recordSemanticIterationDecisionV3(
+    campaignId: string,
+    runId: string,
+    decision: IterationDecisionV3,
+  ): Promise<SemanticIterationDecisionRecordViewV3>;
   recordSemanticDepthIteration(
     campaignId: string,
     runId: string,
@@ -129,6 +142,10 @@ export interface ResearchRecord {
     campaignId: string,
     runId: string,
   ): Promise<ApproachFamilyRegistryRecordView | undefined>;
+  readApproachFamilyRegistryV3(
+    campaignId: string,
+    runId: string,
+  ): Promise<ApproachFamilyRegistryRecordViewV3 | undefined>;
   recordVerificationStart(
     plan: VerificationPlan,
   ): Promise<RecordVerificationStartResult>;
@@ -228,6 +245,18 @@ export interface SemanticIterationDecisionRecordView {
 export interface ApproachFamilyRegistryRecordView {
   readonly ref: ApproachFamilyRegistryRef;
   readonly value: ApproachFamilyRegistry;
+}
+
+export interface SemanticIterationDecisionRecordViewV3 {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly decision: SemanticIterationDecisionRefV3;
+  readonly registry: ApproachFamilyRegistryRefV3;
+}
+
+export interface ApproachFamilyRegistryRecordViewV3 {
+  readonly ref: ApproachFamilyRegistryRefV3;
+  readonly value: ApproachFamilyRegistryV3;
 }
 
 export interface OpenResearchRecordOptions {
