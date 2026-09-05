@@ -31,9 +31,15 @@ const modelProfile: TargetSelectionModelProfile = {
   family: "opus",
 };
 
-function candidate(id: string): TargetSelectionCandidate {
+function candidate(
+  id: string,
+  origin: TargetSelectionCandidate["origin"] = {
+    kind: "autonomous-observation",
+  },
+): TargetSelectionCandidate {
   return {
     candidateId: id,
+    origin,
     target: {
       pluginIdentity: `wporg:${id}`,
       verifiedVersion: "1.0.0",
@@ -189,12 +195,11 @@ describe("TargetBatchApproval", () => {
             {
               candidateId: "candidate-unbound",
               decision: "approve",
-              source: "autonomous-selection",
-              reason: "accept the oracle-free selection rationale",
+              reason: "accept-autonomous-selection",
             },
           ],
           approvedOrder: ["candidate-unbound"],
-          orderReason: "single Target batch",
+          orderReason: "single-target-batch",
         }),
       ).rejects.toMatchObject({ code: "selection-attempt-unverified" });
     } finally {
@@ -207,7 +212,18 @@ describe("TargetBatchApproval", () => {
     const directory = await mkdtemp(join(tmpdir(), "target-batch-approval-"));
     let currentTime = "2030-09-01T12:00:00.000Z";
     try {
-      const selection = await selectionReceipts(directory);
+      const selection = await selectionReceipts(directory, {
+        candidates: [
+          candidate("candidate-one"),
+          candidate("candidate-two"),
+          candidate("candidate-three", {
+            kind: "operator-nomination",
+            nominatedBy: "human:fixture-operator",
+            nominatedAt: "2030-08-31T23:55:00.000Z",
+            reason: "coverage-balance",
+          }),
+        ],
+      });
       const approval = openTargetBatchApproval({
         storageDirectory: directory,
         clock: () => new Date(currentTime),
@@ -242,28 +258,40 @@ describe("TargetBatchApproval", () => {
           {
             candidateId: "candidate-one",
             decision: "approve",
-            source: "autonomous-selection",
-            reason: "accept the oracle-free selection rationale",
+            reason: "accept-autonomous-selection",
           },
           {
             candidateId: "candidate-two",
             decision: "exclude",
-            source: "autonomous-selection",
-            reason: "defer this candidate to a later batch",
+            reason: "exclude-from-current-batch",
           },
           {
             candidateId: "candidate-three",
             decision: "approve",
-            source: "operator-nominated",
-            reason: "restore a hard-gate-passing candidate outside capacity",
+            reason: "approve-operator-nomination",
           },
         ],
         approvedOrder: ["candidate-three", "candidate-one"],
-        orderReason: "run the operator-nominated Target first",
+        orderReason: "operator-nomination-prioritized",
       };
       const ref = await approval.approve(input);
 
-      await expect(approval.inspect(ref)).resolves.toMatchObject({
+      const approvedBatch = await approval.inspect(ref);
+      expect(
+        approvedBatch.selectionReceipts.find(
+          (receipt) => receipt.candidateId === "candidate-three",
+        ),
+      ).toMatchObject({
+        candidate: {
+          origin: {
+            kind: "operator-nomination",
+            nominatedBy: "human:fixture-operator",
+            nominatedAt: "2030-08-31T23:55:00.000Z",
+            reason: "coverage-balance",
+          },
+        },
+      });
+      expect(approvedBatch).toMatchObject({
         kind: "approved-target-batch",
         schemaVersion: 1,
         batchKey: "september-batch",
@@ -281,7 +309,7 @@ describe("TargetBatchApproval", () => {
         excludedTargets: [
           {
             candidateId: "candidate-two",
-            reason: "defer this candidate to a later batch",
+            reason: "exclude-from-current-batch",
           },
         ],
         operator: {
@@ -317,12 +345,40 @@ describe("TargetBatchApproval", () => {
         } as TargetBatchApprovalRequest),
       ).rejects.toThrow();
 
+      await expect(
+        Reflect.apply(approval.approve, approval, [
+          {
+            ...input,
+            batchKey: "relabeled-nomination-batch",
+            decisions: input.decisions.map((decision) =>
+              decision.candidateId === "candidate-one"
+                ? { ...decision, source: "operator-nominated" }
+                : decision,
+            ),
+          },
+        ]),
+      ).rejects.toThrow("source");
+
+      await expect(
+        Reflect.apply(approval.approve, approval, [
+          {
+            ...input,
+            batchKey: "oracle-reason-batch",
+            decisions: input.decisions.map((decision) =>
+              decision.candidateId === "candidate-one"
+                ? { ...decision, reason: "Prioritize CVE-2099-9999" }
+                : decision,
+            ),
+          },
+        ]),
+      ).rejects.toThrow("reason");
+
       const revisedRef = await approval.approve({
         ...input,
         revision: 2,
         supersedes: ref,
         approvedOrder: ["candidate-one", "candidate-three"],
-        orderReason: "move the autonomous selection back to the front",
+        orderReason: "autonomous-selection-prioritized",
       });
       await expect(approval.inspect(revisedRef)).resolves.toMatchObject({
         revision: 2,
@@ -348,7 +404,12 @@ describe("TargetBatchApproval", () => {
 
   it("does not let an operator nomination bypass a failed Selection hard gate", async () => {
     const directory = await mkdtemp(join(tmpdir(), "target-batch-gate-"));
-    const covered = candidate("candidate-covered");
+    const covered = candidate("candidate-covered", {
+      kind: "operator-nomination",
+      nominatedBy: "human:fixture-operator",
+      nominatedAt: "2030-08-31T23:55:00.000Z",
+      reason: "coverage-balance",
+    });
     try {
       const selection = await selectionReceipts(directory, {
         selectionKey: "covered-selection",
@@ -397,12 +458,11 @@ describe("TargetBatchApproval", () => {
             {
               candidateId: "candidate-covered",
               decision: "approve",
-              source: "operator-nominated",
-              reason: "attempt to override already-covered history",
+              reason: "approve-operator-nomination",
             },
           ],
           approvedOrder: ["candidate-covered"],
-          orderReason: "single nominated candidate",
+          orderReason: "single-target-batch",
         }),
       ).rejects.toMatchObject({ code: "hard-gate-failed" });
     } finally {

@@ -38,6 +38,7 @@ function candidate(
   const suffix = id.replaceAll(/[^a-z0-9]/g, "-");
   return {
     candidateId: id,
+    origin: { kind: "autonomous-observation" },
     target: {
       pluginIdentity: `wporg:${suffix}`,
       verifiedVersion: "1.0.0",

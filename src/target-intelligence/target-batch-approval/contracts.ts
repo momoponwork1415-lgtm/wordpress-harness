@@ -52,9 +52,19 @@ export const targetBatchExecutionWindowSchema = z
 export const targetBatchOperatorDecisionSchema = z.strictObject({
   candidateId: identifierSchema,
   decision: z.enum(["approve", "exclude"]),
-  source: z.enum(["autonomous-selection", "operator-nominated"]),
-  reason: z.string().trim().min(1).max(512),
+  reason: z.enum([
+    "accept-autonomous-selection",
+    "exclude-from-current-batch",
+    "approve-operator-nomination",
+  ]),
 });
+
+export const targetBatchOrderReasonSchema = z.enum([
+  "selection-order-retained",
+  "operator-nomination-prioritized",
+  "autonomous-selection-prioritized",
+  "single-target-batch",
+]);
 
 export const targetBatchApprovalRequestSchema = z.strictObject({
   kind: z.literal("target-batch-approval-request"),
@@ -74,20 +84,20 @@ export const targetBatchApprovalRequestSchema = z.strictObject({
   }),
   decisions: z.array(targetBatchOperatorDecisionSchema).min(1),
   approvedOrder: z.array(identifierSchema).min(1),
-  orderReason: z.string().trim().min(1).max(512),
+  orderReason: targetBatchOrderReasonSchema,
   supersedes: approvedTargetBatchRefSchema.optional(),
 });
 
 const approvedTargetSchema = z.strictObject({
   candidateId: identifierSchema,
   source: z.enum(["autonomous-selection", "operator-nominated"]),
-  reason: z.string().trim().min(1).max(512),
+  reason: targetBatchOperatorDecisionSchema.shape.reason,
   selectionReceiptRef: immutableRefSchema,
 });
 
 const excludedTargetSchema = z.strictObject({
   candidateId: identifierSchema,
-  reason: z.string().trim().min(1).max(512),
+  reason: targetBatchOperatorDecisionSchema.shape.reason,
   selectionReceiptRef: immutableRefSchema,
 });
 
@@ -113,7 +123,7 @@ export const approvedTargetBatchSchema = z.strictObject({
   decisions: z.array(targetBatchOperatorDecisionSchema).min(1),
   approvedTargets: z.array(approvedTargetSchema).min(1),
   excludedTargets: z.array(excludedTargetSchema),
-  orderReason: z.string().trim().min(1).max(512),
+  orderReason: targetBatchOrderReasonSchema,
   supersedes: approvedTargetBatchRefSchema.optional(),
   approvedAt: z.string().datetime({ offset: true }),
 });

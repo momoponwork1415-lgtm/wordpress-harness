@@ -97,6 +97,23 @@ const vulnerabilityHistoryAggregateProjectionSchema = z.strictObject({
   lastPublishedAt: z.string().datetime({ offset: true }).optional(),
 });
 
+export const targetSelectionCandidateOriginSchema = z.discriminatedUnion(
+  "kind",
+  [
+    z.strictObject({ kind: z.literal("autonomous-observation") }),
+    z.strictObject({
+      kind: z.literal("operator-nomination"),
+      nominatedBy: identifierSchema,
+      nominatedAt: z.string().datetime({ offset: true }),
+      reason: z.enum([
+        "coverage-balance",
+        "source-availability",
+        "operator-priority",
+      ]),
+    }),
+  ],
+);
+
 export const targetSelectionResearchHistorySchema = z.discriminatedUnion(
   "status",
   [
@@ -128,6 +145,7 @@ const targetDiversitySchema = z.strictObject({
 
 export const targetSelectionCandidateSchema = z.strictObject({
   candidateId: identifierSchema,
+  origin: targetSelectionCandidateOriginSchema,
   target: targetIdentitySchema,
   targetObservation: targetObservationProjectionSchema,
   selectionFacts: targetSelectionFactsSchema,

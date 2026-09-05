@@ -115,7 +115,10 @@ class FileTargetBatchApproval implements TargetBatchApproval {
       }
       return {
         candidateId,
-        source: decision.source,
+        source:
+          receipt.candidate.origin.kind === "operator-nomination"
+            ? ("operator-nominated" as const)
+            : ("autonomous-selection" as const),
         reason: decision.reason,
         selectionReceiptRef: { id: receipt.id, digest: receipt.digest },
       };
@@ -313,8 +316,28 @@ class FileTargetBatchApproval implements TargetBatchApproval {
         throw new TargetBatchApprovalError("hard-gate-failed");
       }
       if (
-        decision.source === "autonomous-selection" &&
+        receipt.candidate.origin.kind === "autonomous-observation" &&
         receipt.decision !== "selected"
+      ) {
+        throw new TargetBatchApprovalError("approval-invalid");
+      }
+      if (
+        (receipt.candidate.origin.kind === "operator-nomination" &&
+          (decision.reason !== "approve-operator-nomination" ||
+            receipt.candidate.origin.nominatedBy !==
+              request.operator.identity ||
+            Date.parse(receipt.candidate.origin.nominatedAt) >
+              Date.parse(receipt.selectedAt))) ||
+        (receipt.candidate.origin.kind === "autonomous-observation" &&
+          decision.reason !== "accept-autonomous-selection")
+      ) {
+        throw new TargetBatchApprovalError("approval-invalid");
+      }
+    }
+    for (const decision of request.decisions) {
+      if (
+        decision.decision === "exclude" &&
+        decision.reason !== "exclude-from-current-batch"
       ) {
         throw new TargetBatchApprovalError("approval-invalid");
       }
