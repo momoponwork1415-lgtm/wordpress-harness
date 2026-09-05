@@ -44,8 +44,8 @@ node dist/cli.js campaign inspect --database .private/research.sqlite --campaign
 - [Codebase Guide](docs/CODEBASE-GUIDE.md) — 現在の実装状態、Interface、Test、sourceの対応
 - [Development Rules](AGENTS.md) — repositoryで作業するagent / contributor向け規則
 
-公開CVEでの実測は[Experiments](docs/experiments/README.md)、判断理由は[ADR index](docs/adr/README.md)、外部資料の調査証拠は[Research Notes](docs/research/README.md)を入口にします。
+判断理由は[ADR index](docs/adr/README.md)を参照します。公開CVEでの実測や外部実装の比較証拠は、通常の読み順から外した[Knowledge](docs/knowledge/)に置きます。
 
 ## Scope
 
-現在のResearch対象はWordPress pluginsです。最初のproduct goalは、手動投入した最新TargetのProspective CampaignからHuman Verification済みFindingまでです。Target Intelligenceによる自動選定、自動submission、vendor communication、patch generation、dashboardは後段に置きます。外部行動はHuman Verificationと分離し、案件ごとの明示承認なしに行いません。能力の拡張順は[Roadmap](docs/ROADMAP.md)を参照してください。
+現在のResearch対象はWordPress pluginsです。最初のproduct goalは、手動投入した最新TargetのProspective CampaignからHuman Verification済みFindingまでです。Target Intelligenceによる自動選定、自動submission、vendor communication、patch generation、dashboardは後段に置きます。外部行動はHuman Verificationと分離し、案件ごとの明示承認なしに行いません。能力の拡張順は[Harness Architecture](docs/ARCHITECTURE.md)を参照してください。

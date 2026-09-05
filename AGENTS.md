@@ -60,8 +60,8 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 - 現在の実装状態、source path、Behavior Test対応は`docs/CODEBASE-GUIDE.md`だけへ置く。
 - Module固有のInterface、不変条件、failure semanticsはowning Seamへ置く。
 - Architecture Viewは理解用の図に限定し、Seamの詳細を複製しない。
-- 実Targetの公開可能な実測は`docs/experiments/`へ置く。
-- 外部資料の調査noteは、現在の設計・評価で再利用するものだけ`docs/research/`へ残す。
+- 実Targetの公開可能な実測と、現在の設計・評価で再利用する外部資料の調査noteは`docs/knowledge/`へ置き、通常のReading pathから外す。
+- Knowledgeは設計の正本にせず、採用した結論をArchitecture、Research Design、owning Seam、ADRのいずれかへ残す。
 - 完了計画、旧設計、過去snapshotを保存用Markdownとして残さない。Git履歴を使う。
 - 新規docを作る前に、既存Seam、Behavior Test、Issueのどれかで足りないか確認する。
 

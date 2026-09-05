@@ -6,7 +6,6 @@
 
 - [ADR 0001 — 10動詞をcontrol propertyにする](0001-ten-verbs-as-control-properties.md)
 - [ADR 0003 — Discoveryへ脆弱性oracleを渡さない](0003-do-not-give-discovery-a-vulnerability-oracle.md)
-- [ADR 0015 — Discoveryをhigh recallに保つ](0015-keep-discovery-high-recall.md)
 - [ADR 0112 — Analysis Unitを探索境界にしない](0112-treat-analysis-units-as-seeds-for-bounded-source-retrieval.md)
 - [ADR 0113 — Evidence Shell内でFinderの方法を自由にする](0113-keep-finder-methods-free-behind-an-evidence-shell.md)
 - [ADR 0114 — BreadthとDepthのpolicyを分ける](0114-separate-breadth-and-depth-campaign-policies.md)
@@ -25,6 +24,7 @@
 
 ## Technology and system shape
 
+- [ADR 0029 — Prompt Setをversioned artifactとして扱う](0029-render-one-versioned-prompt-set.md)
 - [ADR 0054 — CLIをthin adapterにする](0054-keep-the-cli-as-a-thin-adapter.md)
 - [ADR 0055 — coreをstrict TypeScriptで実装する](0055-use-strict-typescript-for-the-core.md)
 - [ADR 0056 — LedgerをSQLite、evidenceをCASへ置く](0056-store-the-ledger-in-sqlite-and-evidence-in-a-cas.md)
@@ -32,10 +32,5 @@
 - [ADR 0084 — modular monolithを使う](0084-use-a-modular-monolith.md)
 - [ADR 0104 — 公式Model Transportだけを受理する](0104-admit-only-official-model-transports.md)
 - [ADR 0105 — Harness所有toolだけをworkerへ公開する](0105-expose-only-harness-owned-attempt-tools.md)
-
-## Legacy traceability still in use
-
-- [ADR 0004 — legacy repositoryは移植せず設計意図だけ採る](0004-mine-the-legacy-repository-do-not-port-it.md)
-- [ADR 0029 — Prompt Setをversioned artifactとして扱う](0029-render-one-versioned-prompt-set.md)
 
 旧Verification artifactのread-only replayと任意Human Verification Assistantの現行contractは[Legacy Verification compatibility Seam](../design/verification-seam.md)を正本とする。旧Finding gateや過去のisolation decisionを個別ADRとして現役docsへ残さない。

@@ -31,7 +31,7 @@ sink、CWE、Surface Map nodeの網羅率は補助信号であり、Discoveryの
 | Prioritize（優先する） | impact、到達可能性、semantic novelty、未解決frontier、検証費用から次の有限workを選ぶ |
 | Iterate（高速反復する） | Depth Admission後はwaveごとの証拠を統合・批判し、具体的missing linkをfresh runへ返す |
 
-10動詞は10段pipelineでも10個のmoduleでもない。全Campaignと各反復で観測するcontrol propertyである。詳細は[ADR 0001](adr/0001-ten-verbs-as-control-properties.md)を参照する。
+10動詞は10段pipelineでも10個のmoduleでもない。全Campaignと各反復で観測するcontrol propertyである。
 
 ## 2. Anthropicベストプラクティスの採用方法
 
@@ -101,3 +101,15 @@ BreadthはWordfence PRISMが示すbreadth-first運行への対応であり、sin
 - positiveだけでなくnegative、blocked、unknown、partial Fragmentを残せるか。
 - cost削減を目的とする場合、同じoracle-separated cohortでrecallを落とさないablationになっているか。
 - 実Targetで短く試し、失敗をtestまたは次の有限設計変更へ戻せるか。
+
+## 6. Reference baseline
+
+Harness全体の主要referenceは次の三件である。
+
+1. [Google Cloud / Mandiant — Staying Ahead of Adversarial AI Through Agentic Source Code Review](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review)
+2. [Anthropic — Defending Code Reference Harness: Best Practices](https://github.com/anthropics/defending-code-reference-harness/blob/main/docs/best-practices.md)
+3. [Wordfence — Wordfence Argus: Moving Beyond Human Research Capability](https://www.wordfence.com/blog/2026/08/wordfence-argus-moving-beyond-human-research-capability/)
+
+darooの公開portfolioは、RCE、authorization、identity、file、deserialization、SQL、Stored XSS等のmechanism breadthと成果水準を確認するResearcher Referenceに限って使う。本人の非公開methodを推測せず、CVE、affected version、patch narrative、payloadをprospective workerへ渡さない。
+
+AnthropicとCodex Securityのprogress、debug log、recovery、cost実装の比較は[reference harness observability knowledge](knowledge/reference-harness-observability.md)にだけ残す。採用済み結論はこの文書またはowning Seamを正本とし、Knowledgeを設計書として読ませない。

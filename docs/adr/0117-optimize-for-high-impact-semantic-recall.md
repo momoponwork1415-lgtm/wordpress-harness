@@ -1,5 +1,6 @@
 ---
 status: accepted
+supersedes: 0015
 ---
 
 # Optimize for high-impact semantic recall before cost
