@@ -421,9 +421,11 @@ function evaluationInput(
 
 describe("Exploration fresh Root Evaluation", () => {
   it("admits Validation only from a complete Wave evaluation and binds it to an explicit shared Approach Family", async () => {
+    const observedPlans: ModelAttemptPlan[] = [];
     const modelExecution: ModelExecution = {
-      run: async (plan) =>
-        completedResult(plan, {
+      run: async (plan) => {
+        observedPlans.push(plan);
+        return completedResult(plan, {
           kind: "root-evaluator-output",
           schemaVersion: 2,
           approachFamilies: [
@@ -481,7 +483,8 @@ describe("Exploration fresh Root Evaluation", () => {
             },
           ],
           campaignDisposition: "continue",
-        }),
+        });
+      },
     };
 
     const decision = await semanticExploration(modelExecution).decide({
@@ -538,6 +541,15 @@ describe("Exploration fresh Root Evaluation", () => {
     expect(validationAction.approachFamily.id).toBe(family.id);
     expect(validationAction.approachFamily.digest).toBe(sha256Digest(family));
     expect(depthAction.approachFamily).toEqual(validationAction.approachFamily);
+    expect(observedPlans[0]?.prompt).toContain(
+      "Cover every supplied subject digest with at least one action; do not omit any subject.",
+    );
+    expect(observedPlans[0]?.prompt).toContain(
+      "Do not declare an Approach Family unless at least one admit-validation or admit-depth action references its key.",
+    );
+    expect(observedPlans[0]?.prompt).toContain(
+      "Every schedule-work action must include at least one subject owned by a declared Family.",
+    );
   });
 
   it("returns typed incomplete when scheduled Depth work is not bound to a proposed Family", async () => {

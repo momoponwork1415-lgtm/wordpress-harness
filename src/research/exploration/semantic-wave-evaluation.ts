@@ -466,7 +466,14 @@ function rootEvaluatorAttempt(
     prompt: [
       "Evaluate every semantic research subject and assign each at least one explicit action.",
       input.schemaVersion === 3
-        ? "Validation admission, Depth Admission, next work, and retain are nonexclusive. Declare every Validation or Depth admission under one explicit Approach Family; reuse its key when both actions pursue the same mechanism."
+        ? [
+            "Validation admission, Depth Admission, next work, and retain are nonexclusive.",
+            "Cover every supplied subject digest with at least one action; do not omit any subject.",
+            "Declare every Validation or Depth admission under one explicit Approach Family; reuse its key when both actions pursue the same mechanism.",
+            "Do not declare an Approach Family unless at least one admit-validation or admit-depth action references its key.",
+            "Every admission action must use only subjects owned by its referenced Family; admit-validation must include its hypothesisDigest among those action subjects.",
+            "Every schedule-work action must include at least one subject owned by a declared Family.",
+          ].join(" ")
         : "Verification, Depth Admission, next work, and retain are nonexclusive.",
       "Do not use support count, confidence, arrival order, vulnerability class, or sink names as acceptance filters.",
       "Do not produce a Finding or Disproved verdict.",
