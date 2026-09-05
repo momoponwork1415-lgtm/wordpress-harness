@@ -24,6 +24,18 @@ _Avoid_: Signal、Score input
 Finding前のTarget Candidateについて、現在の外部programmeで狙える対象範囲を`broad`、`high-impact-only`、`research-only`等へ粗く分類した選定補助。脆弱性class、成立条件、報奨額を予測せず、具体的なReward Estimateとして扱わない。
 _Avoid_: Expected payout、Reward Estimate、Finding severity
 
+**Programme Identity**:
+scope、eligibility、reward policy、competition ruleを一つのProgramme Eligibility Snapshotへ結び付ける外部programmeの安定identity。programme名の表示文字列、個別Findingの提出先またはProgramme Assignmentではない。
+_Avoid_: Programme name、Submission destination、Programme Assignment
+
+**Programme Eligibility Snapshot**:
+一つのProgramme Identityについてrequired sourceのURL、取得時刻、content digest、parser versionと、asset、vulnerability class、attacker role、active-install threshold、researcher tier、除外条件を固定したversionedなpolicy観測。Target選定batch開始時とSubmission Staging前にfreshnessを検査し、古い観測をcurrent扱いしない。programme ruleはFindingのtechnical validityを変更せず、CVE、advisory、Findingまたはknown routeを含めない。
+_Avoid_: Current policy、Finding verdict、Target Intake Packet
+
+**Finding-only Reward Estimate Input**:
+Programme Eligibility Snapshotのうち、成立済みFindingについて外部行動を検討する時だけreward estimateへ使えるcurrencyとpolicy factor。Finding前のProgramme Opportunity BandまたはSelection Factとして使わない。
+_Avoid_: Programme Opportunity Band、Expected Finding value、Selection score
+
 **Oracle Fact**:
 既知の脆弱version、patch、CVE、advisory narrative等、prospective Researchへ渡すと発見能力の評価を汚染する情報。
 _Avoid_: Selection Fact、Sensitive metadata

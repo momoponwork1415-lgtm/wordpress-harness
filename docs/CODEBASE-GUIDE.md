@@ -32,6 +32,16 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 
 ## Target Intelligence
 
+### Programme Intelligence
+
+**Interface:** `ProgrammeIntelligence.refresh / inspect`
+
+- **Purpose:** 外部programmeのscope、eligibility、reward policy、competition ruleを、Programme Identityとrequired source provenanceへ結び付けたProgramme Eligibility Snapshotにする。
+- **Invariants:** source URL、retrievedAt、raw content digest、parser version、freshness policyを固定する。Programme Opportunity BandとFinding後専用のreward estimate inputを分離し、programme ruleでFindingのtechnical validityを変更しない。Oracle FactをResearchまたはTarget Intake Packetへ渡さない。
+- **Failures:** required source間の不一致は`policy-conflict`、必須fieldまたはnormalized contract不成立は`parse-failed`、refresh失敗と期限切れsnapshotは`stale`。Target選定batchとSubmission Stagingはそれぞれcurrent freshnessを要求する。
+- **Status:** versioned core contract、content-addressed snapshot、sanitized fixture Adapterの共通Behavior Testを実装。Patchstack / Wordfence固有の取得・parse Adapterは#99 / #100で扱う。
+- **Code / Tests:** [programme-intelligence](../src/target-intelligence/programme-intelligence) · [Behavior Test](../tests/target-intelligence/programme-intelligence.test.ts)
+
 ### Target Research History
 
 **Interface:** `TargetResearchHistory.admit / record`

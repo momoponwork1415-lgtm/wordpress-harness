@@ -1,0 +1,30 @@
+export {
+  normalizedProgrammePolicySchema,
+  programmeEligibilityFreshnessPolicySchema,
+  programmeEligibilityInspectionRequestSchema,
+  programmeEligibilitySnapshotRefSchema,
+  programmeEligibilitySnapshotSchema,
+  programmeIntelligenceRefreshRequestSchema,
+  programmePolicySourceDescriptorSchema,
+  programmePolicySourceSnapshotSchema,
+} from "./contracts.js";
+export type {
+  CurrentProgrammeEligibilitySnapshot,
+  NormalizedProgrammePolicy,
+  OpenProgrammeIntelligenceOptions,
+  ProgrammeEligibilityFreshnessPolicy,
+  ProgrammeEligibilityInspectionRequest,
+  ProgrammeEligibilityParseFailed,
+  ProgrammeEligibilityPolicyConflict,
+  ProgrammeEligibilityRefreshFailed,
+  ProgrammeEligibilityResult,
+  ProgrammeEligibilitySnapshot,
+  ProgrammeEligibilitySnapshotExpired,
+  ProgrammeEligibilitySnapshotRef,
+  ProgrammeIntelligence,
+  ProgrammeIntelligenceRefreshRequest,
+  ProgrammePolicySourceAdapter,
+  ProgrammePolicySourceDescriptor,
+  ProgrammePolicySourceSnapshot,
+} from "./contracts.js";
+export { openProgrammeIntelligence } from "./programme-intelligence.js";
