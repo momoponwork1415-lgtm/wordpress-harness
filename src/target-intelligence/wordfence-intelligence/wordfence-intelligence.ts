@@ -32,6 +32,7 @@ import {
   vulnerabilityHistoryAggregateRequestSchema,
   vulnerabilityHistoryAggregateSchema,
   wordfenceIntelligenceInspectionRequestSchema,
+  wordfenceLegacyStorageAdoptionSchema,
   wordfenceIntelligenceFailureSchema,
   wordfenceIntelligenceRefreshRequestSchema,
   wordfenceIntelligenceRefreshAttemptSchema,
@@ -618,6 +619,18 @@ function requireHostPrivateDirectoryMetadata(metadata: Stats): void {
   }
 }
 
+async function requireHostPrivateDirectorySelection(
+  path: string,
+): Promise<void> {
+  if (!isAbsolute(path)) {
+    throw new HostPrivateStorageError();
+  }
+  requireHostPrivateDirectoryMetadata(await lstat(path));
+  if ((await realpath(path)) !== resolve(path)) {
+    throw new HostPrivateStorageError();
+  }
+}
+
 async function requirePinnedHostPrivateDirectory(
   directory: PinnedHostPrivateDirectory,
 ): Promise<void> {
@@ -655,9 +668,7 @@ async function openPinnedHostPrivateDirectory(
     throw new HostPrivateStorageError();
   }
   const normalizedPath = resolve(path);
-  if ((await realpath(path)) !== normalizedPath) {
-    throw new HostPrivateStorageError();
-  }
+  await requireHostPrivateDirectorySelection(path);
   const handle = await open(
     path,
     fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW,
@@ -680,9 +691,20 @@ async function openPinnedHostPrivateDirectory(
 }
 
 async function requireHostPrivateDirectory(path: string): Promise<void> {
-  await createDirectoryPathWithoutSymlinks(path);
   const directory = await openPinnedHostPrivateDirectory(path);
   await directory.handle.close();
+}
+
+async function selectedPathExists(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if (hasErrorCode(error, "ENOENT")) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 async function openHostPrivateRegularFile(path: string, create: boolean) {
@@ -736,6 +758,26 @@ async function secureHostPrivateRegularFile(
   }
 }
 
+async function requireOwnedRegularFile(path: string): Promise<void> {
+  const metadata = await lstat(path);
+  if (!metadata.isFile() || !isOwnedByCurrentUser(metadata.uid)) {
+    throw new HostPrivateStorageError();
+  }
+}
+
+async function requireOwnedRealDirectory(path: string): Promise<void> {
+  if (!isAbsolute(path)) {
+    throw new HostPrivateStorageError();
+  }
+  const metadata = await lstat(path);
+  if (!metadata.isDirectory() || !isOwnedByCurrentUser(metadata.uid)) {
+    throw new HostPrivateStorageError();
+  }
+  if ((await realpath(path)) !== resolve(path)) {
+    throw new HostPrivateStorageError();
+  }
+}
+
 async function prepareHostPrivateSqliteStorage(path: string): Promise<void> {
   if (!isAbsolute(path)) {
     throw new HostPrivateStorageError();
@@ -744,16 +786,29 @@ async function prepareHostPrivateSqliteStorage(path: string): Promise<void> {
   await secureHostPrivateRegularFile(path, true);
 }
 
-async function secureHostPrivateSqliteFiles(path: string): Promise<void> {
-  await secureHostPrivateRegularFile(path, false);
-  await secureHostPrivateRegularFile(`${path}-wal`, false);
-  await secureHostPrivateRegularFile(`${path}-shm`, false);
+async function secureCreatedSqliteSidecars(
+  path: string,
+  prepared: ProductionIndexIdentity,
+): Promise<void> {
+  if (prepared.wal === undefined) {
+    await secureHostPrivateRegularFile(`${path}-wal`, false);
+  }
+  if (prepared.shm === undefined) {
+    await secureHostPrivateRegularFile(`${path}-shm`, false);
+  }
 }
 
 async function hostPrivateRegularFileIdentity(
   path: string,
   optional = false,
 ): Promise<HostPrivateFileIdentity | undefined> {
+  const selectedMetadata = await hostPrivateRegularFileSelection(
+    path,
+    optional,
+  );
+  if (selectedMetadata === undefined) {
+    return undefined;
+  }
   let handle: FileHandle;
   try {
     handle = await open(
@@ -774,7 +829,9 @@ async function hostPrivateRegularFileIdentity(
     if (
       !metadata.isFile() ||
       !isOwnedByCurrentUser(metadata.uid) ||
-      (metadata.mode & 0o777) !== 0o600
+      (metadata.mode & 0o777) !== 0o600 ||
+      metadata.dev !== selectedMetadata.dev ||
+      metadata.ino !== selectedMetadata.ino
     ) {
       throw new HostPrivateStorageError();
     }
@@ -782,6 +839,29 @@ async function hostPrivateRegularFileIdentity(
   } finally {
     await handle.close();
   }
+}
+
+async function hostPrivateRegularFileSelection(
+  path: string,
+  optional = false,
+): Promise<Stats | undefined> {
+  let metadata: Stats;
+  try {
+    metadata = await lstat(path);
+  } catch (error) {
+    if (optional && hasErrorCode(error, "ENOENT")) {
+      return undefined;
+    }
+    throw error;
+  }
+  if (
+    !metadata.isFile() ||
+    !isOwnedByCurrentUser(metadata.uid) ||
+    (metadata.mode & 0o777) !== 0o600
+  ) {
+    throw new HostPrivateStorageError();
+  }
+  return metadata;
 }
 
 function sameFileIdentity(
@@ -860,6 +940,55 @@ async function productionIndexIdentity(
   } finally {
     await indexDirectory.handle.close();
   }
+}
+
+async function prepareProductionStorage(
+  databasePath: string,
+  artifactDirectory: string,
+  adoptLegacyStorage: boolean,
+): Promise<ProductionIndexIdentity> {
+  const rawDirectory = join(artifactDirectory, "wordfence-intelligence-v3");
+  const databaseExists = await selectedPathExists(databasePath);
+  const walExists = await selectedPathExists(`${databasePath}-wal`);
+  const shmExists = await selectedPathExists(`${databasePath}-shm`);
+  const rawDirectoryExists = await selectedPathExists(rawDirectory);
+
+  if (!databaseExists) {
+    if (walExists || shmExists) {
+      throw new HostPrivateStorageError();
+    }
+    if (rawDirectoryExists) {
+      await requireHostPrivateDirectorySelection(rawDirectory);
+    }
+    await prepareHostPrivateSqliteStorage(databasePath);
+    if (rawDirectoryExists) {
+      await requireHostPrivateDirectory(rawDirectory);
+    } else {
+      await secureHostPrivateDirectory(rawDirectory);
+    }
+    return productionIndexIdentity(databasePath, false);
+  }
+
+  if (adoptLegacyStorage) {
+    if (walExists || shmExists || rawDirectoryExists) {
+      throw new HostPrivateStorageError();
+    }
+    await requireOwnedRealDirectory(dirname(databasePath));
+    await requireOwnedRegularFile(databasePath);
+    await prepareHostPrivateSqliteStorage(databasePath);
+    await secureHostPrivateDirectory(rawDirectory);
+    return productionIndexIdentity(databasePath, false);
+  }
+
+  if (!rawDirectoryExists) {
+    throw new HostPrivateStorageError();
+  }
+  await requireHostPrivateDirectorySelection(dirname(databasePath));
+  await hostPrivateRegularFileSelection(databasePath);
+  await hostPrivateRegularFileSelection(`${databasePath}-wal`, true);
+  await hostPrivateRegularFileSelection(`${databasePath}-shm`, true);
+  await requireHostPrivateDirectorySelection(rawDirectory);
+  return productionIndexIdentity(databasePath, false);
 }
 
 async function requireProductionStorage(
@@ -2571,12 +2700,24 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       return;
     }
     const activeSequence = attempts.at(-1)?.sequence ?? 0;
+    const newerAttempts = attempts.filter(
+      (attempt) => attempt.sequence > order.latest_completed_sequence,
+    );
     if (
       order.publication_sequence > order.latest_completed_sequence ||
       order.publication_sequence > allocatedSequence ||
       order.latest_completed_sequence > allocatedSequence ||
       allocatedSequence !==
-        Math.max(order.latest_completed_sequence, activeSequence)
+        Math.max(order.latest_completed_sequence, activeSequence) ||
+      attempts.some(
+        (attempt) => attempt.sequence === order.latest_completed_sequence,
+      ) ||
+      newerAttempts.length !==
+        allocatedSequence - order.latest_completed_sequence ||
+      newerAttempts.some(
+        (attempt, index) =>
+          attempt.sequence !== order.latest_completed_sequence + index + 1,
+      )
     ) {
       throw new SnapshotConflictError();
     }
@@ -2821,6 +2962,12 @@ async function usePinnedProductionDirectory(
 export function openWordfenceIntelligenceRefresh(
   options: OpenWordfenceIntelligenceRefreshOptions,
 ): WordfenceIntelligenceRefresh {
+  const legacyStorageAdoption =
+    options.legacyStorageAdoption === undefined
+      ? undefined
+      : wordfenceLegacyStorageAdoptionSchema.parse(
+          options.legacyStorageAdoption,
+        );
   const configuredMaximumFeedBytes = maximumFeedBytes(options.maximumFeedBytes);
   const adapter = createWordfenceIntelligenceV3FetchAdapter({
     credentialBroker: options.credentialBroker,
@@ -2855,17 +3002,10 @@ export function openWordfenceIntelligenceRefresh(
         throw new HostPrivateStorageError();
       }
       if (intelligence === undefined) {
-        await prepareHostPrivateSqliteStorage(intelligenceOptions.databasePath);
-        await secureHostPrivateSqliteFiles(intelligenceOptions.databasePath);
-        const preparedIndexIdentity = await productionIndexIdentity(
+        const preparedIndexIdentity = await prepareProductionStorage(
           intelligenceOptions.databasePath,
-          false,
-        );
-        await requireHostPrivateDirectory(
-          join(
-            intelligenceOptions.artifactDirectory,
-            "wordfence-intelligence-v3",
-          ),
+          intelligenceOptions.artifactDirectory,
+          legacyStorageAdoption !== undefined,
         );
         const candidate = new SqliteWordfenceIntelligence(
           intelligenceOptions,
@@ -2873,7 +3013,10 @@ export function openWordfenceIntelligenceRefresh(
         );
         let openedIndexIdentity: ProductionIndexIdentity;
         try {
-          await secureHostPrivateSqliteFiles(intelligenceOptions.databasePath);
+          await secureCreatedSqliteSidecars(
+            intelligenceOptions.databasePath,
+            preparedIndexIdentity,
+          );
           openedIndexIdentity = await productionIndexIdentity(
             intelligenceOptions.databasePath,
             true,
