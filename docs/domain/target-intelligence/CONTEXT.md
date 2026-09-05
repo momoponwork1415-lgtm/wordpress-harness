@@ -76,6 +76,14 @@ _Avoid_: Out-of-scope Target、False positive、Rejected Candidate
 Target Candidateを採用、保留、拒否した結論を、使用したSelection Fact、policy version、理由に結び付けた記録。採用結論はCampaign開始命令ではなく、人間がTarget AcquisitionとResearch開始を承認するための入力である。Researchへ渡す場合は採用結論、policy version、oracle-freeな理由だけを公開する。
 _Avoid_: Score、Approval
 
+**Selection Attempt**:
+一つのCandidate Pool、Selection Policy、Opus Model Profile、revision、model結果または`selection-pending`をdigest固定した実行記録。model実行前のintentからdurable化し、同じinputのreplayでmodelを再起動せず、明示的な再選定だけを新revisionにする。
+_Avoid_: Candidate Batch、Model transcript、Campaign run
+
+**Research Value Band**:
+許可されたSelection FactだけからTarget Candidateのprospectiveな調査価値を`high / medium / low`へ粗く比較するmodel出力。脆弱性の存在、class、sinkまたは報奨額を予測せず、Programme Opportunity Bandは同じResearch Value Band内のtie-breakerにだけ使う。
+_Avoid_: Vulnerability likelihood、Severity prediction、Expected payout
+
 **Candidate Pool**:
 Programmeごとに分割せず、少なくとも一つのProgrammeで提出可能性があるTarget CandidateとResearch-only Candidateをまとめた選定母集団。同じTargetを提出先ごとに重複Researchせず、Programme AssignmentはFinding後にHuman OSが決める。
 _Avoid_: Programme queue、Campaign list、Duplicate Target set

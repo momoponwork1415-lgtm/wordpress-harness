@@ -8,7 +8,7 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 
 | Product stage | Status | Remaining |
 | --- | --- | --- |
-| Target Acquisition / Intake | local directoryとWordPress.org archiveを実装済み | premium acquisition、selection / ranking |
+| Target Acquisition / Intake | local directory、WordPress.org archive、selection / rankingを実装済み | premium acquisition |
 | Vulnerability Intelligence | Wordfence Intelligence v3のlocal indexとoracle-separated projectionを実装済み | Patchstack source取得方式の決定 |
 | Semantic Research | v6 initial Wave、Decision@3、conditional Depth実行まで実装済み | Missing-link / Closure |
 | Source-only Validation | v6 single fresh Attemptと4 dispositionを実装済み | Frontier Gapの次Wave |
@@ -82,6 +82,16 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 - **Failures:** admission判断は`new / resume / already-covered / follow-up-required / provenance-conflict`。不正contract、Campaign bindingまたはlifecycle順序の不一致、durable write failureだけをerrorにする。
 - **Status:** Target Intelligence専用SQLite eventからCampaign viewをreplayする。Development Cohort、calibration、意図的な独立反復はkind、run ordinal、理由を固定して許可する。
 - **Code / Tests:** [research-history](../src/target-intelligence/research-history) · [Behavior Test](../tests/target-intelligence/target-research-history.test.ts)
+
+### Target Selection
+
+**Interface:** `TargetSelection.select`
+
+- **Purpose:** Target Observation、Programme Eligibility、Disclosure Route、弱いVulnerability History Aggregate、Target Research Historyを一つのprogramme-neutral Candidate Poolとして評価し、有限のSelection Receipt集合を作る。
+- **Invariants:** provenance、取得可能性、Target identity、source freshness、Research Historyをdeterministic hard gateにする。Opus Model Profileへはactive installs、更新時刻、公開integration、粗いsource scale、Disclosure Route、diversityだけを渡す。Vulnerability History AggregateはAttempt / Receiptへbindするがmodel inputにせず、単独で採否を変えない。Research Value Bandを先に比較し、同BandでだけProgramme Opportunity Bandをtie-breakerに使い、vendor / family / use case / size / authority / integrationのversioned capで多様性を保つ。ReceiptはCampaignを開始しない。
+- **Failures:** provider failure、budget exhaustion、invalid model result、model実行前にdurable化したAttemptの中断は、空Batchではなく`selection-pending`として保持する。同じselection key / revisionの異なるinputはconflict、同じinputはmodelを再実行せずreplayし、明示的な新revisionだけを再選定する。
+- **Status:** content-bound Attempt / Receipt、Opus-only profile、stable projection、hard gate、active resume / already-covered / Incomplete follow-up、Research-only保持、diversity、restart / failure replayを実装。
+- **Code / Tests:** [target-selection](../src/target-intelligence/target-selection) · [Behavior Test](../tests/target-intelligence/target-selection.test.ts)
 
 ### Wordfence Vulnerability Intelligence
 
