@@ -155,6 +155,21 @@ export function depthApproachFamilyId(input: {
   return sha256Digest({ kind: "approach-family", ...input });
 }
 
+export function admittedApproachFamilyId(input: {
+  readonly campaignId: string;
+  readonly runId: string;
+  readonly targetSnapshotDigest: string;
+  readonly manifestDigest: string;
+  readonly openingDecisionDigest: string;
+  readonly admissionId: string;
+}): string {
+  return sha256Digest({
+    kind: "approach-family",
+    schemaVersion: 3,
+    ...input,
+  });
+}
+
 function sortedEvidence(
   evidence: readonly IterationDecisionV2["evaluationSubjects"][number][],
 ) {

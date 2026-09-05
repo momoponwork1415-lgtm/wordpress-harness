@@ -40,6 +40,7 @@ export {
   approachFamilyRegistryRefSchema,
   approachFamilyRegistrySchema,
   approachFamilySchema,
+  admittedApproachFamilyId,
   depthApproachFamilyId,
   projectApproachFamilyRegistry,
   projectInitialApproachFamilies,

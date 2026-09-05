@@ -118,6 +118,7 @@
 | Root Evaluation | 根本評価。Wave barrierまたはDepth Critique後に型付き成果物をfresh contextで評価し、非排他的なIteration Decisionを作るmodel-owned判断 |
 | Depth Admission | 深掘り昇格判断。source-boundなstrong mechanismとhigh-impactへ伸びる具体的frontierへmulti-waveの追加予算を投資する判断 |
 | Approach Family | 探索系統。同じcore security assumptionとstate/capability transition mechanismを追うresearch lineage |
+| Approach Family Admission | 探索系統の開始宣言。Root Evaluationがmechanism、根拠subject、falsifier、次actionをまとめ、同じDecisionのValidation / Depth actionへ共有する不変artifact |
 | Approach Family Registry | 探索系統台帳。Campaign内のFamily、evidence、round、状態、blocked理由、Reopen Conditionを再構築したview |
 | Reopen Condition | 再開条件。blocked/exhausted Familyをactiveへ戻せる具体的な新fact、evidence、次action |
 | Depth Campaign | 深掘りキャンペーン。Synthesis、Critic、missing-link Waveを反復する条件付き運行 |

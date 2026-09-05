@@ -59,6 +59,7 @@ const validationCandidateIdentityFields = {
     "subscriber",
     "contributor",
     "customer",
+    "unresolved",
   ]),
   brokenSecurityProperty: boundedTextSchema,
   causalRoute: z.array(validationRouteStepSchema).min(1).max(32),

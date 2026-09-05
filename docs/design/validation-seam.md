@@ -24,7 +24,7 @@ callerはValidator数、Attempt順、第三Attemptの起動、Synthesisの入力
 
 Validation CandidateはWave BarrierとRoot Evaluationがdurableになった後だけ受理する。途中checkpointはcandidate材料として保持するが、単独でValidationを開始しない。Root Evaluation failureまたは未処遇subjectがあればcandidateを黙示的に捨てずResearchをIncompleteにする。
 
-exact duplicate identityはTarget Snapshot、Manifest、attacker premise、broken security property、ordered causal route、source anchorから決定的に作る。表現、severity、Finder identity、支持数、到着順をidentityに使わない。exactでないsemantic similarityは自動collapseせず、Human Review Packetのmechanism groupingで保持する。
+exact duplicate identityはTarget Snapshot、Manifest、attacker premise、broken security property、ordered causal route、source anchorから決定的に作る。ordered routeはRoot Evaluationがadmitted Hypothesisのsource anchorをstepへ割り当て、Harnessは全anchorの再利用、連続ordinal、Manifest / Hypothesis bindingだけを検査する。Harnessがcausal claimを合成せず、Root Evaluationが参照していないanchorを追加または黙示的に落とさない。表現、severity、Finder identity、支持数、到着順をidentityに使わない。exactでないsemantic similarityは自動collapseせず、Human Review Packetのmechanism groupingで保持する。
 
 ## Validation Threat Context
 

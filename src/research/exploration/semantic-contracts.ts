@@ -476,6 +476,39 @@ const approachFamilyProposalSchema = z.strictObject({
   nextAction: boundedTextSchema,
 });
 
+const rootValidationSourceAnchorSchema = z
+  .strictObject({
+    path: z.string().min(1).max(4096),
+    fileDigest: digestSchema,
+    startLine: z.number().int().positive(),
+    endLine: z.number().int().positive(),
+  })
+  .refine((anchor) => anchor.endLine >= anchor.startLine, {
+    message: "Source evidence endLine must not precede startLine",
+  });
+
+const rootValidationRouteStepSchema = z.strictObject({
+  ordinal: z.number().int().positive(),
+  claim: boundedTextSchema,
+  evidence: z.array(rootValidationSourceAnchorSchema).min(1).max(32),
+});
+
+const rootValidationCausalRouteSchema = z
+  .array(rootValidationRouteStepSchema)
+  .min(1)
+  .max(32)
+  .superRefine((steps, context) => {
+    steps.forEach((step, index) => {
+      if (step.ordinal !== index + 1) {
+        context.addIssue({
+          code: "custom",
+          path: [index, "ordinal"],
+          message: "Validation route ordinals must be contiguous",
+        });
+      }
+    });
+  });
+
 export const rootEvaluatorOutputV2Schema = z.strictObject({
   kind: z.literal("root-evaluator-output"),
   schemaVersion: z.literal(2),
@@ -489,6 +522,8 @@ export const rootEvaluatorOutputV2Schema = z.strictObject({
           subjectDigests: subjectDigestListSchema,
           admission: z.strictObject({
             hypothesisDigest: digestSchema,
+            brokenSecurityProperty: boundedTextSchema,
+            causalRoute: rootValidationCausalRouteSchema,
             reason: boundedTextSchema,
           }),
         }),
@@ -651,6 +686,8 @@ export const iterationActionV3Schema = z.discriminatedUnion("kind", [
       schemaVersion: z.literal(1),
       ...actionProvenanceFields,
       hypothesis: sourceBoundHypothesisArtifactRefSchema,
+      brokenSecurityProperty: boundedTextSchema,
+      causalRoute: rootValidationCausalRouteSchema,
       reason: boundedTextSchema,
     }),
   }),

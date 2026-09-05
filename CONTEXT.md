@@ -188,6 +188,10 @@ _Avoid_: Severity threshold、RCE sink match、Model confidence
 一つのCampaignとTarget Snapshot内で、同じcore security assumptionとstateまたはcapability transition mechanismを追うresearch lineage。複数のRoute Fragment、Hypothesis、Frontier Gapを参照でき、一つのFragmentも複数Familyから参照できるが、file、surface、表現、想定impactの違いだけでは分けず、独立に反証できるmechanismだけを別Familyにする。
 _Avoid_: Prompt variant、Vulnerability class、File scope、Worker role
 
+**Approach Family Admission**:
+Wave Barrier後のRoot Evaluationが、一つのcore security assumptionとmechanism、根拠subject、falsifier、次actionをまとめ、同じIteration DecisionのValidation / Depth actionから参照可能にした不変のFamily開始宣言。local keyは同じDecision内のgroupingにだけ使い、Campaign-localなFamily identityまたは状態をmodelに決めさせない。
+_Avoid_: Free-form tag、Global family ID、Validation verdict、Mutable registry entry
+
 **Approach Family Registry**:
 一つのCampaignに属するApproach Familyのidentity、evidence、round、`active / blocked / exhausted`状態、blocked理由、Reopen Conditionを表す再構築可能な現在view。Familyの意味と状態判断はExplorationに属し、永続事実とreplayはResearch Recordに属する。
 _Avoid_: Mutable source of truth、Global memory、Exploration Queue

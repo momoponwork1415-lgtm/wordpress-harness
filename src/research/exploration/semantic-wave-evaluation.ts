@@ -633,6 +633,8 @@ function resolveCurrentEvaluatorOutput(
           ...common,
           approachFamily: family.ref,
           hypothesis,
+          brokenSecurityProperty: proposal.admission.brokenSecurityProperty,
+          causalRoute: proposal.admission.causalRoute,
           reason: proposal.admission.reason,
         };
         actions.push(
@@ -646,6 +648,8 @@ function resolveCurrentEvaluatorOutput(
               id: sha256Digest(identity),
               ...common,
               hypothesis,
+              brokenSecurityProperty: proposal.admission.brokenSecurityProperty,
+              causalRoute: proposal.admission.causalRoute,
               reason: proposal.admission.reason,
             },
           }),

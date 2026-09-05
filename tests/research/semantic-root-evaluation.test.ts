@@ -446,6 +446,15 @@ describe("Exploration fresh Root Evaluation", () => {
               subjectDigests: [hypothesisRef.digest],
               admission: {
                 hypothesisDigest: hypothesisRef.digest,
+                brokenSecurityProperty: "state-ownership",
+                causalRoute: [
+                  {
+                    ordinal: 1,
+                    claim:
+                      "A public write reaches a cross-actor consumer without an ownership check.",
+                    evidence: [anchor],
+                  },
+                ],
                 reason:
                   "The source-bound route is ready for independent source review.",
               },
@@ -499,6 +508,8 @@ describe("Exploration fresh Root Evaluation", () => {
             kind: "validation-admission",
             schemaVersion: 1,
             hypothesis: hypothesisRef,
+            brokenSecurityProperty: "state-ownership",
+            causalRoute: [{ ordinal: 1, evidence: [anchor] }],
           },
         },
         {
