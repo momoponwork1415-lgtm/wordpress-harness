@@ -308,6 +308,90 @@ describe("TargetSelection", () => {
     }
   });
 
+  it.each(["existing-receipt", "another-nomination"] as const)(
+    "rejects a nomination whose Target identity duplicates %s",
+    async (duplicateSource) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "target-selection-identity-"),
+      );
+      try {
+        const selection = openTargetSelection({
+          storageDirectory: directory,
+          model: {
+            rank: async (input) => ({
+              kind: "target-selection-model-result",
+              schemaVersion: 1,
+              rankedCandidateIds: input.candidates.map(
+                ({ candidateId }) => candidateId,
+              ),
+              assessments: input.candidates.map(({ candidateId }) => ({
+                candidateId,
+                researchValueBand: "high",
+                uncertaintyBand: "medium",
+                reasonCodes: ["recently-updated"],
+              })),
+            }),
+          },
+          clock: () => new Date("2030-09-01T00:00:00.000Z"),
+        });
+        const selected = await selection.select(
+          request([candidate("candidate-existing")]),
+        );
+        if (selected.status !== "selected") {
+          throw new Error("Expected a selected Attempt fixture");
+        }
+        const { origin: _existingOrigin, ...existingCandidate } =
+          candidate("candidate-existing");
+        const { origin: _otherOrigin, ...otherCandidate } =
+          candidate("candidate-other");
+        const firstNomination =
+          duplicateSource === "existing-receipt"
+            ? { ...existingCandidate, candidateId: "candidate-alias" }
+            : otherCandidate;
+        const nominations = [
+          {
+            candidate: firstNomination,
+            nominatedBy: "human:fixture-operator",
+            nominatedAt: "2030-09-01T00:01:00.000Z",
+            reason: "coverage-balance" as const,
+          },
+          ...(duplicateSource === "another-nomination"
+            ? [
+                {
+                  candidate: {
+                    ...otherCandidate,
+                    candidateId: "candidate-other-alias",
+                  },
+                  nominatedBy: "human:fixture-operator",
+                  nominatedAt: "2030-09-01T00:02:00.000Z",
+                  reason: "operator-priority" as const,
+                },
+              ]
+            : []),
+        ];
+
+        await expect(
+          selection.resolveForApproval({
+            kind: "target-selection-approval-verification-request",
+            schemaVersion: 1,
+            attempt: {
+              ref: selected.attemptRef,
+              selectionKey: "september-selection",
+              revision: 1,
+            },
+            selectionPolicy: policy,
+            modelProfile,
+            operatorIdentity: "human:fixture-operator",
+            nominations,
+            verifiedAt: "2030-09-01T01:00:00.000Z",
+          }),
+        ).rejects.toThrow("Target identity");
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("applies history, research-only, freshness, and diversity without programme queues", async () => {
     const directory = await mkdtemp(join(tmpdir(), "target-selection-policy-"));
     let capturedInput: unknown;

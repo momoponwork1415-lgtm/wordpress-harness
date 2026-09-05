@@ -335,6 +335,10 @@ function targetSelectionCandidateForLegacyReceipt(
   };
 }
 
+function targetIdentityKey(candidate: TargetSelectionCandidate): string {
+  return canonicalJson(candidate.target);
+}
+
 class FileTargetSelection implements TargetSelection {
   readonly #storageDirectory: string;
   readonly #model: OpenTargetSelectionOptions["model"];
@@ -634,6 +638,9 @@ class FileTargetSelection implements TargetSelection {
     const usedCandidateIds = new Set(
       receipts.map((value) => value.candidateId),
     );
+    const usedTargetIdentities = new Set(
+      receipts.map((value) => targetIdentityKey(value.candidate)),
+    );
     const verifiedAt = Date.parse(request.verifiedAt);
     for (const nomination of request.nominations) {
       if (
@@ -652,6 +659,12 @@ class FileTargetSelection implements TargetSelection {
           reason: nomination.reason,
         },
       };
+      const identityKey = targetIdentityKey(candidate);
+      if (usedTargetIdentities.has(identityKey)) {
+        throw new Error(
+          "Target Selection nomination Target identity is duplicated",
+        );
+      }
       const gateReasons = hardGateReasons(candidate, verifiedAt);
       receipts.push(
         receipt(
@@ -687,6 +700,7 @@ class FileTargetSelection implements TargetSelection {
         ),
       );
       usedCandidateIds.add(candidate.candidateId);
+      usedTargetIdentities.add(identityKey);
     }
     receipts.sort((left, right) =>
       left.candidateId.localeCompare(right.candidateId),
