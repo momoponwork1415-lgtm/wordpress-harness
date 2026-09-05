@@ -20,6 +20,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 const filesystemFault = vi.hoisted<{
+  afterDatabaseCreate: (() => Promise<void>) | undefined;
   afterArtifactRead: (() => Promise<void>) | undefined;
   artifactCloseFailuresRemaining: number;
   artifactCloseName: string | undefined;
@@ -27,7 +28,9 @@ const filesystemFault = vi.hoisted<{
   directoryCloseFailuresRemaining: number;
   directoryClosePath: string | undefined;
   directorySyncPath: string | undefined;
+  databaseCreatePath: string | undefined;
 }>(() => ({
+  afterDatabaseCreate: undefined,
   afterArtifactRead: undefined,
   artifactCloseFailuresRemaining: 0,
   artifactCloseName: undefined,
@@ -35,6 +38,7 @@ const filesystemFault = vi.hoisted<{
   directoryCloseFailuresRemaining: 0,
   directoryClosePath: undefined,
   directorySyncPath: undefined,
+  databaseCreatePath: undefined,
 }));
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -43,6 +47,12 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     ...actual,
     open: async (...args: Parameters<typeof actual.open>) => {
       const handle = await actual.open(...args);
+      if (String(args[0]) === filesystemFault.databaseCreatePath) {
+        const afterDatabaseCreate = filesystemFault.afterDatabaseCreate;
+        filesystemFault.afterDatabaseCreate = undefined;
+        filesystemFault.databaseCreatePath = undefined;
+        await afterDatabaseCreate?.();
+      }
       if (
         filesystemFault.artifactReadName !== undefined &&
         String(args[0]).endsWith(`/${filesystemFault.artifactReadName}`)
@@ -318,6 +328,92 @@ async function createFixedMainLegacyWordfenceStorage(
 }
 
 describe("WordfenceIntelligenceRefresh", () => {
+  it("rejects local refresh writes to a production-owned store", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-local-production-boundary-"),
+    );
+    const databasePath = join(directory, "target-intelligence.sqlite");
+    const artifactDirectory = join(directory, "artifacts");
+    const bytes = await readFile(fixturePath);
+    try {
+      const production = openWordfenceIntelligenceRefresh({
+        databasePath,
+        artifactDirectory,
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            return use("synthetic-production-boundary-credential");
+          },
+        },
+        fetch: vi.fn<typeof fetch>(async () =>
+          Promise.resolve(new Response(bytes, { status: 200 })),
+        ),
+        clock: () => new Date("2030-08-01T00:00:00.000Z"),
+      });
+      const current = await production.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      if (current.status !== "current") {
+        throw new Error("Expected a production current snapshot");
+      }
+      const rawDirectory = join(artifactDirectory, "wordfence-intelligence-v3");
+      const rawPaths = await readdir(rawDirectory);
+      const changedBytes = Buffer.from(
+        bytes
+          .toString("utf8")
+          .replace("Sanitized example one", "Different sanitized example"),
+      );
+      const retrieveProductionFeed = vi.fn(async () => ({
+        status: 200,
+        sourceUrl,
+        complete: true,
+        bytes: changedBytes,
+      }));
+      const local = openWordfenceIntelligence({
+        databasePath,
+        artifactDirectory,
+        adapter: { sourceUrl, retrieveProductionFeed },
+        credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+        clock: () => new Date("2030-08-02T00:00:00.000Z"),
+      });
+
+      await expect(
+        local.refresh({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).rejects.toThrow("Wordfence Intelligence snapshot conflict");
+      expect(retrieveProductionFeed).not.toHaveBeenCalled();
+      expect(await readdir(rawDirectory)).toEqual(rawPaths);
+      await expect(
+        production.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual(current);
+      await expect(
+        openWordfenceIntelligenceRefresh({
+          databasePath,
+          artifactDirectory,
+          credentialBroker: {
+            async resolve<T>(): Promise<T> {
+              throw new Error("inspection must not resolve a credential");
+            },
+          },
+          fetch: vi.fn<typeof fetch>(),
+        }).inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual(current);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("serializes concurrent cold-start refreshes without exposing SQLite races", async () => {
     const directory = await mkdtemp(
       join(tmpdir(), "wordfence-concurrent-cold-runs-"),
@@ -368,6 +464,237 @@ describe("WordfenceIntelligenceRefresh", () => {
       expect(pendingFetch.fetch).toHaveBeenCalledOnce();
     } finally {
       pendingFetch.respond(new Response(undefined, { status: 500 }));
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes concurrent cold-start refreshes across production compositions", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-cross-composition-cold-runs-"),
+    );
+    const databasePath = join(directory, "index", "target-intelligence.sqlite");
+    const artifactDirectory = join(directory, "artifacts");
+    const pendingFetch = controlledFetch();
+    let resolveCalls = 0;
+    const options = {
+      databasePath,
+      artifactDirectory,
+      credentialBroker: {
+        async resolve<T>(
+          _reference: WordfenceSecretRef,
+          use: (credential: string) => Promise<T>,
+        ): Promise<T> {
+          resolveCalls += 1;
+          return use("synthetic-cross-composition-cold-run-credential");
+        },
+      },
+      fetch: pendingFetch.fetch,
+      clock: () => new Date("2030-08-01T00:00:00.000Z"),
+    };
+    try {
+      const first = openWordfenceIntelligenceRefresh(options);
+      const second = openWordfenceIntelligenceRefresh(options);
+      const completion = Promise.all([
+        first.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+        second.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ]).then(
+        (results) => ({ status: "completed" as const, results }),
+        (error: unknown) => ({ status: "rejected" as const, error }),
+      );
+      await pendingFetch.started;
+      pendingFetch.respond(
+        new Response(await readFile(fixturePath), { status: 200 }),
+      );
+      const outcome = await completion;
+      if (outcome.status === "rejected") {
+        throw outcome.error;
+      }
+      const { results } = outcome;
+
+      expect(results).toContainEqual(
+        expect.objectContaining({ status: "current" }),
+      );
+      expect(results).toContainEqual({
+        kind: "wordfence-intelligence-result",
+        schemaVersion: 1,
+        status: "failed",
+        reason: "storage-failure",
+      });
+      expect(resolveCalls).toBe(1);
+      expect(pendingFetch.fetch).toHaveBeenCalledOnce();
+      const current = results.find((result) => result.status === "current");
+      await expect(
+        openWordfenceIntelligenceRefresh({
+          ...options,
+          credentialBroker: {
+            async resolve<T>(): Promise<T> {
+              throw new Error("inspection must not resolve a credential");
+            },
+          },
+          fetch: vi.fn<typeof fetch>(),
+        }).inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual(current);
+    } finally {
+      pendingFetch.respond(new Response(undefined, { status: 500 }));
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes a cold refresh and inspections across three production compositions", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-cross-composition-cold-inspections-"),
+    );
+    const databasePath = join(directory, "index", "target-intelligence.sqlite");
+    const artifactDirectory = join(directory, "artifacts");
+    const pendingFetch = controlledFetch();
+    const options = {
+      databasePath,
+      artifactDirectory,
+      credentialBroker: {
+        async resolve<T>(
+          _reference: WordfenceSecretRef,
+          use: (credential: string) => Promise<T>,
+        ): Promise<T> {
+          return use("synthetic-three-composition-cold-credential");
+        },
+      },
+      fetch: pendingFetch.fetch,
+      clock: () => new Date("2030-08-01T00:00:00.000Z"),
+    };
+    try {
+      const runner = openWordfenceIntelligenceRefresh(options);
+      const firstInspector = openWordfenceIntelligenceRefresh(options);
+      const secondInspector = openWordfenceIntelligenceRefresh(options);
+      const run = runner.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      const inspections = Promise.all([
+        firstInspector.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+        secondInspector.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ]);
+      const inspected = expect(inspections).resolves.toEqual([
+        expect.objectContaining({ status: "failed" }),
+        expect.objectContaining({ status: "failed" }),
+      ]);
+      await pendingFetch.started;
+      await inspected;
+      pendingFetch.respond(
+        new Response(await readFile(fixturePath), { status: 200 }),
+      );
+      const current = await run;
+      expect(current.status).toBe("current");
+      expect(pendingFetch.fetch).toHaveBeenCalledOnce();
+
+      await expect(
+        Promise.all([
+          firstInspector.inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+          secondInspector.inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+          openWordfenceIntelligenceRefresh({
+            ...options,
+            credentialBroker: {
+              async resolve<T>(): Promise<T> {
+                throw new Error("inspection must not resolve a credential");
+              },
+            },
+            fetch: vi.fn<typeof fetch>(),
+          }).inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+        ]),
+      ).resolves.toEqual([current, current, current]);
+    } finally {
+      pendingFetch.respond(new Response(undefined, { status: 500 }));
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("returns a typed failure when a competing cold initializer leaves an incomplete store", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-incomplete-cold-winner-"),
+    );
+    const databasePath = join(directory, "index", "target-intelligence.sqlite");
+    const artifactDirectory = join(directory, "artifacts");
+    let resolveCalls = 0;
+    const fetchMock = vi.fn<typeof fetch>();
+    filesystemFault.databaseCreatePath = databasePath;
+    filesystemFault.afterDatabaseCreate = async () => {
+      openWordfenceIntelligence({
+        databasePath,
+        artifactDirectory,
+        adapter: {
+          sourceUrl,
+          retrieveProductionFeed: () =>
+            Promise.reject(new Error("fixture setup must not retrieve")),
+        },
+        credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+      });
+      const incomplete = new Database(databasePath);
+      incomplete
+        .prepare(
+          `INSERT INTO wordfence_intelligence_refresh_order (
+             singleton, publication_sequence, latest_completed_sequence
+           ) VALUES (1, 0, 0)`,
+        )
+        .run();
+      incomplete.close();
+    };
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath,
+        artifactDirectory,
+        credentialBroker: {
+          async resolve<T>(): Promise<T> {
+            resolveCalls += 1;
+            throw new Error("incomplete initialization must not resolve");
+          },
+        },
+        fetch: fetchMock,
+      });
+      await expect(
+        refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual({
+        kind: "wordfence-intelligence-result",
+        schemaVersion: 1,
+        status: "failed",
+        reason: "storage-failure",
+      });
+      await expect(
+        refresh.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).rejects.toThrow("Wordfence Intelligence snapshot conflict");
+      expect(resolveCalls).toBe(0);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      filesystemFault.afterDatabaseCreate = undefined;
+      filesystemFault.databaseCreatePath = undefined;
       await rm(directory, { recursive: true, force: true });
     }
   });

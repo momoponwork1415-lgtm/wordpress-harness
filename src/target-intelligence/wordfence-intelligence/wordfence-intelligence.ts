@@ -297,6 +297,10 @@ const productionStorageRowSchema = z.strictObject({
   format_json: z.string(),
 });
 
+const productionStorageMarkerTableRowSchema = z.strictObject({
+  name: z.literal("wordfence_intelligence_production_storage"),
+});
+
 const productionStorageFormatSchema = z.strictObject({
   kind: z.literal("wordfence-intelligence-production-storage-format"),
   schemaVersion: z.literal(1),
@@ -456,6 +460,18 @@ function isStorageFailure(error: unknown): boolean {
   return (
     typeof code === "string" &&
     (storageFailureCodes.has(code) || code.startsWith("SQLITE_IOERR"))
+  );
+}
+
+function isColdInitializationWinnerConflict(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "SQLITE_CONSTRAINT_PRIMARYKEY" &&
+    error instanceof Error &&
+    error.message ===
+      "UNIQUE constraint failed: wordfence_intelligence_refresh_order.singleton"
   );
 }
 
@@ -654,6 +670,21 @@ function productionStorageFormat(): ProductionStorageFormat {
     schemaVersion: 1,
     refreshAttemptLeaseSeconds: PRODUCTION_REFRESH_ATTEMPT_LEASE_SECONDS,
   });
+}
+
+function hasProductionStorageMarkerTable(database: Database.Database): boolean {
+  return (
+    productionStorageMarkerTableRowSchema.optional().parse(
+      database
+        .prepare(
+          `SELECT name
+             FROM sqlite_schema
+            WHERE type = 'table'
+              AND name = 'wordfence_intelligence_production_storage'`,
+        )
+        .get(),
+    ) !== undefined
+  );
 }
 
 function readModernProductionStorage(
@@ -2586,6 +2617,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   readonly #clock: () => Date;
   readonly #productionComposition: boolean;
   readonly #productionStorageFormat: ProductionStorageFormat | undefined;
+  readonly #localProductionStorageConflict: boolean;
 
   constructor(
     options: OpenWordfenceIntelligenceOptions,
@@ -2601,12 +2633,17 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     this.#productionComposition = storageOpenMode !== "local";
     const database = new Database(options.databasePath);
     let productionFormat: ProductionStorageFormat | undefined;
+    let localProductionStorageConflict = false;
     try {
       database.pragma("busy_timeout = 5000");
       if (storageOpenMode === "local") {
-        database.pragma("journal_mode = WAL");
-        database.exec(schemaCreationSql(false));
-        initializeRecordSetStorage(database);
+        localProductionStorageConflict =
+          hasProductionStorageMarkerTable(database);
+        if (!localProductionStorageConflict) {
+          database.pragma("journal_mode = WAL");
+          database.exec(schemaCreationSql(false));
+          initializeRecordSetStorage(database);
+        }
       } else if (storageOpenMode === "new-production") {
         initializeProductionStorage(database);
         productionFormat = productionStorageFormat();
@@ -2626,6 +2663,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     }
     this.#database = database;
     this.#productionStorageFormat = productionFormat;
+    this.#localProductionStorageConflict = localProductionStorageConflict;
   }
 
   close(): void {
@@ -2638,6 +2676,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     requireCurrentIndexIdentity?: () => Promise<void>,
   ): Promise<WordfenceIntelligenceResult> {
     wordfenceIntelligenceRefreshRequestSchema.parse(requestValue);
+    this.#requireLocalStorageOwnership();
     this.#requireCurrentProductionStorageFormat();
     const startingIndexFailure = await this.#productionIndexFailure(
       requireCurrentIndexIdentity,
@@ -2839,7 +2878,18 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   ): Promise<WordfenceIntelligenceResult> {
     const request =
       wordfenceIntelligenceInspectionRequestSchema.parse(requestValue);
+    this.#requireLocalStorageOwnership();
     return this.#inspectSnapshot(request);
+  }
+
+  #requireLocalStorageOwnership(): void {
+    if (
+      !this.#productionComposition &&
+      (this.#localProductionStorageConflict ||
+        hasProductionStorageMarkerTable(this.#database))
+    ) {
+      throw new SnapshotConflictError();
+    }
   }
 
   #inspectSnapshot(
@@ -3008,6 +3058,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   ): Promise<VulnerabilityHistoryAggregate> {
     const request =
       vulnerabilityHistoryAggregateRequestSchema.parse(requestValue);
+    this.#requireLocalStorageOwnership();
     const snapshot = this.#readSnapshot(request.snapshotRef);
     const records = this.#records(
       snapshot,
@@ -3042,6 +3093,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     if (!parsedRequest.success) {
       throw new WordfenceKnownRecordAccessError();
     }
+    this.#requireLocalStorageOwnership();
     const request = parsedRequest.data;
     const authorization = await this.#verifyKnownRecordAuthorization(
       request.authorizationRef,
@@ -3922,15 +3974,47 @@ export function openWordfenceIntelligenceRefresh(
       if (currentOwnerUid() === undefined) {
         throw new HostPrivateStorageError();
       }
-      const preparedStorage = await prepareProductionStorage(
+      let preparedStorage = await prepareProductionStorage(
         intelligenceOptions.databasePath,
         intelligenceOptions.artifactDirectory,
         legacyStorageAdoption !== undefined,
       );
-      const candidate = new SqliteWordfenceIntelligence(
-        intelligenceOptions,
-        preparedStorage.mode,
-      );
+      let candidate: SqliteWordfenceIntelligence;
+      try {
+        candidate = new SqliteWordfenceIntelligence(
+          intelligenceOptions,
+          preparedStorage.mode,
+        );
+      } catch (error) {
+        if (
+          preparedStorage.mode !== "new-production" ||
+          !isColdInitializationWinnerConflict(error)
+        ) {
+          throw error;
+        }
+        try {
+          preparedStorage = await prepareProductionStorage(
+            intelligenceOptions.databasePath,
+            intelligenceOptions.artifactDirectory,
+            false,
+          );
+        } catch (reopenError) {
+          if (
+            reopenError instanceof SnapshotConflictError ||
+            isStorageFailure(reopenError)
+          ) {
+            throw new HostPrivateStorageError();
+          }
+          throw reopenError;
+        }
+        if (preparedStorage.mode !== "modern-production") {
+          throw new HostPrivateStorageError();
+        }
+        candidate = new SqliteWordfenceIntelligence(
+          intelligenceOptions,
+          preparedStorage.mode,
+        );
+      }
       let openedIndexIdentity: ProductionIndexIdentity;
       try {
         await secureCreatedSqliteSidecars(
