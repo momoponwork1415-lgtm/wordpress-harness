@@ -4,7 +4,7 @@ Status: accepted provider-neutral design
 
 ## Owner and purpose
 
-`Model Execution`は一つの不変`Attempt Plan`を実行し、provider差を含まないterminal resultへ変換する。認証、transport、tool protocol、process lifecycleを隠し、探索や検証の意味判断は所有しない。
+`Model Execution`は一つの不変`Attempt Plan`を実行し、provider差を含まないterminal resultへ変換する。認証、transport、tool protocol、process lifecycleを隠し、ExplorationまたはValidationの意味判断は所有しない。
 
 ```ts
 interface ModelExecution {
@@ -18,9 +18,9 @@ interface AttemptObserver {
 
 observerはowner Moduleがrole schemaとsource bindingを検査し、CAS / Ledgerへdurable writeしてからackする一方向のseamである。provider event stream、token chunk、session、transport retryを公開しない。checkpointを使わないroleはobserverを省略する。callerはprovider executable、argv、credential path、PID、session、retry timingを渡さない。model、provider、effort、tool、budgetはversioned `Model Profile`とPlanで固定する。
 
-このdurable checkpoint observerとは別に、provider Adapterはoperator専用のbest-effortな`ModelProcessObserver`を持てる。processのstart、既定25秒heartbeat、terminal、toolのstart / completion / failureをAttemptまたはVerification identityとsegment ordinalへbindして一方向に通知する。terminal process eventには上限内で収集しcredentialをredactしたstdout / stderrを含められる。これはprivate運用seamであり、Owner Moduleへprovider event streamを公開するものでも、ExplorationやVerificationの入力でもない。
+このdurable checkpoint observerとは別に、provider Adapterはoperator専用のbest-effortな`ModelProcessObserver`を持てる。processのstart、既定25秒heartbeat、terminal、toolのstart / completion / failureをAttempt identityとsegment ordinalへbindして一方向に通知する。terminal process eventには上限内で収集しcredentialをredactしたstdout / stderrを含められる。これはprivate運用seamであり、Owner Moduleへprovider event streamを公開するものでも、ExplorationやValidationの入力でもない。
 
-新規`AttemptPlanV2`はownerとroleで判別するversioned unionである。Explorationは`finder / root-planner / root-evaluator / root-synthesizer / adversarial-critic`のvariantを持ち、それぞれowner-defined assignmentとoutput schemaを固定する。Finder assignmentだけがWork Leaseを参照し、通常WaveではResearch Thesis、Missing-link WaveではCritic Frontier Gapへbindする。どちらもTarget全体へのpivotを制限しない。判断roleは評価対象となるimmutable artifact refを参照する。共通envelopeはTarget Snapshot、TargetFileManifest、role、assignment、Prompt Set、Model Profile、Source Tool Policy、Budget Envelopeを一つのdigestへ固定する。公開Interfaceはrole別methodへ分裂させず、引き続き一つの`run(plan)`とする。
+新規Attempt Planはownerとroleで判別するversioned unionである。Explorationは`finder / root-planner / root-evaluator / root-synthesizer / adversarial-critic`、Validationは`validator / validation-synthesizer / risk-assessor`のvariantを持ち、それぞれowner-defined assignmentとoutput schemaを固定する。Finder assignmentだけがWork Leaseを参照し、通常WaveではResearch Thesis、Missing-link WaveではCritic Frontier Gapへbindする。Validatorは一つのValidation Candidateと共通Rubricへbindする。判断roleは評価対象となるimmutable artifact refを参照する。共通envelopeはTarget Snapshot、TargetFileManifest、role、assignment、Prompt Set、Model Profile、Source Tool Policy、Budget Envelopeを一つのdigestへ固定する。tool-free roleのSource Tool Policyは明示的な`none`とする。公開Interfaceはrole別methodへ分裂させず、引き続き一つの`run(plan)`とする。
 
 Model Executionはroleとassignmentの組合せ、Planが要求するtool capability、Profileのrole eligibilityをprovider起動前に検査するが、Synthesis connection、Critique、Root Evaluationの意味を判定しない。同じmodel familyをrole間で使う場合もAttempt ID、provider session、conversation、scratchは共有しない。
 
@@ -103,19 +103,17 @@ flowchart TB
     gateway["Harness Tool Gateway"]
     target["Target Snapshot"]
     scratch["Bounded scratch"]
-    lab["Typed Experiment"]
     secrets[("Credential Store")]
     host["Host control plane"]
 
     provider --> gateway
     gateway -->|"read-only"| target
     gateway --> scratch
-    gateway -->|"Verifier only"| lab
     secrets -. "launcher only" .-> provider
     provider -. "no access" .-> host
 ```
 
-provider組込みshell、web、ambient plugin、hook、memory、subagentは無効化する。ReconへはTarget-boundなread-only source toolだけを、Finderへは同じsource tool、隔離scratch、owner-boundな`checkpoint_research`だけを許可し、Experiment toolを渡さない。provider transportへprivate MCPを使う場合もallowlistされたHarness gatewayだけを公開する。VerifierのExperimentもHypothesisとmechanismへ拘束したtyped actionだけにする。
+provider組込みshell、web、ambient plugin、hook、memory、subagentは無効化する。Recon、Finder、Critic、ValidatorへはroleごとのManifest-boundなread-only source toolだけを許可し、Finderだけにowner-boundな`checkpoint_research`を追加する。Validation SynthesisとRisk Assessmentはsource toolもruntime toolも持たない。provider transportへprivate MCPを使う場合もallowlistされたHarness gatewayだけを公開し、Researchのmodel roleへExperiment、WordPress runtime、host shellを渡さない。
 
 各tool requestにはAttempt、role-specific assignment、Target Snapshot、Policy、query ordinal、budgetをharness側で結合する。FinderではassignmentにWork Leaseも含める。path escape、digest mismatch、unknown tool、schema mismatch、budget超過を実行前に拒否する。Source Understandingが意味を確定できるschema-valid callを`invalid-query`と判定した場合は、そのReceiptをmodelへ返して同じAttempt内の修正を許す。Target / Policy binding違反、path escape、budget超過はAttempt terminalのままとする。
 
@@ -137,9 +135,9 @@ flowchart TB
     classify --> cancelled["cancelled / orphaned"]
 ```
 
-自由文だけの回答、truncated output、unknown event、model substitution、silent effort fallbackを`completed`にしない。provider errorをHypothesis 0件へ丸めない。raw credential、reasoning trace、sessionをExploration、Verification、Human OSへ渡さない。
+自由文だけの回答、truncated output、unknown event、model substitution、silent effort fallbackを`completed`にしない。provider errorをHypothesis 0件またはValidation negativeへ丸めない。raw credential、reasoning trace、sessionをExploration、Validation、Human OSへ渡さない。
 
-現行recall baselineのterminal resultは、providerが報告した全model invocationをstable orderで保持し、補助modelを隠さずinput、cache creation、cache read、output tokenを別々に集計する。さらにprovider duration、turn、structured output byte、providerが報告したcost estimateと、Tool Receiptから得たsource query、scan byte、response byteを記録する。この同じnormalization contractをExplorationとIndependent Verifierが使い、Campaign Controlはowner別とRun全体へ集計する。必要fieldをproviderが返さない場合は0を完全値として扱わず`partial`とする。hardに強制したwall time、cost、query、output等の超過は`budget-exhausted`だが、cache readを含むtoken telemetryまたは生成後にしか判明しないturn thresholdだけでack済みcheckpointやschema-validなcompleted outputを無効化しない。既存v2 resultは元のpostcondition semanticsでreplayする。cost estimateは開発時のceilingと比較に使うprovider報告値であり、請求額の正本として扱わない。
+現行recall baselineのterminal resultは、providerが報告した全model invocationをstable orderで保持し、補助modelを隠さずinput、cache creation、cache read、output tokenを別々に集計する。さらにprovider duration、turn、structured output byte、providerが報告したcost estimateと、Tool Receiptから得たsource query、scan byte、response byteを記録する。この同じnormalization contractをExplorationとValidationが使い、Campaign Controlはowner別とRun全体へ集計する。必要fieldをproviderが返さない場合は0を完全値として扱わず`partial`とする。hardに強制したwall time、cost、query、output等の超過は`budget-exhausted`だが、cache readを含むtoken telemetryまたは生成後にしか判明しないturn thresholdだけでack済みcheckpointやschema-validなcompleted outputを無効化しない。既存resultは元のpostcondition semanticsでreplayする。cost estimateは開発時のceilingと比較に使うprovider報告値であり、請求額の正本として扱わない。
 
 Attempt terminal resultは現行recall baselineのFinder上限512 queryに対応する全Tool Receiptを保持し、ceilingを越えて拒否された最後の1 queryもterminal Receiptとして保持できる。旧64 Receipt上限で長いsource traceをterminal時に失効させない。
 
@@ -174,4 +172,4 @@ contract suiteは、launch identity、role / assignment mismatch、role-specific
 
 Recon / Finder / Critic contractは、provider Adapterが変わっても同じPrompt Setとassignmentから同じ論理contextを受け取ること、Default contextにSurface Map、Analysis Unit、TargetFileManifest全件、別Finderのassignmentが混入しないこと、全source responseがAttempt PlanとManifestへbindしたTool Receiptを持つことも保護する。ReconとCriticは少なくとも一回の成功したsource readなしにcompletedにならない。
 
-現在のadapter、Profile、実装path、対応toolは[Codebase Guide](../CODEBASE-GUIDE.md)だけを正本とする。探索roleの自由度は[Exploration seam](exploration-seam.md)、Verification専用toolは[Verification seam](verification-seam.md)を参照する。
+現在のadapter、Profile、実装path、対応toolは[Codebase Guide](../CODEBASE-GUIDE.md)だけを正本とする。探索roleの自由度は[Exploration seam](exploration-seam.md)、Validation roleとtool境界は[Validation seam](validation-seam.md)を参照する。旧Verifierのruntime toolは[Legacy Verification Compatibility Seam](verification-seam.md)に限ってreplayする。

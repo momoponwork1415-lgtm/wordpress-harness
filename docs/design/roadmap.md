@@ -2,7 +2,7 @@
 
 Status: accepted capability order; current progress belongs in the [Codebase Guide](../CODEBASE-GUIDE.md)
 
-ProductのNorth Starは、oracle-freeなprospective Campaignでhigh-impactなbroken security semanticsを発見し、独立Verificationで実証し、Human Review PacketからHuman Confirmationまで閉じる能力である。Researchは発見から独立Verificationまでを所有し、Human OSはその不変な証拠を人間が再確認する。RCEやsite-wide compromiseは最上位impactだが唯一の成功条件ではない。Unauthenticated SQL injection、意味的に深いStored XSS、account takeover、privilege escalation、arbitrary file operation、object injection等も独立した重大Findingとして扱い、high-impactへ伸びるRoute FragmentはDepth Escalationの入力にする。
+ProductのNorth Starは、oracle-freeなprospective Campaignでhigh-impactなbroken security semanticsを発見し、独立したsource-only Validationで明らかなfalse positiveを抑え、Human Review PacketからHuman Verification済みFindingまで閉じる能力である。Researchは発見からReview Packet handoffまでを所有し、Human OSだけがfresh reproductionとFindingを所有する。RCEやsite-wide compromiseは最上位impactだが唯一の成功条件ではない。Unauthenticated SQL injection、意味的に深いStored XSS、account takeover、privilege escalation、arbitrary file operation、object injection等も独立した重大candidateとして扱い、high-impactへ伸びるRoute FragmentはDepth Escalationの入力にする。
 
 現段階ではtoken costやtargets/hourよりhigh-impact recallを優先する。Budgetはhard ceilingとして維持し、cost最適化はrecall baseline確立後のablationで行う。詳細は[ADR 0117](../adr/0117-optimize-for-high-impact-semantic-recall.md)を参照する。
 
@@ -13,7 +13,7 @@ flowchart TB
     m1["1. Closed mechanics"]
     m2["2. Prospective semantic research"]
     m3["3. Conditional depth capability"]
-    m4["4. Human confirmation"]
+    m4["4. Validation and Human Verification"]
     m5["5. Target Intelligence"]
     m6["6. Breadth and cost optimization"]
 
@@ -30,14 +30,14 @@ flowchart TB
 flowchart TB
     target["Fixed Target Snapshot"]
     explore["Independent Exploration"]
-    verify["Independent Verification"]
-    evidence["Witness and Control"]
+    validate["Independent Validation"]
+    human["Human Verification"]
     record[("Replayable record")]
 
-    target --> explore --> verify --> evidence --> record
+    target --> explore --> validate --> human --> record
 ```
 
-合格条件は、有限Wave、独立Attempt、typed failure、isolated Lab、因果対照、artifact integrity、crash recovery、deterministic replayが一つのpublic pathで成立することである。公開済みBoundary Pairはresearch mechanicsの校正に使うが、未知発見能力の証明にはしない。
+合格条件は、有限Wave、独立Attempt、typed failure、source-only Validation、versioned handoff、fresh isolated Human Verification、artifact integrity、crash recovery、deterministic replayが一つのpublic pathで成立することである。公開済みBoundary Pairはresearch mechanicsの校正に使うが、未知発見能力の証明にはしない。
 
 ## 2. Prospective semantic research
 
@@ -48,12 +48,12 @@ flowchart TB
     intake["Manual oracle-free intake"]
     semantic["Raw-source Semantic Research"]
     decision{"Root Evaluation"}
-    verify["Independent Verification"]
+    validate["Independent Validation"]
     frontier["Strong Semantic Frontier"]
     stop["Evidence-backed Stop"]
 
     intake --> semantic --> decision
-    decision -->|"重大Hypothesis"| verify
+    decision -->|"重大Hypothesis"| validate
     decision -->|"high-impact potential"| frontier
     decision -->|"価値ある新証拠なし"| stop
 ```
@@ -78,38 +78,39 @@ flowchart TB
     critic["Adversarial Critic"]
     next{"Depth Decision"}
     wave["Fresh Missing-link Wave"]
-    verify["Independent Verification"]
+    validate["Independent Validation"]
 
     frontier --> fragments --> synth --> critic --> next
     next -->|"missing link"| wave --> fragments
-    next -->|"source-bound route"| verify
+    next -->|"source-bound route"| validate
 ```
 
 Depth Admissionは既知のRCE/ATO/PrivEscを要求しない。強いread/write/file/auth/state capability、persistent state、cross-request/cross-actor flow、decode/reparse、producer/consumer mismatch、security assumption mismatch、具体的missing link等をhigh-impact potentialとして扱う。
 
-SynthesisとCriticはsemantic判断をmodelへ残し、Harnessはartifact identity、source provenance、freshness、budget、状態遷移を強制する。Findingへの昇格はfresh Independent Verificationだけが行う。新しいExperiment mechanismは実戦Hypothesisが要求した順にvertical sliceで追加する。
+SynthesisとCriticはsemantic判断をmodelへ残し、Harnessはartifact identity、source provenance、freshness、budget、状態遷移を強制する。source-bound routeはRoot Evaluation後のValidationへ送り、Findingへは昇格させない。
 
-## 4. Human confirmation
+## 4. Validation and Human Verification
 
-最新Targetを手動投入したProspective Campaignから得た未公開のhigh-impact Findingを、Discoveryのconversationや自己評価に依存せず人間が再確認できる状態へ閉じる。
+最新Targetを手動投入したProspective Campaignから得た未公開のhigh-impact candidateを、Discoveryのconversationや自己評価に依存せず複数のsource-only Validatorが反証し、人間がfreshに再現できる状態へ閉じる。
 
 ```mermaid
 flowchart TB
-    finding["Independently verified Finding"]
+    candidate["Root-evaluated candidate"]
+    validation["2 Validators<br/>conditional third + Synthesis"]
     packet["Human Review Packet"]
     reproduce["Fresh human reproduction"]
     disposition{"Review Disposition"}
-    confirm["Human Confirmation"]
+    finding["Finding"]
     evidence["Evidence Request"]
 
-    finding --> packet --> reproduce --> disposition
-    disposition -->|"confirmed"| confirm
+    candidate --> validation --> packet --> reproduce --> disposition
+    disposition -->|"verified"| finding
     disposition -->|"more evidence"| evidence
 ```
 
-PacketはTarget identity、Evidence Route、source引用、Witness、Causal Control、再現手順、既知の限界をdigest固定し、raw model transcriptやprovider sessionを含めない。Human Confirmationは同じoperatorが担当できるが、fresh LabとPacketから独立に再現する。公開済みCaseまたは既知duplicateのoracle-freeな再発見は能力証拠として残すが、最初のproduct goalの未知Findingには数えない。
+Validationは共通rubricで二つのfresh Attemptを行い、material conflict時だけ三つ目を追加し、tool-free Synthesisで`ready-for-human / needs-research / disproven / rejected / validation-pending`を決める。PacketはTarget identity、Evidence Route、source引用、調べたcontrol、Validation根拠、runtime uncertainty、Risk Assessment、再現sketchをdigest固定し、raw model transcriptやprovider sessionを含めない。Human Verificationはfreshな使い捨て隔離環境とPacketから実Target interfaceを再現する。
 
-最初のproduct goalは、一件以上のprospectiveな未知high-impact FindingがIndependent VerificationとHuman Confirmationの両方を通過した時に到達する。これは能力の存在を示すが、recallまたは安定性の推定ではない。External Action Authorization、submission、vendor communicationはこの到達条件と分離する。
+最初のproduct goalは、一件以上のprospectiveな未知high-impact candidateが`ready-for-human`となり、Human VerificationからFindingへ昇格した時に到達する。これは能力の存在を示すが、recallまたは安定性の推定ではない。External Action Authorization、submission、vendor communicationはこの到達条件と分離する。
 
 ## 5. Target Intelligence
 
@@ -136,7 +137,7 @@ high-impact recallのbaselineが安定した後、verified FindingとResearcher 
 
 ```mermaid
 flowchart TB
-    findings["Verified Findings"]
+    findings["Human-verified Findings"]
     lessons["Evidence-backed Lessons"]
     rules["Validated Static Rules / Seeds"]
     breadth["Breadth Campaign"]
@@ -148,7 +149,7 @@ flowchart TB
     breadth --> ablation
 ```
 
-BreadthはPRISM-likeなbreadth-first運行への対応であり、単純sink scannerの同義語ではない。Semgrep、CodeQL、Surface Map、cheap/medium models等を積極利用してtargets/hour、precision、coverage、costを改善できるが、rule matchはFindingではなく同じVerificationを通すHypothesisである。
+BreadthはPRISM-likeなbreadth-first運行への対応であり、単純sink scannerの同義語ではない。Semgrep、CodeQL、Surface Map、cheap/medium models等を積極利用してtargets/hour、precision、coverage、costを改善できるが、rule matchはFindingではなく同じValidationを通すHypothesisである。
 
 cost最適化はFinder数、model、context量、Wave数、static prefilter等を一変数ずつ変更し、同じoracle-separated cohortでhigh-impact recallとroot-cause qualityを落とさない場合だけ採用する。単価を下げてもATO、RCE、PrivEsc、SQLi、strong Stored XSS等のrecallが落ちる構成は不採用とする。
 
@@ -161,4 +162,4 @@ flowchart LR
     now -. "not a milestone" .-> core["WordPress Core"]
 ```
 
-Programme eligibilityはTarget選定時とHuman Confirmation後に技術的真偽から分離して確認できる。External Action Authorization、submission、vendor communication、patch generation、dashboardは最初のproduct goalの外側に置く。安全隔離とevidence integrityに必要な最小限を除き、探索能力より先に周辺運用を網羅しない。
+Programme eligibilityはTarget選定時とHuman Verification後に技術的真偽から分離して確認できる。External Action Authorization、submission、vendor communication、patch generation、dashboardは最初のproduct goalの外側に置く。安全隔離とevidence integrityに必要な最小限を除き、探索能力より先に周辺運用を網羅しない。

@@ -74,13 +74,13 @@ WordPress.org版のcanonical install directoryはofficial slugであり、source
 
 directoryは`wp-content/plugins`直下のlogical child nameとして検証し、host absolute pathをpacketへ保存しない。canonical install directoryとmain plugin file relative pathを`<directory>/<main-file>`のPlugin Basenameとしてpacketへ固定する。
 
-Campaign setupはcanonical Plugin Basenameどおりにmaterialize・activateする。alternate install directoryはTarget Snapshotを変更せず、Configuration Variantがalternate directory、effective Plugin Basename、根拠を固定する。Witness、Causal Control、Findingは実際に使ったVariant digestを参照する。
+Human Verification setupはcanonical Plugin Basenameどおりにmaterialize・activateする。alternate install directoryはTarget Snapshotを変更せず、Configuration Variantがalternate directory、effective Plugin Basename、根拠を固定する。Human VerificationとFindingは実際に使ったVariant digestを参照する。
 
 ## Runtime setup seam
 
-readyなpacketだけが`CampaignRunner.prepareFromTargetIntake`からResearchのCampaign preparationへ進める。ResearchはPacketとReceiptを自分のCASへdigest固定で複製し、Target SnapshotとCanonical File Manifestをcallerに再入力させず`campaign.prepared@3`へ結び付ける。Packet / Receipt ref、ReceiptからPacketへのbinding、source tree、Target Snapshot、Manifestをworker起動前とreplay時に再検査するが、Acquisition policyまたは選定判断は再実行しない。Campaign setupはTarget Snapshot、Runtime Profile、Canonical ConfigurationからgVisor内でLab Baselineを作り、install・activateと最小smokeを行う。失敗はセットアップ阻害の未完了Campaign outcomeであり、過去のready receiptを変更しない。
+readyなpacketだけが`CampaignRunner.prepareFromTargetIntake`からResearchのCampaign preparationへ進める。ResearchはPacketとReceiptを自分のCASへdigest固定で複製し、Target SnapshotとCanonical File Manifestをcallerに再入力させず`campaign.prepared@3`へ結び付ける。Packet / Receipt ref、ReceiptからPacketへのbinding、source tree、Target Snapshot、Manifestをworker起動前とreplay時に再検査するが、Acquisition policyまたは選定判断は再実行しない。Researchのsource-only Campaignはruntime setupを要求しない。
 
-AcquisitionはVerification Lab interfaceを呼ばず、Researchはarchiveを再展開または受入policyを再判定しない。Target-controlled codeを実行する最初の場所はCampaign setupが所有するgVisor内である。
+Human OSはReady-for-human Packetを受け取った後だけ、Target Snapshot、Runtime Profile、Canonical ConfigurationからHuman Verification Environmentを作る。setup failureはIntakeまたはResearch ValidationのDispositionを変更しない。AcquisitionとResearchはHuman Verification Environment interfaceを呼ばず、archiveを再展開または受入policyを再判定しない。Target-controlled codeを実行できる最初の場所はHuman OSが所有する隔離環境である。
 
 ## Acceptance scenarios
 
@@ -88,7 +88,7 @@ AcquisitionはVerification Lab interfaceを呼ばず、Researchはarchiveを再�
 2. traversal entryまたはsymlinkを一つ含むsourceはrejectedとなり、Target Intake Packetを作らない。
 3. quota超過はreason code付きrejectedとなり、部分展開物をResearchへ公開しない。
 4. package内にComposerまたはnpm script定義があってもdataとして保存するだけで実行しない。
-5. ready後にgVisor内のinstallが失敗してもIntake Dispositionは変わらず、Campaignだけがセットアップ阻害で停止する。
+5. ready後にHuman Verification setupが失敗してもIntake DispositionとResearch Validationは変わらず、Review CaseだけがSetup Blockedになる。
 6. processがCAS write途中で停止しても再試行はpartial packetを返さず、同じrequestを安全に収束させる。
 7. 同じfile treeを異なるcompressionまたはarchive timestampでpackした二つの取得原本は、原本digestが異なっても同じsource tree identityになる。
 8. 複数pluginを含む外側bundleはdeferredになるが、単一plugin root内のarchive data fileはそのままmanifestへ含まれる。
@@ -97,7 +97,7 @@ AcquisitionはVerification Lab interfaceを呼ばず、Researchはarchiveを再�
 11. request versionとmain header versionが異なるsourceはrejectedになり、directory名またはarchive名で補正しない。
 12. WordPress.org版は入力archiveのwrapper名に関係なくofficial slugをcanonical install directoryに使う。
 13. premium版でcanonical install directoryの根拠がない場合はdeferredとなり、vendor/product identityから生成しない。
-14. alternate directoryでのみ成立するExperimentはcanonical Target Snapshotを変更せず、Configuration Variantへeffective Plugin Basenameを固定する。
+14. alternate directoryでのみ成立するHuman Verificationはcanonical Target Snapshotを変更せず、Configuration Variantへeffective Plugin Basenameを固定する。
 
 ## Test surface
 

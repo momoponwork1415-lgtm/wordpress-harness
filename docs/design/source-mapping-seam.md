@@ -14,7 +14,7 @@ interface SourceMapping {
 }
 ```
 
-parser、AI Mapper、runtime observation、revision mergeはこのInterfaceの背後へ隠す。
+parser、AI Mapper、source-evidence inspection、revision mergeはこのInterfaceの背後へ隠す。
 
 ## Position in discovery
 
@@ -69,9 +69,9 @@ terminal resultは次を区別する。
 
 ## Source identity and Map claims
 
-新規Campaign、Exploration、Verificationは`TargetFileManifest` refを必須入力にし、source anchorのpathとfile digestをManifestに対して検査する。Surface Map refは任意であり、与えられた場合だけnavigationまたはcoverage hintとして使う。
+新規Campaign、Exploration、Validationは`TargetFileManifest` refを必須入力にし、source anchorのpathとfile digestをManifestに対して検査する。Surface Map refは任意であり、与えられた場合だけnavigationまたはcoverage hintとして使う。
 
-classificationとcoverageはSurface Map固有のclaimであり、Manifestへ追加しない。既存`SurfaceMap.inventory`のpath、digest、sizeはv1互換のためManifestから作る派生copyとして残すが、ExplorationまたはVerificationのprovenance判定には使わない。Map revisionは同じManifest digestへbindし、派生copyまたはclaimがManifestと一致しないMapを受理しない。
+classificationとcoverageはSurface Map固有のclaimであり、Manifestへ追加しない。既存`SurfaceMap.inventory`のpath、digest、sizeはv1互換のためManifestから作る派生copyとして残すが、ExplorationまたはValidationのprovenance判定には使わない。Map revisionは同じManifest digestへbindし、派生copyまたはclaimがManifestと一致しないMapを受理しない。
 
 ## Evidence-graded construction
 
@@ -81,9 +81,9 @@ Evidence stateは`observed / inferred / unknown`を区別する。AIは既存`ob
 
 PHP、JavaScript、template、SQL、configuration、translation、bundled vendor、generated、minified、binary、unsupportedを黙って除外しない。解析しないassetもdigest、分類、reasonをgapへ残す。
 
-## Runtime observation boundary
+## Source-only boundary
 
-Runtime observationはdynamic registration等のmapping gapを決定するためだけにsealed baselineのfresh cloneとtyped planで行う。timeoutまたはLab failureはrelation不存在ではなく`unknown`になる。観測結果をVerificationのWitnessやCausal Controlへ再利用しない。
+Source MappingはTarget code、WordPress、build、testまたはpackage scriptを実行しない。dynamic registration等を固定sourceから決められない場合は`unknown`としてgapに残し、Human Verificationのruntime observationをSurface Mapの`observed` evidenceへ逆流させない。
 
 ## Invariants
 
@@ -98,7 +98,7 @@ Runtime observationはdynamic registration等のmapping gapを決定するため
 
 identity/digest/schema不一致はbuildを拒否する。Manifest artifactが存在しない、またはTarget Snapshotへbindできない場合はMapやworkerを作る前にtyped failureとして停止し、Surface Map inventoryからManifestを合成しない。任意で指定されたMapがManifestと不一致なら黙ってMapなしへfallbackせず、そのPlanを拒否する。parse diagnosticやunsupported assetはgap付きrevision、AI failureはdeterministic skeletonを保持した`mapping-incomplete`、observation failureはreason付き`unknown`にする。
 
-Testは`build(input)`、manifest-boundなsource query、immutable viewを観測し、parser visitor、prompt数、model call countを固定しない。決定性、dynamic callbackのunknown保持、非PHP assetのgap、invalid AI claimの部分棄却、observed factの不変性、revision lineage、runtime evidenceのVerification流用拒否に加え、Mapなしで任意のManifest fileへ到達できることを保護する。
+Testは`build(input)`、manifest-boundなsource query、immutable viewを観測し、parser visitor、prompt数、model call countを固定しない。決定性、dynamic callbackのunknown保持、非PHP assetのgap、invalid AI claimの部分棄却、observed factの不変性、revision lineage、target code非実行に加え、Mapなしで任意のManifest fileへ到達できることを保護する。
 
 source queryのBehavior Testは、root / directoryとchildren / recursive、trailing slashなしのdirectory、stable paginationで重複または欠落がないこと、partial searchをnot-foundへ丸めないこと、read continuationを連結するとrequested bytesへ戻ること、canonicalな不存在、path escape、digest mismatchをそれぞれ別resultにすること、invalid cursorでsourceを読まないこと、同じlogical queryがprovider Adapterに依存しないことを観測する。公開可能な実Targetでもroot / directory Listが予期せずpolicy denyにならず、escapeだけが外部read前に拒否されることを確認する。query数とbyte数の具体的上限値はCampaign policyが所有する。
 

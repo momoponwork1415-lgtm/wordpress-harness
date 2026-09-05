@@ -6,32 +6,32 @@ Status: living implementation map, 2026-09-05
 
 ## Five things to remember
 
-1. Productの到達点は、oracle-freeにhigh-impactなbroken security semanticsを高recallで発見し、独立VerificationとHuman Confirmationまで閉じること。Researchは発見から独立Verificationまでを所有する。
+1. Productの到達点は、oracle-freeにhigh-impactなbroken security semanticsを高recallで発見し、source-only Validation、Human Review Packet、Human Verification済みFindingまで閉じること。ResearchはReview Packet handoffまで、Human OSはHuman VerificationとFindingを所有する。
 2. 通常運転の到達形はraw-source-firstのSemantic Research Waveで、strong semantic frontierだけをconditional Depthへ昇格する。
 3. `confine -> constrain -> focus -> motivate -> parallelize -> hypothesize -> verify -> record -> prioritize -> iterate`をcontrol propertyとして実装する。
-4. ResearchはCampaign Control、Source Understanding、Exploration、Verification、Model Execution、Research Recordの6 Moduleで構成する。
+4. accepted designではResearchをCampaign Control、Source Understanding、Exploration、Validation、Model Execution、Research Recordの6 Moduleで構成する。現在のruntimeには移行前のVerification Moduleが残る。
 5. context外のpublic入口は`openResearch`である。
 
 schema field、SQLite table、provider argv、全ADR、内部helperは暗記しない。
 
 ## v0.1 product goal
 
-手動で選定したWordPress pluginとCanonical Campaign Configurationから、Map-free Semantic Research、必要時のconditional Depth、fresh LabでのIndependent Verification、Human Review Packet、Human Confirmationまでを一つのoperator workflowとして閉じる。Development Cohortの各mechanismを反復基準で通過した後、既知答えを持ち込まない3件のProspective Campaignをdurable terminalまで完走できた時点をv0.1とする。
+手動で選定したWordPress pluginから、Map-free Semantic Research、必要時のconditional Depth、source-only Validation、Human Review Packet、fresh Human Verificationまでを一つのoperator workflowとして閉じる。Development Cohortの各mechanismを反復基準で通過した後、既知答えを持ち込まない3件のProspective Campaignをdurable Research terminalとHuman Review dispositionまで完走できた時点をv0.1とする。
 
-v0.1ではtarget選定の自動化、multi-model、完全なDashboardを要求しない。Finding件数も完了条件にせず、Finding、Disproved、理由付きIncompleteを同じ証拠規則で再生できることを要求する。
+v0.1ではtarget選定の自動化、multi-model、完全なDashboardを要求しない。Finding件数だけをResearch完了条件にせず、Ready-for-human、Disproved、Rejected、Validation-pending、理由付きIncompleteを同じ証拠規則で再生できることを要求する。Product exitには一件以上のHuman Verification済みFindingを要求する。
 
 ## Current completion map
 
 ```mermaid
 flowchart LR
     local["Manual Target selection / intake<br/>local intake実装済み"]
-    prepare["Canonical Campaign preparation<br/>実装済み<br/>Lab setupはpartial"]
+    prepare["Research preparation<br/>local handoff実装済み"]
     research["Semantic Research<br/>Map-free + conditional Depth実装済み<br/>cohort未合格"]
-    proof["Independent Verification<br/>effect adapter実装済み<br/>Target Lab setupはpartial"]
+    validation["Source-only Validation<br/>未実装<br/>旧Verification runtimeあり"]
     packet["Human Review Packet<br/>未実装"]
-    confirm["Human Confirmation<br/>未実装"]
+    confirm["Human Verification + Finding<br/>未実装"]
 
-    local --> prepare --> research --> proof --> packet --> confirm
+    local --> prepare --> research --> validation --> packet --> confirm
 
     auto["Archive acquisition / ranking<br/>後続"] -.-> local
     observe["Ledger live progress / private transcript<br/>実装済み"] -.-> research
@@ -39,21 +39,21 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    cohort["Development Cohort<br/>各3 run・mechanism別2-of-3<br/>進行中"]
+    cohort["Development Cohort<br/>各3 run・Ready-for-human 2-of-3<br/>再基準化が必要"]
     prospective["Prospective Campaign<br/>異なる3 Target<br/>未実行"]
     v01["v0.1 exit"]
 
     cohort --> prospective --> v01
 ```
 
-上段はproductのruntime path、下段はその能力を判定するevaluation gateである。主経路のResearch codeはDepthと独立Verificationまで接続済みだが、接続済みを発見能力の証明とは数えない。Brizy、SSA、TranslatePressの各mechanismが反復基準を満たすまではProspectiveへ進まない。
+上段はaccepted product path、下段はその能力を判定するevaluation gateである。主経路の現行codeはDepthと旧Independent Verificationまで接続済みだが、ValidationとHuman OSは未実装である。接続済みを発見能力の証明とは数えず、Brizy、SSA、TranslatePressの各mechanismが新しい反復基準を満たすまではProspectiveへ進まない。
 
 残作業は次の三群に分ける。
 
 | 群 | 状態 | 次の有限work |
 | --- | --- | --- |
-| **いま閉じる** | live progressとprivate provider transcriptは接続済み、cohortは未完了 | [Development Cohort #33](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/33)を各3 runで完了する。失敗時はprogress / transcriptから最初に衝突したSeamだけを修正する |
-| **最初のproduct goalまで** | arbitrary TargetのLab setup、Prospective実測、Human OSがない | Canonical ConfigurationからLab Baselineを作るCampaign setup、Human Review Packet、[Prospective Campaign #32](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/32)、fresh Human Confirmationを順に閉じる |
+| **いま閉じる** | Exploration coreは接続済み、旧Verificationから新Validationへの移行が未着手 | [ADR 0122](adr/0122-separate-source-validation-from-human-verification.md)に従いValidation contract、fresh Attempts、tool-free Synthesisをvertical sliceで接続する |
+| **最初のproduct goalまで** | Review Packet、Human Verification Environment、Human OSがない | Human Review Packet、最大3 active mechanismのHuman queue、fresh Human Verification、[Prospective Campaign #32](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/32)を順に閉じる |
 | **到達後に広げる** | 自動選定、multi-model、breadth、cost最適化は未着手 | archive acquisition、eligibility / ranking、`3 baseline + 1 challenger`、Semgrep / CodeQL横展開、recall-preserving ablationを実測順に追加する |
 
 Surface Map、PHP Program Index、追加provider、完全なDashboardは主経路の前提ではない。実TargetのHypothesisが要求していないExperiment frameworkも先回りして作らない。
@@ -73,7 +73,7 @@ flowchart TB
     evaluator["Fresh Root Evaluation"]
     decision[("Atomic Iteration Decision")]
     registry[("Approach Family Registry")]
-    verifier["Independent Verification"]
+    verifier["Legacy Independent Verification"]
     depth["Durable Depth Work Queue"]
     synthesis["Tool-free Root Synthesis"]
     critic["Source-enabled Critic"]
@@ -102,22 +102,22 @@ Wave BarrierはFinderOutputV2のHypothesis、Route Fragment、Frontier GapをMan
 
 ```mermaid
 flowchart LR
-    cohort["Development Cohort<br/>current default engine"]
-    setup["Configuration-driven<br/>Lab setup"]
-    review["Human Review Packet"]
+    cohort["Development Cohort<br/>new Validation policy"]
+    validation["Source-only Validation<br/>2 + conditional third"]
+    review["Human Review Packet<br/>max 3 active mechanisms"]
+    human["Fresh Human Verification"]
     prospective["Prospective ×3"]
-    confirmation["Human Confirmation"]
 
-    cohort --> setup --> review --> prospective --> confirmation
+    cohort --> validation --> review --> human --> prospective
 ```
 
-二段Coverage Closureはproduction sliceへ接続済みである。初回complete WaveまたはterminalなDepth後の評価を一回目の観測とし、一回のno-material-deltaだけでは閉じない。後段は既知subjectやclosure hintをassignmentへ渡さないfresh Wildcard Finderとfresh Root Evaluatorを起動する。最後のmaterial evidence以後にcompleteなno-material-deltaが二回連続し、後者がfresh Wildcardで、active / blocked Family、pending Verification、未解決workがない時だけdigest固定したClosure Recordから`coverage-closed`を作る。review plan、terminal、decision、observation、closureはRun replayへ残り、新subject、provider failure、Wave issue、容量不足は`coverage-review-incomplete`になる。直近の実装gapは、複数WaveをまたぐExploration実消費のhard enforcement、archive acquisition、Canonical ConfigurationからLab Baselineを作るCampaign setupである。Map、PHP Program Index、AST、Semgrep、CodeQLは補助に残し、Map外candidateを拒否しない。
+二段Coverage Closureは旧production sliceへ接続済みである。初回complete WaveまたはterminalなDepth後の評価を一回目の観測とし、一回のno-material-deltaだけでは閉じない。後段は既知subjectやclosure hintをassignmentへ渡さないfresh Wildcard Finderとfresh Root Evaluatorを起動する。現行codeはactive / blocked Family、pending legacy Verification、未解決workがない時だけ`coverage-closed`を作る。新policyではこれをpending Validationへ置き換え、Human DeferredまたはHuman VerificationをResearch closure条件にしない。直近の実装gapはValidation contract、checkpoint即時Verificationの廃止、Review Packet handoffである。Map、PHP Program Index、AST、Semgrep、CodeQLは補助に残し、Map外candidateを拒否しない。
 
-`semantic-research-recall-baseline-v5`は新規Default Campaignのversioned resource policyである。Finderは512 source query、16 GiB scan、256 MiB response、256 turn、USD 20、2 MiB output、3 hours、Reconは256 query、128 turn、USD 10、1 hour、Root Evaluationは128 turn、USD 10、1 hourを遠いemergency envelopeとして持つ。Campaign全体は12 Wave、48 Finder Attempt、4 concurrent Finder、128 model Attempt、USD 150、12 hoursで、VerificationへUSD 30、2 hours、最大96 Verifier Attempt、各Verification最大8 Experimentを予約する。48 Finderは12 Wave × 最大4 Leaseの構造上限で、件数消費を促すquotaではない。source query / byte、wall time、provider cost、output byteはhard guardrailとして残し、source ceiling後の追加取得は止める。ただし既取得evidenceからschema-validなterminal outputが返れば、budget exhaustion Receiptとusageを保持したままcompleted researchを受理する。現Claude transportでは生成後にしか判明しないreported turnとtokenも`telemetry-only`として保存し、それだけでterminal output、checkpoint、Findingを失効させない。Verification Queueもtokenまたは低いcandidate件数で予約を打ち切らず、累積provider costとwall timeを残り予約へ反映する。Brizy、Simply Schedule Appointments、TranslatePressのPlanはmodel / Labを起動しないpreflight testを通す。v1 / v2 / v3 / v4 budgetは完了済みRunのreplay用にdecodeするが、新規Default Campaignでは拒否する。
+`semantic-research-recall-baseline-v5`は現行runtimeのversioned resource policyである。Finderは512 source query、16 GiB scan、256 MiB response、256 turn、USD 20、2 MiB output、3 hours、Reconは256 query、128 turn、USD 10、1 hour、Root Evaluationは128 turn、USD 10、1 hourを遠いemergency envelopeとして持つ。Campaign全体は12 Wave、48 Finder Attempt、4 concurrent Finder、128 model Attempt、USD 150、12 hoursで、旧VerificationへUSD 30を予約する。新policyもこのUSD 30をValidation専用予約として維持するが、Verifier Attempt数とExperiment数の旧上限は引き継がない。Validationを低いcandidate件数またはtokenだけで打ち切らず、累積provider costとwall timeを残り予約へ反映する。source query / byte、wall time、provider cost、output byteはhard guardrailとして残し、ceiling到達をnegativeへ丸めない。Brizy、Simply Schedule Appointments、TranslatePressのPlanはmodelやHuman Verification Environmentを起動しないpreflight testを通す。旧budget schemaは完了済みRunのreplay用にdecodeする。
 
 Source GatewayはReconとFinderのAttempt別query上限をReceipt付きで強制する。Attempt terminal resultはv3 Finder上限512 query分と最後のbudget-exhaustion queryのTool Receiptを保持でき、旧64件上限で長いtraceを失効させない。Finder output schemaは割当済みLease IDを`const`で拘束する。v2 Model Attemptは補助modelを含むturn / token、source query / scan / response byte、structured output、wall time、provider cost estimateを正規化する。Independent Verifierも同じusage contractを使い、usage欠落、provider cost超過、wall-time超過はLab前のBlockedとして区別する。Default Campaign terminal recordはExplorationとVerificationをowner別に集計する。Claude processはPlanのprovider cost上限を起動時に渡す。file identity mismatchはTool Receiptへ残す回復可能なquery resultとし、checkpointと最終candidateのanchorをManifestへ再検査する。Claude Finderはusage付き429/5xxをAttempt専用のephemeral configで同じsessionへ最大3回resumeでき、各segmentのcost、turn、tokenを合算する。usageまたはcostが不明なCLI crashは上限内の残budgetを証明できないためresumeせず、元Attemptをpartial accountingで閉じてack済みcheckpointを残す。複数WaveをまたぐExploration実消費のhard enforcementは未実装である。二段Coverage Closureは実装済みで、一Waveだけの`coverage-closed`自己申告は受理しない。
 
-Manual local-directory Target IntakeからCampaign preparationへのversioned context handoffまで実装済みである。Target選定、archive acquisition、Campaign setup、Human Review PacketからHuman Confirmationまでのproduct pathは未実装である。
+Manual local-directory Target IntakeからCampaign preparationへのversioned context handoffまで実装済みである。Target選定、archive acquisition、source-only Validation、Human Review Packet、Human Verification EnvironmentとHuman OSは未実装である。
 
 ## Implementation index
 
@@ -131,7 +131,9 @@ Manual local-directory Target IntakeからCampaign preparationへのversioned co
 | Target-bound source queries | partial; Recon / Finder向けv2 paginated `list/search/read`、Claude v2 binding、v1 replay | `SourceEvidenceGateway.query` / `ModelExecution.run` | [`source-evidence-gateway.ts`](../src/research/source-mapping/source-evidence-gateway.ts), [`claude-source-evidence-bridge.ts`](../src/research/model-execution/claude-source-evidence-bridge.ts) | [`v2 gateway`](../tests/research/source-evidence-gateway-v2.test.ts), [`Claude bridge`](../tests/research/claude-source-evidence-bridge.test.ts), [`v1 gateway`](../tests/research/source-evidence-gateway.test.ts) | [Source Mapping seam](design/source-mapping-seam.md) |
 | Planning and Hypothesis intake | partial; Source-aware Reconとwhole-target Baselineの並行開始、source-backed Focus Packet、Manifest-bound Wave Barrier、checkpoint Hypothesisの先行Verification、fresh Root Evaluation、atomic Iteration Decision、active Approach Family Registry、全Depth Admission / next workを失わないversioned Depth Work Queue、tool-freeなfresh Root SynthesisとManifest-bound Chain Proposal、fresh source readを必須にするAdversarial Critique、fresh Depth Root Evaluation、Family未接続Proposalのmodel-owned genesis、Gap-boundなMissing-link Wave、Family evidence attachment、Familyごと最大3世代かつ全体最大12 Waveのfresh反復、容量超過Gapのtyped incomplete、Depth Chain ProposalからSource-bound Hypothesisへの変換、Verification outcomeのFamily feedback、fresh Wildcardによる二段Coverage ClosureをCampaign E2Eで実装済み | `Exploration.decide` / `SemanticChainSynthesis.synthesize` / `SemanticAdversarialCritique.critique` / `CampaignRunner.run` | [`exploration/`](../src/research/exploration), [`campaign-control/`](../src/research/campaign-control) | [`semantic E2E`](../tests/research/campaign-semantic-e2e.test.ts), [`Family transition`](../tests/research/semantic-approach-family-transition.test.ts), [`Depth work queue`](../tests/research/semantic-depth-work-queue.test.ts), [`Root Synthesis`](../tests/research/semantic-chain-synthesis.test.ts), [`Adversarial Critic`](../tests/research/semantic-adversarial-critique.test.ts), [`semantic-root-planning`](../tests/research/semantic-root-planning.test.ts), [`root evaluation`](../tests/research/semantic-root-evaluation.test.ts), [`semantic run`](../tests/research/campaign-semantic-run.test.ts), [`wave barrier`](../tests/research/semantic-wave-barrier.test.ts), [`exploration-bootstrap`](../tests/research/exploration-bootstrap.test.ts) | [Exploration seam](design/exploration-seam.md) |
 | Provider execution | partial; Claude process、planner/finder/evaluator/root-synthesizer/adversarial-critic AttemptPlan v2、Recon / Finder / Critic source tools v2、tool-free Synthesis、Critic fresh-read gate、checkpoint observer、Receipt伝播、Exploration / Verifier共通usage正規化、v3 reported turn/token telemetry、source byte / provider cost ceiling、usage付き429/5xxのcredential-safeなsame-session resume、usage不明crashのcheckpoint-preserving non-resume、process heartbeat / redacted raw segment / tool lifecycleのprivate transcript | `ModelExecution.run(plan, observer?)` / `ModelProcessObserver` | [`model-execution/`](../src/research/model-execution) | [`model-execution`](../tests/research/model-execution.test.ts), [`Root Synthesis`](../tests/research/semantic-chain-synthesis.test.ts), [`Adversarial Critic`](../tests/research/semantic-adversarial-critique.test.ts), [`Claude bridge`](../tests/research/claude-source-evidence-bridge.test.ts) | [Model seam](design/model-execution-seam.md) |
-| Independent proof | partial; TargetFileManifest-boundでMap-freeなIndependent Verifier、browser execution（Stored / Reflected / DOM）とSQL query semantics（readback / state change / response / timing / authentication）のSecurity Effect Adapter、方式中立なAccount Takeover authentication-state Adapter、v1 replay decode、exact SourceRederivation-bound Experiment、固定Labのsource-route protocol検査、Plan v2予算、Lab前usage gate、durable owner別集計、evidence-derived Finding Mechanism Group view。Target固有Lab strategyの汎用typed DSL化とTranslatePress private experimentは未接続 | `Verification.verify` / `CampaignReader.inspect(finding-mechanism-groups)` | [`verification/`](../src/research/verification) | [`verification`](../tests/research/verification.test.ts), [`Claude verifier`](../tests/research/claude-independent-verifier.test.ts), [`semantic E2E grouping`](../tests/research/campaign-semantic-e2e.test.ts), [`ATO Lab`](../tests/research/gvisor-account-takeover-lab.test.ts), [`XSS Lab`](../tests/research/gvisor-stored-xss-lab.test.ts), [`SQLi Lab`](../tests/research/gvisor-sql-injection-lab.test.ts) | [Verification seam](design/verification-seam.md) |
+| Source-only Validation | not implemented; contract、2 fresh Attempts、conditional third、tool-free Synthesis、Disposition、Risk Assessment、Review Packetが必要 | planned `Validation.validate` | — | — | [Validation seam](design/validation-seam.md) |
+| Legacy Independent Verification | replay compatibility only in accepted design; runtime codeはTargetFileManifest-bound Verifier、gVisor Lab、Witness / Causal Control、旧Finding / Mechanism Groupを実装済み | `Verification.verify` / `CampaignReader.inspect(finding-mechanism-groups)` | [`verification/`](../src/research/verification) | [`verification`](../tests/research/verification.test.ts), [`Claude verifier`](../tests/research/claude-independent-verifier.test.ts), [`ATO Lab`](../tests/research/gvisor-account-takeover-lab.test.ts), [`XSS Lab`](../tests/research/gvisor-stored-xss-lab.test.ts), [`SQLi Lab`](../tests/research/gvisor-sql-injection-lab.test.ts) | [Legacy Verification seam](design/verification-seam.md) |
+| Human Verification and Finding | not implemented; Packet intake、max 3 active unique mechanisms、Human Deferred、fresh environment、Review Dispositionが必要 | planned Human OS Interfaces | — | — | [Human Verification seam](design/human-verification-seam.md), [Setup seam](design/campaign-setup-seam.md) |
 | Operator CLI | partial; prepare/inspect only | `runCli` | [`cli.ts`](../src/cli.ts) | [`campaign-cli`](../tests/cli/campaign-cli.test.ts) | [ADR 0054](adr/0054-keep-the-cli-as-a-thin-adapter.md) |
 | Target Selection / Human OS | planned | not implemented | — | — | [Module Map](design/architecture/module-map.md) |
 

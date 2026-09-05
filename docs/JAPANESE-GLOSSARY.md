@@ -14,12 +14,12 @@
 | 正式語 | 日本語での意味 |
 | --- | --- |
 | Target Intelligence | 対象情報。候補の観測、選定、安全な取得を担当する文脈 |
-| Research | 調査。対象理解、脆弱性仮説の探索、独立検証、記録、反復を担当する文脈 |
-| Human OS | 人間確認基盤。最終確認、追加証拠の要求、外部行動の許可を担当する文脈 |
+| Research | 調査。対象理解、脆弱性仮説の探索、source-only Validation、記録、Review Packet作成を担当する文脈 |
+| Human OS | 人間確認基盤。fresh Human Verification、Finding、追加証拠の要求、外部行動の許可を担当する文脈 |
 | Campaign Control | 調査進行制御 |
 | Source Understanding | 対象理解 |
 | Exploration | 脆弱性仮説の探索 |
-| Verification | 独立検証 |
+| Validation | 独立したsource検査 |
 | Model Execution | AI実行管理 |
 | Research Record | 調査記録 |
 
@@ -77,7 +77,7 @@
 | Campaign | 調査キャンペーン |
 | Setup Blocked | セットアップ阻害 |
 | Runtime Profile | 実行環境プロファイル |
-| Budget Envelope | 予算枠。query、source bytes、turn、token、output、時間、Attempt / Wave / 並列数とVerification予約を固定するhard ceilingであり、消費目標ではない |
+| Budget Envelope | 予算枠。query、source bytes、turn、token、output、時間、Attempt / Wave / 並列数とValidation予約を固定するhard ceilingであり、消費目標ではない |
 | Follow-up Campaign | 後続キャンペーン |
 | Model Profile | モデルプロファイル |
 | Attempt Plan | 実行計画。Target、Manifest、role-specific assignment、Prompt Set、Model Profile、tool、schema、予算を固定し、workerへ何を見せどの条件で実行するかを記録する正本 |
@@ -89,7 +89,7 @@
 | Provider Credential Store | プロバイダー認証保管庫 |
 | Prompt Set | プロンプトセット |
 | Agent Sandbox | エージェント隔離環境 |
-| Verification Lab | 隔離検証環境 |
+| Human Verification Environment | 人間による再現のための使い捨て隔離環境 |
 | Lab Baseline | 検証環境の基準状態 |
 | External Dependency Grant | 外部依存接続許可 |
 | SecretRef | 秘密情報参照 |
@@ -110,7 +110,6 @@
 | Context Request | 文脈要求 |
 | Context Response | 文脈応答 |
 | Mapping Evidence Request | 地図根拠要求 |
-| Runtime Observation | 実行時観測 |
 | Research Thesis | 研究方向。security assumptionや機能間interactionを調べる未検証の問いであり、Hypothesisやfile scopeではない |
 | Focus Area | optionalなmap-assisted coverageのための観測上の探索領域。Finderのpivotを制限しない |
 | Work Lease | 作業割当。Research Thesis、Frontier GapまたはFocus Areaを有限予算でworkerへ渡す記録 |
@@ -123,7 +122,7 @@
 | Reopen Condition | 再開条件。blocked/exhausted Familyをactiveへ戻せる具体的な新fact、evidence、次action |
 | Depth Campaign | 深掘りキャンペーン。Synthesis、Critic、missing-link Waveを反復する条件付き運行 |
 | Depth Work Queue | Depth Admissionと有限next workをTarget / Manifest / predecessorへbindし、4件ずつの後続batchへ保持する待機集合 |
-| Iteration Decision | 反復判断。Verification、Depth Admission、次作業、retain、Closure、阻害を同時に持てる記録 |
+| Iteration Decision | 反復判断。Validation、Depth Admission、次作業、retain、Closure、阻害を同時に持てる記録 |
 | Exploration Lane | 探索レーン。偏りを観測する目的区分であり固定roleではない |
 | Frontier Lane | 高impact frontierを深く追う探索レーン |
 | Primitive Lane | 攻撃要素レーン |
@@ -145,26 +144,27 @@
 | Closure Record | research thesisまたはfrontierの探索完了記録 |
 | Coverage Closure | 根拠付き探索完了。全active workのterminal化と独立gap passを要求し、Map完成や一Waveの空振りだけでは成立しない |
 
-## 検証と判定
+## Validationと判定
 
 | 正式語 | 日本語での意味 |
 | --- | --- |
 | Preflight Disposition | 事前検査結果 |
-| Verification Queue | 検証待ち行列。当該Iterationや予算内で選ばれなくても候補を削除しない |
-| Experiment | 検証実験 |
-| Witness | 成立証拠 |
-| Execution Canary | 実行カナリア |
-| Security Effect | 安全な隔離Labで機械観測するsecurity propertyのterminalな変化。脆弱性名、payload文字列、delivery分類、中間状態そのものではない |
-| Causal Control | 因果対照実験 |
-| Skeptic Review | 反証レビュー |
-| Independent Reproduction | 独立再現 |
+| Validation Candidate | Wave BarrierとRoot Evaluationを通過し、独立したsource検査へ送る候補 |
+| Validation Threat Context | WordPress threat baseline、許可attacker、Target、claimed property、technical exclusionを固定する文脈 |
+| Validation Rubric | source integrity、reachability/premise、broken control、causal route/effect、counterevidence/proof gapの共通評価基準 |
+| Validation Queue | exact dedupe済みcandidateを保持するResearch所有の待機集合 |
+| Independent Validation Attempt | Finderや別Validatorの会話を使わずfresh contextとread-only source toolで行う検査 |
+| Validation Synthesis | 複数Attemptの根拠だけをtool-freeで統合し、Dispositionを決める独立判断 |
+| Validation Disposition | `ready-for-human`、`needs-research`、`disproven`、`rejected`、`validation-pending`のsource-only判定 |
+| Ready-for-human | source上のrubricが閉じ、残るunknownがruntime reproductionだけである状態 |
+| Risk Assessment | Validityとは分離してattacker、前提、surface、effect、blast radiusを構造化した評価 |
+| Skeptic Review | source routeとcounterevidenceをfresh contextで反証する独立レビュー |
 | Model Separation Exception | モデル分離例外 |
-| Finding | 確認済み脆弱性 |
-| Finding Mechanism Group | 脆弱性機構グループ。同じ独立再導出routeと実験証拠を持つ複数Findingを、元記録を残したまま一機構として数えるderived view |
+| Legacy Automated Finding | 旧Research Verificationが生成したread-only replay用Finding |
 | Causal Identity | 原因同一性 |
-| Blocked | 検証不能 |
+| Blocked | 必要な前提、toolまたは能力不足により現在のResearch workを進められない状態 |
 | Disproved | 反証済み |
-| Incomplete Campaign | 未完了キャンペーン。Findingがあってもactive frontierや検証待ちが残れば成立し得る |
+| Incomplete Campaign | 未完了キャンペーン。active frontier、未解決gap、validation-pending等が残るResearch terminal |
 | Programme Disposition | プログラム適格性判定 |
 | Known Duplicate Disposition | 既知重複判定 |
 
@@ -202,7 +202,17 @@
 | --- | --- |
 | Human Review Packet | 人間確認パケット |
 | Human Review Case | 人間確認案件 |
+| Human Verification Queue | 一Campaign最大3 unique mechanismをactiveにするHuman OS所有の待機集合 |
+| Human Deferred | Ready-for-humanだが人間の容量により未着手であるscheduling状態 |
+| Human Verification | 人間がfreshな隔離環境と実Target interfaceで主張を再現・判断する行為 |
+| Lab Baseline | freshなHuman Verification Environmentを作る固定起点 |
+| Human Verification Assistant | gVisorとtyped Experimentで任意に再現を支援する機構 |
+| Experiment | Human Review Caseを支持または反証する再現可能な試行 |
+| Witness | Experimentまたは人間の再現がsecurity propertyの破壊を客観的に示した結果 |
+| Security Effect | fresh環境でattacker sequence後に観測できるsecurity propertyのterminalな変化 |
+| Causal Control | 仮定した原因要素だけを除いてeffectが消えることを示す任意の比較結果 |
+| Execution Canary | 隔離環境だけでcode executionを示すnonce付きの無害effect |
 | Review Disposition | 確認判定 |
-| Human Confirmation | 人間による確認 |
+| Finding | Human Verificationと再現記録へ結び付けた確認済み脆弱性 |
 | Evidence Request | 証拠要求 |
 | External Action Authorization | 外部行動許可 |

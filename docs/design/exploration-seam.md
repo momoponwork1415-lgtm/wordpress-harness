@@ -1,10 +1,10 @@
 # Exploration seam
 
-Status: accepted design; ADR 0113, ADR 0114, ADR 0117, ADR 0119, ADR 0120 are authoritative
+Status: accepted design; ADR 0113, ADR 0114, ADR 0117, ADR 0120, ADR 0122 are authoritative
 
 ## Owner and purpose
 
-Explorationは、固定Target Snapshotから独立したresearch ideaを進め、反証可能なHypothesis、再利用可能なRoute Fragment、明示的なgapへ変換し、重大HypothesisをVerificationへ、strong semantic frontierをDepth Admissionへ送るResearch内部Moduleである。Findingへの昇格、runtime操作、provider process、Target取得を所有しない。
+Explorationは、固定Target Snapshotから独立したresearch ideaを進め、反証可能なHypothesis、再利用可能なRoute Fragment、明示的なgapへ変換し、重大HypothesisをValidationへ、strong semantic frontierをDepth Admissionへ送るResearch内部Moduleである。Validation disposition、Finding昇格、runtime操作、provider process、Target取得を所有しない。
 
 現在の実装状態、file、Behavior Testは[Codebase Guide](../CODEBASE-GUIDE.md)だけを正本とする。Target別成否は[experiments](../experiments/README.md)へ置く。
 
@@ -23,13 +23,13 @@ callerへRoot Planner、Family Registry、Finder、Root Evaluation、Synthesis�
 
 Root PlannerはExplorationが所有するsource-aware Recon collaboratorであり、provider/process実行だけをModel Executionへ委譲する。callerはReconを直接起動せず、`Exploration.decide`が返す型付き判断だけを扱う。Reconはmanifest-boundなsource toolで実sourceを読み、source-backedなFocus Packetを作るが、whole-target Baseline Finderの開始を待たせない。outputが不正またはsemanticに重複する場合はBudget Envelope内のfresh retryを許すが、解消できなければplanning blockedとして記録し、Map-firstまたは固定Strategy portfolioへfallbackしない。
 
-Interfaceは、raw-source-firstのSemantic Research Wave、重大HypothesisのVerification要求、strong frontierのDepth Admission、具体的missing linkのfresh Work Wave、Evidence Request、evidence-backed Closure / Blockedを返せる。未使用schemaを設計だけで先に増やさない。
+Interfaceは、raw-source-firstのSemantic Research Wave、重大HypothesisのValidation candidate化、strong frontierのDepth Admission、具体的missing linkのfresh Work Wave、Evidence Request、evidence-backed Closure / Blockedを返せる。未使用schemaを設計だけで先に増やさない。
 
 新規Exploration inputは`Target Snapshot`と`TargetFileManifest` refへ必ずbindし、`Surface Map` refは任意とする。Work Waveとstateのsource identityはTarget Snapshot digestとManifest digestで固定し、任意のMapを使ったPlanだけがそのMap refも入力digestへ含める。HypothesisとRoute Fragmentのsource anchorはManifestで検査し、Map nodeまたはMap inventoryを受理条件にしない。[ADR 0118](../adr/0118-bind-source-provenance-to-the-target-file-manifest.md)を正本とする。
 
 `WorkWavePlan`の次schema revisionはWave目的で判別できるunionとする。raw-source Semantic Researchとmissing-linkのPlanはMapを持てず、map-assisted coverageのPlanだけがMap refを必須入力としてdigestへ含める。全PlanはTarget SnapshotとTargetFileManifestへbindする。既存schema version 1はLedger replay専用として読み取りを維持し、新規Campaignでは生成しない。
 
-`ExplorationDecision`の次schema revisionは、初期または継続Waveを返す`run-wave`と、terminal evidenceを評価した`iteration-decision`の二variantへ深くする。Verification、Depth、次Wave、retain、Closure、Blockerを相互排他的なtop-level variantにしない。
+`ExplorationDecision`の次schema revisionは、初期または継続Waveを返す`run-wave`と、terminal evidenceを評価した`iteration-decision`の二variantへ深くする。Validation、Depth、次Wave、retain、Closure、Blockerを相互排他的なtop-level variantにしない。
 
 ```ts
 type ExplorationDecisionV2 =
@@ -60,7 +60,7 @@ type ExplorationDecisionV2 =
     };
 
 type IterationActionV2 =
-  | { kind: "request-verification"; subjects: ExplorationSubjectRef[]; request: VerificationRequest }
+  | { kind: "admit-validation"; subjects: ExplorationSubjectRef[]; candidate: ValidationCandidate }
   | { kind: "admit-depth"; subjects: ExplorationSubjectRef[]; admission: DepthAdmission }
   | { kind: "schedule-work"; subjects: ExplorationSubjectRef[]; plan: WorkWavePlanV2 }
   | { kind: "retain"; subjects: ExplorationSubjectRef[]; reason: string }
@@ -84,7 +84,7 @@ type ApproachFamilyChangeV1 =
   | { kind: "reopen-family"; family: ApproachFamilyRef; condition: ReopenConditionRef; evidence: ExplorationSubjectRef[] };
 ```
 
-`evaluationSubjects`はactive Research Thesisと、Waveが作った全Hypothesis、Route Fragment、Frontier Gapのrefをstable orderで一度ずつ列挙する。各subjectは`actions`の一つ以上から参照されなければならず、同じsubjectをVerificationとDepth等の互換actionへ同時に送ってよい。Harnessは集合一致、Target / Manifest / Wave binding、参照先、stable orderingを決定論的に検査する。modelがsubjectを省略したdecisionは不正であり、未記載を暗黙の却下として扱わない。
+`evaluationSubjects`はactive Research Thesisと、Waveが作った全Hypothesis、Route Fragment、Frontier Gapのrefをstable orderで一度ずつ列挙する。各subjectは`actions`の一つ以上から参照されなければならず、同じsubjectをValidationとDepth等の互換actionへ同時に送ってよい。Harnessは集合一致、Target / Manifest / Wave binding、参照先、stable orderingを決定論的に検査する。modelがsubjectを省略したdecisionは不正であり、未記載を暗黙の却下として扱わない。
 
 ## Owned artifacts
 
@@ -116,18 +116,18 @@ flowchart TB
     recon --> focused["Focused / Wildcard Finders<br/>up to 3"]
     baseline --> checkpoints[("Durable checkpoints")]
     focused --> checkpoints
-    checkpoints -->|"Source-bound Hypothesis"| verify["Independent Verification"]
     recon --> barrier["Wave Barrier"]
     baseline --> barrier
     focused --> barrier
     barrier --> evaluation{"Iteration Evaluation"}
+    evaluation -->|"source-bound candidate"| validation["Independent Validation"]
     evaluation -->|"strong frontier"| admission["Depth Admission"]
     evaluation -->|"terminal"| stop["Closure / Blocked"]
 ```
 
 Finder同士はconversation、scratch、candidateを共有しない。Finderは一つの型付きHypothesis、Route Fragment、Frontier Gapがsource-boundになった時点でcheckpointし、Target、Manifest、Attempt、Work Lease、Attempt内ordinalを検査したCAS artifactとLedger eventがdurableになってから続行する。provider failure、timeout、resume失敗が後で起きても既存checkpointを消さない。同じsemantic identityの再送は同じartifactへ収束し、変更されたpayloadを同じcheckpoint identityで上書きしない。
 
-checkpointされたSource-bound Hypothesisは、schemaとsource bindingを通ればWave BarrierまたはRoot Evaluationを待たずVerification Queueへ入る。これはFinding昇格ではなく、Independent Verificationに反証可能な候補を渡すだけである。Route FragmentとFrontier GapはWave terminal後にstable orderで統合し、Iteration EvaluationとDepthへ渡す。unknownは独立した自由文artifactへせず、必要fact、source evidence、falsifier、次の決定的actionを持つFrontier Gapへ正規化する。支持model数、到着順、多数決をcandidate破棄またはFinding成立へ使わない。
+checkpointされたSource-bound HypothesisはWave Barrier前にもdurableに保つが、Validation Queueへはまだ入れない。Wave terminal後にHypothesis、Route Fragment、Frontier Gapをstable orderで統合し、Root Evaluationが全subjectを処遇してからValidation Candidateを作る。unknownは独立した自由文artifactへせず、必要fact、source evidence、falsifier、次の決定的actionを持つFrontier Gapへ正規化する。支持model数、到着順、多数決をcandidate破棄またはFinding成立へ使わない。
 
 新規`FinderOutput` schema version 2は`hypotheses`、`routeFragments`、`frontierGaps`を必須配列として持ち、0件を空配列で表す。`Hypothesis 0件 + Route Fragmentあり`は正常なsemantic outputであり、`no-source-bound-hypothesis`またはAttempt failureへ丸めない。Finder自身がRegistryとの差分を知らないため、`newEvidence` booleanは持たせない。
 
@@ -141,37 +141,43 @@ Default Finderへ最初に見せるcontextは、roleとevidence規則、最小�
 
 Research ThesisはTargetとManifestへbindしたtyped envelopeとし、Target固有またはWildcardの区分、研究上の問い、motivation、starting basis、他thesisから独立している根拠をbounded proseで持てる。CWE、file allowlist、固定手順をschema fieldにしない。Default raw-sourceとmissing-link Work WaveはAnalysis Unitを作らず、source anchorを必要時にfreshなtool queryで再取得する。Analysis Unitはmap-assisted coverageと既存v1 replayだけに残す。実際に読んだ範囲と走査量はTool Receiptおよびterminal artifactから観測し、事前に選んだAnalysis Unitをraw-source coverageの代理にしない。
 
-単独で十分重大なSQLi、Stored XSS、PrivEsc等はそのままVerificationへ進める。一つのFinding候補が出てもstrong frontierが残れば自動終了しない。低優先Findingもsemantic mechanismを含む場合はFragmentとして保持できる。
+単独で十分重大なSQLi、Stored XSS、PrivEsc等もRoot Evaluation後にValidationへ進める。一つのReady-for-human候補が出てもstrong frontierが残れば自動終了しない。低優先candidateもsemantic mechanismを含む場合はFragmentとして保持できる。
 
 ## Root Evaluation and admission
 
-Iteration Evaluationは全Attemptのterminal後に、同じ強いmodel familyの専用roleとfresh contextで一度のresearch判断を行う。checkpoint済みHypothesisをVerificationへ送る前置gateではなく、duplicateの統合、Fragment / GapのDepth Admission、追加work、retain、Closure / Blockedを決める。初期baselineではmulti-model合議を要求しない。model familyの分散はProspective Campaignのbaseline後にablationする。Finder conversation、raw transcript、confidence、model identity、到着順、private oracleは渡さない。
+Iteration Evaluationは全Attemptのterminal後に、同じ強いmodel familyの専用roleとfresh contextで一度のresearch判断を行う。checkpoint集合の全件処遇、Validation Candidate、duplicate、Fragment / GapのDepth Admission、追加work、retain、Closure / Blockedを決める。初期baselineではmulti-model合議を要求しない。model familyの分散はProspective Campaignのbaseline後にablationする。Finder conversation、raw transcript、confidence、model identity、到着順、private oracleは渡さない。
 
 入力はTarget、Manifest、Work Wave、Research ThesisとWork Lease、Attempt outcome、全Source-bound Hypothesis、Route Fragment、Frontier Gap、Tool Receiptである。Harnessは全Tool Receipt valueをtrusted control planeで検証してCAS / Ledgerへ保持する一方、Root Evaluatorのpromptには各Receiptのdigest-bound ref、query ordinal、operation、terminal resultとAttempt別集計だけを渡す。Target、Manifest、Assignment、Policy、raw responseまたはsource本文の反復payloadは渡さず、全Receiptのidentityとterminal statusを失わずにcontext amplificationを抑える。Tool Receiptから得るcoverage、deny、budget exhaustionはgap、priority、blockerのcontextにはできるが、読まなかったsource、tool non-match、走査量だけから安全性またはClosureを主張できない。
 
-semanticなVerification / Depth / retain / Closure判断はmodelが行う。Harnessのdeterministic shellは次だけを強制し、severity allowlist、CWE list、impact enum、model confidenceから採否を決めない。
+semanticなValidation admission / Depth / retain / Closure判断はmodelが行う。Harnessのdeterministic shellは次だけを強制し、severity allowlist、CWE list、impact enum、model confidenceから採否を決めない。
 
 1. 全inputとoutputが同じTarget、Manifest、Waveへbindしている。
 2. 全source anchorがManifestに存在し、content digestとrangeが一致する。
 3. 全evaluation subjectが一つ以上のactionから参照され、foreign refまたはsilent omissionがない。
-4. Verification request、Depth Admission、Closure Recordが必要なevidence ref、falsifier、次actionまたはreopen条件を持つ。
+4. Validation Candidate、Depth Admission、Closure Recordが必要なevidence ref、falsifier、次actionまたはreopen条件を持つ。
 5. Root EvaluationはFindingまたはDisprovedを生成しない。
 
 Root Evaluation outputがschema不正、subject欠落、binding不一致の場合はBudget Envelope内でfresh retryできる。解消できなければ`Incomplete Campaign`として停止し、severity heuristic、Map-first planning、最初のmodel outputへfallbackしない。
 
-Verificationへ送るsemantic基準は、Permitted Attackerがplausibleで、materialなconfidentiality、integrity、availability、identityまたはsite-control propertyの破壊へ至るsource-boundで反証可能なrouteであることとする。attacker premiseが未解決でも、boundedなsource再導出またはExperimentで決定できるならrequestできる。vulnerability class名だけでは十分でも不十分でもない。当該Iterationまたは予算内で選ばれなかった反証前のHypothesisはVerification Queueまたはretain actionに残し、削除しない。
+Validationへ送るsemantic基準は、Permitted Attackerがplausibleで、materialなconfidentiality、integrity、availability、identityまたはsite-control propertyの破壊へ至るsource-boundで反証可能なrouteであることとする。attacker premiseが未解決でも、boundedなsource investigationで決定できるならadmitできる。vulnerability class名だけでは十分でも不十分でもない。当該Iterationまたは予算内で選ばれなかった反証前のHypothesisはValidation Queueまたはretain actionに残し、削除しない。
 
-Depth Admissionには、少なくとも一つのsource-boundなstrong capabilityまたはsecurity-semantic mechanismと、Permitted Attackerからhigh impactへ伸びるplausibleなcompositionまたは具体的Frontier Gapを要求する。strong read/write/file/auth/state capability、secret/reset material、persistent attacker-controlled state、cross-request/cross-actor flow、decode/reparse、producer/consumer mismatch、security assumption mismatchはそれぞれAdmissionの根拠候補であり、全項目を満たす必要はない。known final RCE、ATO、PrivEsc、sink match、支持model数は要求しない。強いHypothesisと未完frontierが同居する場合は、同じIteration DecisionにVerification requestとDepth Admissionを併記する。
+Depth Admissionには、少なくとも一つのsource-boundなstrong capabilityまたはsecurity-semantic mechanismと、Permitted Attackerからhigh impactへ伸びるplausibleなcompositionまたは具体的Frontier Gapを要求する。strong read/write/file/auth/state capability、secret/reset material、persistent attacker-controlled state、cross-request/cross-actor flow、decode/reparse、producer/consumer mismatch、security assumption mismatchはそれぞれAdmissionの根拠候補であり、全項目を満たす必要はない。known final RCE、ATO、PrivEsc、sink match、支持model数は要求しない。強いHypothesisと未完frontierが同居する場合は、同じIteration DecisionにValidation admissionとDepth Admissionを併記する。
 
 ## Conditional depth loop
 
-Iteration DecisionがCASと単一Ledger eventへdurableになった時点で、modelが選んだ`admit-depth` action groupingから初期のactive Approach Familyを開き、Research RecordがCampaign-localなRegistry viewを再構築する。その後、`admit-depth`と`schedule-work`はversioned `Depth Work Queue`へ決定的に投影してCASとCampaign recordへ固定する。各itemは元Decision digest、Target、Manifest、Wave、全subject ref、Family refとdirectiveを保持する。stable orderで最大4件ずつbatch化し、5件目以降を黙示的に捨てない。Queue materialization、全batchのtool-freeなfresh Root Synthesis、Synthesis CAS後のsource-enabled fresh Critic、Critique CAS後のfresh Depth Root Evaluation、具体的Critic Gapへbindしたfresh Missing-link Finder Wave、Family transition、各Attemptのintent / completion、Run replayまで実装済みである。Depth Evaluationは全Proposalを`request-verification / schedule-missing-link / retain-route / close-route / block-route`の一つへ置き、Critic verdictと矛盾する処遇を拒否する。`request-verification`ではcausal identity、Critic後にfresh Evaluationが確定したtyped attacker premise、impact、unknowns、falsifier、next experimentを必須にし、HarnessがProposalの全source evidenceを重複排除してManifest-bound routeを作る。typed premiseにはWordPress標準の`contributor`を含み、Critic evidenceによる精緻化をCritic前のProposal文字列との不一致だけで拒否しない。そのDecisionをLedgerへ固定するまでVerificationとMissing-link Finderを開始しない。同一semantic Hypothesisはoriginに依存せず一回のVerificationへ収束する。Finding、disproved、blockedのoutcomeは`exploration.family-verification-resolved` eventで元Familyへ戻し、対応するpending Verificationだけを解消する。outcome単体でFamily stateを`exhausted`へ変えない。Missing-link assignmentはGapを開始点にするがTarget全体へのpivotを制限せず、返したsemantic subjectを元Familyへattachしたfollow-up Queueでfresh Synthesis / Critic / Evaluationを反復する。Familyごとのevidence generationは最大3、Campaign全体は最大12 Work Wave、各Waveは最大4 Finderとし、複数batchのsibling Queueをbatch順で飢餓させない。容量を越えたGapは`unscheduledGaps`として保持する。Proposal 0件ではCriticとDepth Evaluationを起動せず、いずれかのtyped incompleteではpartialを後続へ渡さない。terminalなDepth後も一回のno-material-deltaでは閉じず、fresh Wildcard reviewを含む二回連続のcomplete no-material-deltaとterminal Registryを要求する二段Coverage Closureまで接続済みである。
+Iteration DecisionがCASと単一Ledger eventへdurableになった時点で、modelが選んだ`admit-depth` action groupingから初期のactive Approach Familyを開き、Research RecordがCampaign-localなRegistry viewを再構築する。その後、`admit-depth`と`schedule-work`はversioned `Depth Work Queue`へ決定的に投影してCASとCampaign recordへ固定する。各itemは元Decision digest、Target、Manifest、Wave、全subject ref、Family refとdirectiveを保持する。stable orderで最大4件ずつbatch化し、5件目以降を黙示的に捨てない。
+
+全batchのtool-freeなfresh Root Synthesis、Synthesis CAS後のsource-enabled fresh Critic、Critique CAS後のfresh Depth Root Evaluation、具体的Critic Gapへbindしたfresh Missing-link Finder Waveを順に行う。Depth Evaluationは全Proposalを`admit-validation / schedule-missing-link / retain-route / close-route / block-route`の一つへ置き、Critic verdictと矛盾する処遇を拒否する。`admit-validation`ではcausal identity、Critic後に確定したtyped attacker premise、impact、unknowns、falsifier、次のsource investigationまたはruntime uncertaintyを必須にし、HarnessがProposalのsource evidenceを重複排除してManifest-bound routeを作る。
+
+そのDecisionをLedgerへ固定するまでValidationとMissing-link Finderを開始しない。同じTarget、Manifest、attacker premise、broken property、route、source anchorを持つcandidateはoriginに依存せず一つのValidation identityへ収束する。`needs-research`は具体的Frontier Gapとして元Familyへ戻し、`ready-for-human / disproven / rejected / validation-pending`は対応するpending Validationを解消または保留する。outcome単体でFamily stateを`exhausted`へ変えない。
+
+Missing-link assignmentはGapを開始点にするがTarget全体へのpivotを制限せず、返したsemantic subjectを元Familyへattachしたfollow-up Queueでfresh Synthesis / Critic / Evaluationを反復する。Familyごとのevidence generationは最大3、Campaign全体は最大12 Work Wave、各Waveは最大4 Finderとし、複数batchのsibling Queueをbatch順で飢餓させない。容量を越えたGapは`unscheduledGaps`として保持する。Proposal 0件ではCriticとDepth Evaluationを起動せず、いずれかのtyped incompleteではpartialを後続へ渡さない。terminalなDepth後も一回のno-material-deltaでは閉じず、fresh Wildcard reviewを含む二回連続のcomplete no-material-deltaとterminal Registryを要求する。
 
 ```mermaid
 flowchart TB
     frontier["Admitted Frontier"] --> registry[("Approach Family Registry")] --> synthesis["Fresh Root Synthesis"] --> critic["Fresh Adversarial Critic"] --> decision{"Fresh Root Evaluation"}
     decision -->|"missing link"| next["Fresh Missing-link Wave"] --> registry
-    decision -->|"source-bound route"| verify["Independent Verification"]
+    decision -->|"source-bound route"| validation["Independent Validation"]
     decision -->|"terminal"| stop["Closure / Blocked"]
 ```
 
@@ -192,19 +198,19 @@ Synthesis outputは全input work itemの処遇と、0個以上の`ChainProposalV
 - sourceで観測したrelationとmodelが提案する未検証connectionの区別
 - attacker premise、破壊され得るsecurity property、unknown、falsifier、次の決定的action
 
-HarnessはTarget / Manifest binding、入力全件の処遇、ref、source anchor、stable ordering、step schemaを検査するが、missing edgeの生成、semantic connectionの真偽、route成立を決めない。Chain ProposalはEvidence Route、Source-bound Hypothesis、Verification request、Findingのいずれでもない。
+HarnessはTarget / Manifest binding、入力全件の処遇、ref、source anchor、stable ordering、step schemaを検査するが、missing edgeの生成、semantic connectionの真偽、route成立を決めない。Chain ProposalはEvidence Route、Source-bound Hypothesis、Validation Candidate、Findingのいずれでもない。
 
 Criticへ渡すのはimmutableなSynthesis artifactとそこに含まれる元のtyped subject refだけであり、Synthesisのconversation、scratch、provider sessionを渡さない。将来のCampaign接続ではRegistry refも追加する。CriticにはManifest-boundなread-only `list / search / read`を専用Source Tool Policyと予算で許可し、少なくとも一回のfresh source readなしにはcompleted resultを受理しない。防御やsource premiseを独立に調べられるが、runtime Experimentは許可しない。
 
-`AdversarialCritiqueV1`は全Chain Proposalをstable orderで一度ずつ処遇し、各Proposalを`survives / needs-evidence / contradicted`のいずれかに置く。これはExploration内の処遇であり、Verificationの`Disproved`ではない。各処遇はattacker premise、actor、state identity、request ordering、defense、causal hop、source bindingのchallengeを0個以上持ち、challengeごとに対象claim、evidence ref、reason、falsifierを固定する。`needs-evidence`は必要fact、predecessor ref、期待観測、falsifier、次の決定的actionを持つFrontier Gapを必須にし、他のverdictはGapを持てない。この条件はpost-parse検査だけでなくproviderへ渡すdiscriminated JSON Schemaにも表現し、Harnessがmodel verdictを黙って書き換えない。CriticはProposalを黙示的に捨て、新しいsemantic edgeを追加し、FindingまたはVerification verdictを生成できない。
+`AdversarialCritiqueV1`は全Chain Proposalをstable orderで一度ずつ処遇し、各Proposalを`survives / needs-evidence / contradicted`のいずれかに置く。これはExploration内の処遇であり、Validationの`Disproved`ではない。各処遇はattacker premise、actor、state identity、request ordering、defense、causal hop、source bindingのchallengeを0個以上持ち、challengeごとに対象claim、evidence ref、reason、falsifierを固定する。`needs-evidence`は必要fact、predecessor ref、期待観測、falsifier、次の決定的actionを持つFrontier Gapを必須にし、他のverdictはGapを持てない。この条件はpost-parse検査だけでなくproviderへ渡すdiscriminated JSON Schemaにも表現し、Harnessがmodel verdictを黙って書き換えない。CriticはProposalを黙示的に捨て、新しいsemantic edgeを追加し、FindingまたはValidation verdictを生成できない。
 
-Critique後のfresh Root Evaluationだけが、surviving Proposalをsource-boundで反証可能なVerification requestへ変換し、具体的gapをmissing-link Work Waveへ割り当て、materialな新mechanismをFamily changeへ反映し、またはClosure / Blockedを選ぶ。SynthesisとCriticはwork scheduling、Family transition、Finding昇格を所有しない。
+Critique後のfresh Root Evaluationだけが、surviving Proposalをsource-boundで反証可能なValidation Candidateへ変換し、具体的gapをmissing-link Work Waveへ割り当て、materialな新mechanismをFamily changeへ反映し、またはClosure / Blockedを選ぶ。SynthesisとCriticはwork scheduling、Family transition、Validation disposition、Finding昇格を所有しない。
 
 missing-link Work Leaseは一つのFrontier Gapを参照し、Target / Manifest、predecessor Family / Chain Proposal / Critique、未証明の因果関係、falsifier、成功条件、許容するevidence種別を固定する。promptへ渡すのはこのboundedな問いと必要なtyped predecessor summaryだけにし、file allowlist、CWE、期待する答え、固定手順、Registry全体を入れない。Finderはsource anchorをfresh source toolで再取得し、Target全体へpivotできる。支持数を作るため同じgapを複製せず、最大4枠には独立したgapまたはFamilyを割り当てる。
 
 Root Planner、Finder、Root Evaluation、Root Synthesis、Adversarial Criticは別々のModel Profile、Prompt Set、Source Tool Policy、Budget Envelope、output schemaを選べる。初期baselineは同じ強いmodel familyを全roleへ割り当ててよいが、fresh Attemptの分離を省略できない。Profileが要求したmodel separationをprovider都合で満たせない場合だけModel Separation Exceptionを記録し、別modelへ自動fallbackしない。
 
-SynthesisまたはCriticがinvalid output、provider failure、policy denial、budget exhaustionになった時はpartial outputを次stageへ渡さない。roleの予約予算内でfresh retryできるが、解消できなければactive Familyを保った`Incomplete Campaign`とする。Criticの`contradicted`、一回の`no new evidence`、新mechanismなし、Finding成立、hard budget ceilingだけではFamilyを`exhausted`にしない。Depthのevidence-backed stopには、全admitted Familyが`blocked / exhausted`、pending Verificationとmissing-link workがなく、具体的な次actionがないことをfresh Root Evaluationが示し、各terminal FamilyがClosure RecordまたはblockerとReopen Conditionを持つことを要求する。連続何回の`no new evidence`を要求するかとhard ceilingはCampaign policyが所有する。
+SynthesisまたはCriticがinvalid output、provider failure、policy denial、budget exhaustionになった時はpartial outputを次stageへ渡さない。roleの予約予算内でfresh retryできるが、解消できなければactive Familyを保った`Incomplete Campaign`とする。Criticの`contradicted`、一回の`no new evidence`、新mechanismなし、Ready-for-human、hard budget ceilingだけではFamilyを`exhausted`にしない。Depthのevidence-backed stopには、全admitted Familyが`blocked / exhausted`、pending Validationとmissing-link workがなく、具体的な次actionがないことをfresh Root Evaluationが示し、各terminal FamilyがClosure RecordまたはblockerとReopen Conditionを持つことを要求する。連続何回の`no new evidence`を要求するかとhard ceilingはCampaign policyが所有する。
 
 ### Route Fragment and Approach Family Registry
 
@@ -228,7 +234,7 @@ Approach Familyは一つのCampaign、Target Snapshot、Manifestへscopeする�
 
 `new-mechanism`、`route-extension`、`premise-change`、`priority-change`、`contradiction`はmaterially new evidenceになり得る。全subjectが`corroboration`または`duplicate`で、新しいHypothesis、Frontier Gap、priority変化もない時だけWaveを`no new evidence`と導出する。Fragmentが存在すること自体、artifact digestの違い、支持Attempt数をnoveltyにしない。
 
-Familyの許可状態は`active / blocked / exhausted`の三つに限定する。Verificationへ送った`active` Familyは別の`pendingVerification` flagを持ち、Verification結果を状態と混同しない。新規Familyは`active`で始まり、次を許す。
+Familyの許可状態は`active / blocked / exhausted`の三つに限定する。Validationへ送った`active` Familyは別の`pendingValidation` stateを持ち、Validation結果をFamily状態と混同しない。新規Familyは`active`で始まり、次を許す。
 
 ```text
 active    -> active | blocked | exhausted
@@ -236,19 +242,19 @@ blocked   -> blocked | active (Reopen Condition satisfied)
 exhausted -> active (Reopen Condition satisfied)
 ```
 
-`blocked`は具体的なsource、tool、runtime、provider capabilityまたはprerequisiteがなく現在実行できる決定的actionがない状態であり、blockerとReopen Conditionを必須にする。`exhausted`は全Frontier GapがClosure Recordまたは独立した反証根拠を持ち、次の決定的actionがない状態であり、Closure RecordとReopen Conditionを必須にする。単一Attempt failure、Finding、hard budget ceilingはFamilyを`exhausted`にしない。budget終了時にactive / blocked Familyが残ればCampaignをIncompleteにする。
+`blocked`は具体的なsource、tool、provider capabilityまたはprerequisiteがなく現在実行できる決定的actionがない状態であり、blockerとReopen Conditionを必須にする。`exhausted`は全Frontier GapがClosure Recordまたは独立した反証根拠を持ち、次の決定的actionがない状態であり、Closure RecordとReopen Conditionを必須にする。単一Attempt failure、Ready-for-human、hard budget ceilingはFamilyを`exhausted`にしない。budget終了時にactive / blocked Familyが残ればCampaignをIncompleteにする。
 
 Reopen Conditionは自由なboolean式にせず、必要fact、期待するevidence種別、比較対象となる先行evidence、決定的な次actionを持つtyped artifactにする。Root Evaluationが新しいmechanismまたはsource evidenceのsemanticな充足を判断し、Harnessは同じSnapshot / Manifestへのbinding、Closure後のevent順、未使用evidence ref、許可状態遷移を検査する。言い換えまたは既存evidenceの別digestだけでは再開できない。
 
-Approach Family Registryは別のmutable storeではなく、versioned `exploration.iteration-decided`、`exploration.depth-iteration-decided`、`exploration.family-evidence-attached`、`exploration.family-verification-resolved` eventから作るprojectionである。Depth Decision eventはVerificationとMissing-link Waveより先にappendし、evidence attachment eventはterminal subjectとfollow-up QueueがCASへ固定された後、Verification resolution eventはVerification recordがdurableになった後にappendする。Research Recordはevent sequence、schema、digest、Target binding、参照artifact、状態遷移を検査してviewを再構築するが、Familyの意味、delta、reopenの妥当性を決めない。検索用cacheまたはindexを置く場合も、削除してLedgerから同じRegistry digestを再生成できなければならない。
+Approach Family Registryは別のmutable storeではなく、versioned `exploration.iteration-decided`、`exploration.depth-iteration-decided`、`exploration.family-evidence-attached`、`exploration.family-validation-resolved` eventから作るprojectionである。Depth Decision eventはValidationとMissing-link Waveより先にappendし、evidence attachment eventはterminal subjectとfollow-up QueueがCASへ固定された後、Validation resolution eventはValidation recordがdurableになった後にappendする。Research Recordはevent sequence、schema、digest、Target binding、参照artifact、状態遷移を検査してviewを再構築するが、Familyの意味、delta、reopenの妥当性を決めない。検索用cacheまたはindexを置く場合も、削除してLedgerから同じRegistry digestを再生成できなければならない。
 
-Root Synthesisが既存Familyへbindされていない`schedule-work`だけからChain Proposalを作り、fresh Depth Root EvaluationがそのProposalを継続、検証、blockまたはcloseした場合、そのDepth Decisionをopening decisionとする新しいFamilyを一つ開く。thesis、mechanism、falsifier、next action、evidenceはChain ProposalとDepth dispositionのmodel出力だけから決定論的にprojectionし、Harnessが近い既存Family、支持数、多数決でattach先を推測しない。`exploration.depth-iteration-decided` v2は既存Familyのtransitionと新Family genesisを分けて記録し、v1 eventのread-only replay互換を保つ。
+Root Synthesisが既存Familyへbindされていない`schedule-work`だけからChain Proposalを作り、fresh Depth Root EvaluationがそのProposalを継続、Validationへadmit、blockまたはcloseした場合、そのDepth Decisionをopening decisionとする新しいFamilyを一つ開く。thesis、mechanism、falsifier、next action、evidenceはChain ProposalとDepth dispositionのmodel出力だけから決定論的にprojectionし、Harnessが近い既存Family、支持数、多数決でattach先を推測しない。`exploration.depth-iteration-decided` v2は既存Familyのtransitionと新Family genesisを分けて記録し、v1 eventのread-only replay互換を保つ。
 
 既存v1 LedgerとCAS artifactは書き換えず、v1 `routeFragments`からFamily eventを遡及生成しない。v1 readerはFragmentを`legacy-unclassified`として閲覧できるだけにし、同一Snapshot / Manifestへbindした明示的Follow-up Campaignがv2 Root Evaluationを通した時だけ新しいFamily evidenceとしてimportする。
 
 ## Freedom inside the Evidence Shell
 
-Harnessが固定するのはTarget、source provenance、tool、予算、最大並列数、artifact schema、barrier、freshness、停止、fresh Verificationである。Finderは読む順序、pivot、機能間接続、wrapper追跡、cross-request state、parser境界を自由に決める。
+Harnessが固定するのはTarget、source provenance、tool、予算、最大並列数、artifact schema、barrier、freshness、停止、fresh Validationである。Finderは読む順序、pivot、機能間接続、wrapper追跡、cross-request state、parser境界を自由に決める。
 
 `source-first`、`sink-first`、`state-chain`等は開始lensまたは観測labelに限り、固定手順にしない。Vulnerability class別Finder Interfaceを作らない。[ADR 0113](../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)を正本とする。
 
@@ -256,20 +262,20 @@ Harnessが固定するのはTarget、source provenance、tool、予算、最大�
 
 通常のSemantic Research Waveはraw sourceを主経路にする。Surface Map、PHP Program Index、AST、Semgrep、CodeQLはnavigation、evidence、coverage、pattern expansionに使えるが、Map外pathの拒否、non-matchからのsafe判定、Analysis Unit/Focusの探索上限化を許可しない。
 
-## Prioritization and Verification handoff
+## Prioritization and Validation handoff
 
-Priorityはimpact、attacker accessibility、observed premise、route completeness、semantic novelty、strong primitive、missing linkの決定可能性、verification costから作る。model confidence、支持model数、到着順を採否へ使わない。
+Priorityはimpact、attacker accessibility、observed premise、route completeness、semantic novelty、strong primitive、missing linkの決定可能性、validation costから作る。model confidence、支持model数、到着順を採否へ使わない。
 
-ExplorationはTarget identity、attacker premise、security property、causal route、source anchors、unknown、falsifier、requested ExperimentをVerificationへ渡す。Finder transcript、session、confidenceは渡さない。
+ExplorationはTarget identity、attacker premise、security property、causal route、source anchors、unknown、falsifier、次のsource investigationまたはruntime uncertaintyをValidationへ渡す。Finder transcript、session、confidenceは渡さない。
 
-当面の評価優先順位は`high-impact recall -> root-cause quality -> attacker-premise closure -> independent verification -> false-positive behavior -> token/cost`である。[ADR 0117](../adr/0117-optimize-for-high-impact-semantic-recall.md)を正本とする。
+当面の評価優先順位は`high-impact recall -> root-cause quality -> attacker-premise closure -> independent validation -> false-positive behavior -> token/cost`である。[ADR 0117](../adr/0117-optimize-for-high-impact-semantic-recall.md)と[ADR 0122](../adr/0122-separate-source-validation-from-human-verification.md)を正本とする。
 
 ## Failure and test surface
 
-provider unavailable、invalid/policy-denied output、source budget exhaustion、missing dependency、Root Evaluation不成立、unsupported verification、no new evidence、disproved route、evidence-backed closureを区別する。Manifestの欠落またはTarget binding不一致はworker起動前に拒否し、Map inventoryから補完しない。一Waveの失敗、一つのFinding、Finderの自己申告だけでCampaignを終了しない。
+provider unavailable、invalid/policy-denied output、source budget exhaustion、missing dependency、Root Evaluation不成立、validation-pending、no new evidence、disproved route、evidence-backed closureを区別する。Manifestの欠落またはTarget binding不一致はworker起動前に拒否し、Map inventoryから補完しない。一Waveの失敗、一つのReady-for-human candidate、Finderの自己申告だけでCampaignを終了しない。
 
 `no new evidence`は、既存artifactとの比較で新しいsource anchor、state transition、capability、causal relation、Hypothesis、Route Fragment、attacker premiseまたはpriority変化がないというWave observationである。言い換え、支持modelの追加、同じtool hit、confidence変化、Map completenessはnew evidenceに数えない。全planned Attemptがsemantic terminalで全subjectを処遇したcomplete Waveだけがこの観測を持てる。通常CampaignのCoverage Closureには、最後のmaterial evidence以後に二回連続のno-material-delta evaluationと、後者にfresh Wildcardまたは独立Gap Reviewがあることを要求する。Depth固有の停止はFamily terminal条件を追加する。一回の`no new evidence`またはhard ceilingだけではClosureにしない。
 
-Behavior Testは`Exploration.decide`から観測する。最低限、Manifest-boundなMapなし開始、Source-aware Reconとwhole-target Baselineの並行開始、Map外candidate受理、Manifest外anchor拒否、最大4 Finderの独立性、checkpoint ack前のCAS / Ledger durability、terminal failure後のcheckpoint保持、同一checkpoint再送の冪等性、HypothesisのWave Barrier前Verification投入、minority route保持、全subjectの明示的処遇、Hypothesis 0件 + Fragmentありの保持、FragmentとFamilyの多対多参照、semantic duplicateの既存Family追加、material deltaとcorroborationの区別、許可Family transition、evidence-backed reopen、VerificationとDepthの同時action、high-impact potentialによるDepth Admission、fresh Synthesis/Critic/missing-link、invalid Root Evaluationのtyped incomplete、失敗またはbudget exhaustionをno-new-evidenceへ丸めないこと、二回のcomplete closure pass、同じLedgerから同じRegistry digestを得るreplay、terminal reasonを保護する。
+Behavior Testは`Exploration.decide`から観測する。最低限、Manifest-boundなMapなし開始、Source-aware Reconとwhole-target Baselineの並行開始、Map外candidate受理、Manifest外anchor拒否、最大4 Finderの独立性、checkpoint ack前のCAS / Ledger durability、terminal failure後のcheckpoint保持、同一checkpoint再送の冪等性、HypothesisをWave BarrierとRoot Evaluation後にValidationへ送ること、minority route保持、全subjectの明示的処遇、Hypothesis 0件 + Fragmentありの保持、FragmentとFamilyの多対多参照、semantic duplicateの既存Family追加、material deltaとcorroborationの区別、許可Family transition、evidence-backed reopen、ValidationとDepthの同時action、high-impact potentialによるDepth Admission、fresh Synthesis/Critic/missing-link、invalid Root Evaluationのtyped incomplete、失敗またはbudget exhaustionをno-new-evidenceへ丸めないこと、二回のcomplete closure pass、同じLedgerから同じRegistry digestを得るreplay、terminal reasonを保護する。
 
 全体図は[Autonomous Research Loop](architecture/autonomous-research-loop.md)、Breadth/Depth分離は[ADR 0114](../adr/0114-separate-breadth-and-depth-campaign-policies.md)を参照する。
