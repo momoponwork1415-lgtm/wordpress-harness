@@ -49,6 +49,15 @@ export {
   semanticDepthIterationDecisionOpeningRefSchema,
   semanticIterationDecisionRefSchema,
 } from "./semantic-approach-family-registry.js";
+export {
+  approachFamilyRefV3Schema,
+  approachFamilyRegistryRefV3Schema,
+  approachFamilyRegistryV3Schema,
+  approachFamilyV3Schema,
+  projectApproachFamilyRegistryV3,
+  referenceSemanticIterationDecisionV3,
+  semanticIterationDecisionRefV3Schema,
+} from "./semantic-approach-family-registry-v3.js";
 import type { Exploration, OpenExplorationOptions } from "./contracts.js";
 import type {
   OpenSemanticExplorationOptions,
@@ -62,6 +71,13 @@ export type {
   ApproachFamilyRegistryRef,
   SemanticIterationDecisionRef,
 } from "./semantic-approach-family-registry.js";
+export type {
+  ApproachFamilyRefV3,
+  ApproachFamilyRegistryRefV3,
+  ApproachFamilyRegistryV3,
+  ApproachFamilyV3,
+  SemanticIterationDecisionRefV3,
+} from "./semantic-approach-family-registry-v3.js";
 export type {
   AdversarialCriticOutput,
   AdversarialCritique,

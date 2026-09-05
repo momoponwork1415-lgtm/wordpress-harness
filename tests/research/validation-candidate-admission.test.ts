@@ -5,6 +5,7 @@ import {
   approachFamilyAdmissionRefSchema,
   approachFamilyAdmissionSchema,
   iterationDecisionV3Schema,
+  projectApproachFamilyRegistryV3,
   sourceBoundHypothesisArtifactRefSchema,
   sourceBoundHypothesisArtifactSchema,
 } from "../../src/research/exploration/index.js";
@@ -187,30 +188,51 @@ describe("Campaign Validation Candidate admission", () => {
         rootEvaluatorAttempts: [evaluatorResult],
       },
       approachFamilies: familyEntries.map((family) => family.value),
-      actions: artifacts.map((artifact, index) => ({
-        kind: "admit-validation" as const,
-        approachFamily: familyEntries[index]!.ref,
-        subjects: [artifact.ref],
-        admission: {
-          kind: "validation-admission" as const,
-          schemaVersion: 1 as const,
-          id: digest(`validation-admission-${index + 1}`),
-          target,
-          manifest,
-          wave,
-          hypothesis: artifact.ref,
-          brokenSecurityProperty: "state-ownership",
-          causalRoute: [
-            {
-              ordinal: 1,
-              claim:
-                "A public state write reaches a cross-actor consumer without an ownership check.",
-              evidence: hypothesisValue.route.anchors,
-            },
-          ],
-          reason: "The complete source route warrants independent review.",
+      actions: [
+        ...artifacts.map((artifact, index) => ({
+          kind: "admit-validation" as const,
+          approachFamily: familyEntries[index]!.ref,
+          subjects: [artifact.ref],
+          admission: {
+            kind: "validation-admission" as const,
+            schemaVersion: 1 as const,
+            id: digest(`validation-admission-${index + 1}`),
+            target,
+            manifest,
+            wave,
+            hypothesis: artifact.ref,
+            brokenSecurityProperty: "state-ownership",
+            causalRoute: [
+              {
+                ordinal: 1,
+                claim:
+                  "A public state write reaches a cross-actor consumer without an ownership check.",
+                evidence: hypothesisValue.route.anchors,
+              },
+            ],
+            reason: "The complete source route warrants independent review.",
+          },
+        })),
+        {
+          kind: "admit-depth",
+          approachFamily: familyEntries[0]!.ref,
+          subjects: [artifacts[0]!.ref],
+          admission: {
+            kind: "depth-admission",
+            schemaVersion: 2,
+            id: digest("depth-admission"),
+            target,
+            manifest,
+            wave,
+            highImpactPotential:
+              "The same route may compose into account takeover.",
+            composition:
+              "Trace the cross-actor state into privileged consumers.",
+            falsifier: "Every privileged consumer binds state to its owner.",
+            nextAction: "Inspect the remaining privileged consumers.",
+          },
         },
-      })),
+      ],
       campaignDisposition: "continue",
     });
 
@@ -249,5 +271,30 @@ describe("Campaign Validation Candidate admission", () => {
     expect(
       new Set(first[0]!.origins.map((origin) => origin.approachFamilyId)).size,
     ).toBe(2);
+
+    const registry = projectApproachFamilyRegistryV3(
+      "campaign-candidate-admission",
+      "run-candidate-admission",
+      decision,
+    );
+    expect(registry.value.families).toHaveLength(2);
+    expect(registry.value.families.map((family) => family.id).sort()).toEqual(
+      first[0]!.origins.map((origin) => origin.approachFamilyId).sort(),
+    );
+    expect(registry.value.families).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          openingAdmission: familyEntries[0]!.ref,
+          mechanism: "Cross-actor persistent state consumption.",
+          pendingValidations: [],
+        }),
+        expect.objectContaining({
+          openingAdmission: familyEntries[1]!.ref,
+          mechanism: "Cross-actor persistent state consumption.",
+          pendingValidations: [],
+        }),
+      ]),
+    );
+    expect(registry.ref.digest).toBe(sha256Digest(registry.value));
   });
 });
