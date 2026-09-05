@@ -472,6 +472,7 @@ function rootEvaluatorAttempt(
             "Declare every Validation or Depth admission under one explicit Approach Family; reuse its key when both actions pursue the same mechanism.",
             "Do not declare an Approach Family unless at least one admit-validation or admit-depth action references its key.",
             "Every admission action must use only subjects owned by its referenced Family; admit-validation must include its hypothesisDigest among those action subjects.",
+            "For admit-validation, copy brokenSecurityProperty exactly from the selected Hypothesis causalIdentity and use every, and only, that Hypothesis route anchor as causalRoute evidence.",
             "Every schedule-work action must include at least one subject owned by a declared Family.",
           ].join(" ")
         : "Verification, Depth Admission, next work, and retain are nonexclusive.",
@@ -555,6 +556,12 @@ function resolveCurrentEvaluatorOutput(
   const subjectsByDigest = new Map(
     context.subjects.map((subject) => [subject.digest, subject]),
   );
+  const hypothesisArtifactsByDigest = new Map(
+    input.artifacts.hypotheses.map((hypothesis) => [
+      sha256Digest(hypothesis),
+      hypothesis,
+    ]),
+  );
   const common = {
     target: input.target,
     manifest: input.manifest,
@@ -629,9 +636,25 @@ function resolveCurrentEvaluatorOutput(
         const hypothesis = subjectsByDigest.get(
           proposal.admission.hypothesisDigest,
         );
+        const hypothesisArtifact = hypothesisArtifactsByDigest.get(
+          proposal.admission.hypothesisDigest,
+        );
+        const availableAnchors = new Set(
+          hypothesisArtifact?.value.route.anchors.map((anchor) =>
+            canonicalJson(anchor),
+          ) ?? [],
+        );
+        const usedAnchors = proposal.admission.causalRoute.flatMap((step) =>
+          step.evidence.map((anchor) => canonicalJson(anchor)),
+        );
         if (
           hypothesis?.kind !== "source-bound-hypothesis" ||
-          !proposal.subjectDigests.includes(hypothesis.digest)
+          hypothesisArtifact === undefined ||
+          !proposal.subjectDigests.includes(hypothesis.digest) ||
+          proposal.admission.brokenSecurityProperty !==
+            hypothesisArtifact.value.causalIdentity.brokenSecurityProperty ||
+          usedAnchors.some((anchor) => !availableAnchors.has(anchor)) ||
+          [...availableAnchors].some((anchor) => !usedAnchors.includes(anchor))
         ) {
           return { kind: "failed", reason: "invalid-action-binding" };
         }

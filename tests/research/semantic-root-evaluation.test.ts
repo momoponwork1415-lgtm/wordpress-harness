@@ -550,6 +550,80 @@ describe("Exploration fresh Root Evaluation", () => {
     expect(observedPlans[0]?.prompt).toContain(
       "Every schedule-work action must include at least one subject owned by a declared Family.",
     );
+    expect(observedPlans[0]?.prompt).toContain(
+      "copy brokenSecurityProperty exactly from the selected Hypothesis causalIdentity",
+    );
+  });
+
+  it("retries before Depth when a Validation admission rewrites its Hypothesis route binding", async () => {
+    let attempts = 0;
+    const modelExecution: ModelExecution = {
+      run: async (plan) => {
+        attempts += 1;
+        return completedResult(plan, {
+          kind: "root-evaluator-output",
+          schemaVersion: 2,
+          approachFamilies: [
+            {
+              key: "cross-actor-state",
+              subjectDigests: [hypothesisRef.digest, fragmentRef.digest],
+              thesis: "A public state writer may cross an actor boundary.",
+              mechanism: "Persistent state reaches a privileged consumer.",
+              falsifier: "Every consumer enforces actor ownership.",
+              nextAction: "Validate the exact source route.",
+            },
+          ],
+          actions: [
+            {
+              kind: "admit-validation",
+              approachFamilyKey: "cross-actor-state",
+              subjectDigests: [hypothesisRef.digest],
+              admission: {
+                hypothesisDigest: hypothesisRef.digest,
+                brokenSecurityProperty: "rewritten-property",
+                causalRoute: [
+                  {
+                    ordinal: 1,
+                    claim: "The model rewrote the Hypothesis binding.",
+                    evidence: [anchor],
+                  },
+                ],
+                reason: "This admission must be retried.",
+              },
+            },
+            {
+              kind: "admit-depth",
+              approachFamilyKey: "cross-actor-state",
+              subjectDigests: [fragmentRef.digest],
+              admission: {
+                highImpactPotential: "A privileged consumer may exist.",
+                composition: "Connect the writer to the consumer.",
+                falsifier: "No privileged consumer exists.",
+                nextAction: "Trace the consumer.",
+              },
+            },
+            {
+              kind: "retain",
+              subjectDigests: [sha256Digest(thesis)],
+              reason: "Keep the thesis active.",
+            },
+          ],
+          campaignDisposition: "continue",
+        });
+      },
+    };
+
+    await expect(
+      semanticExploration(modelExecution).decide({
+        ...evaluationInput(),
+        schemaVersion: 3 as const,
+      }),
+    ).resolves.toMatchObject({
+      kind: "evaluation-incomplete",
+      reason: "invalid-action-binding",
+      attempts: [{ role: "root-evaluator" }, { role: "root-evaluator" }],
+    });
+    expect(attempts).toBe(2);
   });
 
   it("returns typed incomplete when scheduled Depth work is not bound to a proposed Family", async () => {
