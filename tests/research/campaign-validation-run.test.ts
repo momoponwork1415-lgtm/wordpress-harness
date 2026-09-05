@@ -7,7 +7,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   campaignDefaultSemanticRunPlanV3Schema,
-  defineCurrentSemanticRootPlanningPolicy,
   openResearch,
   type CampaignExecutionDependencies,
 } from "../../src/research/index.js";
@@ -22,10 +21,10 @@ import {
   openSqliteResearchRecord,
 } from "../../src/research/research-record/index.js";
 import { createCampaignInput } from "../fixtures/campaign.js";
+import { createCurrentValidationCampaignPlan } from "../fixtures/current-validation-campaign.js";
+import { withValidatorCompletionWriteFailure } from "../fixtures/research-record-faults.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
-const MEBIBYTE = 1024 * 1024;
-const GIBIBYTE = 1024 * MEBIBYTE;
 const criteria = [
   "source-integrity",
   "reachability-and-premise",
@@ -182,9 +181,7 @@ describe("CampaignRunner.run source-only Validation", () => {
     let depthFailure: "none" | "budget-exhausted" = "none";
     let packetDelivery: "success" | "failure" = "failure";
     let candidateIdentitySuffix = "";
-    let injectValidatorCompletionCrash = false;
     let injectUnknownValidatorResult = false;
-    let validatorResultReturnedForCrash = false;
     const deliveredPacketDigests: string[] = [];
     const modelExecution: ModelExecution = {
       run: async (plan) => {
@@ -532,9 +529,6 @@ describe("CampaignRunner.run source-only Validation", () => {
                 }
               : {}),
           });
-          if (injectValidatorCompletionCrash) {
-            validatorResultReturnedForCrash = true;
-          }
           return result;
         }
         throw new Error("Unexpected Attempt role");
@@ -594,153 +588,13 @@ describe("CampaignRunner.run source-only Validation", () => {
       if (prepared.targetFileManifest === undefined) {
         throw new Error("Expected a Target File Manifest");
       }
-      const profile = (id: string, profileDigest: string) => ({
-        ref: {
-          kind: "model-profile" as const,
-          schemaVersion: 1 as const,
-          id,
-          family: "claude" as const,
-          digest: profileDigest,
-        },
-        execution: {
-          provider: "anthropic" as const,
-          model: "claude-opus-5",
-          transport: "claude-code-process" as const,
-          executableVersion: "2.1.258",
-          effort: "high" as const,
-          eligibilityReceiptDigest: digest("b"),
-        },
-      });
-      const promptSet = {
-        kind: "prompt-set" as const,
-        schemaVersion: 1 as const,
-        id: input.promptSet.id,
-        digest: input.promptSet.digest,
-      };
-      const sourceToolPolicy = {
-        kind: "source-tool-policy" as const,
-        schemaVersion: 1 as const,
-        id: "semantic-source-tools-v3",
-        digest: digest("c"),
-      };
-      const plan = campaignDefaultSemanticRunPlanV3Schema.parse({
-        kind: "campaign-run-plan",
-        schemaVersion: 3,
+      const plan = createCurrentValidationCampaignPlan({
+        preparation: prepared,
+        campaign: input,
         runId: "source-validation-run",
-        campaignId: input.campaignId,
-        preparationDigest: prepared.inputDigest,
-        target: input.targetSnapshot,
-        manifest: prepared.targetFileManifest,
-        metadata: {
-          kind: "oracle-free-target-metadata",
-          schemaVersion: 1,
-          pluginIdentity: "wporg:campaign-validation-run",
-          mainPluginFile: "plugin.php",
-          canonicalInstallDirectory: "campaign-validation-run",
-        },
-        semanticPolicy: defineCurrentSemanticRootPlanningPolicy({
-          plannerBudget: {
-            maxWallTimeMs: 3_600_000,
-            maxModelTokens: 100_000,
-            maxModelTurns: 128,
-            maxProviderCostUsd: 10,
-            maxOutputBytes: 2 * MEBIBYTE,
-            maxSourceQueries: 256,
-            maxSourceScanBytes: 16 * GIBIBYTE,
-            maxSourceResponseBytes: 256 * MEBIBYTE,
-            sourceLimitTerminalOutput: "preserve",
-            reportedUsageEnforcement: "telemetry-only",
-          },
-          finderLeaseBudget: {
-            maxWallTimeMs: 10_800_000,
-            maxModelTokens: 1_000_000,
-            maxModelTurns: 256,
-            maxProviderCostUsd: 20,
-            maxHypotheses: 8,
-            maxOutputBytes: 2 * MEBIBYTE,
-            maxSourceQueries: 512,
-            maxSourceScanBytes: 16 * GIBIBYTE,
-            maxSourceResponseBytes: 256 * MEBIBYTE,
-            sourceLimitTerminalOutput: "preserve",
-            reportedUsageEnforcement: "telemetry-only",
-          },
-        }),
-        planner: {
-          modelProfile: profile("opus-planner-v6", digest("5")),
-          promptSet,
-          sourceToolPolicy,
-        },
-        finder: {
-          modelProfile: profile("opus-finder-v6", digest("6")),
-          promptSet,
-          selectedKnowledge: [],
-          sourceToolPolicy,
-        },
-        evaluator: {
-          modelProfile: profile("opus-evaluator-v6", digest("7")),
-          promptSet,
-          budget: {
-            maxWallTimeMs: 3_600_000,
-            maxModelTokens: 100_000,
-            maxModelTurns: 128,
-            maxProviderCostUsd: 10,
-            maxOutputBytes: 2 * MEBIBYTE,
-            reportedUsageEnforcement: "telemetry-only",
-          },
-        },
-        validation: {
-          wordpressBaseline: {
-            id: "wordpress-threat-baseline-v1",
-            digest: digest("d"),
-          },
-          validationPolicy: {
-            id: "source-validation-v2",
-            digest: digest("e"),
-          },
-          promptSet,
-          validatorModelProfile: profile("opus-validator-v6", digest("8")),
-          sourceToolPolicy,
-          publicSurface: ["Public WordPress request handlers"],
-          technicalExclusions: [],
-          budget: {
-            validator: {
-              maxWallTimeMs: 1_800_000,
-              maxModelTokens: 100_000,
-              maxModelTurns: 64,
-              maxProviderCostUsd: 7.5,
-              maxOutputBytes: 2 * MEBIBYTE,
-              maxSourceQueries: 128,
-              maxSourceScanBytes: 16 * GIBIBYTE,
-              maxSourceResponseBytes: 256 * MEBIBYTE,
-              sourceLimitTerminalOutput: "preserve",
-              reportedUsageEnforcement: "telemetry-only",
-            },
-          },
-        },
-        budgetPolicy: {
-          kind: "semantic-research-budget",
-          schemaVersion: 2,
-          id: "semantic-research-recall-baseline-v6",
-          maxWorkWaves: 12,
-          maxFinderAttempts: 48,
-          maxConcurrentFinders: 4,
-          maxModelAttempts: 128,
-          maxModelTokens: 4_000_000,
-          maxProviderCostUsd: 150,
-          maxWallTimeMs: 43_200_000,
-          reportedUsageEnforcement: "telemetry-only",
-          exploration: {
-            maxModelTokens: 3_600_000,
-            maxProviderCostUsd: 120,
-            maxWallTimeMs: 36_000_000,
-          },
-          validationReserve: {
-            maxModelTokens: 400_000,
-            maxProviderCostUsd: 30,
-            maxWallTimeMs: 7_200_000,
-          },
-        },
+        pluginSlug: "campaign-validation-run",
       });
+      const sourceToolPolicy = plan.finder.sourceToolPolicy;
 
       expectedValidationRunId = plan.runId;
       const ref = await research.runner.run(plan);
@@ -1183,31 +1037,18 @@ describe("CampaignRunner.run source-only Validation", () => {
       });
       expectedValidationRunId = crashRecoveryPlan.runId;
       const crashCallOffset = observedPlans.length;
-      let postResultClockCalls = 0;
-      injectValidatorCompletionCrash = true;
-      validatorResultReturnedForCrash = false;
       const crashingResearch = openResearch({
         databasePath,
         campaignExecution,
-        clock: () => {
-          if (validatorResultReturnedForCrash) {
-            postResultClockCalls += 1;
-            if (postResultClockCalls === 2) {
-              throw new Error(
-                "Injected crash after Validator result persistence",
-              );
-            }
-          }
-          return new Date("2026-09-05T00:00:00.000Z");
-        },
       });
       try {
         await expect(
-          crashingResearch.runner.run(crashRecoveryPlan),
-        ).rejects.toThrow("Injected crash after Validator result persistence");
+          withValidatorCompletionWriteFailure(databasePath, () =>
+            crashingResearch.runner.run(crashRecoveryPlan),
+          ),
+        ).rejects.toThrow("Injected Validator completion write failure");
       } finally {
         crashingResearch.close();
-        injectValidatorCompletionCrash = false;
       }
       const callsThroughCrash = observedPlans.slice(crashCallOffset);
       expect(
@@ -1361,29 +1202,18 @@ describe("CampaignRunner.run source-only Validation", () => {
         });
       expectedValidationRunId = invalidStoredResultPlan.runId;
       const invalidResultCallOffset = observedPlans.length;
-      let invalidResultPostResultClockCalls = 0;
-      injectValidatorCompletionCrash = true;
-      validatorResultReturnedForCrash = false;
       const invalidResultCrashResearch = openResearch({
         databasePath,
         campaignExecution,
-        clock: () => {
-          if (validatorResultReturnedForCrash) {
-            invalidResultPostResultClockCalls += 1;
-            if (invalidResultPostResultClockCalls === 2) {
-              throw new Error("Injected crash before invalid result recovery");
-            }
-          }
-          return new Date("2026-09-05T00:00:00.000Z");
-        },
       });
       try {
         await expect(
-          invalidResultCrashResearch.runner.run(invalidStoredResultPlan),
-        ).rejects.toThrow("Injected crash before invalid result recovery");
+          withValidatorCompletionWriteFailure(databasePath, () =>
+            invalidResultCrashResearch.runner.run(invalidStoredResultPlan),
+          ),
+        ).rejects.toThrow("Injected Validator completion write failure");
       } finally {
         invalidResultCrashResearch.close();
-        injectValidatorCompletionCrash = false;
       }
       const invalidResultValidatorPlan = observedPlans
         .slice(invalidResultCallOffset)

@@ -7,8 +7,12 @@ import { describe, expect, it } from "vitest";
 
 import { openResearch } from "../../src/research/index.js";
 import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
-import { openSqliteResearchRecord } from "../../src/research/research-record/index.js";
+import {
+  openFileJsonArtifactStore,
+  openSqliteResearchRecord,
+} from "../../src/research/research-record/index.js";
 import { createCampaignInput } from "../fixtures/campaign.js";
+import { createCurrentValidationCampaignPlan } from "../fixtures/current-validation-campaign.js";
 
 const fixedNow = "2026-09-01T12:00:00.000Z";
 
@@ -52,6 +56,187 @@ function createFutureLedger(databasePath: string): void {
 }
 
 describe("CampaignReader Ledger compatibility", () => {
+  it("replays a pre-result-event Validator completion through the public reader", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "legacy-validator-ledger-"));
+    const databasePath = join(directory, "research.sqlite");
+    const artifactStore = openFileJsonArtifactStore(
+      join(directory, "artifacts"),
+    );
+    const input = {
+      ...createCampaignInput("campaign-legacy-validator-result"),
+      schemaVersion: 2 as const,
+      modelProfiles: [
+        { id: "opus-planner-v6", digest: digest("5") },
+        { id: "opus-finder-v6", digest: digest("6") },
+        { id: "opus-evaluator-v6", digest: digest("7") },
+        { id: "opus-validator-v6", digest: digest("8") },
+      ],
+      canonicalFileManifest: {
+        kind: "canonical-file-manifest" as const,
+        schemaVersion: 1 as const,
+        entries: [{ path: "plugin.php", digest: digest("a"), size: 1_000 }],
+      },
+      budget: {
+        maxAttempts: 128,
+        maxWallTimeMs: 43_200_000,
+        maxModelTokens: 4_000_000,
+      },
+    };
+    const preparationWriter = openResearch({ databasePath, artifactStore });
+    const preparation = await preparationWriter.runner.prepare(input);
+    preparationWriter.close();
+    const plan = createCurrentValidationCampaignPlan({
+      preparation,
+      campaign: input,
+      runId: "legacy-validator-result-run",
+      pluginSlug: "legacy-validator-result",
+    });
+    const attemptId = "validator:1:legacy-completion-only";
+    const attemptPlanDigest = digest("9");
+    const result = {
+      kind: "model-attempt-result" as const,
+      schemaVersion: 2 as const,
+      attemptId,
+      owner: "validation" as const,
+      role: "validator" as const,
+      planDigest: attemptPlanDigest,
+      status: "completed" as const,
+      output: {},
+      usage: {
+        kind: "model-attempt-usage" as const,
+        schemaVersion: 1 as const,
+        measurement: "reported" as const,
+        estimatedCostUsd: 0.25,
+        wallTimeMs: 10,
+        providerDurationMs: 8,
+        modelTurns: 1,
+        modelTokens: {
+          input: 10,
+          cacheCreation: 0,
+          cacheRead: 0,
+          output: 10,
+          total: 20,
+        },
+        structuredOutputBytes: 2,
+        source: { queries: 1, scanBytes: 100, responseBytes: 50 },
+        models: [
+          {
+            id: "claude-opus-5",
+            canonicalModel: "claude-opus-5",
+            tokens: {
+              input: 10,
+              cacheCreation: 0,
+              cacheRead: 0,
+              output: 10,
+              total: 20,
+            },
+          },
+        ],
+      },
+    };
+    const resultDigest = await artifactStore.putJson(result);
+    const resultRef = {
+      kind: "attempt-execution-result" as const,
+      schemaVersion: 2 as const,
+      attemptId,
+      owner: "validation" as const,
+      role: "validator" as const,
+      planDigest: attemptPlanDigest,
+      digest: resultDigest,
+    };
+    const intent = {
+      kind: "campaign-attempt-intent" as const,
+      schemaVersion: 2 as const,
+      campaignId: input.campaignId,
+      runId: plan.runId,
+      attemptId,
+      ordinal: 1,
+      mode: "execute" as const,
+      attemptPlanDigest,
+      role: "validator" as const,
+      candidateId: digest("b"),
+      validationAttemptOrdinal: 1,
+    };
+    const completion = {
+      kind: "campaign-attempt-completion" as const,
+      schemaVersion: 2 as const,
+      campaignId: input.campaignId,
+      runId: plan.runId,
+      attemptId,
+      ordinal: 1,
+      role: "validator" as const,
+      candidateId: intent.candidateId,
+      validationAttemptOrdinal: 1,
+      result: resultRef,
+    };
+    const ledger = new Database(databasePath);
+    try {
+      const insert = ledger.prepare(`
+        INSERT INTO research_events (
+          campaign_id,
+          campaign_sequence,
+          kind,
+          schema_version,
+          occurred_at,
+          payload_json
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      insert.run(
+        input.campaignId,
+        2,
+        "campaign.run-started",
+        3,
+        fixedNow,
+        JSON.stringify({ plan, planDigest: sha256Digest(plan) }),
+      );
+      insert.run(
+        input.campaignId,
+        3,
+        "campaign.attempt-started",
+        2,
+        fixedNow,
+        JSON.stringify({ intent }),
+      );
+      insert.run(
+        input.campaignId,
+        4,
+        "campaign.attempt-completed",
+        2,
+        fixedNow,
+        JSON.stringify({ completion }),
+      );
+    } finally {
+      ledger.close();
+    }
+
+    const research = openResearch({ databasePath, artifactStore });
+    try {
+      const replayed = await research.reader.inspect(input.campaignId, {
+        kind: "progress",
+      });
+      expect(replayed).toMatchObject({
+        kind: "progress",
+        counts: {
+          attempts: { started: 1, completed: 1, active: 0 },
+        },
+        activeAttempts: [],
+        usage: {
+          measurement: "reported",
+          modelAttempts: 1,
+          reportedModelAttempts: 1,
+          modelTokens: { total: 20 },
+          estimatedCostUsd: 0.25,
+        },
+      });
+      await expect(
+        research.reader.inspect(input.campaignId, { kind: "progress" }),
+      ).resolves.toEqual(replayed);
+    } finally {
+      research.close();
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("rejects an unsupported event version instead of guessing", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordpress-harness-"));
     const databasePath = join(directory, "future.sqlite");
