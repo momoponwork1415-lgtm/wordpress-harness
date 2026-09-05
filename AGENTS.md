@@ -16,9 +16,8 @@
 
 1. [Documentation](docs/README.md)から目的別の入口を選ぶ。
 2. code変更は[Codebase Guide](docs/CODEBASE-GUIDE.md)でowner、Interface、Behavior Testを特定する。
-3. [Design Documentation](docs/design/README.md)からowning Seamだけを読む。
-4. 理由が必要な時だけSeamからlinkされたADRを読む。
-5. 次の有限workと受入条件はGitHub Issueを正本とする。
+3. 理由が必要な時だけ対応するADRを読む。
+4. 次の有限workと受入条件はGitHub Issueを正本とする。
 
 ## Agent skills
 
@@ -57,11 +56,12 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 ## Documentation
 
 - root `README.md`はmission、Quickstart、少数のDocs linkだけに保つ。
+- 結論を先に書く。短い文、箇条書き、比較表を優先し、同じ内容を文章と図で重ねない。
 - 現在の実装状態、source path、Behavior Test対応は`docs/CODEBASE-GUIDE.md`だけへ置く。
-- Module固有のInterface、不変条件、failure semanticsはowning Seamへ置く。
+- Module固有のSeamは`docs/CODEBASE-GUIDE.md`へPurpose、Interface、不変条件、failure semantics、Behavior Testの順でまとめる。
 - Architecture Viewは理解用の図に限定し、Seamの詳細を複製しない。
 - 実Targetの公開可能な実測と、現在の設計・評価で再利用する外部資料の調査noteは`docs/knowledge/`へ置き、通常のReading pathから外す。
-- Knowledgeは設計の正本にせず、採用した結論をArchitecture、Research Design、owning Seam、ADRのいずれかへ残す。
+- Knowledgeは設計の正本にせず、採用した結論をArchitecture、Research Design、Codebase Guide、ADRのいずれかへ残す。
 - 完了計画、旧設計、過去snapshotを保存用Markdownとして残さない。Git履歴を使う。
 - 新規docを作る前に、既存Seam、Behavior Test、Issueのどれかで足りないか確認する。
 

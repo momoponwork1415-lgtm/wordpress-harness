@@ -23,7 +23,7 @@ ValidityのSynthesis後にRisk Assessmentを別artifactとして作る。attacke
 
 Human Verificationはfreshで使い捨て可能な隔離環境、実Target interface、固定Target/version、attacker role、手順、観測effect、実施者と時刻を必要とする。proof methodは人間がcaseごとに判断し、機械生成されたWitness、Causal Control、fresh sibling LabまたはgVisorを全Findingの必須形式にはしない。ただしhost上のtarget実行、production credential/data、許可外egress、永続化、reverse shellは引き続き禁止する。
 
-既存のgVisor Verification Labは`Human Verification Assistant`としてHuman OSから任意利用できる。Assistantが機械的なevidentiary pairを生成する場合、Witness、Causal Control、fresh sibling、observable effect、no-fallback isolationをそのAssistant evidenceへ引き続き適用する。Assistantが未対応または利用不能でもReview Packetのhandoffと人間の判断を阻害しない。現行contractは[Legacy Verification compatibility Seam](../design/verification-seam.md)と[Human Verification Seam](../design/human-verification-seam.md)を正本とする。
+既存のgVisor Verification Labは`Human Verification Assistant`としてHuman OSから任意利用できる。Assistantが機械的なevidentiary pairを生成する場合、Witness、Causal Control、fresh sibling、observable effect、no-fallback isolationをそのAssistant evidenceへ引き続き適用する。Assistantが未対応または利用不能でもReview Packetのhandoffと人間の判断を阻害しない。現行contractは[Codebase Guide](../CODEBASE-GUIDE.md#human-os)を正本とする。
 
 既存LedgerのVerification/Finding artifactとschemaは変更せず、read-only replayでは`legacy automated finding`として元の意味を保つ。新policyのCampaignと同じmetricへ混ぜず、旧Findingを新Findingへ変換する場合は新しいReview PacketとHuman Verificationを作る。
 

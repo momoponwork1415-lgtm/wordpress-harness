@@ -47,11 +47,6 @@ async function createDocsFixture(): Promise<string> {
   await execFileAsync("git", ["init", "--quiet"], { cwd: directory });
   await mkdir(join(directory, "docs"), { recursive: true });
   await writeFile(join(directory, "CONTEXT.md"), "# Test Context\n", "utf8");
-  await writeFile(
-    join(directory, "docs", "JAPANESE-GLOSSARY.md"),
-    "# Glossary\n\n| Canonical term | Meaning |\n| --- | --- |\n",
-    "utf8",
-  );
   return directory;
 }
 
@@ -77,7 +72,7 @@ describe("repository documentation check", () => {
     }
   });
 
-  it("reports a Context term missing from the Japanese glossary", async () => {
+  it("accepts canonical terms without a parallel glossary", async () => {
     const directory = await createDocsFixture();
 
     try {
@@ -89,10 +84,8 @@ describe("repository documentation check", () => {
 
       const result = await runDocsCheck(directory);
 
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr + result.stdout).toContain(
-        "CONTEXT.md: canonical term is missing from docs/JAPANESE-GLOSSARY.md: Unmapped Term",
-      );
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("docs check passed");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

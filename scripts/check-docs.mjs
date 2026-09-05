@@ -105,78 +105,9 @@ function checkRelativeLinks(markdownPath, markdown) {
   }
 }
 
-function readGlossaryTerms(markdown) {
-  const terms = new Set();
-  for (const line of markdown.split("\n")) {
-    if (!line.startsWith("|")) {
-      continue;
-    }
-    const firstCell = line.split("|")[1]?.trim() ?? "";
-    const term = firstCell.replace(/^`|`$/g, "");
-    if (
-      term.length === 0 ||
-      term === "正式語" ||
-      term === "Canonical term" ||
-      /^:?-+:?$/.test(term)
-    ) {
-      continue;
-    }
-    terms.add(term);
-  }
-  return terms;
-}
-
-function checkCanonicalDesignContent(markdownPath, markdown) {
-  if (!markdownPath.startsWith("docs/design/")) {
-    return;
-  }
-
-  const staleHeading =
-    /^## (?:Implementation status|Implemented\b|Current-code alignment|First-slice limits|First implementation sequence|First closed research slice)/m;
-
-  if (
-    staleHeading.test(markdown) ||
-    /^Implementation status:/m.test(markdown)
-  ) {
-    diagnostics.push(
-      markdownPath +
-        ": implementation snapshots belong in docs/CODEBASE-GUIDE.md, docs/experiments/, docs/audits/, or docs/history/",
-    );
-  }
-}
-
-const glossaryPath = "docs/JAPANESE-GLOSSARY.md";
-const glossaryTerms = markdownFiles.includes(glossaryPath)
-  ? readGlossaryTerms(
-      readFileSync(resolve(repositoryRoot, glossaryPath), "utf8"),
-    )
-  : new Set();
-let contextTermCount = 0;
-
 for (const markdownPath of markdownFiles) {
   const markdown = readFileSync(resolve(repositoryRoot, markdownPath), "utf8");
   checkRelativeLinks(markdownPath, markdown);
-  checkCanonicalDesignContent(markdownPath, markdown);
-
-  if (markdownPath === "CONTEXT.md" || markdownPath.endsWith("/CONTEXT.md")) {
-    const contextTermPattern = /^\*\*([^*\n]+)\*\*:/gm;
-    for (const match of markdown.matchAll(contextTermPattern)) {
-      const term = match[1]?.trim() ?? "";
-      if (term.length === 0) {
-        continue;
-      }
-      contextTermCount += 1;
-      if (!glossaryTerms.has(term)) {
-        diagnostics.push(
-          markdownPath +
-            ": canonical term is missing from " +
-            glossaryPath +
-            ": " +
-            term,
-        );
-      }
-    }
-  }
 }
 
 if (diagnostics.length > 0) {
@@ -185,9 +116,5 @@ if (diagnostics.length > 0) {
 }
 
 console.log(
-  "docs check passed: " +
-    markdownFiles.length +
-    " repository Markdown files, " +
-    contextTermCount +
-    " Context terms",
+  "docs check passed: " + markdownFiles.length + " repository Markdown files",
 );
