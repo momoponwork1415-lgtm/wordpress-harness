@@ -529,6 +529,53 @@ export const validationRecordRefSchema = z.strictObject({
   digest: digestSchema,
 });
 
+const validationFrontierGapIdentityFields = {
+  kind: z.literal("validation-frontier-gap"),
+  schemaVersion: z.literal(1),
+  campaignId: identifierSchema,
+  runId: identifierSchema,
+  target: targetSnapshotRefSchema,
+  manifest: targetFileManifestRefSchema,
+  validation: validationRecordRefSchema,
+  candidate: validationCandidateRefSchema,
+  approachFamilyIds: z.array(digestSchema).min(1).max(64),
+  value: validationProofGapSchema,
+} as const;
+
+export const validationFrontierGapSchema = z
+  .strictObject({
+    ...validationFrontierGapIdentityFields,
+    id: digestSchema,
+  })
+  .superRefine((gap, context) => {
+    const { id: _id, ...identity } = gap;
+    if (
+      gap.id !== sha256Digest(identity) ||
+      gap.validation.validationId !== gap.candidate.id ||
+      gap.validation.candidateId !== gap.candidate.id ||
+      gap.target.digest !== gap.candidate.targetSnapshotDigest ||
+      gap.manifest.digest !== gap.candidate.manifestDigest ||
+      new Set(gap.approachFamilyIds).size !== gap.approachFamilyIds.length
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Validation Frontier Gap contains a foreign identity binding",
+      });
+    }
+  });
+
+export const validationFrontierGapRefSchema = z.strictObject({
+  kind: z.literal("validation-frontier-gap"),
+  schemaVersion: z.literal(1),
+  id: digestSchema,
+  digest: digestSchema,
+  validationId: digestSchema,
+  candidateId: digestSchema,
+  targetSnapshotDigest: digestSchema,
+  manifestDigest: digestSchema,
+  approachFamilies: z.number().int().positive().max(64),
+});
+
 export type ValidationCandidate = z.infer<typeof validationCandidateSchema>;
 export type ValidationCandidateRef = z.infer<
   typeof validationCandidateRefSchema
@@ -545,6 +592,10 @@ export type ValidationSynthesisOutput = z.infer<
 export type ValidationPlan = z.infer<typeof validationPlanSchema>;
 export type ValidationRecord = z.infer<typeof validationRecordSchema>;
 export type ValidationRecordRef = z.infer<typeof validationRecordRefSchema>;
+export type ValidationFrontierGap = z.infer<typeof validationFrontierGapSchema>;
+export type ValidationFrontierGapRef = z.infer<
+  typeof validationFrontierGapRefSchema
+>;
 export type ValidatorAttemptPlan = Extract<
   AttemptPlanV2,
   { role: "validator" }

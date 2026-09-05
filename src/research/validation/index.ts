@@ -1,4 +1,5 @@
 export { openValidation } from "./validation.js";
+export { projectValidationFrontierGap } from "./validation-frontier-gap.js";
 export {
   validationAttemptOutputSchema,
   validationCandidateId,
@@ -8,6 +9,8 @@ export {
   validationCriteria,
   validationCriterionSchema,
   validationPlanSchema,
+  validationFrontierGapRefSchema,
+  validationFrontierGapSchema,
   validationProofGapSchema,
   validationRecordRefSchema,
   validationRecordSchema,
@@ -21,6 +24,8 @@ export type {
   ValidationAttemptOutput,
   ValidationCandidate,
   ValidationCandidateRef,
+  ValidationFrontierGap,
+  ValidationFrontierGapRef,
   ValidationCandidateIdentityInput,
   ValidationPlan,
   ValidationRecord,

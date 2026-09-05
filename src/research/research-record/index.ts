@@ -14,4 +14,5 @@ export type {
   ValidationIntentRecordView,
   ValidationCompletion,
   ValidationCompletionRecordView,
+  ValidationFrontierGapRecordView,
 } from "./contracts.js";

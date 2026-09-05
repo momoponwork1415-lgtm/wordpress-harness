@@ -159,6 +159,13 @@ describe("Research Record Iteration Decision v3", () => {
         targetSnapshotDigest: input.targetSnapshot.digest,
         manifestDigest: manifest.digest,
       };
+      const needsResearchSubject = {
+        ...subject,
+        id: digest("needs-research-hypothesis-id"),
+        digest: digest("needs-research-hypothesis"),
+        attemptId: "finder-2",
+        leaseId: digest("needs-research-lease-id"),
+      };
       const familyIdentity = {
         kind: "approach-family-admission" as const,
         schemaVersion: 1 as const,
@@ -166,7 +173,7 @@ describe("Research Record Iteration Decision v3", () => {
         target: input.targetSnapshot,
         manifest,
         wave,
-        subjects: [subject],
+        subjects: [subject, needsResearchSubject],
         thesis: "Attacker-controlled state crosses an actor boundary.",
         mechanism: "A public writer feeds a privileged state consumer.",
         falsifier: "Every consumer enforces actor ownership.",
@@ -192,7 +199,7 @@ describe("Research Record Iteration Decision v3", () => {
         target: input.targetSnapshot,
         manifest,
         wave,
-        evaluationSubjects: [subject],
+        evaluationSubjects: [subject, needsResearchSubject],
         context: {
           kind: "wave-evaluation",
           terminalDigest: digest("terminal"),
@@ -241,6 +248,36 @@ describe("Research Record Iteration Decision v3", () => {
                 },
               ],
               reason: "The complete source route warrants fresh validation.",
+            },
+          },
+          {
+            kind: "admit-validation",
+            approachFamily: familyRef,
+            subjects: [needsResearchSubject],
+            admission: {
+              kind: "validation-admission",
+              schemaVersion: 1,
+              id: digest("needs-research-validation-admission"),
+              target: input.targetSnapshot,
+              manifest,
+              wave,
+              hypothesis: needsResearchSubject,
+              brokenSecurityProperty: "identity-integrity",
+              causalRoute: [
+                {
+                  ordinal: 1,
+                  claim: "Public registration may reach identity mutation.",
+                  evidence: [
+                    {
+                      path: "plugin.php",
+                      fileDigest: digest("plugin.php"),
+                      startLine: 5,
+                      endLine: 8,
+                    },
+                  ],
+                },
+              ],
+              reason: "Registration reachability needs fresh validation.",
             },
           },
         ],
@@ -305,19 +342,58 @@ describe("Research Record Iteration Decision v3", () => {
           },
         ],
       });
+      const needsResearchCandidateIdentity = {
+        target: input.targetSnapshot,
+        manifest,
+        attackerPremise: "unresolved" as const,
+        brokenSecurityProperty: "identity-integrity",
+        causalRoute: [
+          {
+            ordinal: 1,
+            claim: "Public registration may reach identity mutation.",
+            evidence: [
+              {
+                path: "plugin.php",
+                fileDigest: digest("plugin.php"),
+                startLine: 5,
+                endLine: 8,
+              },
+            ],
+          },
+        ],
+      };
+      const needsResearchCandidate = validationCandidateSchema.parse({
+        kind: "validation-candidate",
+        schemaVersion: 1,
+        id: validationCandidateId(needsResearchCandidateIdentity),
+        ...needsResearchCandidateIdentity,
+        origins: [
+          {
+            subjectDigest: needsResearchSubject.digest,
+            rootEvaluationDigest: first.decision.digest,
+            approachFamilyId: registry!.value.families[0]!.id,
+          },
+        ],
+      });
       const intended = await record.recordValidationIntents(
         input.campaignId,
         plan.runId,
-        [candidate],
+        [candidate, needsResearchCandidate],
       );
       const intendedReplay = await record.recordValidationIntents(
         input.campaignId,
         plan.runId,
-        [candidate],
+        [candidate, needsResearchCandidate],
       );
       expect(intendedReplay).toEqual(intended);
-      expect(intended).toHaveLength(1);
-      expect(intended[0]).toMatchObject({
+      expect(intended).toHaveLength(2);
+      const pendingIntent = intended.find(
+        (entry) => entry.intent.validationId === candidate.id,
+      );
+      const needsResearchIntent = intended.find(
+        (entry) => entry.intent.validationId === needsResearchCandidate.id,
+      );
+      expect(pendingIntent).toMatchObject({
         ledgerHead: first.ledgerHead + 1,
         intent: {
           validationId: candidate.id,
@@ -326,15 +402,15 @@ describe("Research Record Iteration Decision v3", () => {
         },
       });
       await expect(
-        artifactStore.readJson(intended[0]!.intent.candidate.digest),
+        artifactStore.readJson(pendingIntent!.intent.candidate.digest),
       ).resolves.toEqual(candidate);
       const pendingRegistry = await record.readApproachFamilyRegistryV3(
         input.campaignId,
         plan.runId,
       );
-      expect(pendingRegistry?.value.families[0]?.pendingValidations).toEqual([
-        candidate.id,
-      ]);
+      expect(pendingRegistry?.value.families[0]?.pendingValidations).toEqual(
+        [candidate.id, needsResearchCandidate.id].sort(),
+      );
       await expect(
         artifactStore.readJson(pendingRegistry!.ref.digest),
       ).resolves.toEqual(pendingRegistry!.value);
@@ -387,7 +463,7 @@ describe("Research Record Iteration Decision v3", () => {
       );
       expect(completionReplay).toEqual(completion);
       expect(completion).toMatchObject({
-        ledgerHead: intended[0]!.ledgerHead + 1,
+        ledgerHead: pendingIntent!.ledgerHead + 1,
         completion: {
           validation: validationRecordRef,
           disposition: "validation-pending",
@@ -399,7 +475,7 @@ describe("Research Record Iteration Decision v3", () => {
         plan.runId,
       );
       expect(unresolvedRegistry?.value.families[0]).toMatchObject({
-        pendingValidations: [candidate.id],
+        pendingValidations: [candidate.id, needsResearchCandidate.id].sort(),
         validationOutcomes: [
           {
             validationId: candidate.id,
@@ -412,18 +488,196 @@ describe("Research Record Iteration Decision v3", () => {
         artifactStore.readJson(unresolvedRegistry!.ref.digest),
       ).resolves.toEqual(unresolvedRegistry!.value);
 
+      const validationCriteria = [
+        "source-integrity",
+        "reachability-and-premise",
+        "broken-control",
+        "causal-route-and-security-effect",
+        "counterevidence-and-proof-gap",
+      ] as const;
+      const selectedProofGap = {
+        requiredFact: "Confirm whether public registration reaches the hook.",
+        currentEvidence: [
+          {
+            path: "plugin.php",
+            fileDigest: digest("plugin.php"),
+            startLine: 5,
+            endLine: 8,
+          },
+        ],
+        falsifier: "Every registration call is restricted to administrators.",
+        nextAction: "Trace every registration call and its access guard.",
+      };
+      const validatorAttempt = (attemptId: string, ordinal: 1 | 2) => {
+        const proofGap =
+          attemptId === "needs-validator-2"
+            ? selectedProofGap
+            : {
+                ...selectedProofGap,
+                requiredFact: "Check whether only administrators can register.",
+                nextAction: "Trace the administrator-only registration path.",
+              };
+        return {
+          status: "completed" as const,
+          ordinal,
+          execution: {
+            kind: "attempt-execution-result" as const,
+            schemaVersion: 2 as const,
+            attemptId,
+            owner: "validation" as const,
+            role: "validator" as const,
+            planDigest: digest(`${attemptId}-plan`),
+            digest: digest(`${attemptId}-result`),
+          },
+          output: {
+            kind: "validation-attempt-output" as const,
+            schemaVersion: 1 as const,
+            candidateId: needsResearchCandidate.id,
+            criteria: validationCriteria.map((criterion) => ({
+              criterion,
+              status:
+                criterion === "reachability-and-premise"
+                  ? ("unknown" as const)
+                  : ("pass" as const),
+              reason: `${attemptId} checked ${criterion}.`,
+              evidence: proofGap.currentEvidence,
+            })),
+            proposedDisposition: "needs-research" as const,
+            proofGap,
+          },
+        };
+      };
+      const needsResearchRecord = validationRecordSchema.parse({
+        kind: "validation-record",
+        schemaVersion: 1,
+        validationId: needsResearchCandidate.id,
+        candidateId: needsResearchCandidate.id,
+        planDigest: digest("needs-research-validation-plan"),
+        status: "needs-research",
+        materialConflictAfterTwo: false,
+        validatorAttempts: [
+          validatorAttempt("needs-validator-1", 1),
+          validatorAttempt("needs-validator-2", 2),
+        ],
+        synthesisAttempt: {
+          status: "completed",
+          execution: {
+            kind: "attempt-execution-result",
+            schemaVersion: 2,
+            attemptId: "needs-synthesis",
+            owner: "validation",
+            role: "validation-synthesizer",
+            planDigest: digest("needs-synthesis-plan"),
+            digest: digest("needs-synthesis-result"),
+          },
+          output: {
+            kind: "validation-synthesis-output",
+            schemaVersion: 1,
+            candidateId: needsResearchCandidate.id,
+            criteria: validationCriteria.map((criterion) => ({
+              criterion,
+              status:
+                criterion === "reachability-and-premise" ? "unknown" : "pass",
+              reason: `The cited Attempts resolve ${criterion}.`,
+              evidence: [
+                {
+                  attemptId: "needs-validator-2",
+                  criterion,
+                  evidenceIndexes: [0],
+                },
+              ],
+            })),
+            disposition: "needs-research",
+            reason: "Public registration remains source-decidable.",
+            proofGapAttemptId: "needs-validator-2",
+          },
+        },
+      });
+      const needsResearchRecordDigest =
+        await artifactStore.putJson(needsResearchRecord);
+      const needsResearchRecordRef = validationRecordRefSchema.parse({
+        kind: needsResearchRecord.kind,
+        schemaVersion: needsResearchRecord.schemaVersion,
+        validationId: needsResearchRecord.validationId,
+        candidateId: needsResearchRecord.candidateId,
+        digest: needsResearchRecordDigest,
+      });
+      const needsResearchCompletion = await record.recordValidationCompletion(
+        input.campaignId,
+        plan.runId,
+        needsResearchRecordRef,
+      );
+      const needsResearchCompletionReplay =
+        await record.recordValidationCompletion(
+          input.campaignId,
+          plan.runId,
+          needsResearchRecordRef,
+        );
+      expect(needsResearchCompletionReplay).toEqual(needsResearchCompletion);
+      expect(needsResearchCompletion).toMatchObject({
+        ledgerHead: completion.ledgerHead + 1,
+        completion: {
+          validation: needsResearchRecordRef,
+          disposition: "needs-research",
+          approachFamilyIds: [registry!.value.families[0]!.id],
+          frontierGap: {
+            kind: "validation-frontier-gap",
+            validationId: needsResearchCandidate.id,
+          },
+        },
+      });
+      const frontierGap = needsResearchCompletion.completion.frontierGap;
+      expect(frontierGap).toBeDefined();
+      await expect(
+        artifactStore.readJson(frontierGap!.digest),
+      ).resolves.toMatchObject({
+        kind: "validation-frontier-gap",
+        schemaVersion: 1,
+        validation: needsResearchRecordRef,
+        candidate: needsResearchIntent!.intent.candidate,
+        approachFamilyIds: [registry!.value.families[0]!.id],
+        value: selectedProofGap,
+      });
+      const feedbackRegistry = await record.readApproachFamilyRegistryV3(
+        input.campaignId,
+        plan.runId,
+      );
+      expect(feedbackRegistry?.value.families[0]).toMatchObject({
+        pendingValidations: [candidate.id],
+        validationOutcomes: expect.arrayContaining([
+          expect.objectContaining({
+            validationId: needsResearchCandidate.id,
+            disposition: "needs-research",
+          }),
+        ]),
+      });
+
       record.close();
       const reopened = openSqliteResearchRecord({ databasePath });
       try {
         await expect(
           reopened.readApproachFamilyRegistryV3(input.campaignId, plan.runId),
-        ).resolves.toEqual(unresolvedRegistry);
+        ).resolves.toEqual(feedbackRegistry);
         await expect(
           reopened.listValidationIntents(input.campaignId, plan.runId),
         ).resolves.toEqual(intended);
         await expect(
           reopened.listValidationCompletions(input.campaignId, plan.runId),
-        ).resolves.toEqual([completion]);
+        ).resolves.toEqual(
+          [completion, needsResearchCompletion].sort((left, right) =>
+            left.completion.validation.validationId.localeCompare(
+              right.completion.validation.validationId,
+            ),
+          ),
+        );
+        await expect(
+          reopened.listValidationFrontierGaps(input.campaignId, plan.runId),
+        ).resolves.toMatchObject([
+          {
+            ledgerHead: needsResearchCompletion.ledgerHead,
+            frontierGap,
+          },
+        ]);
       } finally {
         reopened.close();
       }

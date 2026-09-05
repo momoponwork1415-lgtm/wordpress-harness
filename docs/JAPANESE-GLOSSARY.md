@@ -158,6 +158,7 @@
 | Independent Validation Attempt | Finderや別Validatorの会話を使わずfresh contextとread-only source toolで行う検査 |
 | Validation Synthesis | 複数Attemptの根拠だけをtool-freeで統合し、Dispositionを決める独立判断 |
 | Validation Disposition | `ready-for-human`、`needs-research`、`disproven`、`rejected`、`validation-pending`のsource-only判定 |
+| Validation Frontier Gap | `needs-research`で選ばれた具体的proof gapを元Candidateと全origin Familyへbindした不変artifact |
 | Ready-for-human | source上のrubricが閉じ、残るunknownがruntime reproductionだけである状態 |
 | Risk Assessment | Validityとは分離してattacker、前提、surface、effect、blast radiusを構造化した評価 |
 | Skeptic Review | source routeとcounterevidenceをfresh contextで反証する独立レビュー |

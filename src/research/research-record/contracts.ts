@@ -43,6 +43,7 @@ import type { CampaignProgressView } from "../campaign-progress-contracts.js";
 import type {
   ValidationCandidate,
   ValidationCandidateRef,
+  ValidationFrontierGapRef,
   ValidationRecordRef as SourceValidationRecordRef,
 } from "../validation/contracts.js";
 
@@ -169,6 +170,10 @@ export interface ResearchRecord {
     campaignId: string,
     runId: string,
   ): Promise<readonly ValidationCompletionRecordView[]>;
+  listValidationFrontierGaps(
+    campaignId: string,
+    runId: string,
+  ): Promise<readonly ValidationFrontierGapRecordView[]>;
   recordVerificationStart(
     plan: VerificationPlan,
   ): Promise<RecordVerificationStartResult>;
@@ -312,6 +317,7 @@ export interface ValidationCompletion {
     | "rejected"
     | "validation-pending";
   readonly approachFamilyIds: readonly string[];
+  readonly frontierGap?: ValidationFrontierGapRef | undefined;
 }
 
 export interface ValidationCompletionRecordView {
@@ -319,6 +325,12 @@ export interface ValidationCompletionRecordView {
   readonly occurredAt: string;
   readonly completion: ValidationCompletion;
   readonly registry: ApproachFamilyRegistryRefV3;
+}
+
+export interface ValidationFrontierGapRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly frontierGap: ValidationFrontierGapRef;
 }
 
 export interface OpenResearchRecordOptions {

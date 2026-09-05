@@ -114,9 +114,11 @@ import {
   validationCandidateSchema,
   validationRecordRefSchema as sourceValidationRecordRefSchema,
   validationRecordSchema as sourceValidationRecordSchema,
+  validationFrontierGapRefSchema,
   type ValidationCandidate,
   type ValidationRecordRef as SourceValidationRecordRef,
 } from "../validation/contracts.js";
+import { projectValidationFrontierGap } from "../validation/validation-frontier-gap.js";
 import type { ModelAttemptUsageV2 } from "../model-attempt-usage-contracts.js";
 import { canonicalJson, sha256Digest } from "./canonical-json.js";
 import type {
@@ -136,6 +138,7 @@ import type {
   SemanticIterationDecisionRecordViewV3,
   ValidationCompletion,
   ValidationCompletionRecordView,
+  ValidationFrontierGapRecordView,
   ValidationIntent,
   ValidationIntentRecordView,
   JsonArtifactStore,
@@ -357,19 +360,33 @@ const validationIntendedPayloadSchema = z.strictObject({
   registry: approachFamilyRegistryRefV3Schema,
 });
 
-const validationCompletionSchema = z.strictObject({
-  kind: z.literal("validation-completion"),
-  schemaVersion: z.literal(1),
-  validation: sourceValidationRecordRefSchema,
-  disposition: z.enum([
-    "ready-for-human",
-    "needs-research",
-    "disproven",
-    "rejected",
-    "validation-pending",
-  ]),
-  approachFamilyIds: z.array(digestSchema).min(1).max(64),
-});
+const validationCompletionSchema = z
+  .strictObject({
+    kind: z.literal("validation-completion"),
+    schemaVersion: z.literal(1),
+    validation: sourceValidationRecordRefSchema,
+    disposition: z.enum([
+      "ready-for-human",
+      "needs-research",
+      "disproven",
+      "rejected",
+      "validation-pending",
+    ]),
+    approachFamilyIds: z.array(digestSchema).min(1).max(64),
+    frontierGap: validationFrontierGapRefSchema.optional(),
+  })
+  .superRefine((completion, context) => {
+    if (
+      (completion.disposition === "needs-research") !==
+      (completion.frontierGap !== undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["frontierGap"],
+        message: "Only Needs-research completion requires a Frontier Gap",
+      });
+    }
+  });
 
 const validationCompletedPayloadSchema = z.strictObject({
   runId: z.string().min(1).max(128),
@@ -484,6 +501,10 @@ interface LedgerProjection {
   readonly validationCompletions: ReadonlyMap<
     string,
     ValidationCompletionRecordView
+  >;
+  readonly validationFrontierGaps: ReadonlyMap<
+    string,
+    ValidationFrontierGapRecordView
   >;
   readonly verifications: ReadonlyMap<string, StoredVerification>;
 }
@@ -2155,12 +2176,34 @@ class SqliteResearchRecord implements ResearchRecord {
     ) {
       throw new CampaignRunConflictError(campaignId, runId);
     }
+    const frontierGap =
+      validation.status === "needs-research"
+        ? projectValidationFrontierGap({
+            campaignId,
+            runId,
+            target: run.plan.target,
+            manifest: run.plan.manifest,
+            validation,
+            validationRef,
+            candidateRef: intent.intent.candidate,
+            approachFamilyIds: intent.intent.approachFamilyIds,
+          })
+        : undefined;
+    if (frontierGap !== undefined) {
+      const storedFrontierGapDigest = await this.#artifactStore.putJson(
+        frontierGap.value,
+      );
+      if (storedFrontierGapDigest !== frontierGap.ref.digest) {
+        throw new Error("Validation Frontier Gap CAS mismatch");
+      }
+    }
     const completion = validationCompletionSchema.parse({
       kind: "validation-completion",
       schemaVersion: 1,
       validation: validationRef,
       disposition: validation.status,
       approachFamilyIds: intent.intent.approachFamilyIds,
+      ...(frontierGap === undefined ? {} : { frontierGap: frontierGap.ref }),
     });
     const projected = resolveApproachFamilyValidationV3({
       registry: registry.value,
@@ -2253,6 +2296,34 @@ class SqliteResearchRecord implements ResearchRecord {
         compareText(
           left.completion.validation.validationId,
           right.completion.validation.validationId,
+        ),
+      );
+  }
+
+  async listValidationFrontierGaps(
+    campaignId: string,
+    runId: string,
+  ): Promise<readonly ValidationFrontierGapRecordView[]> {
+    const rows = this.#readRows(campaignId);
+    if (rows.length === 0) return [];
+    const ledger = this.#decodeLedger(campaignId, rows);
+    return [...ledger.validationFrontierGaps.values()]
+      .filter((record) => {
+        const intent = ledger.validationIntents.get(
+          sha256Digest({
+            kind: "validation-intent",
+            schemaVersion: 1,
+            campaignId,
+            runId,
+            validationId: record.frontierGap.validationId,
+          }),
+        );
+        return intent?.intent.runId === runId;
+      })
+      .sort((left, right) =>
+        compareText(
+          left.frontierGap.validationId,
+          right.frontierGap.validationId,
         ),
       );
   }
@@ -2760,6 +2831,10 @@ class SqliteResearchRecord implements ResearchRecord {
       string,
       ValidationCompletionRecordView
     >();
+    const validationFrontierGaps = new Map<
+      string,
+      ValidationFrontierGapRecordView
+    >();
     const verifications = new Map<string, StoredVerification>();
     for (const event of rows.slice(1)) {
       if (event.kind === "campaign.prepared") {
@@ -3174,7 +3249,23 @@ class SqliteResearchRecord implements ResearchRecord {
             payload.completion.validation.candidateId ||
           canonicalJson(intent.intent.approachFamilyIds) !==
             canonicalJson(payload.completion.approachFamilyIds) ||
-          validationCompletions.has(payload.completion.validation.validationId)
+          validationCompletions.has(
+            payload.completion.validation.validationId,
+          ) ||
+          (payload.completion.frontierGap !== undefined &&
+            (payload.completion.frontierGap.validationId !==
+              payload.completion.validation.validationId ||
+              payload.completion.frontierGap.candidateId !==
+                payload.completion.validation.candidateId ||
+              payload.completion.frontierGap.targetSnapshotDigest !==
+                run.plan.target.digest ||
+              payload.completion.frontierGap.manifestDigest !==
+                run.plan.manifest.digest ||
+              payload.completion.frontierGap.approachFamilies !==
+                payload.completion.approachFamilyIds.length ||
+              validationFrontierGaps.has(
+                payload.completion.validation.validationId,
+              )))
         ) {
           throw new LedgerIntegrityError(campaignId, "invalid-event-order");
         }
@@ -3196,6 +3287,16 @@ class SqliteResearchRecord implements ResearchRecord {
           completion: payload.completion,
           registry: payload.registry,
         });
+        if (payload.completion.frontierGap !== undefined) {
+          validationFrontierGaps.set(
+            payload.completion.validation.validationId,
+            {
+              ledgerHead: event.campaign_sequence,
+              occurredAt: event.occurred_at,
+              frontierGap: payload.completion.frontierGap,
+            },
+          );
+        }
         approachFamilyRegistriesV3.set(payload.runId, projected);
         continue;
       }
@@ -3680,6 +3781,7 @@ class SqliteResearchRecord implements ResearchRecord {
       approachFamilyRegistriesV3,
       validationIntents,
       validationCompletions,
+      validationFrontierGaps,
       verifications,
     };
   }

@@ -336,6 +336,10 @@ _Avoid_: Validator vote、Source research、Finding promotion
 Validation Synthesisがcandidate全体へ付ける`ready-for-human`、`needs-research`、`disproven`、`rejected`または`validation-pending`の理由付きterminalまたは保留判断。severityとRisk Assessmentを含めない。
 _Avoid_: Finding、Human decision、Confidence label
 
+**Validation Frontier Gap**:
+`needs-research`のValidation Synthesisが選んだ一つのValidator Attemptの具体的proof gapを、元のValidation Candidateと全origin Approach Familyへ結び付けた不変artifact。Finder Attempt、Work Lease、Work Waveのprovenanceを持たず、新しいApproach Familyを開始しない。
+_Avoid_: New Family、Finder checkpoint、Free-form research request
+
 **Ready-for-human**:
 Validation Rubricの全criterionがpassし、残るunknownがruntime reproductionだけであるValidation Disposition。FindingまたはHuman Verification成功を意味しない。
 _Avoid_: Confirmed、Verified Finding、Approved
