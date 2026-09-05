@@ -1119,6 +1119,126 @@ describe("WordfenceIntelligenceRefresh", () => {
     },
   );
 
+  it.each([
+    { response: "success", status: 200 },
+    { response: "failure", status: 404 },
+  ] as const)(
+    "rejects index directory replacement during a $response production fetch",
+    async ({ status }) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "wordfence-index-fetch-replacement-"),
+      );
+      const indexDirectory = join(directory, "index");
+      const displacedIndexDirectory = join(directory, "displaced-index");
+      const databasePath = join(indexDirectory, "target-intelligence.sqlite");
+      const displacedDatabasePath = join(
+        displacedIndexDirectory,
+        "target-intelligence.sqlite",
+      );
+      const artifactDirectory = join(directory, "artifacts");
+      const bytes = await readFile(fixturePath);
+      let now = new Date("2030-08-01T00:00:00.000Z");
+      let resolveCalls = 0;
+      let substitute: Database.Database | undefined;
+      const credentialBroker: HostPrivateCredentialBroker = {
+        async resolve<T>(
+          _reference: WordfenceSecretRef,
+          use: (credential: string) => Promise<T>,
+        ): Promise<T> {
+          resolveCalls += 1;
+          return use("synthetic-fetch-replacement-credential");
+        },
+      };
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(new Response(bytes, { status: 200 }))
+        .mockImplementationOnce(async () => {
+          await rename(indexDirectory, displacedIndexDirectory);
+          await mkdir(indexDirectory, { mode: 0o700 });
+          substitute = new Database(databasePath);
+          substitute.pragma("journal_mode = WAL");
+          substitute.exec(
+            "CREATE TABLE replacement_marker (value TEXT) STRICT",
+          );
+          await chmod(indexDirectory, 0o700);
+          await chmod(databasePath, 0o600);
+          await chmod(`${databasePath}-wal`, 0o600);
+          await chmod(`${databasePath}-shm`, 0o600);
+          return new Response(status === 200 ? bytes : undefined, { status });
+        });
+      const options = {
+        databasePath,
+        artifactDirectory,
+        credentialBroker,
+        fetch: fetchMock,
+        clock: () => now,
+      };
+      try {
+        const refresh = openWordfenceIntelligenceRefresh(options);
+        const current = await refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        });
+        if (current.status !== "current") {
+          throw new Error("Expected an initial current snapshot");
+        }
+
+        now = new Date("2030-08-02T00:00:00.000Z");
+        await expect(
+          refresh.run({
+            kind: "wordfence-intelligence-refresh",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual({
+          kind: "wordfence-intelligence-result",
+          schemaVersion: 1,
+          status: "failed",
+          reason: "storage-failure",
+        });
+        expect(resolveCalls).toBe(2);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        await expect(
+          refresh.inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual({
+          kind: "wordfence-intelligence-result",
+          schemaVersion: 1,
+          status: "failed",
+          reason: "storage-failure",
+        });
+
+        const configuredRestart = openWordfenceIntelligenceRefresh(options);
+        await expect(
+          configuredRestart.inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual({
+          kind: "wordfence-intelligence-result",
+          schemaVersion: 1,
+          status: "failed",
+          reason: "not-refreshed",
+        });
+
+        const displacedRestart = openWordfenceIntelligenceRefresh({
+          ...options,
+          databasePath: displacedDatabasePath,
+        });
+        await expect(
+          displacedRestart.inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual(current);
+      } finally {
+        substitute?.close();
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("secures an existing owner-controlled production SQLite index before use", async () => {
     const directory = await mkdtemp(
       join(tmpdir(), "wordfence-existing-private-index-"),

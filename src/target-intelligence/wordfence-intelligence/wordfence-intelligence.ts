@@ -803,6 +803,17 @@ async function requireProductionStorage(
   };
 }
 
+async function requireProductionIndexIdentity(
+  databasePath: string,
+  expectedIndexIdentity: ProductionIndexIdentity,
+): Promise<void> {
+  const selectedIndexIdentity = await productionIndexIdentity(
+    databasePath,
+    true,
+  );
+  requireMatchingIndexIdentity(expectedIndexIdentity, selectedIndexIdentity);
+}
+
 async function verifyHostPrivateArtifact(
   path: string,
   bytes: Uint8Array,
@@ -1542,15 +1553,31 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   async refresh(
     requestValue: WordfenceIntelligenceRefreshRequest,
     productionArtifactDirectory?: PinnedHostPrivateDirectory,
+    requireCurrentIndexIdentity?: () => Promise<void>,
   ): Promise<WordfenceIntelligenceResult> {
     wordfenceIntelligenceRefreshRequestSchema.parse(requestValue);
-    let unvalidated: unknown;
+    let retrieval:
+      | { readonly status: "succeeded"; readonly value: unknown }
+      | { readonly error: unknown; readonly status: "failed" };
     try {
-      unvalidated = await this.#adapter.retrieveProductionFeed({
-        credential: this.#credential,
-        maximumBytes: this.#maximumFeedBytes,
-      });
+      retrieval = {
+        status: "succeeded",
+        value: await this.#adapter.retrieveProductionFeed({
+          credential: this.#credential,
+          maximumBytes: this.#maximumFeedBytes,
+        }),
+      };
     } catch (error) {
+      retrieval = { error, status: "failed" };
+    }
+    const indexFailure = await this.#productionIndexFailure(
+      requireCurrentIndexIdentity,
+    );
+    if (indexFailure !== undefined) {
+      return indexFailure;
+    }
+    if (retrieval.status === "failed") {
+      const { error } = retrieval;
       return this.#refreshFailure(
         error instanceof ResponseTooLargeError
           ? "response-byte-ceiling-exceeded"
@@ -1561,8 +1588,9 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
               : "network-failure",
       );
     }
-    const parsedResponse =
-      wordfenceIntelligenceSourceResponseSchema.safeParse(unvalidated);
+    const parsedResponse = wordfenceIntelligenceSourceResponseSchema.safeParse(
+      retrieval.value,
+    );
     if (!parsedResponse.success) {
       return this.#refreshFailure("schema-drift");
     }
@@ -1613,9 +1641,21 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       );
     } catch (error) {
       if (isStorageFailure(error)) {
+        const persistenceIndexFailure = await this.#productionIndexFailure(
+          requireCurrentIndexIdentity,
+        );
+        if (persistenceIndexFailure !== undefined) {
+          return persistenceIndexFailure;
+        }
         return this.#refreshFailure("storage-failure");
       }
       throw error;
+    }
+    const publicationIndexFailure = await this.#productionIndexFailure(
+      requireCurrentIndexIdentity,
+    );
+    if (publicationIndexFailure !== undefined) {
+      return publicationIndexFailure;
     }
     const snapshot = wordfenceIntelligenceSnapshotSchema.parse({
       kind: "wordfence-intelligence-snapshot",
@@ -1639,11 +1679,37 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       );
     } catch (error) {
       if (isStorageFailure(error)) {
+        const failureIndexFailure = await this.#productionIndexFailure(
+          requireCurrentIndexIdentity,
+        );
+        if (failureIndexFailure !== undefined) {
+          return failureIndexFailure;
+        }
         return this.#refreshFailure("storage-failure");
       }
       throw error;
     }
     return currentResult(snapshot, snapshotRef);
+  }
+
+  async #productionIndexFailure(
+    requireCurrentIndexIdentity: (() => Promise<void>) | undefined,
+  ): Promise<WordfenceIntelligenceFailure | undefined> {
+    if (!this.#productionComposition) {
+      return undefined;
+    }
+    if (requireCurrentIndexIdentity === undefined) {
+      throw new HostPrivateStorageError();
+    }
+    try {
+      await requireCurrentIndexIdentity();
+      return undefined;
+    } catch (error) {
+      if (isStorageFailure(error)) {
+        return failure("storage-failure");
+      }
+      throw error;
+    }
   }
 
   async inspect(
@@ -2280,6 +2346,16 @@ export function openWordfenceIntelligenceRefresh(
       throw error;
     }
   };
+  const requireCurrentIndexIdentity = async (): Promise<void> => {
+    const expectedIndexIdentity = indexIdentity;
+    if (expectedIndexIdentity === undefined) {
+      throw new HostPrivateStorageError();
+    }
+    await requireProductionIndexIdentity(
+      intelligenceOptions.databasePath,
+      expectedIndexIdentity,
+    );
+  };
   return {
     run: async (request) => {
       wordfenceIntelligenceRefreshRequestSchema.parse(request);
@@ -2298,6 +2374,7 @@ export function openWordfenceIntelligenceRefresh(
               await current.intelligence.refresh(
                 request,
                 current.artifactDirectory,
+                requireCurrentIndexIdentity,
               ),
             );
           },
