@@ -52,6 +52,18 @@ const pluginIdentitySchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
+const targetProvenanceSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("operator-provided"),
+    acquisitionRef: immutableArtifactRefSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("wordpress-org"),
+    sourceUrl: z.url(),
+    acquisitionRef: immutableArtifactRefSchema,
+  }),
+]);
+
 export const manualTargetIntakeRequestSchema = z.strictObject({
   kind: z.literal("manual-target-intake"),
   schemaVersion: z.literal(1),
@@ -63,10 +75,7 @@ export const manualTargetIntakeRequestSchema = z.strictObject({
   requestedVersion: z.string().min(1).max(64),
   mainPluginFile: relativePathSchema.optional(),
   canonicalInstallDirectory: slugSchema.optional(),
-  provenance: z.strictObject({
-    kind: z.literal("operator-provided"),
-    acquisitionRef: immutableArtifactRefSchema,
-  }),
+  provenance: targetProvenanceSchema,
   policy: targetIntakePolicySchema,
 });
 
@@ -83,6 +92,9 @@ export const targetIntakeReasonSchema = z.enum([
   "version-evidence-missing",
   "version-mismatch",
   "canonical-install-directory-missing",
+  "archive-invalid",
+  "path-traversal",
+  "multiple-plugin-roots",
 ]);
 
 const sourceFileEntrySchema = z.strictObject({
@@ -117,20 +129,24 @@ export const targetIntakePacketSchema = z.strictObject({
     entries: z.number().int().positive(),
     manifest: canonicalFileManifestSchema,
   }),
-  sourceCapture: z.strictObject({
-    kind: z.literal("captured-local-directory"),
-    digest: digestSchema,
-    files: z.array(sourceFileEntrySchema).min(1),
-  }),
+  sourceCapture: z.discriminatedUnion("kind", [
+    z.strictObject({
+      kind: z.literal("captured-local-directory"),
+      digest: digestSchema,
+      files: z.array(sourceFileEntrySchema).min(1),
+    }),
+    z.strictObject({
+      kind: z.literal("captured-wordpress-org-archive"),
+      digest: digestSchema,
+      files: z.array(sourceFileEntrySchema).min(1),
+    }),
+  ]),
   versionEvidence: z.strictObject({
     requestedVersion: z.string().min(1).max(64),
     mainHeaderVersion: z.string().min(1).max(64),
     mainFileDigest: digestSchema,
   }),
-  provenance: z.strictObject({
-    kind: z.literal("operator-provided"),
-    acquisitionRef: immutableArtifactRefSchema,
-  }),
+  provenance: targetProvenanceSchema,
   policy: immutableArtifactRefSchema,
 });
 
@@ -174,6 +190,7 @@ export const intakeDispositionSchema = z.discriminatedUnion("status", [
 export type ManualTargetIntakeRequest = z.infer<
   typeof manualTargetIntakeRequestSchema
 >;
+export type TargetIntakePolicy = z.infer<typeof targetIntakePolicySchema>;
 export type TargetIntakeReason = z.infer<typeof targetIntakeReasonSchema>;
 export type TargetIntakePacket = z.infer<typeof targetIntakePacketSchema>;
 export type IntakeReceipt = z.infer<typeof intakeReceiptSchema>;

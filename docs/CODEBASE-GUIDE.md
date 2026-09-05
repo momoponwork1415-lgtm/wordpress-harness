@@ -8,7 +8,7 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 
 | Product stage | Status | Remaining |
 | --- | --- | --- |
-| Manual Target Intake | local directoryは実装済み | archive acquisition、selection / ranking |
+| Target Acquisition / Intake | local directoryとWordPress.org archiveを実装済み | premium acquisition、selection / ranking |
 | Semantic Research | v6 initial Wave、Decision@3、conditional Depth実行まで実装済み | Missing-link / Closure |
 | Source-only Validation | v6 single fresh Attemptと4 dispositionを実装済み | Frontier Gapの次Wave |
 | Runtime handoff | Runtime Verification Packet v2とCAS-first handoffを実装済み | AI Reproduction intake |
@@ -52,6 +52,16 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 - **Status:** Target Intelligence専用SQLite eventからCampaign viewをreplayする。Development Cohort、calibration、意図的な独立反復はkind、run ordinal、理由を固定して許可する。
 - **Code / Tests:** [research-history](../src/target-intelligence/research-history) · [Behavior Test](../tests/target-intelligence/target-research-history.test.ts)
 
+### WordPress.org Target Source
+
+**Interface:** `WordPressOrgTargetSource.observe / acquire`
+
+- **Purpose:** official plugin slugから不変なTarget Observationを作り、観測したstable versionのarchive原本を既存Target Intakeへ安全に渡す。
+- **Invariants:** Plugin Identityは`wporg:<slug>`とし、表示名、stable version、active installations、last updated、download provenance、取得時刻をmetadata digestとparser versionへ固定する。acquireは観測済みversionとMain Plugin File headerを照合し、archive bytesをcontent digestで不変化する。CVE、advisory、known vulnerable range、known routeをObservationまたはPacketへ保存しない。同じofficial bytesは取得時刻やrestartにかかわらず同じCanonical File ManifestとTarget Intake Packetへ収束する。
+- **Failures:** metadata / archiveの404、rate limit、network failure、quota超過、invalid metadata、要求version不一致、metadata / archive不一致をtyped failureにする。ZIPのpath traversal、link、multiple plugin root、integrity不正、quota超過はTarget Intake公開前に`rejected`、Main Plugin Fileの不足・曖昧性は既存Intakeの`deferred`にする。別versionまたは別sourceへsilent fallbackしない。
+- **Status:** bounded production fetch Adapter、sanitized fixture Adapterによるoffline Behavior Test、Deflate / Store ZIPの安全な展開、Acquisition Original保存、restart replayを実装。
+- **Code / Tests:** [acquisition](../src/target-intelligence/acquisition) · [Behavior Test](../tests/target-intelligence/wordpress-org-target-source.test.ts)
+
 ### Target Intake
 
 **Interface:** `TargetIntake.intake(request) -> ready | deferred | rejected`
@@ -59,7 +69,7 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 - **Purpose:** untrustedなarchiveまたはdirectoryを、oracle-freeなTarget Intake Packetへ変換する。
 - **Invariants:** identityとversionを照合し、sourceを実行せず、artifactをdurableにしてから`ready`を返す。同じrequestは同じ結果へ収束する。
 - **Failures:** policy outcomeは`deferred / rejected`、durable化できないsystem failureだけをerrorにする。
-- **Status:** local directory、manifest、quota / path / link検査、Campaign handoffを実装。archive acquisitionは未実装。
+- **Status:** local directoryとWordPress.org archive、manifest、quota / path / link検査、Campaign handoffを実装。premium archive acquisitionは未実装。
 - **Code / Tests:** [acquisition](../src/target-intelligence/acquisition), [handoff](../src/research/campaign-control/target-intake-campaign-handoff.ts) · [intake](../tests/target-intelligence/local-directory-target-intake.test.ts), [handoff](../tests/research/target-intake-campaign-handoff.test.ts)
 
 ## Research

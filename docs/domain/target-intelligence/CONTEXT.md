@@ -81,7 +81,7 @@ Plugin Identity、verified version、Canonical File Manifest digestで固定し�
 _Avoid_: Research Ledger、Finding history、Vulnerability History Aggregate
 
 **Acquisition Original**:
-archiveまたはdirectoryとして受け取ったsourceを、展開・正規化前の内容と入手経路へ結び付けて不変化した原本。
+archiveまたはdirectoryとして受け取ったsourceを、展開・正規化前の原文bytesのcontent identity、source URL、取得時刻へ結び付けて不変化した原本。同じbytesのidentityは取得時刻が変わっても変えず、取得観測だけを追加する。
 _Avoid_: Working copy、Extracted plugin、Target Snapshot
 
 **Canonical File Manifest**:
