@@ -73,3 +73,16 @@ export type {
   HumanVerificationQueueView,
   OpenHumanVerificationOptions,
 } from "./human-verification.js";
+export {
+  humanVerificationSourceTreeDigest,
+  openGvisorWordPressEnvironmentProvisioner,
+} from "./gvisor-wordpress-environment-provisioner.js";
+export type {
+  GvisorWordPressAssistantBroker,
+  GvisorWordPressEnvironmentProvisioner,
+  GvisorWordPressSetupBroker,
+  HumanVerificationSetupDependency,
+  HumanVerificationSourceTreeEntry,
+  HumanVerificationTargetSourceResolver,
+  OpenGvisorWordPressEnvironmentProvisionerOptions,
+} from "./gvisor-wordpress-environment-provisioner.js";

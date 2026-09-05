@@ -241,7 +241,10 @@ export const humanVerificationTargetSchema = z.strictObject({
   manifest: humanReviewPacketSchema.shape.manifest,
   sourceArtifact: z.strictObject({
     kind: z.literal("content-addressed-target-source"),
-    mediaType: z.literal("application/zip"),
+    mediaType: z.enum([
+      "application/zip",
+      "application/vnd.wordpress.source-tree+json",
+    ]),
     digest: digestSchema,
   }),
 });
