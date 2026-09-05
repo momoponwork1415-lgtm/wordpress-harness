@@ -110,6 +110,15 @@ describe("Patchstack Programme Adapter", () => {
                 "mvdp-scope-exception",
                 "working-exploit-required",
               ],
+              directoryEligibilityRules: [
+                {
+                  directoryIdentity:
+                    "managed-vulnerability-disclosure-programme",
+                  requiredMembership: "listed-plugin",
+                  eligibilityEffect: "contributor-attacker-role-exception",
+                  authorizationCondition: "mvdp-scope-exception",
+                },
+              ],
             },
             programmeOpportunityBand: "broad",
             rewardEstimateInput: {
@@ -251,6 +260,52 @@ describe("Patchstack Programme Adapter", () => {
           { sourceId: "programme:patchstack:04-mvdp-directory" },
           { sourceId: "programme:patchstack:05-marketing" },
         ],
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an mVDP directory that omits its membership exception", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "patchstack-mvdp-drift-"));
+    const pages = fixturePageAdapters().map((page) =>
+      page.sourceKind === "mvdp-directory"
+        ? {
+            ...page,
+            parse: async (bytes: Uint8Array) => {
+              const document = JSON.parse(
+                Buffer.from(bytes).toString("utf8"),
+              ) as { assertions: Record<string, unknown> };
+              delete document.assertions.directoryEligibilityRules;
+              return document;
+            },
+          }
+        : page,
+    );
+    try {
+      const intelligence = openProgrammeIntelligence({
+        storageDirectory: directory,
+        sourceAdapters: createPatchstackProgrammeAdapters({ pages }),
+        freshnessPolicy: {
+          kind: "programme-eligibility-freshness-policy",
+          schemaVersion: 1,
+          id: "programme-freshness-v1",
+          digest: digest("f"),
+          maximumAgeMs: {
+            targetSelectionBatch: 86_400_000,
+            submissionStaging: 3_600_000,
+          },
+        },
+      });
+      await expect(
+        intelligence.refresh({
+          kind: "programme-intelligence-refresh",
+          schemaVersion: 1,
+          programmeIdentity: "programme:patchstack",
+        }),
+      ).resolves.toMatchObject({
+        status: "parse-failed",
+        programmeIdentity: "programme:patchstack",
       });
     } finally {
       await rm(directory, { recursive: true, force: true });

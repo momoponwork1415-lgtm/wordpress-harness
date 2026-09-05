@@ -17,6 +17,14 @@
         "mvdp-scope-exception",
         "working-exploit-required"
       ]
-    }
+    },
+    "directoryEligibilityRules": [
+      {
+        "directoryIdentity": "managed-vulnerability-disclosure-programme",
+        "requiredMembership": "listed-plugin",
+        "eligibilityEffect": "contributor-attacker-role-exception",
+        "authorizationCondition": "mvdp-scope-exception"
+      }
+    ]
   }
 }

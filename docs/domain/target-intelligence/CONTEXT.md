@@ -29,7 +29,7 @@ scope、eligibility、reward policy、competition ruleを一つのProgramme Elig
 _Avoid_: Programme name、Submission destination、Programme Assignment
 
 **Programme Eligibility Snapshot**:
-一つのProgramme Identityについてrequired sourceのURL、取得時刻、content digest、parser versionと、asset、vulnerability class、attacker role、active-install threshold、researcher tier、除外条件を固定したversionedなpolicy観測。Target選定batch開始時とSubmission Staging前にfreshnessを検査し、古い観測をcurrent扱いしない。programme ruleはFindingのtechnical validityを変更せず、CVE、advisory、Findingまたはknown routeを含めない。
+一つのProgramme Identityについてrequired sourceのURL、取得時刻、content digest、parser versionと、asset、vulnerability class、attacker role、active-install threshold、researcher tier、除外条件、必要なdirectory membershipとそのeligibility効果を固定したversionedなpolicy観測。Target選定batch開始時とSubmission Staging前にfreshnessを検査し、古い観測をcurrent扱いしない。programme ruleはFindingのtechnical validityを変更せず、CVE、advisory、Findingまたはknown routeを含めない。
 _Avoid_: Current policy、Finding verdict、Target Intake Packet
 
 **Finding-only Reward Estimate Input**:

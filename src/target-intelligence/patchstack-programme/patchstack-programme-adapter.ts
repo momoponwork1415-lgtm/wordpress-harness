@@ -102,6 +102,32 @@ async function normalizePages(
     throw new Error("Patchstack Rules source is incomplete");
   }
 
+  const directory = documents.find(
+    (document) => document.sourceKind === "mvdp-directory",
+  );
+  if (
+    directory?.assertions.directoryEligibilityRules === undefined ||
+    documents.some(
+      (document) =>
+        document.sourceKind !== "mvdp-directory" &&
+        document.assertions.directoryEligibilityRules !== undefined,
+    )
+  ) {
+    throw new Error(
+      "Patchstack mVDP directory eligibility membership is incomplete",
+    );
+  }
+  if (
+    directory.assertions.directoryEligibilityRules.some(
+      (rule) =>
+        !eligibilityResult.data.conditions?.includes(
+          rule.authorizationCondition,
+        ),
+    )
+  ) {
+    return conflictSignal();
+  }
+
   for (const document of documents.slice(1)) {
     if (
       document.assertions.eligibility !== undefined &&
@@ -162,7 +188,10 @@ async function normalizePages(
 
   return normalizedProgrammePolicySchema.parse({
     programmeIdentity: "programme:patchstack",
-    eligibility: eligibilityResult.data,
+    eligibility: {
+      ...eligibilityResult.data,
+      directoryEligibilityRules: directory.assertions.directoryEligibilityRules,
+    },
     programmeOpportunityBand: rules.assertions.programmeOpportunityBand,
     rewardEstimateInput: {
       kind: "finding-only-reward-estimate-input",

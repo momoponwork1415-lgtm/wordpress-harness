@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  directoryEligibilityRuleSchema,
   policyTermSchema,
   programmeEligibilitySchema,
   programmeRewardRouteSchema,
@@ -26,6 +27,10 @@ export const patchstackProgrammePageDocumentSchema = z.strictObject({
       .optional(),
     rewardFactors: z.array(policyTermSchema).min(1).optional(),
     rewardRoutes: z.array(programmeRewardRouteSchema).optional(),
+    directoryEligibilityRules: z
+      .array(directoryEligibilityRuleSchema)
+      .min(1)
+      .optional(),
   }),
 });
 

@@ -15,6 +15,13 @@ export const policyTermSchema = z
   .max(128)
   .regex(/^[a-z0-9][a-z0-9-]*$/);
 
+export const directoryEligibilityRuleSchema = z.strictObject({
+  directoryIdentity: policyTermSchema,
+  requiredMembership: policyTermSchema,
+  eligibilityEffect: policyTermSchema,
+  authorizationCondition: policyTermSchema,
+});
+
 export const programmeEligibilityFreshnessPolicySchema = z.strictObject({
   kind: z.literal("programme-eligibility-freshness-policy"),
   schemaVersion: z.literal(1),
@@ -55,6 +62,7 @@ export const programmeEligibilitySchema = z.strictObject({
       }),
     )
     .optional(),
+  directoryEligibilityRules: z.array(directoryEligibilityRuleSchema).optional(),
 });
 
 const programmeRewardRouteTermSchema = z.strictObject({
