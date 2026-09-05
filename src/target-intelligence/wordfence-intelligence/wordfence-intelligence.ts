@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { constants as fsConstants } from "node:fs";
+import { constants as fsConstants, type Stats } from "node:fs";
 import {
   link,
   lstat,
@@ -512,12 +512,61 @@ async function secureHostPrivateDirectory(path: string): Promise<void> {
   }
 }
 
-async function requireHostPrivateDirectory(path: string): Promise<void> {
+interface PinnedHostPrivateDirectory {
+  readonly device: number;
+  readonly handle: FileHandle;
+  readonly inode: number;
+  readonly path: string;
+}
+
+function requireHostPrivateDirectoryMetadata(metadata: Stats): void {
+  if (
+    !metadata.isDirectory() ||
+    !isOwnedByCurrentUser(metadata.uid) ||
+    (metadata.mode & 0o777) !== 0o700
+  ) {
+    throw new HostPrivateStorageError();
+  }
+}
+
+async function requirePinnedHostPrivateDirectory(
+  directory: PinnedHostPrivateDirectory,
+): Promise<void> {
+  const pinnedMetadata = await directory.handle.stat();
+  requireHostPrivateDirectoryMetadata(pinnedMetadata);
+  if (
+    pinnedMetadata.dev !== directory.device ||
+    pinnedMetadata.ino !== directory.inode ||
+    (await realpath(directory.path)) !== directory.path
+  ) {
+    throw new HostPrivateStorageError();
+  }
+  const selectedHandle = await open(
+    directory.path,
+    fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW,
+  );
+  try {
+    const selectedMetadata = await selectedHandle.stat();
+    requireHostPrivateDirectoryMetadata(selectedMetadata);
+    if (
+      selectedMetadata.dev !== directory.device ||
+      selectedMetadata.ino !== directory.inode
+    ) {
+      throw new HostPrivateStorageError();
+    }
+  } finally {
+    await selectedHandle.close();
+  }
+}
+
+async function openPinnedHostPrivateDirectory(
+  path: string,
+): Promise<PinnedHostPrivateDirectory> {
   if (!isAbsolute(path)) {
     throw new HostPrivateStorageError();
   }
-  await createDirectoryPathWithoutSymlinks(path);
-  if ((await realpath(path)) !== resolve(path)) {
+  const normalizedPath = resolve(path);
+  if ((await realpath(path)) !== normalizedPath) {
     throw new HostPrivateStorageError();
   }
   const handle = await open(
@@ -526,16 +575,25 @@ async function requireHostPrivateDirectory(path: string): Promise<void> {
   );
   try {
     const metadata = await handle.stat();
-    if (
-      !metadata.isDirectory() ||
-      !isOwnedByCurrentUser(metadata.uid) ||
-      (metadata.mode & 0o777) !== 0o700
-    ) {
-      throw new HostPrivateStorageError();
-    }
-  } finally {
+    requireHostPrivateDirectoryMetadata(metadata);
+    const directory = {
+      device: metadata.dev,
+      handle,
+      inode: metadata.ino,
+      path: normalizedPath,
+    };
+    await requirePinnedHostPrivateDirectory(directory);
+    return directory;
+  } catch (error) {
     await handle.close();
+    throw error;
   }
+}
+
+async function requireHostPrivateDirectory(path: string): Promise<void> {
+  await createDirectoryPathWithoutSymlinks(path);
+  const directory = await openPinnedHostPrivateDirectory(path);
+  await directory.handle.close();
 }
 
 async function openHostPrivateRegularFile(path: string, create: boolean) {
@@ -603,6 +661,52 @@ async function secureHostPrivateSqliteFiles(path: string): Promise<void> {
   await secureHostPrivateRegularFile(`${path}-shm`, false);
 }
 
+async function requireHostPrivateRegularFile(path: string): Promise<void> {
+  let handle: FileHandle;
+  try {
+    handle = await open(
+      path,
+      fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK,
+    );
+  } catch (error) {
+    if (hasErrorCode(error, "ELOOP")) {
+      throw new HostPrivateStorageError();
+    }
+    throw error;
+  }
+  try {
+    const metadata = await handle.stat();
+    if (
+      !metadata.isFile() ||
+      !isOwnedByCurrentUser(metadata.uid) ||
+      (metadata.mode & 0o777) !== 0o600
+    ) {
+      throw new HostPrivateStorageError();
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
+async function requireProductionStorage(
+  databasePath: string,
+  artifactDirectory: string,
+): Promise<PinnedHostPrivateDirectory> {
+  const indexDirectory = await openPinnedHostPrivateDirectory(
+    dirname(databasePath),
+  );
+  try {
+    await requireHostPrivateRegularFile(databasePath);
+    await requireHostPrivateRegularFile(`${databasePath}-wal`);
+    await requireHostPrivateRegularFile(`${databasePath}-shm`);
+    return await openPinnedHostPrivateDirectory(
+      join(artifactDirectory, "wordfence-intelligence-v3"),
+    );
+  } finally {
+    await indexDirectory.handle.close();
+  }
+}
+
 async function verifyHostPrivateArtifact(
   path: string,
   bytes: Uint8Array,
@@ -637,16 +741,37 @@ async function verifyHostPrivateArtifact(
   }
 }
 
-async function persistBytes(path: string, bytes: Uint8Array): Promise<void> {
+async function persistBytes(
+  path: string,
+  bytes: Uint8Array,
+  pinnedDirectory?: PinnedHostPrivateDirectory,
+): Promise<void> {
   const directory = dirname(path);
+  if (
+    pinnedDirectory !== undefined &&
+    resolve(directory) !== pinnedDirectory.path
+  ) {
+    throw new HostPrivateStorageError();
+  }
+  if (pinnedDirectory !== undefined) {
+    await requirePinnedHostPrivateDirectory(pinnedDirectory);
+  }
+  const operationDirectory =
+    pinnedDirectory === undefined
+      ? directory
+      : `/proc/self/fd/${pinnedDirectory.handle.fd}`;
+  const finalPath = join(operationDirectory, basename(path));
   const temporaryPath = join(
-    directory,
+    operationDirectory,
     `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`,
   );
-  const directoryHandle = await open(
-    directory,
-    fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW,
-  );
+  const directoryHandle =
+    pinnedDirectory?.handle ??
+    (await open(
+      directory,
+      fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW,
+    ));
+  const ownsDirectoryHandle = pinnedDirectory === undefined;
   let ownsTemporaryPath = false;
   try {
     const handle = await open(temporaryPath, "wx", 0o600);
@@ -660,13 +785,13 @@ async function persistBytes(path: string, bytes: Uint8Array): Promise<void> {
       await handle.close();
     }
     try {
-      await link(temporaryPath, path);
+      await link(temporaryPath, finalPath);
     } catch (error) {
       if (!hasErrorCode(error, "EEXIST")) {
         throw error;
       }
     }
-    await verifyHostPrivateArtifact(path, bytes);
+    await verifyHostPrivateArtifact(finalPath, bytes);
   } finally {
     let finalizationError: unknown;
     if (ownsTemporaryPath) {
@@ -683,10 +808,19 @@ async function persistBytes(path: string, bytes: Uint8Array): Promise<void> {
     } catch (error) {
       finalizationError ??= error;
     }
-    try {
-      await directoryHandle.close();
-    } catch (error) {
-      finalizationError ??= error;
+    if (ownsDirectoryHandle) {
+      try {
+        await directoryHandle.close();
+      } catch (error) {
+        finalizationError ??= error;
+      }
+    }
+    if (pinnedDirectory !== undefined) {
+      try {
+        await requirePinnedHostPrivateDirectory(pinnedDirectory);
+      } catch (error) {
+        finalizationError ??= error;
+      }
     }
     if (finalizationError !== undefined) {
       throw finalizationError;
@@ -1001,7 +1135,11 @@ async function boundedResponseBytes(
       }
       total += next.value.byteLength;
       if (total > maximumBytes) {
-        await reader.cancel();
+        try {
+          await reader.cancel();
+        } catch {
+          // The byte-ceiling failure is primary; cancellation is best-effort cleanup.
+        }
         throw new ResponseTooLargeError();
       }
       chunks.push(next.value);
@@ -1244,6 +1382,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
 
   async refresh(
     requestValue: WordfenceIntelligenceRefreshRequest,
+    productionArtifactDirectory?: PinnedHostPrivateDirectory,
   ): Promise<WordfenceIntelligenceResult> {
     wordfenceIntelligenceRefreshRequestSchema.parse(requestValue);
     let unvalidated: unknown;
@@ -1301,10 +1440,17 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       "wordfence-intelligence-v3",
     );
     try {
-      await mkdir(artifactDirectory, { recursive: true });
+      if (this.#productionComposition) {
+        if (productionArtifactDirectory === undefined) {
+          throw new HostPrivateStorageError();
+        }
+      } else {
+        await mkdir(artifactDirectory, { recursive: true });
+      }
       await persistBytes(
         join(artifactDirectory, `${contentDigest.slice(7)}.json`),
         response.bytes,
+        productionArtifactDirectory,
       );
     } catch (error) {
       if (isStorageFailure(error)) {
@@ -1869,35 +2015,47 @@ export function openWordfenceIntelligenceRefresh(
   };
   let intelligence: SqliteWordfenceIntelligence | undefined;
   const initialize = async (): Promise<
-    SqliteWordfenceIntelligence | undefined
+    | {
+        readonly artifactDirectory: PinnedHostPrivateDirectory;
+        readonly intelligence: SqliteWordfenceIntelligence;
+      }
+    | undefined
   > => {
-    if (intelligence !== undefined) {
-      return intelligence;
-    }
     try {
-      await prepareHostPrivateSqliteStorage(intelligenceOptions.databasePath);
-      await requireHostPrivateDirectory(
-        join(
-          intelligenceOptions.artifactDirectory,
-          "wordfence-intelligence-v3",
-        ),
-      );
-      const candidate = new SqliteWordfenceIntelligence(
-        intelligenceOptions,
-        true,
-      );
-      try {
-        await secureHostPrivateSqliteFiles(intelligenceOptions.databasePath);
-      } catch (error) {
-        candidate.close();
-        throw error;
-      }
       if (intelligence === undefined) {
-        intelligence = candidate;
-      } else {
-        candidate.close();
+        await prepareHostPrivateSqliteStorage(intelligenceOptions.databasePath);
+        await requireHostPrivateDirectory(
+          join(
+            intelligenceOptions.artifactDirectory,
+            "wordfence-intelligence-v3",
+          ),
+        );
+        const candidate = new SqliteWordfenceIntelligence(
+          intelligenceOptions,
+          true,
+        );
+        try {
+          await secureHostPrivateSqliteFiles(intelligenceOptions.databasePath);
+        } catch (error) {
+          candidate.close();
+          throw error;
+        }
+        if (intelligence === undefined) {
+          intelligence = candidate;
+        } else {
+          candidate.close();
+        }
       }
-      return intelligence;
+      const artifactDirectory = await requireProductionStorage(
+        intelligenceOptions.databasePath,
+        intelligenceOptions.artifactDirectory,
+      );
+      const current = intelligence;
+      if (current === undefined) {
+        await artifactDirectory.handle.close();
+        throw new HostPrivateStorageError();
+      }
+      return { artifactDirectory, intelligence: current };
     } catch (error) {
       if (isStorageFailure(error)) {
         return undefined;
@@ -1912,9 +2070,16 @@ export function openWordfenceIntelligenceRefresh(
       if (current === undefined) {
         return failure("storage-failure");
       }
-      return wordfenceIntelligenceResultSchema.parse(
-        await current.refresh(request),
-      );
+      try {
+        return wordfenceIntelligenceResultSchema.parse(
+          await current.intelligence.refresh(
+            request,
+            current.artifactDirectory,
+          ),
+        );
+      } finally {
+        await current.artifactDirectory.handle.close();
+      }
     },
     inspect: async (request) => {
       wordfenceIntelligenceInspectionRequestSchema.parse(request);
@@ -1924,13 +2089,15 @@ export function openWordfenceIntelligenceRefresh(
       }
       try {
         return wordfenceIntelligenceResultSchema.parse(
-          await current.inspectProduction(request),
+          await current.intelligence.inspectProduction(request),
         );
       } catch (error) {
         if (isStorageFailure(error)) {
           return failure("storage-failure");
         }
         throw error;
+      } finally {
+        await current.artifactDirectory.handle.close();
       }
     },
   };
