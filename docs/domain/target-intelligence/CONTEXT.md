@@ -44,6 +44,10 @@ _Avoid_: Selection Fact、Sensitive metadata
 Oracle FactからCVE、脆弱version、CWE構成、affected function、advisory、patch、既知routeを除き、plugin単位の件数、密度、最終公開時期等へ粗く集約した履歴値。Target Intelligence内の補助的な選定にだけ使い、主要な選定根拠、Research inputまたはTarget Intake Packetにしない。
 _Avoid_: Selection Fact、Vulnerability profile、Research hint
 
+**Known Record Projection**:
+verified Finding後のKnown Duplicate Dispositionだけに使う、versioned vulnerability intelligence snapshotからのexact record投影。affected version interval、patched version、CVE、CWE、CVSS、公開時刻、copyright / license attributionを保持するが、Target選定、Research inputまたはTarget Intake Packetへ渡さない。
+_Avoid_: Vulnerability History Aggregate、Research prior、Finding validity
+
 **Selection Policy**:
 許可範囲、取得可能性、潜在impact、到達可能な攻撃面、利用規模、鮮度、調査履歴から、重複せず多様なProspective Targetを選ぶversion固定した判断基準。programme適格性は外部提出価値を高めるが、技術的な調査価値を置き換えない。Programme Opportunity Bandまたは優先Programmeへの適格性は同等候補のtie-breakerにだけ使い、推定報奨額、特定CWEまたはsinkを主要目的やquotaにしない。同じvendor、plugin family、用途、規模、権限modelまたはintegrationだけでCandidate集合を埋めない。
 _Avoid_: Ranking formula、Research priority

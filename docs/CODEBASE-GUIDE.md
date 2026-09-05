@@ -9,6 +9,7 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Product stage | Status | Remaining |
 | --- | --- | --- |
 | Target Acquisition / Intake | local directoryとWordPress.org archiveを実装済み | premium acquisition、selection / ranking |
+| Vulnerability Intelligence | Wordfence Intelligence v3のlocal indexとoracle-separated projectionを実装済み | Patchstack source取得方式の決定 |
 | Semantic Research | v6 initial Wave、Decision@3、conditional Depth実行まで実装済み | Missing-link / Closure |
 | Source-only Validation | v6 single fresh Attemptと4 dispositionを実装済み | Frontier Gapの次Wave |
 | Runtime handoff | Runtime Verification Packet v2とCAS-first handoffを実装済み | AI Reproduction intake |
@@ -51,6 +52,16 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 - **Failures:** admission判断は`new / resume / already-covered / follow-up-required / provenance-conflict`。不正contract、Campaign bindingまたはlifecycle順序の不一致、durable write failureだけをerrorにする。
 - **Status:** Target Intelligence専用SQLite eventからCampaign viewをreplayする。Development Cohort、calibration、意図的な独立反復はkind、run ordinal、理由を固定して許可する。
 - **Code / Tests:** [research-history](../src/target-intelligence/research-history) · [Behavior Test](../tests/target-intelligence/target-research-history.test.ts)
+
+### Wordfence Vulnerability Intelligence
+
+**Interface:** `WordfenceIntelligence.refresh / inspect / aggregate / inspectKnownRecords`
+
+- **Purpose:** Wordfence Intelligence v3 Production Feedを不変snapshotとlocal indexへ変換し、Target選定用の弱いVulnerability History AggregateとFinding後専用のknown-record projectionを分離する。
+- **Invariants:** complete response、source URL、取得時刻、raw response digest、parser versionをsnapshotへ固定し、全recordとWordfence / MITRE attributionのvalidation成功後だけcurrent pointerをtransaction更新する。選定projectionはplugin単位の件数、公開年密度、最終公開時刻だけを返し、CVE、CWE、CVSS、affected / patched versionを含めない。exact recordはverified Finding refと`known-duplicate-disposition` purposeを必須にする。Bearer値はSecretRef resolverの内側だけで使用する。
+- **Failures:** 404、auth failure、429、network failure、partial response、schema drift、copyright / license metadata欠落をtyped failureにする。失敗refreshは既存current pointerを変更しない。
+- **Status:** bounded production fetch Adapter、sanitized fixture Adapter、Store / replay、affected-version interval query、oracle-separated aggregateを実装。
+- **Code / Tests:** [wordfence-intelligence](../src/target-intelligence/wordfence-intelligence) · [Behavior Test](../tests/target-intelligence/wordfence-intelligence.test.ts)
 
 ### WordPress.org Target Source
 
