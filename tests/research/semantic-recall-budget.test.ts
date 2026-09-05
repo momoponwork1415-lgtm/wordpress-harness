@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   CampaignRunConflictError,
   campaignDefaultSemanticRunPlanV3Schema,
+  defineCurrentSemanticRootPlanningPolicy,
 } from "../../src/research/campaign-control/contracts.js";
 import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
 import { openSqliteResearchRecord } from "../../src/research/research-record/index.js";
@@ -118,7 +119,7 @@ describe("semantic-research-recall-baseline-v6", () => {
           kind: "semantic-root-planning-policy",
           schemaVersion: 1,
           id: "semantic-research-recall-baseline-v5",
-          maxTargetSpecificTheses: 3,
+          maxTargetSpecificTheses: 2,
           minWildcardTheses: 1,
           maxLeases: 4,
           plannerBudget: {
@@ -224,6 +225,50 @@ describe("semantic-research-recall-baseline-v6", () => {
         },
       });
       expect(plan).not.toHaveProperty("verification");
+      expect(plan.semanticPolicy).toMatchObject({
+        maxTargetSpecificTheses: 2,
+        minWildcardTheses: 1,
+        maxLeases: 4,
+      });
+      expect(plan.budgetPolicy).toMatchObject({
+        maxFinderAttempts: 48,
+        maxConcurrentFinders: 4,
+      });
+      const legacyFourFinderPlan = campaignDefaultSemanticRunPlanV3Schema.parse(
+        {
+          ...plan,
+          runId: `${plan.runId}-legacy-four-finder`,
+          semanticPolicy: {
+            ...plan.semanticPolicy,
+            maxTargetSpecificTheses: 3,
+          },
+        },
+      );
+      expect(legacyFourFinderPlan.semanticPolicy).toMatchObject({
+        maxTargetSpecificTheses: 3,
+        minWildcardTheses: 1,
+        maxLeases: 4,
+      });
+      const currentFourFinderPolicy = defineCurrentSemanticRootPlanningPolicy({
+        plannerBudget: plan.semanticPolicy.plannerBudget,
+        finderLeaseBudget: plan.semanticPolicy.finderLeaseBudget,
+        maxLeasesOverride: 4,
+      });
+      expect(currentFourFinderPolicy).toMatchObject({
+        maxTargetSpecificTheses: 2,
+        minWildcardTheses: 1,
+        maxLeases: 4,
+      });
+      expect(() =>
+        campaignDefaultSemanticRunPlanV3Schema.parse({
+          ...plan,
+          runId: `${plan.runId}-invalid-current-four-finder`,
+          semanticPolicy: {
+            ...currentFourFinderPolicy,
+            maxTargetSpecificTheses: 3,
+          },
+        }),
+      ).toThrow();
 
       try {
         const started = await record.recordSemanticCampaignRunStart(plan);

@@ -10,7 +10,7 @@ Status: accepted research policy, 2026-09-05
 
 RCEとsite-wide compromiseは最上位impactだが唯一の成功条件ではない。SQLi、Stored XSS、ATO、PrivEsc、file operation、object injection、authorization、business-logic failureも重大candidateとして扱う。
 
-通常運転はraw-source-firstのSemantic Research Wave。重大HypothesisはValidationへ送り、strong semantic frontierだけをconditional Depthへ送る。
+通常運転はraw-source-firstのSemantic Research Wave。current normal Waveは互いに独立した3 Finderとし、target-specific thesisを最大2、whole-target wildcard thesisを最低1維持する。4 FinderはPlan schemaとCampaign budgetのhard ceilingであり、明示的policy overrideに限る。重大HypothesisはValidationへ送り、strong semantic frontierだけをconditional Depthへ送る。
 
 現在のResearch attacker scopeは、未認証、built-in Subscriber、またはeffective capabilityがSubscriberを超えないcustom roleだけである。WooCommerce `customer`は既知のsubscriber-equivalentとして扱う。最低開始権限がContributor以上または`unresolved`のrouteはDepth、Validation、Runtime handoffへ進めない。許可された開始権限から途中で昇格するrouteは対象に含む。legacy artifactの広いpremise enumはreplay互換のため維持する。
 

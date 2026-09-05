@@ -110,6 +110,7 @@ export {
   campaignRunRecordSchema,
   campaignRunRecordV2Schema,
   campaignRunRecordV3Schema,
+  defineCurrentSemanticRootPlanningPolicy,
   semanticResearchBudgetPolicySchema,
   semanticResearchBudgetPolicyV6Schema,
   semanticCampaignUsageSchema,
@@ -120,6 +121,7 @@ export {
   finiteWorkSchema,
   iterationDecisionSchema,
 } from "./campaign-control/contracts.js";
+export type { CurrentSemanticRootPlanningPolicyInput } from "./campaign-control/contracts.js";
 export {
   approachFamilyRefSchema,
   approachFamilyRegistryRefSchema,

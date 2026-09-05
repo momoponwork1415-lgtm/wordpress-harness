@@ -566,6 +566,47 @@ export const semanticResearchBudgetPolicySchema = z.union([
   semanticResearchBudgetPolicyV1Schema,
 ]);
 
+const currentSemanticRootPlanningPolicyId =
+  "semantic-research-normal-wave-v1" as const;
+
+const currentSemanticRootPlanningPolicySchema =
+  semanticRootPlanningPolicySchema.superRefine((policy, context) => {
+    if (
+      policy.id === currentSemanticRootPlanningPolicyId &&
+      policy.maxTargetSpecificTheses > 2
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["maxTargetSpecificTheses"],
+        message:
+          "Current Semantic Research permits at most two target-specific theses",
+      });
+    }
+  });
+
+export type CurrentSemanticRootPlanningPolicyInput = Pick<
+  z.input<typeof semanticRootPlanningPolicySchema>,
+  "plannerBudget" | "finderLeaseBudget"
+> & {
+  readonly maxLeasesOverride?: 1 | 2 | 3 | 4;
+};
+
+export function defineCurrentSemanticRootPlanningPolicy(
+  input: CurrentSemanticRootPlanningPolicyInput,
+) {
+  const maxLeases = input.maxLeasesOverride ?? 3;
+  return currentSemanticRootPlanningPolicySchema.parse({
+    kind: "semantic-root-planning-policy",
+    schemaVersion: 1,
+    id: currentSemanticRootPlanningPolicyId,
+    maxTargetSpecificTheses: Math.min(2, maxLeases - 1),
+    minWildcardTheses: 1,
+    maxLeases,
+    plannerBudget: input.plannerBudget,
+    finderLeaseBudget: input.finderLeaseBudget,
+  });
+}
+
 export const campaignDefaultSemanticRunPlanV2Schema = z.strictObject({
   ...semanticCampaignRunPlanIdentityFields,
   metadata: oracleFreeTargetMetadataSchema,
@@ -614,7 +655,7 @@ export const campaignDefaultSemanticRunPlanV3Schema = z.strictObject({
   target: targetSnapshotRefSchema,
   manifest: targetFileManifestRefSchema,
   metadata: oracleFreeTargetMetadataSchema,
-  semanticPolicy: semanticRootPlanningPolicySchema,
+  semanticPolicy: currentSemanticRootPlanningPolicySchema,
   planner: semanticModelRoleConfigurationSchema.extend({
     sourceToolPolicy: sourceToolPolicyRefSchema,
   }),

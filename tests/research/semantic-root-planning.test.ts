@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { defineCurrentSemanticRootPlanningPolicy } from "../../src/research/index.js";
 import { openExploration } from "../../src/research/exploration/index.js";
 import type {
   ModelAttemptPlan,
@@ -186,6 +187,81 @@ function semanticExploration(modelExecution: ModelExecution) {
 }
 
 describe("Exploration semantic root planning", () => {
+  it("materializes the current normal Wave as two target-specific Finders plus an independent wildcard Finder", async () => {
+    const currentPolicy = defineCurrentSemanticRootPlanningPolicy({
+      plannerBudget: semanticPolicy.plannerBudget,
+      finderLeaseBudget: semanticPolicy.finderLeaseBudget,
+    });
+    const modelExecution: ModelExecution = {
+      run: async (plan) =>
+        completedResult(plan, {
+          ...plannerOutput,
+          theses: plannerOutput.theses.slice(0, 2),
+        }),
+    };
+    const exploration = openExploration({
+      target,
+      manifest,
+      metadata: {
+        kind: "oracle-free-target-metadata",
+        schemaVersion: 1,
+        pluginIdentity: "wporg:demo",
+        mainPluginFile: "demo.php",
+        canonicalInstallDirectory: "demo",
+      },
+      semanticPolicy: currentPolicy,
+      planner: {
+        modelExecution,
+        promptSet: {
+          id: "semantic-root-planner-v1",
+          digest: `sha256:${"c".repeat(64)}`,
+        },
+        modelProfile: {
+          provider: "anthropic",
+          model: "claude-opus-5",
+          transport: "claude-code-process",
+          executableVersion: "2.1.258",
+          effort: "high",
+          eligibilityReceiptDigest: `sha256:${"d".repeat(64)}`,
+        },
+        sourceToolPolicy: {
+          kind: "source-tool-policy",
+          schemaVersion: 1,
+          id: "semantic-source-tools-v1",
+          digest: `sha256:${"e".repeat(64)}`,
+        },
+      },
+    });
+
+    const decision = await exploration.decide({
+      kind: "start-semantic-research",
+      schemaVersion: 2,
+      target,
+      manifest,
+    });
+
+    expect(currentPolicy).toMatchObject({
+      maxTargetSpecificTheses: 2,
+      minWildcardTheses: 1,
+      maxLeases: 3,
+    });
+    expect(decision).toMatchObject({ kind: "run-wave" });
+    if (decision.kind !== "run-wave") return;
+    expect(decision.plan.leases).toHaveLength(3);
+    expect(
+      decision.plan.theses.filter(
+        (thesis) => thesis.scope === "target-specific",
+      ),
+    ).toHaveLength(2);
+    expect(
+      decision.plan.theses.filter((thesis) => thesis.scope === "wildcard"),
+    ).toHaveLength(1);
+    expect(new Set(decision.plan.leases.map((lease) => lease.id)).size).toBe(3);
+    expect(
+      new Set(decision.plan.leases.map((lease) => lease.assignment.thesisId)),
+    ).toEqual(new Set(decision.plan.theses.map((thesis) => thesis.id)));
+  });
+
   it("creates a Manifest-bound raw-source Wave from a fresh planner without a Surface Map", async () => {
     const observedPlans: unknown[] = [];
     const modelExecution: ModelExecution = {

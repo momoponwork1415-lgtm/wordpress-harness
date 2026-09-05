@@ -155,6 +155,7 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 - **Purpose:** fixed Targetをfinite Wave、Validation、Runtime Verification Packet handoffまで進める。
 - **Invariants:** PlanへTarget、Manifest、policy、profile、tool、budgetを固定する。artifactをCASへ置き、Ledger eventを記録してから次stageへ進む。
+- **Normal Wave policy:** current defaultは3 Finder、target-specific thesisは最大2、whole-target wildcard thesisは最低1。`maxConcurrentFinders = 4`はhard ceilingと明示的overrideとして維持し、`maxFinderAttempts`とCampaign全体budgetは増やさない。legacy 4-Finder Plan / Ledgerはread-only replayする。
 - **Attacker scope:** current Campaignは未認証、Subscriber、subscriber-equivalent custom role（`customer`を含む）だけを許可する。Contributor以上と`unresolved`はcheckpoint、Root Evaluation、Validation admission、Runtime handoffでfail closedにする。legacy enumとLedgerはreplay互換を維持する。
 - **Attempt observability:** ValidatorもCampaign Attempt Ledgerへstart / completionを記録する。active progressとreported token / costはFinder、Root role、Critic、Validatorを同じAttempt projectionから集計する。
 - **Failures:** integrity不正は起動前に拒否する。provider / policy / budget failureをnegativeやno-new-evidenceへ丸めない。
@@ -184,7 +185,7 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 **Interface:** `Exploration.decide`
 
 - **Purpose:** raw sourceからHypothesis、Route Fragment、Frontier Gapを作り、Validation、Depth、次Wave、Closureへ処遇する。
-- **Invariants:** ReconとBaselineを並行し、最大4個の独立Finderを保つ。file / CWE / 手順を固定せず、支持数や多数決でcandidateを捨てない。
+- **Invariants:** normal Waveは2個以下のtarget-specific Finderと1個以上のwhole-target wildcard Finderを独立して保つ。明示的overrideでも4 Finderを超えない。file / CWE / 手順を固定せず、支持数や多数決でcandidateを捨てない。
 - **Attacker invariant:** provider outputはcurrent scopeへ絞り、Root Evaluationはscope外subjectを`close`以外へ処遇できない。Depth Synthesisとfresh Root Evaluationもscope外premiseをrejectする。
 - **Checkpoint:** subjectをTarget、Manifest、Attempt、Leaseへbindし、CAS / Ledgerへ保存してからackする。
 - **Depth:** fresh tool-free Synthesis、source-enabled Critic、Root Evaluation、Missing-link Waveを分離する。Familyごと最大3 evidence generation、Campaign全体最大12 Wave。

@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   campaignDefaultSemanticRunPlanV3Schema,
+  defineCurrentSemanticRootPlanningPolicy,
   openResearch,
 } from "../../src/research/index.js";
 import type {
@@ -190,7 +191,38 @@ describe("CampaignRunner.run source-only Validation", () => {
           return completedResult(plan, {
             kind: "root-planner-output",
             schemaVersion: 1,
-            theses: [],
+            theses: [
+              {
+                kind: "research-thesis-proposal",
+                schemaVersion: 1,
+                scope: "target-specific",
+                securityAssumption:
+                  "public writes preserve the originating actor boundary",
+                question:
+                  "Can public state cross into a more privileged consumer?",
+                motivation:
+                  "The Target exposes a source-backed persistent state path.",
+                startingBasis: "Oracle-free Target source only.",
+                startingEvidence: [anchor],
+                independence:
+                  "This thesis studies cross-actor state ownership.",
+              },
+              {
+                kind: "research-thesis-proposal",
+                schemaVersion: 1,
+                scope: "target-specific",
+                securityAssumption:
+                  "producer and consumer preserve the same value meaning",
+                question:
+                  "Can a representation transition change the security meaning of a value?",
+                motivation:
+                  "The Target moves values across a source-backed processing boundary.",
+                startingBasis: "Oracle-free Target source only.",
+                startingEvidence: [anchor],
+                independence:
+                  "This thesis studies representation meaning rather than state ownership.",
+              },
+            ],
           });
         }
         if (plan.role === "finder") {
@@ -198,32 +230,37 @@ describe("CampaignRunner.run source-only Validation", () => {
             kind: "finder-output",
             schemaVersion: 2,
             leaseId: plan.assignment.leaseId,
-            hypotheses: [
-              {
-                kind: "source-bound-hypothesis",
-                schemaVersion: 1,
-                causalIdentity: {
-                  rootCause: "public-state-crosses-actor-boundary",
-                  attackerControlledPrimitive: "unauthenticated-option-write",
-                  brokenSecurityProperty:
-                    validationDisposition === "needs-research"
-                      ? "state-consumer-identity"
-                      : "state-ownership",
-                },
-                attackerPremise: "unauthenticated",
-                impact: "account-takeover",
-                route: { anchors: [anchor] },
-                unknowns: [
+            hypotheses: plan.prompt.includes(
+              "a whole-target review may reveal broken security semantics",
+            )
+              ? [
                   {
-                    claim: "A privileged consumer reads the same state.",
-                    requiredEvidence:
-                      "Independently trace the exact source-bound consumer.",
+                    kind: "source-bound-hypothesis",
+                    schemaVersion: 1,
+                    causalIdentity: {
+                      rootCause: "public-state-crosses-actor-boundary",
+                      attackerControlledPrimitive:
+                        "unauthenticated-option-write",
+                      brokenSecurityProperty:
+                        validationDisposition === "needs-research"
+                          ? "state-consumer-identity"
+                          : "state-ownership",
+                    },
+                    attackerPremise: "unauthenticated",
+                    impact: "account-takeover",
+                    route: { anchors: [anchor] },
+                    unknowns: [
+                      {
+                        claim: "A privileged consumer reads the same state.",
+                        requiredEvidence:
+                          "Independently trace the exact source-bound consumer.",
+                      },
+                    ],
+                    falsifier: "Every consumer independently checks ownership.",
+                    nextExperiment: "Review every source-bound consumer.",
                   },
-                ],
-                falsifier: "Every consumer independently checks ownership.",
-                nextExperiment: "Review every source-bound consumer.",
-              },
-            ],
+                ]
+              : [],
             routeFragments: [],
             frontierGaps: [],
           });
@@ -588,13 +625,7 @@ describe("CampaignRunner.run source-only Validation", () => {
           mainPluginFile: "plugin.php",
           canonicalInstallDirectory: "campaign-validation-run",
         },
-        semanticPolicy: {
-          kind: "semantic-root-planning-policy",
-          schemaVersion: 1,
-          id: "semantic-research-recall-baseline-v6",
-          maxTargetSpecificTheses: 0,
-          minWildcardTheses: 1,
-          maxLeases: 1,
+        semanticPolicy: defineCurrentSemanticRootPlanningPolicy({
           plannerBudget: {
             maxWallTimeMs: 3_600_000,
             maxModelTokens: 100_000,
@@ -620,7 +651,7 @@ describe("CampaignRunner.run source-only Validation", () => {
             sourceLimitTerminalOutput: "preserve",
             reportedUsageEnforcement: "telemetry-only",
           },
-        },
+        }),
         planner: {
           modelProfile: profile("opus-planner-v6", digest("5")),
           promptSet,
@@ -720,6 +751,28 @@ describe("CampaignRunner.run source-only Validation", () => {
       expect(finderOutputSchema).toContain('"customer"');
       expect(finderOutputSchema).not.toContain('"contributor"');
       expect(finderOutputSchema).not.toContain('"unresolved"');
+      const finderPlans = observedPlans.filter(
+        (
+          attempt,
+        ): attempt is Extract<
+          ModelAttemptPlan,
+          { schemaVersion: 2; role: "finder" }
+        > => attempt.schemaVersion === 2 && attempt.role === "finder",
+      );
+      expect(finderPlans).toHaveLength(3);
+      expect(
+        new Set(finderPlans.map((attempt) => attempt.attemptId)).size,
+      ).toBe(3);
+      expect(
+        new Set(finderPlans.map((attempt) => attempt.assignment.leaseId)).size,
+      ).toBe(3);
+      const finderThesisDigests = finderPlans.map((attempt) => {
+        if (attempt.assignment.kind !== "research-thesis") {
+          throw new Error("Initial normal Wave used a non-thesis assignment");
+        }
+        return attempt.assignment.thesis.digest;
+      });
+      expect(new Set(finderThesisDigests).size).toBe(3);
       const inspected = await research.reader.inspect(input.campaignId, {
         kind: "run",
         runId: plan.runId,
@@ -808,15 +861,15 @@ describe("CampaignRunner.run source-only Validation", () => {
         {
           kind: "progress",
           counts: {
-            attempts: { started: 10, completed: 9, active: 1 },
+            attempts: { started: 12, completed: 11, active: 1 },
           },
           activeAttempts: [{ role: "validator" }],
           usage: {
             measurement: "partial",
-            modelAttempts: 9,
-            reportedModelAttempts: 9,
-            modelTokens: { total: 180 },
-            estimatedCostUsd: 2.25,
+            modelAttempts: 11,
+            reportedModelAttempts: 11,
+            modelTokens: { total: 220 },
+            estimatedCostUsd: 2.75,
           },
         },
       ]);
@@ -825,15 +878,15 @@ describe("CampaignRunner.run source-only Validation", () => {
       ).resolves.toMatchObject({
         kind: "progress",
         counts: {
-          attempts: { started: 10, completed: 10, active: 0 },
+          attempts: { started: 12, completed: 12, active: 0 },
         },
         activeAttempts: [],
         usage: {
           measurement: "reported",
-          modelAttempts: 10,
-          reportedModelAttempts: 10,
-          modelTokens: { total: 200 },
-          estimatedCostUsd: 2.5,
+          modelAttempts: 12,
+          reportedModelAttempts: 12,
+          modelTokens: { total: 240 },
+          estimatedCostUsd: 3,
         },
       });
       expect([...new Set(depthQueuesObservedBeforeSynthesis)]).toHaveLength(1);
