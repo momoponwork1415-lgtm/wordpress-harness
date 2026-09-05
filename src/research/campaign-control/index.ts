@@ -157,10 +157,22 @@ import {
   validatePreparedTargetIntake,
 } from "./target-intake-campaign-handoff.js";
 import { isWithinCurrentResearchAttackerScope } from "../current-research-attacker-scope.js";
+import {
+  CampaignBudgetExhaustedError,
+  reserveCampaignAttemptBudget,
+} from "./campaign-budget.js";
 
 export interface CampaignControl {
   readonly runner: CampaignRunner;
   readonly reader: CampaignReader;
+}
+
+type CampaignExecutionStore = CurrentCampaignStore | ResearchRecord;
+
+function supportsCurrentCampaignBudget(
+  record: CampaignExecutionStore,
+): record is CurrentCampaignStore {
+  return "recordSemanticCampaignAttemptAdmission" in record;
 }
 
 function projectCampaign(preparation: PreparationRecord): CampaignView {
@@ -406,6 +418,38 @@ async function readSemanticAttemptResult(
   return { status: value.status, ref, value };
 }
 
+async function materializeCampaignBudgetExhaustedResult(
+  dependencies: CampaignExecutionDependencies,
+  plan: Extract<ModelAttemptPlan, { schemaVersion: 2 }>,
+  exhaustedDimensions: readonly string[],
+): Promise<AttemptExecutionResultV2> {
+  const planDigest = sha256Digest(plan);
+  const value = modelAttemptResultV2Schema.parse({
+    kind: "model-attempt-result",
+    schemaVersion: 2,
+    attemptId: plan.attemptId,
+    owner: plan.owner,
+    role: plan.role,
+    planDigest,
+    status: "budget-exhausted",
+    reason: `campaign-budget-exhausted:${exhaustedDimensions.join(",")}`,
+  });
+  const digest = await dependencies.artifactStore.putJson(value);
+  return {
+    status: value.status,
+    value,
+    ref: attemptExecutionResultV2RefSchema.parse({
+      kind: "attempt-execution-result",
+      schemaVersion: 2,
+      attemptId: plan.attemptId,
+      owner: plan.owner,
+      role: plan.role,
+      planDigest,
+      digest,
+    }),
+  };
+}
+
 function semanticAttemptCompletion(
   intent: CampaignAttemptIntentV2,
   result: AttemptExecutionResultV2["ref"],
@@ -612,7 +656,18 @@ function recordedValidationModelExecution(
           `Validator Attempt Plan CAS mismatch: ${plan.attemptId}`,
         );
       }
-      const started = await record.recordSemanticCampaignAttemptStart(intent);
+      const reservation = reserveCampaignAttemptBudget(campaignId, runId, plan);
+      const started = await record.recordSemanticCampaignAttemptAdmission(
+        reservation,
+        intent,
+      );
+      if (started.disposition === "budget-exhausted") {
+        throw new CampaignBudgetExhaustedError(
+          reservation,
+          started.budget,
+          started.exhaustedDimensions,
+        );
+      }
       let result: AttemptExecutionResultV2;
       if (started.disposition === "completed") {
         return readStoredValidatorAttemptResult(
@@ -685,20 +740,24 @@ function recordedValidationModelExecution(
       await dependencies.validationAttemptFaultBoundary?.afterResultStored(
         intent,
       );
-      await record.recordSemanticCampaignAttemptCompletion(
-        semanticAttemptCompletion(intent, result.ref),
-      );
+      await record.completeSemanticCampaignAttemptWithBudget({
+        completion: semanticAttemptCompletion(intent, result.ref),
+        ...(result.value.usage === undefined
+          ? {}
+          : { usage: result.value.usage }),
+      });
       return result;
     },
   };
 }
 
 async function executeRecordedSemanticAttempt(
-  record: CurrentCampaignStore,
+  record: CampaignExecutionStore,
   dependencies: CampaignExecutionDependencies,
   plan: Extract<ModelAttemptPlan, { schemaVersion: 2 }>,
   intent: CampaignAttemptIntentV2,
   onFinderCheckpoint?: (checkpoint: SemanticFinderCheckpointRef) => void,
+  enforceCampaignBudget = false,
 ): Promise<AttemptExecutionResultV2> {
   const planDigest = sha256Digest(plan);
   if (
@@ -712,7 +771,24 @@ async function executeRecordedSemanticAttempt(
   if (storedPlanDigest !== planDigest) {
     throw new Error(`Semantic Attempt Plan CAS mismatch: ${plan.attemptId}`);
   }
-  const started = await record.recordSemanticCampaignAttemptStart(intent);
+  const started = enforceCampaignBudget
+    ? await (() => {
+        if (!supportsCurrentCampaignBudget(record)) {
+          throw new Error("Current Campaign budget store is unavailable");
+        }
+        return record.recordSemanticCampaignAttemptAdmission(
+          reserveCampaignAttemptBudget(intent.campaignId, intent.runId, plan),
+          intent,
+        );
+      })()
+    : await record.recordSemanticCampaignAttemptStart(intent);
+  if (started.disposition === "budget-exhausted") {
+    return materializeCampaignBudgetExhaustedResult(
+      dependencies,
+      plan,
+      started.exhaustedDimensions,
+    );
+  }
   if (started.disposition === "completed") {
     return readSemanticAttemptResult(
       dependencies,
@@ -787,14 +863,25 @@ async function executeRecordedSemanticAttempt(
     }
     result = { status: value.status, ref, value };
   }
-  await record.recordSemanticCampaignAttemptCompletion(
-    semanticAttemptCompletion(intent, result.ref),
-  );
+  const completion = semanticAttemptCompletion(intent, result.ref);
+  if (enforceCampaignBudget) {
+    if (!supportsCurrentCampaignBudget(record)) {
+      throw new Error("Current Campaign budget store is unavailable");
+    }
+    await record.completeSemanticCampaignAttemptWithBudget({
+      completion,
+      ...(result.value.usage === undefined
+        ? {}
+        : { usage: result.value.usage }),
+    });
+  } else {
+    await record.recordSemanticCampaignAttemptCompletion(completion);
+  }
   return result;
 }
 
 async function openSemanticFinderCheckpointObserver(
-  record: CurrentCampaignStore,
+  record: CampaignExecutionStore,
   dependencies: CampaignExecutionDependencies,
   plan: Extract<AttemptPlanV2, { role: "finder" }>,
   intent: Extract<CampaignAttemptIntentV2, { role: "finder" }>,
@@ -1156,19 +1243,26 @@ async function executeCurrentSemanticDepthRound(
         );
       }
       synthesisOrdinal += 1;
-      return executeRecordedSemanticAttempt(record, dependencies, attemptPlan, {
-        kind: "campaign-attempt-intent",
-        schemaVersion: 2,
-        campaignId: plan.campaignId,
-        runId: plan.runId,
-        attemptId: attemptPlan.attemptId,
-        ordinal: synthesisOrdinal,
-        mode: "execute",
-        attemptPlanDigest: sha256Digest(attemptPlan),
-        role: "root-synthesizer",
-        queueDigest: attemptPlan.assignment.queueDigest,
-        batchId: attemptPlan.assignment.batchId,
-      });
+      return executeRecordedSemanticAttempt(
+        record,
+        dependencies,
+        attemptPlan,
+        {
+          kind: "campaign-attempt-intent",
+          schemaVersion: 2,
+          campaignId: plan.campaignId,
+          runId: plan.runId,
+          attemptId: attemptPlan.attemptId,
+          ordinal: synthesisOrdinal,
+          mode: "execute",
+          attemptPlanDigest: sha256Digest(attemptPlan),
+          role: "root-synthesizer",
+          queueDigest: attemptPlan.assignment.queueDigest,
+          batchId: attemptPlan.assignment.batchId,
+        },
+        undefined,
+        true,
+      );
     },
   };
   let criticOrdinal = 0;
@@ -1181,18 +1275,25 @@ async function executeCurrentSemanticDepthRound(
         throw new Error("Current Semantic Depth requested another Critic role");
       }
       criticOrdinal += 1;
-      return executeRecordedSemanticAttempt(record, dependencies, attemptPlan, {
-        kind: "campaign-attempt-intent",
-        schemaVersion: 2,
-        campaignId: plan.campaignId,
-        runId: plan.runId,
-        attemptId: attemptPlan.attemptId,
-        ordinal: criticOrdinal,
-        mode: "execute",
-        attemptPlanDigest: sha256Digest(attemptPlan),
-        role: "adversarial-critic",
-        synthesisDigest: attemptPlan.assignment.synthesisDigest,
-      });
+      return executeRecordedSemanticAttempt(
+        record,
+        dependencies,
+        attemptPlan,
+        {
+          kind: "campaign-attempt-intent",
+          schemaVersion: 2,
+          campaignId: plan.campaignId,
+          runId: plan.runId,
+          attemptId: attemptPlan.attemptId,
+          ordinal: criticOrdinal,
+          mode: "execute",
+          attemptPlanDigest: sha256Digest(attemptPlan),
+          role: "adversarial-critic",
+          synthesisDigest: attemptPlan.assignment.synthesisDigest,
+        },
+        undefined,
+        true,
+      );
     },
   };
   const synthesizer = openSemanticChainSynthesis({
@@ -1713,6 +1814,7 @@ async function completeCurrentSemanticIteration(
       ],
     ),
   );
+  let validationBudgetExhausted = false;
   for (const candidate of candidates) {
     const completedValidation = completedValidations.get(candidate.id);
     if (completedValidation !== undefined) {
@@ -1746,23 +1848,30 @@ async function completeCurrentSemanticIteration(
       ...threatContextIdentity,
       id: sha256Digest(threatContextIdentity),
     });
-    const validationRef = await validation.validate({
-      kind: "validation-plan",
-      schemaVersion: 2,
-      validationId: candidate.id,
-      campaignId: plan.campaignId,
-      candidate,
-      threatContext,
-      manifest: { ref: plan.manifest, value: manifestValue },
-      validationPolicy: plan.validation.validationPolicy,
-      promptSet: {
-        id: plan.validation.promptSet.id,
-        digest: plan.validation.promptSet.digest,
-      },
-      validatorModelProfile: plan.validation.validatorModelProfile.execution,
-      sourceToolPolicy: plan.validation.sourceToolPolicy,
-      budget: { validator: plan.validation.budget.validator },
-    });
+    let validationRef;
+    try {
+      validationRef = await validation.validate({
+        kind: "validation-plan",
+        schemaVersion: 2,
+        validationId: candidate.id,
+        campaignId: plan.campaignId,
+        candidate,
+        threatContext,
+        manifest: { ref: plan.manifest, value: manifestValue },
+        validationPolicy: plan.validation.validationPolicy,
+        promptSet: {
+          id: plan.validation.promptSet.id,
+          digest: plan.validation.promptSet.digest,
+        },
+        validatorModelProfile: plan.validation.validatorModelProfile.execution,
+        sourceToolPolicy: plan.validation.sourceToolPolicy,
+        budget: { validator: plan.validation.budget.validator },
+      });
+    } catch (error) {
+      if (!(error instanceof CampaignBudgetExhaustedError)) throw error;
+      validationBudgetExhausted = true;
+      break;
+    }
     const rawValidation = await dependencies.artifactStore.readJson(
       validationRef.digest,
     );
@@ -1801,9 +1910,10 @@ async function completeCurrentSemanticIteration(
   ).flatMap((attempt) =>
     attempt.completion === undefined ? [] : [attempt.completion.value.result],
   );
-  const pendingValidation = validationRecords.some(
-    (validationRecord) => validationRecord.status === "validation-pending",
-  );
+  const pendingValidation =
+    validationRecords.some(
+      (validationRecord) => validationRecord.status === "validation-pending",
+    ) || validationBudgetExhausted;
   const researchWorkRemains =
     depth?.incomplete === true ||
     decision.campaignDisposition !== "coverage-closed" ||
@@ -1845,7 +1955,7 @@ async function completeCurrentSemanticIteration(
 }
 
 async function executeDefaultSemanticCampaign(
-  record: CurrentCampaignStore,
+  record: CampaignExecutionStore,
   dependencies: CampaignExecutionDependencies,
   plan: DefaultSemanticCampaignRunPlanV2 | DefaultSemanticCampaignRunPlanV3,
   legacyExecution?: ResearchRecord,
@@ -1924,6 +2034,7 @@ async function executeDefaultSemanticCampaign(
       workWaveDigest: initialWave.ref.digest,
     },
     (checkpoint) => verificationQueue?.enqueue(checkpoint.subject),
+    plan.schemaVersion === 3,
   );
 
   let plannerOrdinal = 0;
@@ -1936,18 +2047,25 @@ async function executeDefaultSemanticCampaign(
         throw new Error("Semantic planner requested another Attempt role");
       }
       plannerOrdinal += 1;
-      return executeRecordedSemanticAttempt(record, dependencies, attemptPlan, {
-        kind: "campaign-attempt-intent",
-        schemaVersion: 2,
-        campaignId: plan.campaignId,
-        runId: plan.runId,
-        attemptId: attemptPlan.attemptId,
-        ordinal: plannerOrdinal,
-        mode: "execute",
-        attemptPlanDigest: sha256Digest(attemptPlan),
-        role: "root-planner",
-        preparationDigest: plan.preparationDigest,
-      });
+      return executeRecordedSemanticAttempt(
+        record,
+        dependencies,
+        attemptPlan,
+        {
+          kind: "campaign-attempt-intent",
+          schemaVersion: 2,
+          campaignId: plan.campaignId,
+          runId: plan.runId,
+          attemptId: attemptPlan.attemptId,
+          ordinal: plannerOrdinal,
+          mode: "execute",
+          attemptPlanDigest: sha256Digest(attemptPlan),
+          role: "root-planner",
+          preparationDigest: plan.preparationDigest,
+        },
+        undefined,
+        plan.schemaVersion === 3,
+      );
     },
   };
   const planning = await openExploration({
@@ -2083,6 +2201,7 @@ async function executeDefaultSemanticCampaign(
                 workWaveDigest: wave.ref.digest,
               },
               (checkpoint) => verificationQueue?.enqueue(checkpoint.subject),
+              plan.schemaVersion === 3,
             );
       if (result.ref.role !== "finder" || result.value.role !== "finder") {
         throw new Error("Semantic Finder returned another Attempt role");
@@ -2184,6 +2303,8 @@ async function executeDefaultSemanticCampaign(
               synthesisDigest: attemptPlan.assignment.synthesisDigest,
               critiqueDigest: attemptPlan.assignment.critiqueDigest,
             },
+        undefined,
+        plan.schemaVersion === 3,
       );
     },
   };
@@ -2286,6 +2407,9 @@ async function executeDefaultSemanticCampaign(
     });
   }
   if (plan.schemaVersion === 3 && evaluated.schemaVersion === 3) {
+    if (!supportsCurrentCampaignBudget(record)) {
+      throw new Error("Current Campaign budget store is unavailable");
+    }
     return completeCurrentSemanticIteration(
       record,
       dependencies,
@@ -3707,7 +3831,7 @@ async function executeRun(
 }
 
 function createCampaignControl(
-  currentStore: CurrentCampaignStore,
+  currentStore: CampaignExecutionStore,
   replay: LegacyResearchReplay,
   dependencies?: CampaignExecutionDependencies,
   preparationArtifactStore?: JsonArtifactStore,
@@ -3889,6 +4013,21 @@ function createCampaignControl(
         return projectCampaign(preparation);
       },
       inspect: async (campaignId, subject): Promise<SubjectView> => {
+        if (subject.kind === "budget") {
+          if (!supportsCurrentCampaignBudget(currentStore)) {
+            throw new Error("Current Campaign budget store is unavailable");
+          }
+          const budget = await currentStore.readSemanticCampaignBudget(
+            campaignId,
+            subject.runId,
+          );
+          if (budget === undefined) {
+            throw new Error(
+              `Current Campaign budget not found: ${campaignId}/${subject.runId}`,
+            );
+          }
+          return budget;
+        }
         if (subject.kind === "progress") {
           const progress = await replay.readCampaignProgress(campaignId);
           if (progress === undefined) {

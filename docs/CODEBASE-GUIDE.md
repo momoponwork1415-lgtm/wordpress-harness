@@ -1,6 +1,6 @@
 # Codebase Guide
 
-Status: living module map, 2026-09-05
+Status: living module map, 2026-09-06
 
 ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所で引くためのガイドである。whole-systemの関係とflowは[Architecture](ARCHITECTURE.md)、research policyは[Research Design](RESEARCH-DESIGN.md)を参照する。
 
@@ -30,7 +30,7 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | 1 | [#106 current write Interface](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/106)（完了） |
 | 2 | [#107 single Source Validation / Runtime Packet](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/107) -> [#108 AI Reproduction / Triage Packet](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/108)（完了） |
 | 3 | [#110 mandatory Human reproduction](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/110)（完了） |
-| 4 | [#115 Validation crash recovery](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/115)、[#116 Campaign remaining budget](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/116) -> [#109 実plugin一件](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/109) |
+| 4 | [#115 Validation crash recovery](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/115)、[#116 Campaign remaining budget](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/116)（完了） -> [#109 実plugin一件](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/109) |
 | 5 | [#81 Validation Gap loop](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/81)、[#82 Coverage policy](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/82)、[#33 Development Cohort](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/33) |
 | 6 | [#89 Target Intelligence / unattended operation](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/89)、[#111 measured budget defaults](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/111)、[#32 三件pilot](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/32) |
 
@@ -151,15 +151,17 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 ### Campaign Control
 
-**Interface:** `CampaignRunner.prepare / prepareFromTargetIntake / run`、`CampaignReader.inspect`
+**Interface:** `CampaignRunner.prepare / prepareFromTargetIntake / run`、`CampaignReader.inspect`（`{ kind: "budget", runId }`を含む）
 
 - **Purpose:** fixed Targetをfinite Wave、Validation、Runtime Verification Packet handoffまで進める。
 - **Invariants:** PlanへTarget、Manifest、policy、profile、tool、budgetを固定する。artifactをCASへ置き、Ledger eventを記録してから次stageへ進む。
 - **Normal Wave policy:** current defaultは3 Finder、target-specific thesisは最大2、whole-target wildcard thesisは最低1。`maxConcurrentFinders = 4`はhard ceilingと明示的overrideとして維持し、`maxFinderAttempts`とCampaign全体budgetは増やさない。legacy 4-Finder Plan / Ledgerはread-only replayする。
 - **Attacker scope:** current Campaignは未認証、Subscriber、subscriber-equivalent custom role（`customer`を含む）だけを許可する。Contributor以上と`unresolved`はcheckpoint、Root Evaluation、Validation admission、Runtime handoffでfail closedにする。legacy enumとLedgerはreplay互換を維持する。
+- **Budget admission:** initial Wave、Depth、Validationの全Model Attemptは、一つのCampaign budgetとExploration / Validation owner budgetを共有する。Attempt Planの最大使用量をLedgerへreserveしてから、同じSQLite transactionでAttempt intentを記録する。terminal completionとreported usageのsettlementも同じtransactionへ置き、restart時は未settle reservation、既知usage、unknown usageの保守的chargeを一回だけreplayする。
+- **Budget enforcement:** model Attempt数、wall time、provider costは次のprovider request前のadmissionで止める。providerが返すtoken / turnをgeneration前のhard ceilingにはできないため、reported postconditionとしてovershootを記録し、以後のadmissionを止める。turn、structured output、source usageはCampaign集計へ含めるが、現行policyにCampaign-wide limitはない。
 - **Attempt observability:** ValidatorもCampaign Attempt Ledgerへstart / result-stored / completionを記録する。terminal resultはCAS保存後にresult-storedを追記し、completion前の再起動ではidentityとCASを検証して同じresultを再利用する。active progressとreported token / costはFinder、Root role、Critic、Validatorを同じAttempt projectionから一回だけ集計する。
-- **Failures:** integrity不正は起動前に拒否する。provider送信後にresultを確認できないValidator Attemptは再送せず`validation-pending`へ保ち、exactly-once executionは主張しない。保存resultのCASまたはidentity不一致は再利用しない。provider / policy / budget failureをnegativeやno-new-evidenceへ丸めない。
-- **Status:** v6 initial Wave、single Validation、conditional Depth、Validator crash recovery、Runtime Verification Packet v2 handoff、Human OS intake、terminal replay、progressを実装。Missing-link / Closureは未接続。
+- **Failures:** integrity不正は起動前に拒否する。provider送信後にresultを確認できないValidator Attemptは再送せず`validation-pending`へ保ち、exactly-once executionは主張しない。保存resultのCASまたはidentity不一致は再利用しない。unknown usageはreservation全量を消費したものとして残し、budget exhaustionを`disproven`、`rejected`、`no-material-delta`、`coverage-closed`へ丸めず、Explorationは`Incomplete`、Validationは`validation-pending`にする。
+- **Status:** v6 initial Wave、single Validation、conditional Depth、Campaign-wide durable budget admission / settlement、Validator crash recovery、Runtime Verification Packet v2 handoff、Human OS intake、terminal replay、progressを実装。Missing-link / Closureは未接続。
 - **Code / Tests:** [campaign-control](../src/research/campaign-control), [open-research](../src/research/open-research.ts) · [v6 run](../tests/research/campaign-validation-run.test.ts), [semantic E2E](../tests/research/campaign-semantic-e2e.test.ts), [replay](../tests/research/campaign-run.test.ts)
 
 ### Source Understanding
@@ -225,9 +227,10 @@ Internal Module。immutable CAS artifact、append-only Ledger event、checkpoint
 
 - **Interface:** current writeはprivate `CurrentCampaignStore`、全世代のread-only replayは`LegacyResearchReplay`。SQLiteとpublic `CampaignRunner / CampaignReader`は維持する。
 - artifactを保存してから参照eventをappendする。
+- current v3のAttempt reservation / intentとcompletion / settlementはそれぞれ一つのtransactionでappendし、Campaign budget projectionはrun / stage / candidateをまたいで同じCampaignのLedgerから再構築する。
 - cacheを削除しても同じLedgerから同じview digestを再構築できる。
 - semantic identity、priority、Family groupingはowner Moduleが決める。
-- **Status / Tests:** current v3 writeをlegacy `ResearchRecord`から分離し、v1 / v2は既存Ledgerのreplayだけをproductionで許可する。Decision@3、Family、single Validation、Frontier Gap、Depth Queue / Synthesis / Critique / Evaluation、Runtime Packet handoff、progress replayを実装 · [current store](../src/research/research-record/current-campaign-store.ts), [legacy replay](../src/research/research-record/legacy-research-replay.ts), [v3 behavior](../tests/research/campaign-validation-run.test.ts), [compatibility](../tests/research/ledger-compatibility.test.ts)
+- **Status / Tests:** current v3 writeをlegacy `ResearchRecord`から分離し、v1 / v2は既存Ledgerのreplayだけをproductionで許可する。Decision@3、Family、single Validation、Frontier Gap、Depth Queue / Synthesis / Critique / Evaluation、Runtime Packet handoff、Campaign budget、progress replayを実装 · [current store](../src/research/research-record/current-campaign-store.ts), [legacy replay](../src/research/research-record/legacy-research-replay.ts), [v3 behavior](../tests/research/campaign-validation-run.test.ts), [compatibility](../tests/research/ledger-compatibility.test.ts)
 
 ## Human OS
 

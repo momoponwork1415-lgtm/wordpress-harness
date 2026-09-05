@@ -6,6 +6,7 @@ import type {
   AnyCampaignRunPlan,
   AnyCampaignRunRecord,
   AnyCampaignRunRecordRef,
+  CampaignBudgetView,
 } from "./campaign-control/contracts.js";
 import {
   canonicalFileManifestSchema,
@@ -154,10 +155,16 @@ export interface FindingMechanismGroupsSubjectRef {
   readonly runId: string;
 }
 
+export interface CampaignBudgetSubjectRef {
+  readonly kind: "budget";
+  readonly runId: string;
+}
+
 export type SubjectRef =
   | PreparationSubjectRef
   | CampaignRunSubjectRef
   | FindingMechanismGroupsSubjectRef
+  | CampaignBudgetSubjectRef
   | CampaignProgressSubjectRef;
 
 export interface PreparationSubjectView {
@@ -183,6 +190,7 @@ export type SubjectView =
   | PreparationSubjectView
   | CampaignRunSubjectView
   | FindingMechanismGroupsSubjectView
+  | CampaignBudgetView
   | CampaignProgressView;
 
 export interface ResearchModule {

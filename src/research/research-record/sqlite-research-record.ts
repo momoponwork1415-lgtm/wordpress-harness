@@ -15,6 +15,8 @@ import {
   RetiredSemanticBudgetPolicyError,
   campaignAttemptCompletionSchema,
   campaignAttemptCompletionV2Schema,
+  campaignAttemptBudgetReservationSchema,
+  campaignAttemptBudgetSettlementSchema,
   campaignAttemptIntentSchema,
   campaignAttemptIntentV2Schema,
   campaignAttemptResultStoredV2Schema,
@@ -44,13 +46,22 @@ import {
   type CampaignRunRecordViewV3,
   type CampaignAttemptCompletion,
   type CampaignAttemptCompletionV2,
+  type CampaignAttemptBudgetReservation,
+  type CampaignAttemptBudgetSettlement,
   type CampaignAttemptIntent,
   type CampaignAttemptIntentV2,
   type CampaignAttemptResultStoredV2,
   type CampaignAttemptRecordView,
   type CampaignAttemptRecordViewV2,
+  type CampaignBudgetView,
   type CurrentSemanticDepthResearch,
 } from "../campaign-control/contracts.js";
+import {
+  campaignBudgetExhaustionDimensions,
+  projectCampaignBudget,
+  reserveUnrecordedCampaignAttemptBudget,
+  settleCampaignAttemptBudget,
+} from "../campaign-control/campaign-budget.js";
 import {
   semanticFinderCheckpointRefSchema,
   iterationDecisionV2Schema,
@@ -144,6 +155,7 @@ import type {
   CampaignProgressView,
 } from "../campaign-progress-contracts.js";
 import { modelAttemptResultV2Schema } from "../model-execution/contracts.js";
+import { modelAttemptUsageV2Schema } from "../model-attempt-usage-contracts.js";
 import {
   referenceValidationCandidate,
   validationCandidateRefSchema,
@@ -181,6 +193,7 @@ import type {
   RecordCampaignAttemptStartResult,
   RecordCampaignRunStartResult,
   RecordSemanticCampaignAttemptStartResult,
+  RecordSemanticCampaignAttemptAdmissionResult,
   RecordSemanticCampaignRunStartResult,
   RecordPreparationResult,
   RecordVerificationStartResult,
@@ -202,6 +215,10 @@ import type {
   JsonArtifactStore,
   HumanReviewPacketRecordView,
   RuntimeVerificationPacketRecordView,
+  CampaignAttemptBudgetReservationRecordView,
+  CampaignAttemptBudgetSettlementRecordView,
+  CompleteSemanticCampaignAttemptWithBudgetInput,
+  CompleteSemanticCampaignAttemptWithBudgetResult,
 } from "./contracts.js";
 import type { CurrentCampaignStore } from "./current-campaign-store.js";
 import type { LegacyResearchReplay } from "./legacy-research-replay.js";
@@ -439,6 +456,14 @@ const semanticCampaignRunCompletedPayloadV3Schema = z.strictObject({
 
 const semanticCampaignAttemptStartedPayloadSchema = z.strictObject({
   intent: campaignAttemptIntentV2Schema,
+});
+
+const semanticCampaignAttemptBudgetReservedPayloadSchema = z.strictObject({
+  reservation: campaignAttemptBudgetReservationSchema,
+});
+
+const semanticCampaignAttemptBudgetSettledPayloadSchema = z.strictObject({
+  settlement: campaignAttemptBudgetSettlementSchema,
 });
 
 const semanticCampaignAttemptResultStoredPayloadSchema = z.strictObject({
@@ -687,6 +712,14 @@ interface LedgerProjection {
   readonly attempts: ReadonlyMap<string, CampaignAttemptRecordView>;
   readonly semanticRuns: ReadonlyMap<string, StoredSemanticCampaignRun>;
   readonly semanticAttempts: ReadonlyMap<string, CampaignAttemptRecordViewV2>;
+  readonly semanticAttemptBudgetReservations: ReadonlyMap<
+    string,
+    CampaignAttemptBudgetReservationRecordView
+  >;
+  readonly semanticAttemptBudgetSettlements: ReadonlyMap<
+    string,
+    CampaignAttemptBudgetSettlementRecordView
+  >;
   readonly semanticFinderCheckpoints: ReadonlyMap<
     string,
     SemanticFinderCheckpointRecordView
@@ -742,6 +775,58 @@ interface LedgerProjection {
     RuntimeVerificationPacketRecordView
   >;
   readonly verifications: ReadonlyMap<string, StoredVerification>;
+}
+
+function projectStoredSemanticCampaignBudget(
+  campaignId: string,
+  runId: string,
+  ledgerHead: number,
+  ledger: LedgerProjection,
+): CampaignBudgetView | undefined {
+  const run = ledger.semanticRuns.get(runId);
+  if (
+    run === undefined ||
+    run.plan.schemaVersion !== 3 ||
+    run.plan.campaignId !== campaignId
+  ) {
+    return undefined;
+  }
+  const explicitReservationIds = new Set(
+    ledger.semanticAttemptBudgetReservations.keys(),
+  );
+  const implicitReservations: CampaignAttemptBudgetReservation[] = [];
+  const implicitSettlements: CampaignAttemptBudgetSettlement[] = [];
+  for (const attempt of ledger.semanticAttempts.values()) {
+    if (explicitReservationIds.has(attempt.intent.attemptId)) continue;
+    const attemptRun = ledger.semanticRuns.get(attempt.intent.runId);
+    if (attemptRun?.plan.schemaVersion !== 3) continue;
+    const reservation = reserveUnrecordedCampaignAttemptBudget(
+      attemptRun.plan,
+      attempt.intent,
+    );
+    implicitReservations.push(reservation);
+    if (attempt.completion !== undefined) {
+      implicitSettlements.push(
+        settleCampaignAttemptBudget(reservation, undefined),
+      );
+    }
+  }
+  return projectCampaignBudget({
+    plan: run.plan,
+    ledgerHead,
+    reservations: [
+      ...[...ledger.semanticAttemptBudgetReservations.values()].map(
+        (record) => record.reservation,
+      ),
+      ...implicitReservations,
+    ],
+    settlements: [
+      ...[...ledger.semanticAttemptBudgetSettlements.values()].map(
+        (record) => record.settlement,
+      ),
+      ...implicitSettlements,
+    ],
+  });
 }
 
 function currentDepthResearchMatchesLedger(
@@ -2209,6 +2294,160 @@ class SqliteResearchRecord
       );
   }
 
+  async recordSemanticCampaignAttemptAdmission(
+    reservationValue: CampaignAttemptBudgetReservation,
+    intentValue: CampaignAttemptIntentV2,
+  ): Promise<RecordSemanticCampaignAttemptAdmissionResult> {
+    const reservation =
+      campaignAttemptBudgetReservationSchema.parse(reservationValue);
+    const intent = campaignAttemptIntentV2Schema.parse(intentValue);
+    if (
+      reservation.campaignId !== intent.campaignId ||
+      reservation.runId !== intent.runId ||
+      reservation.attemptId !== intent.attemptId ||
+      reservation.attemptPlanDigest !== intent.attemptPlanDigest ||
+      reservation.role !== intent.role ||
+      (reservation.owner === "validation") !== (intent.role === "validator")
+    ) {
+      throw new CampaignRunConflictError(intent.campaignId, intent.runId);
+    }
+    const transact = this.#database.transaction(
+      (): RecordSemanticCampaignAttemptAdmissionResult => {
+        const rows = this.#readRows(intent.campaignId);
+        if (rows.length === 0) {
+          throw new Error(`Campaign not found: ${intent.campaignId}`);
+        }
+        const ledger = this.#decodeLedger(intent.campaignId, rows);
+        const run = ledger.semanticRuns.get(intent.runId);
+        const existingAttempt = ledger.semanticAttempts.get(intent.attemptId);
+        const existingReservation =
+          ledger.semanticAttemptBudgetReservations.get(intent.attemptId);
+        if (existingAttempt !== undefined) {
+          if (
+            canonicalJson(existingAttempt.intent) !== canonicalJson(intent) ||
+            (existingReservation !== undefined &&
+              canonicalJson(existingReservation.reservation) !==
+                canonicalJson(reservation))
+          ) {
+            throw new CampaignRunConflictError(intent.campaignId, intent.runId);
+          }
+          const budget = projectStoredSemanticCampaignBudget(
+            intent.campaignId,
+            intent.runId,
+            rows.length,
+            ledger,
+          );
+          if (budget === undefined) {
+            throw new CampaignRunConflictError(intent.campaignId, intent.runId);
+          }
+          return existingAttempt.completion === undefined
+            ? {
+                disposition: "in-progress",
+                attempt: existingAttempt,
+                budget,
+              }
+            : {
+                disposition: "completed",
+                attempt: {
+                  ...existingAttempt,
+                  completion: existingAttempt.completion,
+                },
+                budget,
+              };
+        }
+        if (
+          run?.plan.schemaVersion !== 3 ||
+          run.completed !== undefined ||
+          (intent.role === "root-evaluator" &&
+            !validRootEvaluatorIdentity(intent)) ||
+          (intent.role === "root-evaluator" &&
+            intent.registryDigest !== undefined &&
+            ledger.approachFamilyRegistriesV3.get(intent.runId)?.ref.digest !==
+              intent.registryDigest) ||
+          (intent.role === "finder" &&
+            intent.predecessorDecisionDigest !== undefined) ||
+          ((intent.role === "root-synthesizer" ||
+            intent.role === "adversarial-critic") &&
+            !ledger.approachFamilyRegistriesV3.has(intent.runId))
+        ) {
+          throw new CampaignRunConflictError(intent.campaignId, intent.runId);
+        }
+        if (existingReservation !== undefined) {
+          throw new CampaignRunConflictError(intent.campaignId, intent.runId);
+        }
+        if (
+          [...ledger.semanticAttempts.values()].some(
+            (attempt) =>
+              attempt.intent.runId === intent.runId &&
+              attempt.intent.role === intent.role &&
+              attempt.intent.ordinal === intent.ordinal,
+          )
+        ) {
+          throw new CampaignRunConflictError(intent.campaignId, intent.runId);
+        }
+        const currentBudget = projectStoredSemanticCampaignBudget(
+          intent.campaignId,
+          intent.runId,
+          rows.length,
+          ledger,
+        );
+        if (currentBudget === undefined) {
+          throw new CampaignRunConflictError(intent.campaignId, intent.runId);
+        }
+        const exhaustedDimensions = campaignBudgetExhaustionDimensions(
+          currentBudget,
+          reservation,
+        );
+        if (exhaustedDimensions.length > 0) {
+          return {
+            disposition: "budget-exhausted",
+            budget: currentBudget,
+            exhaustedDimensions,
+          };
+        }
+        const occurredAt = this.#clock().toISOString();
+        const reservationLedgerHead = rows.length + 1;
+        this.#insertEvent(
+          intent.campaignId,
+          reservationLedgerHead,
+          "campaign.attempt-budget-reserved",
+          occurredAt,
+          { reservation },
+          1,
+        );
+        const attemptLedgerHead = rows.length + 2;
+        this.#insertEvent(
+          intent.campaignId,
+          attemptLedgerHead,
+          "campaign.attempt-started",
+          occurredAt,
+          { intent },
+          2,
+        );
+        const updatedRows = this.#readRows(intent.campaignId);
+        const budget = projectStoredSemanticCampaignBudget(
+          intent.campaignId,
+          intent.runId,
+          attemptLedgerHead,
+          this.#decodeLedger(intent.campaignId, updatedRows),
+        );
+        if (budget === undefined) {
+          throw new CampaignRunConflictError(intent.campaignId, intent.runId);
+        }
+        return {
+          disposition: "started",
+          attempt: {
+            ledgerHead: attemptLedgerHead,
+            occurredAt,
+            intent,
+          },
+          budget,
+        };
+      },
+    );
+    return transact();
+  }
+
   async recordSemanticCampaignAttemptStart(
     value: CampaignAttemptIntentV2,
   ): Promise<RecordSemanticCampaignAttemptStartResult> {
@@ -2402,6 +2641,190 @@ class SqliteResearchRecord
       },
     );
     return transact();
+  }
+
+  async completeSemanticCampaignAttemptWithBudget(
+    input: CompleteSemanticCampaignAttemptWithBudgetInput,
+  ): Promise<CompleteSemanticCampaignAttemptWithBudgetResult> {
+    const completion = campaignAttemptCompletionV2Schema.parse(
+      input.completion,
+    );
+    const usage =
+      input.usage === undefined
+        ? undefined
+        : modelAttemptUsageV2Schema.parse(input.usage);
+    const transact = this.#database.transaction(
+      (): CompleteSemanticCampaignAttemptWithBudgetResult => {
+        const rows = this.#readRows(completion.campaignId);
+        if (rows.length === 0) {
+          throw new Error(`Campaign not found: ${completion.campaignId}`);
+        }
+        const ledger = this.#decodeLedger(completion.campaignId, rows);
+        const existing = ledger.semanticAttempts.get(completion.attemptId);
+        if (
+          existing === undefined ||
+          (completion.role === "root-evaluator" &&
+            !validRootEvaluatorIdentity(completion)) ||
+          !semanticAttemptIdentityMatches(existing.intent, completion) ||
+          (completion.role === "validator" &&
+            (existing.storedResult === undefined ||
+              canonicalJson(existing.storedResult.value.result) !==
+                canonicalJson(completion.result))) ||
+          (existing.completion !== undefined &&
+            canonicalJson(existing.completion.value) !==
+              canonicalJson(completion))
+        ) {
+          throw new CampaignRunConflictError(
+            completion.campaignId,
+            completion.runId,
+          );
+        }
+        const reservation = ledger.semanticAttemptBudgetReservations.get(
+          completion.attemptId,
+        );
+        const priorSettlement = ledger.semanticAttemptBudgetSettlements.get(
+          completion.attemptId,
+        );
+        if (reservation === undefined) {
+          const budget = projectStoredSemanticCampaignBudget(
+            completion.campaignId,
+            completion.runId,
+            rows.length,
+            ledger,
+          );
+          if (budget === undefined) {
+            throw new CampaignRunConflictError(
+              completion.campaignId,
+              completion.runId,
+            );
+          }
+          if (existing.completion !== undefined) {
+            return { attempt: existing, budget };
+          }
+          const occurredAt = this.#clock().toISOString();
+          const ledgerHead = rows.length + 1;
+          this.#insertEvent(
+            completion.campaignId,
+            ledgerHead,
+            "campaign.attempt-completed",
+            occurredAt,
+            { completion },
+            2,
+          );
+          const updatedRows = this.#readRows(completion.campaignId);
+          const updatedBudget = projectStoredSemanticCampaignBudget(
+            completion.campaignId,
+            completion.runId,
+            ledgerHead,
+            this.#decodeLedger(completion.campaignId, updatedRows),
+          );
+          if (updatedBudget === undefined) {
+            throw new CampaignRunConflictError(
+              completion.campaignId,
+              completion.runId,
+            );
+          }
+          return {
+            attempt: {
+              ...existing,
+              completion: { ledgerHead, occurredAt, value: completion },
+            },
+            budget: updatedBudget,
+          };
+        }
+        const settlement = settleCampaignAttemptBudget(
+          reservation.reservation,
+          usage,
+        );
+        if (priorSettlement !== undefined) {
+          if (
+            canonicalJson(priorSettlement.settlement) !==
+            canonicalJson(settlement)
+          ) {
+            throw new CampaignRunConflictError(
+              completion.campaignId,
+              completion.runId,
+            );
+          }
+          const budget = projectStoredSemanticCampaignBudget(
+            completion.campaignId,
+            completion.runId,
+            rows.length,
+            ledger,
+          );
+          if (budget === undefined || existing.completion === undefined) {
+            throw new CampaignRunConflictError(
+              completion.campaignId,
+              completion.runId,
+            );
+          }
+          return { attempt: existing, budget };
+        }
+        const occurredAt = this.#clock().toISOString();
+        const completionLedgerHead =
+          existing.completion?.ledgerHead ?? rows.length + 1;
+        const completedAttempt =
+          existing.completion === undefined
+            ? {
+                ...existing,
+                completion: {
+                  ledgerHead: completionLedgerHead,
+                  occurredAt,
+                  value: completion,
+                },
+              }
+            : existing;
+        if (existing.completion === undefined) {
+          this.#insertEvent(
+            completion.campaignId,
+            completionLedgerHead,
+            "campaign.attempt-completed",
+            occurredAt,
+            { completion },
+            2,
+          );
+        }
+        const settlementLedgerHead =
+          rows.length + (existing.completion === undefined ? 2 : 1);
+        this.#insertEvent(
+          completion.campaignId,
+          settlementLedgerHead,
+          "campaign.attempt-budget-settled",
+          occurredAt,
+          { settlement },
+          1,
+        );
+        const updatedRows = this.#readRows(completion.campaignId);
+        const budget = projectStoredSemanticCampaignBudget(
+          completion.campaignId,
+          completion.runId,
+          settlementLedgerHead,
+          this.#decodeLedger(completion.campaignId, updatedRows),
+        );
+        if (budget === undefined) {
+          throw new CampaignRunConflictError(
+            completion.campaignId,
+            completion.runId,
+          );
+        }
+        return { attempt: completedAttempt, budget };
+      },
+    );
+    return transact();
+  }
+
+  async readSemanticCampaignBudget(
+    campaignId: string,
+    runId: string,
+  ): Promise<CampaignBudgetView | undefined> {
+    const rows = this.#readRows(campaignId);
+    if (rows.length === 0) return undefined;
+    return projectStoredSemanticCampaignBudget(
+      campaignId,
+      runId,
+      rows.length,
+      this.#decodeLedger(campaignId, rows),
+    );
   }
 
   async listSemanticCampaignAttempts(
@@ -4508,6 +4931,14 @@ class SqliteResearchRecord
     const attempts = new Map<string, CampaignAttemptRecordView>();
     const semanticRuns = new Map<string, StoredSemanticCampaignRun>();
     const semanticAttempts = new Map<string, CampaignAttemptRecordViewV2>();
+    const semanticAttemptBudgetReservations = new Map<
+      string,
+      CampaignAttemptBudgetReservationRecordView
+    >();
+    const semanticAttemptBudgetSettlements = new Map<
+      string,
+      CampaignAttemptBudgetSettlementRecordView
+    >();
     const semanticFinderCheckpoints = new Map<
       string,
       SemanticFinderCheckpointRecordView
@@ -4617,6 +5048,36 @@ class SqliteResearchRecord
         });
         continue;
       }
+      if (event.kind === "campaign.attempt-budget-reserved") {
+        if (event.schema_version !== 1) {
+          throw new UnsupportedLedgerSchemaError(
+            event.kind,
+            event.schema_version,
+          );
+        }
+        const { reservation } =
+          semanticCampaignAttemptBudgetReservedPayloadSchema.parse(
+            this.#parsePayload(event),
+          );
+        const run = semanticRuns.get(reservation.runId);
+        if (
+          reservation.campaignId !== campaignId ||
+          run?.plan.schemaVersion !== 3 ||
+          run.completed !== undefined ||
+          semanticAttempts.has(reservation.attemptId) ||
+          semanticAttemptBudgetReservations.has(reservation.attemptId) ||
+          (reservation.owner === "validation") !==
+            (reservation.role === "validator")
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        semanticAttemptBudgetReservations.set(reservation.attemptId, {
+          ledgerHead: event.campaign_sequence,
+          occurredAt: event.occurred_at,
+          reservation,
+        });
+        continue;
+      }
       if (event.kind === "campaign.attempt-started") {
         if (event.schema_version === 2) {
           const payload = semanticCampaignAttemptStartedPayloadSchema.parse(
@@ -4624,11 +5085,22 @@ class SqliteResearchRecord
           );
           const intent = payload.intent;
           const run = semanticRuns.get(intent.runId);
+          const reservation = semanticAttemptBudgetReservations.get(
+            intent.attemptId,
+          );
           if (
             intent.campaignId !== campaignId ||
             run === undefined ||
             run.completed !== undefined ||
             semanticAttempts.has(intent.attemptId) ||
+            (reservation !== undefined &&
+              (reservation.reservation.campaignId !== intent.campaignId ||
+                reservation.reservation.runId !== intent.runId ||
+                reservation.reservation.attemptPlanDigest !==
+                  intent.attemptPlanDigest ||
+                reservation.reservation.role !== intent.role ||
+                (reservation.reservation.owner === "validation") !==
+                  (intent.role === "validator"))) ||
             (intent.role === "root-evaluator" &&
               !validRootEvaluatorIdentity(intent)) ||
             (intent.role === "root-evaluator" &&
@@ -4793,6 +5265,50 @@ class SqliteResearchRecord
             occurredAt: event.occurred_at,
             value: completion,
           },
+        });
+        continue;
+      }
+      if (event.kind === "campaign.attempt-budget-settled") {
+        if (event.schema_version !== 1) {
+          throw new UnsupportedLedgerSchemaError(
+            event.kind,
+            event.schema_version,
+          );
+        }
+        const { settlement } =
+          semanticCampaignAttemptBudgetSettledPayloadSchema.parse(
+            this.#parsePayload(event),
+          );
+        const reservation = semanticAttemptBudgetReservations.get(
+          settlement.attemptId,
+        );
+        const attempt = semanticAttempts.get(settlement.attemptId);
+        const expectedSettlement =
+          reservation === undefined
+            ? undefined
+            : settleCampaignAttemptBudget(
+                reservation.reservation,
+                settlement.usage,
+              );
+        if (
+          settlement.campaignId !== campaignId ||
+          reservation === undefined ||
+          attempt?.completion === undefined ||
+          semanticAttemptBudgetSettlements.has(settlement.attemptId) ||
+          settlement.runId !== reservation.reservation.runId ||
+          settlement.attemptPlanDigest !==
+            reservation.reservation.attemptPlanDigest ||
+          settlement.owner !== reservation.reservation.owner ||
+          settlement.role !== reservation.reservation.role ||
+          expectedSettlement === undefined ||
+          canonicalJson(settlement) !== canonicalJson(expectedSettlement)
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        semanticAttemptBudgetSettlements.set(settlement.attemptId, {
+          ledgerHead: event.campaign_sequence,
+          occurredAt: event.occurred_at,
+          settlement,
         });
         continue;
       }
@@ -6272,6 +6788,8 @@ class SqliteResearchRecord
       attempts,
       semanticRuns,
       semanticAttempts,
+      semanticAttemptBudgetReservations,
+      semanticAttemptBudgetSettlements,
       semanticFinderCheckpoints,
       semanticIterationDecisions,
       semanticIterationDecisionsV3,
@@ -6321,10 +6839,15 @@ export function openSqliteResearchStores(
       record.recordSemanticCampaignRunCompletionV3.bind(record),
     recordSemanticCampaignAttemptStart:
       record.recordSemanticCampaignAttemptStart.bind(record),
+    recordSemanticCampaignAttemptAdmission:
+      record.recordSemanticCampaignAttemptAdmission.bind(record),
     recordSemanticCampaignAttemptResult:
       record.recordSemanticCampaignAttemptResult.bind(record),
     recordSemanticCampaignAttemptCompletion:
       record.recordSemanticCampaignAttemptCompletion.bind(record),
+    completeSemanticCampaignAttemptWithBudget:
+      record.completeSemanticCampaignAttemptWithBudget.bind(record),
+    readSemanticCampaignBudget: record.readSemanticCampaignBudget.bind(record),
     listSemanticCampaignAttempts:
       record.listSemanticCampaignAttempts.bind(record),
     recordSemanticFinderCheckpoint:

@@ -13,12 +13,14 @@ import type {
 import type { TargetFileManifestRef } from "../source-mapping/contracts.js";
 import type {
   CampaignAttemptCompletionV2,
+  CampaignAttemptBudgetReservation,
   CampaignAttemptIntentV2,
   CampaignAttemptResultStoredV2,
   CampaignAttemptRecordViewV2,
   CampaignRunCompletionInputV3,
   CampaignRunPlanV3,
   CampaignRunRecordViewV3,
+  CampaignBudgetView,
 } from "../campaign-control/contracts.js";
 import type {
   RuntimeRiskAssessment,
@@ -31,10 +33,13 @@ import type {
 } from "../validation/contracts.js";
 import type {
   ApproachFamilyRegistryRecordViewV3,
+  CompleteSemanticCampaignAttemptWithBudgetInput,
+  CompleteSemanticCampaignAttemptWithBudgetResult,
   RuntimeVerificationPacketRecordView,
   PreparationRecord,
   RecordPreparationResult,
   RecordSemanticCampaignAttemptStartResult,
+  RecordSemanticCampaignAttemptAdmissionResult,
   RecordSemanticCampaignRunStartResult,
   SemanticAdversarialCritiqueRecordViewV2,
   SemanticChainSynthesisRecordViewV2,
@@ -69,12 +74,23 @@ export interface CurrentCampaignStore {
   recordSemanticCampaignAttemptStart(
     intent: CampaignAttemptIntentV2,
   ): Promise<RecordSemanticCampaignAttemptStartResult>;
+  recordSemanticCampaignAttemptAdmission(
+    reservation: CampaignAttemptBudgetReservation,
+    intent: CampaignAttemptIntentV2,
+  ): Promise<RecordSemanticCampaignAttemptAdmissionResult>;
   recordSemanticCampaignAttemptResult(
     result: CampaignAttemptResultStoredV2,
   ): Promise<CampaignAttemptRecordViewV2>;
   recordSemanticCampaignAttemptCompletion(
     completion: CampaignAttemptCompletionV2,
   ): Promise<CampaignAttemptRecordViewV2>;
+  completeSemanticCampaignAttemptWithBudget(
+    input: CompleteSemanticCampaignAttemptWithBudgetInput,
+  ): Promise<CompleteSemanticCampaignAttemptWithBudgetResult>;
+  readSemanticCampaignBudget(
+    campaignId: string,
+    runId: string,
+  ): Promise<CampaignBudgetView | undefined>;
   listSemanticCampaignAttempts(
     campaignId: string,
     runId: string,

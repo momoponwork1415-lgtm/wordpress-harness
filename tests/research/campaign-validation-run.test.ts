@@ -176,12 +176,19 @@ describe("CampaignRunner.run source-only Validation", () => {
     const depthQueuesObservedBeforeValidation: string[] = [];
     const depthQueuesObservedBeforeSynthesis: string[] = [];
     const validatorProgressSnapshots: unknown[] = [];
+    const dispatchBudgetSnapshots: Array<{
+      readonly role: string;
+      readonly reservedAttempts: number;
+      readonly ownReservationDurable: boolean;
+    }> = [];
     let expectedValidationRunId = "";
     let validationDisposition: "ready-for-runtime" | "needs-research" =
       "ready-for-runtime";
     let depthFailure: "none" | "budget-exhausted" = "none";
     let packetDelivery: "success" | "failure" = "failure";
     let candidateIdentitySuffix = "";
+    let validationCandidateCount = 1;
+    let validatorReportedTokens: number | undefined;
     let injectUnknownValidatorResult = false;
     const deliveredPacketDigests: string[] = [];
     const modelExecution: ModelExecution = {
@@ -189,6 +196,20 @@ describe("CampaignRunner.run source-only Validation", () => {
         if (plan.schemaVersion !== 2) {
           throw new Error("Current Campaign used a legacy Attempt Plan");
         }
+        const dispatchBudget = await research.reader.inspect(input.campaignId, {
+          kind: "budget",
+          runId: expectedValidationRunId,
+        });
+        if (dispatchBudget.kind !== "budget") {
+          throw new Error("Expected a durable reservation before dispatch");
+        }
+        dispatchBudgetSnapshots.push({
+          role: plan.role,
+          reservedAttempts: dispatchBudget.reserved.modelAttempts,
+          ownReservationDurable: dispatchBudget.activeReservations.some(
+            (reservation) => reservation.attemptId === plan.attemptId,
+          ),
+        });
         observedPlans.push(plan);
         if (plan.role === "root-planner") {
           return completedResult(plan, {
@@ -236,18 +257,22 @@ describe("CampaignRunner.run source-only Validation", () => {
             hypotheses: plan.prompt.includes(
               "a whole-target review may reveal broken security semantics",
             )
-              ? [
-                  {
+              ? Array.from({ length: validationCandidateCount }, (_, index) => {
+                  const identitySuffix =
+                    validationCandidateCount === 1
+                      ? candidateIdentitySuffix
+                      : `${candidateIdentitySuffix}-${index + 1}`;
+                  return {
                     kind: "source-bound-hypothesis",
                     schemaVersion: 1,
                     causalIdentity: {
-                      rootCause: `public-state-crosses-actor-boundary${candidateIdentitySuffix}`,
+                      rootCause: `public-state-crosses-actor-boundary${identitySuffix}`,
                       attackerControlledPrimitive:
                         "unauthenticated-option-write",
                       brokenSecurityProperty:
                         validationDisposition === "needs-research"
                           ? "state-consumer-identity"
-                          : `state-ownership${candidateIdentitySuffix}`,
+                          : `state-ownership${identitySuffix}`,
                     },
                     attackerPremise: "unauthenticated",
                     impact: "account-takeover",
@@ -261,8 +286,8 @@ describe("CampaignRunner.run source-only Validation", () => {
                     ],
                     falsifier: "Every consumer independently checks ownership.",
                     nextExperiment: "Review every source-bound consumer.",
-                  },
-                ]
+                  };
+                })
               : [],
             routeFragments: [],
             frontierGaps: [],
@@ -292,9 +317,10 @@ describe("CampaignRunner.run source-only Validation", () => {
           const context = evaluationContextSchema.parse(
             JSON.parse(line.slice(prefix.length)),
           );
-          const hypothesis = context.evaluationSubjects.find(
+          const hypotheses = context.evaluationSubjects.filter(
             (subject) => subject.ref.kind === "source-bound-hypothesis",
           );
+          const hypothesis = hypotheses[0];
           const theses = context.evaluationSubjects.filter(
             (subject) => subject.ref.kind === "research-thesis",
           );
@@ -308,31 +334,33 @@ describe("CampaignRunner.run source-only Validation", () => {
           return completedResult(plan, {
             kind: "root-evaluator-output",
             schemaVersion: 2,
-            approachFamilies: [
-              {
-                key: "cross-actor-state",
-                subjectDigests: [
-                  hypothesis.ref.digest,
-                  ...theses.map((thesis) => thesis.ref.digest),
-                ],
-                thesis: "Public state may cross an actor authority boundary.",
-                mechanism:
-                  "Attacker-controlled state reaches a privileged consumer.",
-                falsifier: "Every consumer checks the originating actor.",
-                nextAction: "Validate the exact source-bound route.",
-              },
-            ],
+            approachFamilies: hypotheses.map((candidate, index) => ({
+              key: `cross-actor-state-${index + 1}`,
+              subjectDigests: [
+                candidate.ref.digest,
+                ...theses.map((thesis) => thesis.ref.digest),
+              ],
+              thesis: "Public state may cross an actor authority boundary.",
+              mechanism:
+                "Attacker-controlled state reaches a privileged consumer.",
+              falsifier: "Every consumer checks the originating actor.",
+              nextAction: "Validate the exact source-bound route.",
+            })),
             actions: [
-              {
+              ...hypotheses.map((candidate, index) => ({
                 kind: "admit-validation",
-                approachFamilyKey: "cross-actor-state",
-                subjectDigests: [hypothesis.ref.digest],
+                approachFamilyKey: `cross-actor-state-${index + 1}`,
+                subjectDigests: [candidate.ref.digest],
                 admission: {
-                  hypothesisDigest: hypothesis.ref.digest,
+                  hypothesisDigest: candidate.ref.digest,
                   brokenSecurityProperty:
                     validationDisposition === "needs-research"
                       ? "state-consumer-identity"
-                      : `state-ownership${candidateIdentitySuffix}`,
+                      : `state-ownership${
+                          validationCandidateCount === 1
+                            ? candidateIdentitySuffix
+                            : `${candidateIdentitySuffix}-${index + 1}`
+                        }`,
                   causalRoute: [
                     {
                       ordinal: 1,
@@ -343,10 +371,10 @@ describe("CampaignRunner.run source-only Validation", () => {
                   ],
                   reason: "The exact route is ready for fresh source review.",
                 },
-              },
+              })),
               {
                 kind: "admit-depth",
-                approachFamilyKey: "cross-actor-state",
+                approachFamilyKey: "cross-actor-state-1",
                 subjectDigests: [
                   hypothesis.ref.digest,
                   ...theses.map((thesis) => thesis.ref.digest),
@@ -530,7 +558,41 @@ describe("CampaignRunner.run source-only Validation", () => {
                 }
               : {}),
           });
-          return result;
+          if (validatorReportedTokens === undefined) return result;
+          const usage = result.value.usage;
+          if (usage === undefined) {
+            throw new Error("Expected reported Validator usage");
+          }
+          const value = {
+            ...result.value,
+            usage: {
+              ...usage,
+              modelTokens: {
+                input: validatorReportedTokens,
+                cacheCreation: 0,
+                cacheRead: 0,
+                output: 0,
+                total: validatorReportedTokens,
+              },
+              models: [
+                {
+                  ...usage.models[0]!,
+                  tokens: {
+                    input: validatorReportedTokens,
+                    cacheCreation: 0,
+                    cacheRead: 0,
+                    output: 0,
+                    total: validatorReportedTokens,
+                  },
+                },
+              ],
+            },
+          };
+          return {
+            ...result,
+            value,
+            ref: { ...result.ref, digest: sha256Digest(value) },
+          };
         }
         throw new Error("Unexpected Attempt role");
       },
@@ -740,6 +802,25 @@ describe("CampaignRunner.run source-only Validation", () => {
       expectedValidationRunId = plan.runId;
       const ref = await research.runner.run(plan);
       const modelCallsAfterFirstRun = observedPlans.length;
+      expect(dispatchBudgetSnapshots).toHaveLength(modelCallsAfterFirstRun);
+      expect(
+        dispatchBudgetSnapshots.every(
+          (snapshot) =>
+            snapshot.reservedAttempts >= 1 && snapshot.ownReservationDurable,
+        ),
+      ).toBe(true);
+      expect(
+        new Set(dispatchBudgetSnapshots.map((snapshot) => snapshot.role)),
+      ).toEqual(
+        new Set([
+          "root-planner",
+          "finder",
+          "root-evaluator",
+          "root-synthesizer",
+          "adversarial-critic",
+          "validator",
+        ]),
+      );
       expect(
         observedPlans.every((attempt) =>
           attempt.prompt.includes(
@@ -895,6 +976,73 @@ describe("CampaignRunner.run source-only Validation", () => {
           reportedModelAttempts: 12,
           modelTokens: { total: 240 },
           estimatedCostUsd: 3,
+        },
+      });
+      await expect(
+        research.reader.inspect(input.campaignId, {
+          kind: "budget",
+          runId: plan.runId,
+        }),
+      ).resolves.toMatchObject({
+        kind: "budget",
+        schemaVersion: 1,
+        campaignId: input.campaignId,
+        runId: plan.runId,
+        policy: {
+          id: "semantic-research-recall-baseline-v6",
+          digest: expect.stringMatching(/^sha256:/),
+        },
+        enforcement: {
+          modelAttempts: "hard-precondition",
+          modelWallTimeMs: "hard-precondition",
+          estimatedCostUsd: "hard-precondition",
+          modelTokens: "reported-postcondition",
+          modelTurns: "reported-postcondition",
+        },
+        spent: {
+          modelAttempts: 12,
+          modelWallTimeMs: 120,
+          modelTurns: 12,
+          modelTokens: 240,
+          structuredOutputBytes: 12_000,
+          estimatedCostUsd: 3,
+          source: { queries: 6, scanBytes: 600, responseBytes: 300 },
+        },
+        reserved: {
+          modelAttempts: 0,
+          modelWallTimeMs: 0,
+          modelTokens: 0,
+          estimatedCostUsd: 0,
+        },
+        remaining: {
+          modelAttempts: 116,
+          modelWallTimeMs: 43_199_880,
+          modelTokens: 3_999_760,
+          estimatedCostUsd: 147,
+        },
+        owners: {
+          exploration: {
+            spent: { modelAttempts: 11, modelTokens: 220 },
+            remaining: {
+              modelWallTimeMs: 35_999_890,
+              modelTokens: 3_599_780,
+              estimatedCostUsd: 117.25,
+            },
+          },
+          validation: {
+            spent: { modelAttempts: 1, modelTokens: 20 },
+            remaining: {
+              modelWallTimeMs: 7_199_990,
+              modelTokens: 399_980,
+              estimatedCostUsd: 29.75,
+            },
+          },
+        },
+        unknownUsageAttemptIds: [],
+        overshoot: {
+          modelWallTimeMs: 0,
+          modelTokens: 0,
+          estimatedCostUsd: 0,
         },
       });
       expect([...new Set(depthQueuesObservedBeforeSynthesis)]).toHaveLength(1);
@@ -1178,6 +1326,13 @@ describe("CampaignRunner.run source-only Validation", () => {
       });
       expectedValidationRunId = crashRecoveryPlan.runId;
       const crashCallOffset = observedPlans.length;
+      const budgetBeforeCrash = await research.reader.inspect(
+        input.campaignId,
+        { kind: "budget", runId: plan.runId },
+      );
+      if (budgetBeforeCrash.kind !== "budget") {
+        throw new Error("Expected Campaign budget before injected crash");
+      }
       const crashingResearch = openResearch({
         databasePath,
         campaignExecution: {
@@ -1212,6 +1367,22 @@ describe("CampaignRunner.run source-only Validation", () => {
       });
       if (progressAfterCrash.kind !== "progress") {
         throw new Error("Expected Campaign progress after injected crash");
+      }
+      const budgetAfterCrash = await research.reader.inspect(input.campaignId, {
+        kind: "budget",
+        runId: crashRecoveryPlan.runId,
+      });
+      expect(budgetAfterCrash).toMatchObject({
+        kind: "budget",
+        owners: {
+          validation: {
+            spent: budgetBeforeCrash.owners.validation.spent,
+            reserved: { modelAttempts: 1, modelTokens: 100_000 },
+          },
+        },
+      });
+      if (budgetAfterCrash.kind !== "budget") {
+        throw new Error("Expected Campaign budget after injected crash");
       }
 
       const recoveringResearch = openResearch({
@@ -1250,6 +1421,34 @@ describe("CampaignRunner.run source-only Validation", () => {
             estimatedCostUsd: progressAfterCrash.usage.estimatedCostUsd + 0.25,
           },
         });
+        const budgetAfterRecovery = await recoveringResearch.reader.inspect(
+          input.campaignId,
+          { kind: "budget", runId: crashRecoveryPlan.runId },
+        );
+        expect(budgetAfterRecovery).toMatchObject({
+          kind: "budget",
+          owners: {
+            validation: {
+              spent: {
+                modelAttempts:
+                  budgetBeforeCrash.owners.validation.spent.modelAttempts + 1,
+                modelTokens:
+                  budgetBeforeCrash.owners.validation.spent.modelTokens + 20,
+              },
+              reserved: { modelAttempts: 0, modelTokens: 0 },
+            },
+          },
+        });
+        const recoveredBudgetSnapshot = budgetAfterRecovery;
+        await expect(
+          recoveringResearch.runner.run(crashRecoveryPlan),
+        ).resolves.toMatchObject({ schemaVersion: 3 });
+        await expect(
+          recoveringResearch.reader.inspect(input.campaignId, {
+            kind: "budget",
+            runId: crashRecoveryPlan.runId,
+          }),
+        ).resolves.toEqual(recoveredBudgetSnapshot);
       } finally {
         recoveringResearch.close();
       }
@@ -1266,6 +1465,13 @@ describe("CampaignRunner.run source-only Validation", () => {
       });
       expectedValidationRunId = unknownResultPlan.runId;
       const unknownCallOffset = observedPlans.length;
+      const budgetBeforeUnknownResult = await research.reader.inspect(
+        input.campaignId,
+        { kind: "budget", runId: plan.runId },
+      );
+      if (budgetBeforeUnknownResult.kind !== "budget") {
+        throw new Error("Expected Campaign budget before provider result loss");
+      }
       injectUnknownValidatorResult = true;
       const unknownResultResearch = openResearch({
         databasePath,
@@ -1290,6 +1496,19 @@ describe("CampaignRunner.run source-only Validation", () => {
       if (progressAfterUnknownResult.kind !== "progress") {
         throw new Error("Expected progress after unknown provider result");
       }
+      await expect(
+        research.reader.inspect(input.campaignId, {
+          kind: "budget",
+          runId: unknownResultPlan.runId,
+        }),
+      ).resolves.toMatchObject({
+        owners: {
+          validation: {
+            spent: budgetBeforeUnknownResult.owners.validation.spent,
+            reserved: { modelAttempts: 1, modelTokens: 100_000 },
+          },
+        },
+      });
 
       const unknownRecoveryResearch = openResearch({
         databasePath,
@@ -1333,6 +1552,40 @@ describe("CampaignRunner.run source-only Validation", () => {
             estimatedCostUsd: progressAfterUnknownResult.usage.estimatedCostUsd,
           },
         });
+        const budgetAfterUnknownRecovery =
+          await unknownRecoveryResearch.reader.inspect(input.campaignId, {
+            kind: "budget",
+            runId: unknownResultPlan.runId,
+          });
+        expect(budgetAfterUnknownRecovery).toMatchObject({
+          kind: "budget",
+          owners: {
+            validation: {
+              spent: {
+                modelAttempts:
+                  budgetBeforeUnknownResult.owners.validation.spent
+                    .modelAttempts + 1,
+                modelTokens:
+                  budgetBeforeUnknownResult.owners.validation.spent
+                    .modelTokens + 100_000,
+              },
+              reserved: { modelAttempts: 0, modelTokens: 0 },
+            },
+          },
+          unknownUsageAttemptIds: expect.arrayContaining([
+            expect.stringMatching(/^validator:/),
+          ]),
+        });
+        const unknownBudgetSnapshot = budgetAfterUnknownRecovery;
+        await expect(
+          unknownRecoveryResearch.runner.run(unknownResultPlan),
+        ).resolves.toMatchObject({ schemaVersion: 3, decision: "incomplete" });
+        await expect(
+          unknownRecoveryResearch.reader.inspect(input.campaignId, {
+            kind: "budget",
+            runId: unknownResultPlan.runId,
+          }),
+        ).resolves.toEqual(unknownBudgetSnapshot);
       } finally {
         unknownRecoveryResearch.close();
       }
@@ -1438,6 +1691,58 @@ describe("CampaignRunner.run source-only Validation", () => {
           .slice(invalidResultCallOffset)
           .filter((attempt) => attempt.role === "validator"),
       ).toHaveLength(1);
+
+      candidateIdentitySuffix = "-cross-candidate-budget";
+      validationCandidateCount = 2;
+      validatorReportedTokens = 450_000;
+      const crossCandidateBudgetPlan =
+        campaignDefaultSemanticRunPlanV3Schema.parse({
+          ...plan,
+          runId: "source-validation-cross-candidate-budget",
+        });
+      expectedValidationRunId = crossCandidateBudgetPlan.runId;
+      const crossCandidateCallOffset = observedPlans.length;
+      await expect(
+        research.runner.run(crossCandidateBudgetPlan),
+      ).resolves.toMatchObject({ schemaVersion: 3, decision: "incomplete" });
+      await expect(
+        research.reader.inspect(input.campaignId, {
+          kind: "run",
+          runId: crossCandidateBudgetPlan.runId,
+        }),
+      ).resolves.toMatchObject({
+        value: {
+          validations: [{ status: "ready-for-runtime" }],
+          approachFamilyRegistry: {
+            pendingValidations: 1,
+            validationOutcomes: 1,
+          },
+          decision: { kind: "incomplete", reason: "validation-pending" },
+        },
+      });
+      expect(
+        observedPlans
+          .slice(crossCandidateCallOffset)
+          .filter((attempt) => attempt.role === "validator"),
+      ).toHaveLength(1);
+      await expect(
+        research.reader.inspect(input.campaignId, {
+          kind: "budget",
+          runId: crossCandidateBudgetPlan.runId,
+        }),
+      ).resolves.toMatchObject({
+        owners: {
+          validation: {
+            remaining: { modelTokens: 0 },
+          },
+        },
+        overshoot: { modelTokens: 350_000 },
+      });
+      const crossCandidateCallsAfterCompletion = observedPlans.length;
+      await expect(
+        research.runner.run(crossCandidateBudgetPlan),
+      ).resolves.toMatchObject({ schemaVersion: 3, decision: "incomplete" });
+      expect(observedPlans).toHaveLength(crossCandidateCallsAfterCompletion);
     } finally {
       research.close();
       await rm(directory, { force: true, recursive: true });
@@ -1470,6 +1775,21 @@ describe("CampaignRunner.run source-only Validation", () => {
           schemaVersion: 3,
           validations: [{ status: "ready-for-runtime" }],
         },
+      });
+      await expect(
+        research.reader.inspect("campaign-validation-run", {
+          kind: "budget",
+          runId: "source-validation-run",
+        }),
+      ).resolves.toMatchObject({
+        kind: "budget",
+        spent: { modelAttempts: 12, modelTokens: 3_900_000 },
+        reserved: { modelAttempts: 0, modelTokens: 0 },
+        activeReservations: [],
+        remaining: { modelAttempts: 116, modelTokens: 100_000 },
+        unknownUsageAttemptIds: expect.arrayContaining([
+          expect.stringMatching(/^validator:/),
+        ]),
       });
     } finally {
       research.close();

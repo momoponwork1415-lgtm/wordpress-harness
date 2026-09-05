@@ -40,9 +40,12 @@ import type {
   CampaignAttemptIntent,
   CampaignAttemptRecordView,
   CampaignAttemptCompletionV2,
+  CampaignAttemptBudgetReservation,
+  CampaignAttemptBudgetSettlement,
   CampaignAttemptIntentV2,
   CampaignAttemptResultStoredV2,
   CampaignAttemptRecordViewV2,
+  CampaignBudgetView,
   CampaignRunCompletionInput,
   CampaignRunCompletionInputV2,
   CampaignRunCompletionInputV3,
@@ -54,6 +57,7 @@ import type {
   CampaignRunRecordViewV3,
   AnyCampaignRunRecordView,
 } from "../campaign-control/contracts.js";
+import type { ModelAttemptUsageV2 } from "../model-attempt-usage-contracts.js";
 import type {
   VerificationCompletionInput,
   VerificationPlan,
@@ -336,6 +340,38 @@ export type RecordSemanticCampaignAttemptStartResult =
         >;
       };
     };
+
+export type RecordSemanticCampaignAttemptAdmissionResult =
+  | (RecordSemanticCampaignAttemptStartResult & {
+      readonly budget: CampaignBudgetView;
+    })
+  | {
+      readonly disposition: "budget-exhausted";
+      readonly budget: CampaignBudgetView;
+      readonly exhaustedDimensions: readonly string[];
+    };
+
+export interface CampaignAttemptBudgetReservationRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly reservation: CampaignAttemptBudgetReservation;
+}
+
+export interface CampaignAttemptBudgetSettlementRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly settlement: CampaignAttemptBudgetSettlement;
+}
+
+export interface CompleteSemanticCampaignAttemptWithBudgetInput {
+  readonly completion: CampaignAttemptCompletionV2;
+  readonly usage?: ModelAttemptUsageV2;
+}
+
+export interface CompleteSemanticCampaignAttemptWithBudgetResult {
+  readonly attempt: CampaignAttemptRecordViewV2;
+  readonly budget: CampaignBudgetView;
+}
 
 export type RecordSemanticCampaignRunStartResult =
   | {

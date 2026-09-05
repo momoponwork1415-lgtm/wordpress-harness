@@ -14,6 +14,7 @@ export type {
 } from "./campaign-progress-reporter.js";
 export type {
   CampaignReader,
+  CampaignBudgetSubjectRef,
   CampaignRunSubjectRef,
   CampaignRunSubjectView,
   CampaignRunner,
@@ -75,6 +76,7 @@ export type {
   CampaignAttemptIntentV2,
   CampaignAttemptResultStoredV2,
   CampaignAttemptRecordViewV2,
+  CampaignBudgetView,
   CurrentSemanticDepthResearch,
   FinderAttemptMaterialization,
   FiniteWork,
@@ -99,6 +101,7 @@ export {
   campaignAttemptIntentSchema,
   campaignAttemptIntentV2Schema,
   campaignAttemptResultStoredV2Schema,
+  campaignBudgetViewSchema,
   campaignRunCompletionInputV2Schema,
   campaignRunCompletionInputV3Schema,
   campaignDefaultSemanticRunPlanV2Schema,

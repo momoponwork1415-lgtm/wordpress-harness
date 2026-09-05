@@ -51,6 +51,7 @@ import {
   structuredModelProfileSchema,
   type ModelExecution,
 } from "../model-execution/contracts.js";
+import { modelAttemptUsageV2Schema } from "../model-attempt-usage-contracts.js";
 import type { JsonArtifactStore } from "../research-record/contracts.js";
 import {
   surfaceMapRefSchema,
@@ -832,6 +833,117 @@ export const campaignAttemptCompletionV2Schema = z.discriminatedUnion("role", [
   }),
 ]);
 
+const campaignBudgetRoleSchema = z.enum([
+  "root-planner",
+  "finder",
+  "root-evaluator",
+  "root-synthesizer",
+  "adversarial-critic",
+  "validator",
+]);
+
+const campaignBudgetOwnerSchema = z.enum(["exploration", "validation"]);
+
+const campaignBudgetSourceAmountSchema = z.strictObject({
+  queries: z.number().int().nonnegative(),
+  scanBytes: z.number().int().nonnegative(),
+  responseBytes: z.number().int().nonnegative(),
+});
+
+export const campaignBudgetAmountSchema = z.strictObject({
+  modelAttempts: z.number().int().nonnegative(),
+  modelWallTimeMs: z.number().int().nonnegative(),
+  modelTurns: z.number().int().nonnegative(),
+  modelTokens: z.number().int().nonnegative(),
+  structuredOutputBytes: z.number().int().nonnegative(),
+  estimatedCostUsd: z.number().finite().nonnegative(),
+  source: campaignBudgetSourceAmountSchema,
+});
+
+const campaignBudgetLimitedAmountSchema = z.strictObject({
+  modelAttempts: z.number().int().nonnegative(),
+  modelWallTimeMs: z.number().int().nonnegative(),
+  modelTokens: z.number().int().nonnegative(),
+  estimatedCostUsd: z.number().finite().nonnegative(),
+});
+
+const campaignBudgetOwnerLimitedAmountSchema =
+  campaignBudgetLimitedAmountSchema.omit({ modelAttempts: true });
+
+export const campaignAttemptBudgetReservationSchema = z.strictObject({
+  kind: z.literal("campaign-attempt-budget-reservation"),
+  schemaVersion: z.literal(1),
+  campaignId: identifierSchema,
+  runId: identifierSchema,
+  attemptId: identifierSchema,
+  attemptPlanDigest: digestSchema,
+  owner: campaignBudgetOwnerSchema,
+  role: campaignBudgetRoleSchema,
+  amount: campaignBudgetAmountSchema,
+});
+
+const campaignBudgetUnknownDimensionSchema = z.enum([
+  "model-wall-time",
+  "model-turns",
+  "model-tokens",
+  "structured-output",
+  "provider-cost",
+  "source-usage",
+]);
+
+export const campaignAttemptBudgetSettlementSchema = z.strictObject({
+  kind: z.literal("campaign-attempt-budget-settlement"),
+  schemaVersion: z.literal(1),
+  campaignId: identifierSchema,
+  runId: identifierSchema,
+  attemptId: identifierSchema,
+  attemptPlanDigest: digestSchema,
+  owner: campaignBudgetOwnerSchema,
+  role: campaignBudgetRoleSchema,
+  usage: modelAttemptUsageV2Schema.optional(),
+  spent: campaignBudgetAmountSchema,
+  released: campaignBudgetAmountSchema,
+  overshoot: campaignBudgetAmountSchema,
+  unknownDimensions: z.array(campaignBudgetUnknownDimensionSchema).max(6),
+});
+
+const campaignBudgetOwnerViewSchema = z.strictObject({
+  limits: campaignBudgetOwnerLimitedAmountSchema,
+  spent: campaignBudgetAmountSchema,
+  reserved: campaignBudgetAmountSchema,
+  remaining: campaignBudgetOwnerLimitedAmountSchema,
+});
+
+export const campaignBudgetViewSchema = z.strictObject({
+  kind: z.literal("budget"),
+  schemaVersion: z.literal(1),
+  campaignId: identifierSchema,
+  runId: identifierSchema,
+  ledgerHead: z.number().int().positive(),
+  policy: z.strictObject({
+    id: identifierSchema,
+    digest: digestSchema,
+  }),
+  enforcement: z.strictObject({
+    modelAttempts: z.literal("hard-precondition"),
+    modelWallTimeMs: z.literal("hard-precondition"),
+    estimatedCostUsd: z.literal("hard-precondition"),
+    modelTokens: z.literal("reported-postcondition"),
+    modelTurns: z.literal("reported-postcondition"),
+  }),
+  limits: campaignBudgetLimitedAmountSchema,
+  spent: campaignBudgetAmountSchema,
+  reserved: campaignBudgetAmountSchema,
+  activeReservations: z.array(campaignAttemptBudgetReservationSchema),
+  remaining: campaignBudgetLimitedAmountSchema,
+  owners: z.strictObject({
+    exploration: campaignBudgetOwnerViewSchema,
+    validation: campaignBudgetOwnerViewSchema,
+  }),
+  unknownUsageAttemptIds: z.array(identifierSchema),
+  overshoot: campaignBudgetLimitedAmountSchema.omit({ modelAttempts: true }),
+});
+
 const semanticCampaignRunIdentityFields = {
   runId: identifierSchema,
   campaignId: identifierSchema,
@@ -1450,6 +1562,14 @@ export type CampaignAttemptCompletionV2 = z.infer<
 export type CampaignAttemptResultStoredV2 = z.infer<
   typeof campaignAttemptResultStoredV2Schema
 >;
+export type CampaignBudgetAmount = z.infer<typeof campaignBudgetAmountSchema>;
+export type CampaignAttemptBudgetReservation = z.infer<
+  typeof campaignAttemptBudgetReservationSchema
+>;
+export type CampaignAttemptBudgetSettlement = z.infer<
+  typeof campaignAttemptBudgetSettlementSchema
+>;
+export type CampaignBudgetView = z.infer<typeof campaignBudgetViewSchema>;
 
 export interface CampaignAttemptRecordView {
   readonly ledgerHead: number;
