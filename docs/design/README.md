@@ -18,11 +18,13 @@
 | Owner / subsystem | Canonical design |
 | --- | --- |
 | Campaign Control | [Campaign Execution Seam](campaign-execution-seam.md) |
-| Campaign setup / lab baseline | [Campaign Setup Seam](campaign-setup-seam.md) |
+| Human Verification setup / lab baseline | [Campaign Setup Seam](campaign-setup-seam.md) |
 | Exploration | [Exploration Seam](exploration-seam.md) |
 | Source Understanding / Surface Map | [Source Mapping Seam](source-mapping-seam.md) |
 | PHP Program Index | [PHP Program Index Seam](php-program-index-seam.md) |
-| Verification | [Verification Seam](verification-seam.md) |
+| Research Validation | [Validation Seam](validation-seam.md) |
+| Human OS / Human Verification | [Human Verification Seam](human-verification-seam.md) |
+| Legacy Verification replay / Assistant compatibility | [Legacy Verification Compatibility Seam](verification-seam.md) |
 | Model Execution | [Model Execution Seam](model-execution-seam.md) |
 | Target intake | [Target Intake Seam](target-intake-seam.md) |
 

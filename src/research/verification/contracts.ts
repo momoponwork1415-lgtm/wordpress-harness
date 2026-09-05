@@ -2,7 +2,15 @@ import { z } from "zod";
 
 import { targetSnapshotRefSchema } from "../contracts.js";
 import { sourceBoundHypothesisSchema } from "../exploration/contracts.js";
-import { sha256Digest } from "../research-record/canonical-json.js";
+import {
+  modelAttemptUsageV2Schema,
+  type ModelAttemptUsageV2,
+} from "../model-attempt-usage-contracts.js";
+import {
+  canonicalJson,
+  sha256Digest,
+} from "../research-record/canonical-json.js";
+import { targetFileManifestRefSchema } from "../source-mapping/contracts.js";
 
 const identifierSchema = z
   .string()
@@ -44,28 +52,119 @@ const verifierModelProfileRefSchema = immutableRef("model-profile").extend({
   family: identifierSchema,
 });
 
-export const verificationPlanSchema = z
+const verificationBudgetV1Schema = z.strictObject({
+  maxVerifierAttempts: z.number().int().positive(),
+  maxExperiments: z.number().int().min(2),
+  maxWallTimeMs: z.number().int().positive(),
+});
+
+export const verificationBudgetV2Schema = z.strictObject({
+  schemaVersion: z.literal(2),
+  maxVerifierAttempts: z.number().int().positive(),
+  maxExperiments: z.number().int().min(2),
+  maxWallTimeMs: z.number().int().positive(),
+  maxModelTokens: z.number().int().positive(),
+  maxModelTurns: z.number().int().positive(),
+  maxProviderCostUsd: z.number().positive(),
+  maxOutputBytes: z.number().int().positive(),
+  reportedUsageEnforcement: z.literal("telemetry-only").optional(),
+});
+
+const verificationPlanBaseFields = {
+  kind: z.literal("verification-plan"),
+  verificationId: identifierSchema,
+  campaignId: identifierSchema,
+  targetSnapshot: targetSnapshotRefSchema,
+  scope: z.strictObject({
+    permittedAttacker: z.enum([
+      "unauthenticated",
+      "subscriber",
+      "contributor",
+      "customer",
+    ]),
+  }),
+  hypothesis: sourceBoundHypothesisSchema,
+  hypothesisDigest: digestSchema,
+  labBaseline: labBaselineRefSchema,
+  verifierModelProfile: verifierModelProfileRefSchema,
+  promptSet: immutableRef("prompt-set"),
+  verificationPolicy: immutableRef("verification-policy"),
+  experimentRegistry: immutableRef("experiment-registry"),
+} as const;
+
+function refineVerificationPlan(
+  plan: {
+    readonly hypothesis: z.infer<typeof sourceBoundHypothesisSchema>;
+    readonly hypothesisDigest: string;
+    readonly labBaseline: z.infer<typeof labBaselineRefSchema>;
+    readonly targetSnapshot: z.infer<typeof targetSnapshotRefSchema>;
+    readonly manifest?: z.infer<typeof targetFileManifestRefSchema>;
+  },
+  context: z.RefinementCtx,
+): void {
+  if (plan.hypothesisDigest !== sha256Digest(plan.hypothesis)) {
+    context.addIssue({
+      code: "custom",
+      path: ["hypothesisDigest"],
+      message: "Hypothesis digest does not match the Hypothesis",
+    });
+  }
+  if (plan.labBaseline.targetSnapshotDigest !== plan.targetSnapshot.digest) {
+    context.addIssue({
+      code: "custom",
+      path: ["labBaseline", "targetSnapshotDigest"],
+      message: "Lab Baseline is bound to a different Target Snapshot",
+    });
+  }
+  if (
+    plan.manifest !== undefined &&
+    (plan.manifest.targetSnapshotId !== plan.targetSnapshot.id ||
+      plan.manifest.targetSnapshotDigest !== plan.targetSnapshot.digest)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["manifest"],
+      message: "Target File Manifest is bound to a different Target Snapshot",
+    });
+  }
+}
+
+export const verificationPlanV1Schema = z
   .strictObject({
-    kind: z.literal("verification-plan"),
+    ...verificationPlanBaseFields,
     schemaVersion: z.literal(1),
-    verificationId: identifierSchema,
-    campaignId: identifierSchema,
-    targetSnapshot: targetSnapshotRefSchema,
-    scope: z.strictObject({
-      permittedAttacker: z.enum(["unauthenticated", "subscriber", "customer"]),
-    }),
-    hypothesis: sourceBoundHypothesisSchema,
-    hypothesisDigest: digestSchema,
-    labBaseline: labBaselineRefSchema,
-    verifierModelProfile: verifierModelProfileRefSchema,
-    promptSet: immutableRef("prompt-set"),
-    verificationPolicy: immutableRef("verification-policy"),
-    experimentRegistry: immutableRef("experiment-registry"),
-    budget: z.strictObject({
-      maxVerifierAttempts: z.number().int().positive(),
-      maxExperiments: z.number().int().min(2),
-      maxWallTimeMs: z.number().int().positive(),
-    }),
+    budget: verificationBudgetV1Schema,
+  })
+  .superRefine(refineVerificationPlan);
+
+export const verificationPlanV2Schema = z
+  .strictObject({
+    ...verificationPlanBaseFields,
+    schemaVersion: z.literal(2),
+    manifest: targetFileManifestRefSchema,
+    budget: verificationBudgetV2Schema,
+  })
+  .superRefine(refineVerificationPlan);
+
+export const verificationPlanSchema = z.union([
+  verificationPlanV2Schema,
+  verificationPlanV1Schema,
+]);
+
+const historicalNodeRouteHypothesisSchema = sourceBoundHypothesisSchema.extend({
+  route: z.strictObject({
+    anchorNodeId: digestSchema,
+    nodeIds: z.array(digestSchema).min(1),
+    relationIds: z.array(digestSchema),
+  }),
+});
+
+const historicalNodeRouteVerificationPlanSchema = z
+  .strictObject({
+    ...verificationPlanBaseFields,
+    schemaVersion: z.literal(1),
+    hypothesis: historicalNodeRouteHypothesisSchema,
+    budget: verificationBudgetV1Schema,
   })
   .superRefine((plan, context) => {
     if (plan.hypothesisDigest !== sha256Digest(plan.hypothesis)) {
@@ -84,11 +183,29 @@ export const verificationPlanSchema = z
     }
   });
 
-const sourceEvidenceSchema = z.strictObject({
+export const verificationPlanLedgerSchema = z.union([
+  verificationPlanSchema,
+  historicalNodeRouteVerificationPlanSchema,
+]);
+
+export const sourceEvidenceSchema = z.strictObject({
   path: relativePathSchema,
   fileDigest: digestSchema,
   startLine: z.number().int().positive(),
   endLine: z.number().int().positive(),
+});
+
+export const sourceRouteExperimentProtocolSchema = z.strictObject({
+  kind: z.literal("source-route-experiment-protocol"),
+  schemaVersion: z.literal(1),
+  adapterVersion: z.enum([
+    "stored-xss-browser@v1",
+    "browser-script-execution@v1",
+    "sql-injection-database@v1",
+    "sql-query-semantic-effect@v1",
+    "authentication-state-transition@v1",
+  ]),
+  requiredSourceEvidence: z.array(sourceEvidenceSchema).min(1),
 });
 
 const storedXssExperimentMechanismSchema = z.strictObject({
@@ -99,6 +216,15 @@ const storedXssExperimentMechanismSchema = z.strictObject({
   successCriterion: z.literal("privileged-browser-execution-canary"),
 });
 
+const browserScriptExecutionExperimentMechanismSchema = z.strictObject({
+  kind: z.literal("browser-script-execution"),
+  schemaVersion: z.literal(1),
+  adapterVersion: z.literal("browser-script-execution@v1"),
+  causalFactor: identifierSchema,
+  successCriterion: z.literal("browser-execution-canary"),
+  victimContext: z.enum(["unauthenticated", "authenticated", "privileged"]),
+});
+
 const sqlInjectionExperimentMechanismSchema = z.strictObject({
   kind: z.literal("sql-injection-database"),
   schemaVersion: z.literal(1),
@@ -107,9 +233,41 @@ const sqlInjectionExperimentMechanismSchema = z.strictObject({
   successCriterion: z.literal("database-readback-canary"),
 });
 
+const sqlQueryEffectSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("database-readback-canary") }),
+  z.strictObject({ kind: z.literal("database-state-change-canary") }),
+  z.strictObject({ kind: z.literal("http-response-differential") }),
+  z.strictObject({
+    kind: z.literal("timing-differential"),
+    minimumDeltaMs: z.number().finite().positive(),
+    minimumSamples: z.number().int().min(3),
+  }),
+  z.strictObject({ kind: z.literal("target-account-authentication-canary") }),
+]);
+
+const sqlQuerySemanticEffectExperimentMechanismSchema = z.strictObject({
+  kind: z.literal("sql-query-semantic-effect"),
+  schemaVersion: z.literal(1),
+  adapterVersion: z.literal("sql-query-semantic-effect@v1"),
+  causalFactor: identifierSchema,
+  successCriterion: z.literal("security-effect"),
+  effect: sqlQueryEffectSchema,
+});
+
+const authenticationStateTransitionExperimentMechanismSchema = z.strictObject({
+  kind: z.literal("authentication-state-transition"),
+  schemaVersion: z.literal(1),
+  adapterVersion: z.literal("authentication-state-transition@v1"),
+  causalFactor: identifierSchema,
+  successCriterion: z.literal("target-account-authentication-canary"),
+});
+
 const experimentMechanismSchema = z.discriminatedUnion("kind", [
   storedXssExperimentMechanismSchema,
+  browserScriptExecutionExperimentMechanismSchema,
   sqlInjectionExperimentMechanismSchema,
+  sqlQuerySemanticEffectExperimentMechanismSchema,
+  authenticationStateTransitionExperimentMechanismSchema,
 ]);
 
 const sourceRederivationBaseShape = {
@@ -134,6 +292,13 @@ export const sourceRederivationSchema = z.discriminatedUnion("status", [
   }),
 ]);
 
+export const independentVerifierResultSchema = z.strictObject({
+  kind: z.literal("independent-verifier-result"),
+  schemaVersion: z.literal(1),
+  decision: sourceRederivationSchema,
+  usage: modelAttemptUsageV2Schema,
+});
+
 const experimentBindingsSchema = z.strictObject({
   targetSnapshotDigest: digestSchema,
   labBaselineDigest: digestSchema,
@@ -142,7 +307,10 @@ const experimentBindingsSchema = z.strictObject({
   configurationDigest: digestSchema,
   adapterVersion: z.enum([
     "stored-xss-browser@v1",
+    "browser-script-execution@v1",
     "sql-injection-database@v1",
+    "sql-query-semantic-effect@v1",
+    "authentication-state-transition@v1",
   ]),
 });
 
@@ -172,11 +340,58 @@ export const experimentPlanSchema = z
     }
   });
 
+export const experimentExecutionRequestSchema = z
+  .strictObject({
+    kind: z.literal("experiment-execution-request"),
+    schemaVersion: z.literal(1),
+    plan: experimentPlanSchema,
+    sourceRederivation: sourceRederivationSchema,
+    sourceRederivationDigest: digestSchema,
+  })
+  .superRefine((request, context) => {
+    const { causalFactorState: _causalFactorState, ...planMechanism } =
+      request.plan.mechanism;
+    if (
+      sha256Digest(request.sourceRederivation) !==
+      request.sourceRederivationDigest
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["sourceRederivationDigest"],
+        message: "Source re-derivation digest does not match the artifact",
+      });
+    }
+    if (
+      request.sourceRederivation.verificationId !==
+        request.plan.verificationId ||
+      request.sourceRederivation.targetSnapshotDigest !==
+        request.plan.bindings.targetSnapshotDigest ||
+      request.sourceRederivation.hypothesisDigest !==
+        request.plan.hypothesisDigest ||
+      canonicalJson(request.sourceRederivation.experiment) !==
+        canonicalJson(planMechanism)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["sourceRederivation"],
+        message: "Source re-derivation does not match the Experiment Plan",
+      });
+    }
+  });
+
 const storedXssObservationSchema = z.strictObject({
   kind: z.literal("stored-xss-browser"),
   schemaVersion: z.literal(1),
   attackerRequestAccepted: z.boolean(),
   persistentStateObserved: z.boolean(),
+  browserCanaryExecuted: z.boolean(),
+});
+
+const browserScriptExecutionObservationSchema = z.strictObject({
+  kind: z.literal("browser-script-execution"),
+  schemaVersion: z.literal(1),
+  attackerSequenceExecuted: z.boolean(),
+  victimContextEstablished: z.boolean(),
   browserCanaryExecuted: z.boolean(),
 });
 
@@ -187,9 +402,52 @@ const sqlInjectionObservationSchema = z.strictObject({
   databaseReadbackCanaryObserved: z.boolean(),
 });
 
+const sqlQueryEffectObservationSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("database-readback-canary"),
+    observed: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.literal("database-state-change-canary"),
+    observed: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.literal("http-response-differential"),
+    relationObserved: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.literal("timing-differential"),
+    sampleCount: z.number().int().nonnegative(),
+    medianDeltaMs: z.number().finite().nonnegative(),
+  }),
+  z.strictObject({
+    kind: z.literal("target-account-authentication-canary"),
+    attackerContextInitiallyAuthenticated: z.boolean(),
+    targetAccountAuthenticationObserved: z.boolean(),
+  }),
+]);
+
+const sqlQuerySemanticEffectObservationSchema = z.strictObject({
+  kind: z.literal("sql-query-semantic-effect"),
+  schemaVersion: z.literal(1),
+  attackerSequenceExecuted: z.boolean(),
+  effect: sqlQueryEffectObservationSchema,
+});
+
+const authenticationStateTransitionObservationSchema = z.strictObject({
+  kind: z.literal("authentication-state-transition"),
+  schemaVersion: z.literal(1),
+  attackerContextInitiallyAuthenticated: z.boolean(),
+  attackerSequenceExecuted: z.boolean(),
+  targetAccountAuthenticationObserved: z.boolean(),
+});
+
 const experimentResultSchema = z.discriminatedUnion("kind", [
   storedXssObservationSchema,
+  browserScriptExecutionObservationSchema,
   sqlInjectionObservationSchema,
+  sqlQuerySemanticEffectObservationSchema,
+  authenticationStateTransitionObservationSchema,
 ]);
 
 export const experimentObservationSchema = z
@@ -218,10 +476,13 @@ export const experimentObservationSchema = z
     artifactRefs: z.array(digestSchema),
   })
   .superRefine((observation, context) => {
-    const expectedAdapter =
-      observation.result.kind === "stored-xss-browser"
-        ? "stored-xss-browser@v1"
-        : "sql-injection-database@v1";
+    const expectedAdapter = {
+      "stored-xss-browser": "stored-xss-browser@v1",
+      "browser-script-execution": "browser-script-execution@v1",
+      "sql-injection-database": "sql-injection-database@v1",
+      "sql-query-semantic-effect": "sql-query-semantic-effect@v1",
+      "authentication-state-transition": "authentication-state-transition@v1",
+    }[observation.result.kind];
     if (observation.bindings.adapterVersion !== expectedAdapter) {
       context.addIssue({
         code: "custom",
@@ -258,6 +519,7 @@ const disprovedOutcomeSchema = z.strictObject({
 export const verificationBlockReasonSchema = z.enum([
   "unsupported-experiment",
   "verifier-unavailable",
+  "verifier-usage-incomplete",
   "budget-exhausted",
   "gvisor-unavailable",
   "baseline-unavailable",
@@ -279,18 +541,26 @@ const verificationOutcomeSchema = z.discriminatedUnion("kind", [
   blockedOutcomeSchema,
 ]);
 
-const conclusiveEvidenceSchema = z.strictObject({
+const conclusiveEvidenceV1Schema = z.strictObject({
   kind: z.literal("experiment-pair"),
   sourceRederivation: sourceRederivationRefSchema,
   witness: experimentObservationRefSchema,
   control: experimentObservationRefSchema,
 });
 
-const partialEvidenceSchema = z.strictObject({
+const partialEvidenceV1Schema = z.strictObject({
   kind: z.literal("partial"),
   sourceRederivation: sourceRederivationRefSchema.optional(),
   witness: experimentObservationRefSchema.optional(),
   control: experimentObservationRefSchema.optional(),
+});
+
+const conclusiveEvidenceV2Schema = conclusiveEvidenceV1Schema.extend({
+  verifierUsage: modelAttemptUsageV2Schema,
+});
+
+const partialEvidenceV2Schema = partialEvidenceV1Schema.extend({
+  verifierUsage: modelAttemptUsageV2Schema.optional(),
 });
 
 const verificationIdentityFields = {
@@ -301,35 +571,56 @@ const verificationIdentityFields = {
   hypothesisDigest: digestSchema,
 };
 
-const conclusiveCompletionInputSchema = z.strictObject({
+const conclusiveCompletionInputV1Schema = z.strictObject({
   kind: z.literal("verification-completion"),
   schemaVersion: z.literal(1),
   ...verificationIdentityFields,
-  evidence: conclusiveEvidenceSchema,
+  evidence: conclusiveEvidenceV1Schema,
   outcome: z.discriminatedUnion("kind", [
     findingOutcomeSchema,
     disprovedOutcomeSchema,
   ]),
 });
 
-const blockedCompletionInputSchema = z.strictObject({
+const blockedCompletionInputV1Schema = z.strictObject({
   kind: z.literal("verification-completion"),
   schemaVersion: z.literal(1),
   ...verificationIdentityFields,
-  evidence: partialEvidenceSchema,
+  evidence: partialEvidenceV1Schema,
+  outcome: blockedOutcomeSchema,
+});
+
+const conclusiveCompletionInputV2Schema = z.strictObject({
+  kind: z.literal("verification-completion"),
+  schemaVersion: z.literal(2),
+  ...verificationIdentityFields,
+  evidence: conclusiveEvidenceV2Schema,
+  outcome: z.discriminatedUnion("kind", [
+    findingOutcomeSchema,
+    disprovedOutcomeSchema,
+  ]),
+});
+
+const blockedCompletionInputV2Schema = z.strictObject({
+  kind: z.literal("verification-completion"),
+  schemaVersion: z.literal(2),
+  ...verificationIdentityFields,
+  evidence: partialEvidenceV2Schema,
   outcome: blockedOutcomeSchema,
 });
 
 export const verificationCompletionInputSchema = z.union([
-  conclusiveCompletionInputSchema,
-  blockedCompletionInputSchema,
+  conclusiveCompletionInputV2Schema,
+  blockedCompletionInputV2Schema,
+  conclusiveCompletionInputV1Schema,
+  blockedCompletionInputV1Schema,
 ]);
 
-const conclusiveVerificationRecordSchema = z.strictObject({
+const conclusiveVerificationRecordV1Schema = z.strictObject({
   kind: z.literal("verification-record"),
   schemaVersion: z.literal(1),
   ...verificationIdentityFields,
-  evidence: conclusiveEvidenceSchema,
+  evidence: conclusiveEvidenceV1Schema,
   outcome: z.discriminatedUnion("kind", [
     findingOutcomeSchema,
     disprovedOutcomeSchema,
@@ -337,31 +628,148 @@ const conclusiveVerificationRecordSchema = z.strictObject({
   completedAt: z.string().datetime(),
 });
 
-const blockedVerificationRecordSchema = z.strictObject({
+const blockedVerificationRecordV1Schema = z.strictObject({
   kind: z.literal("verification-record"),
   schemaVersion: z.literal(1),
   ...verificationIdentityFields,
-  evidence: partialEvidenceSchema,
+  evidence: partialEvidenceV1Schema,
+  outcome: blockedOutcomeSchema,
+  completedAt: z.string().datetime(),
+});
+
+const conclusiveVerificationRecordV2Schema = z.strictObject({
+  kind: z.literal("verification-record"),
+  schemaVersion: z.literal(2),
+  ...verificationIdentityFields,
+  evidence: conclusiveEvidenceV2Schema,
+  outcome: z.discriminatedUnion("kind", [
+    findingOutcomeSchema,
+    disprovedOutcomeSchema,
+  ]),
+  completedAt: z.string().datetime(),
+});
+
+const blockedVerificationRecordV2Schema = z.strictObject({
+  kind: z.literal("verification-record"),
+  schemaVersion: z.literal(2),
+  ...verificationIdentityFields,
+  evidence: partialEvidenceV2Schema,
   outcome: blockedOutcomeSchema,
   completedAt: z.string().datetime(),
 });
 
 export const verificationRecordSchema = z.union([
-  conclusiveVerificationRecordSchema,
-  blockedVerificationRecordSchema,
+  conclusiveVerificationRecordV2Schema,
+  blockedVerificationRecordV2Schema,
+  conclusiveVerificationRecordV1Schema,
+  blockedVerificationRecordV1Schema,
 ]);
 
-export const verificationRecordRefSchema = z.strictObject({
+const verificationRecordRefFields = {
   kind: z.literal("verification-record"),
-  schemaVersion: z.literal(1),
   verificationId: identifierSchema,
   digest: digestSchema,
   outcome: z.enum(["finding", "disproved", "blocked"]),
+} as const;
+
+export const verificationRecordRefSchema = z.union([
+  z.strictObject({
+    ...verificationRecordRefFields,
+    schemaVersion: z.literal(2),
+  }),
+  z.strictObject({
+    ...verificationRecordRefFields,
+    schemaVersion: z.literal(1),
+  }),
+]);
+
+const findingVerificationRecordRefSchema = z.union([
+  z.strictObject({
+    ...verificationRecordRefFields,
+    schemaVersion: z.literal(2),
+    outcome: z.literal("finding"),
+  }),
+  z.strictObject({
+    ...verificationRecordRefFields,
+    schemaVersion: z.literal(1),
+    outcome: z.literal("finding"),
+  }),
+]);
+
+const findingMechanismExperimentSchema = z.discriminatedUnion("kind", [
+  storedXssExperimentMechanismSchema.omit({
+    schemaVersion: true,
+    causalFactor: true,
+  }),
+  browserScriptExecutionExperimentMechanismSchema.omit({
+    schemaVersion: true,
+    causalFactor: true,
+  }),
+  sqlInjectionExperimentMechanismSchema.omit({
+    schemaVersion: true,
+    causalFactor: true,
+  }),
+  sqlQuerySemanticEffectExperimentMechanismSchema.omit({
+    schemaVersion: true,
+    causalFactor: true,
+  }),
+  authenticationStateTransitionExperimentMechanismSchema.omit({
+    schemaVersion: true,
+    causalFactor: true,
+  }),
+]);
+
+const findingMechanismProofSchema = z.strictObject({
+  experiment: findingMechanismExperimentSchema,
+  sourceFiles: z
+    .array(sourceEvidenceSchema.pick({ path: true, fileDigest: true }))
+    .min(1),
+  bindings: experimentBindingsSchema,
+  effect: z.strictObject({
+    witness: z.strictObject({
+      normalFunction: z.enum(["preserved", "broken", "unknown"]),
+      result: experimentResultSchema,
+    }),
+    control: z.strictObject({
+      normalFunction: z.enum(["preserved", "broken", "unknown"]),
+      result: experimentResultSchema,
+    }),
+  }),
+});
+
+export const findingMechanismGroupSchema = z.strictObject({
+  kind: z.literal("finding-mechanism-group"),
+  schemaVersion: z.literal(1),
+  id: digestSchema,
+  targetSnapshotDigest: digestSchema,
+  proof: findingMechanismProofSchema,
+  discoveries: z.array(findingVerificationRecordRefSchema).min(1).max(96),
+});
+
+export const findingMechanismGroupsSchema = z.strictObject({
+  kind: z.literal("finding-mechanism-groups"),
+  schemaVersion: z.literal(1),
+  campaignId: identifierSchema,
+  runId: identifierSchema,
+  groups: z.array(findingMechanismGroupSchema).max(96),
+  digest: digestSchema,
 });
 
 export type VerificationPlan = z.infer<typeof verificationPlanSchema>;
+export type VerificationPlanLedgerValue = z.infer<
+  typeof verificationPlanLedgerSchema
+>;
 export type SourceRederivation = z.infer<typeof sourceRederivationSchema>;
+export type IndependentVerifierResult = z.infer<
+  typeof independentVerifierResultSchema
+>;
+export type SourceRouteExperimentProtocol = z.infer<
+  typeof sourceRouteExperimentProtocolSchema
+>;
 export type ExperimentPlan = z.infer<typeof experimentPlanSchema>;
+export type ExperimentExecutionRequest = z.infer<
+  typeof experimentExecutionRequestSchema
+>;
 export type ExperimentObservation = z.infer<typeof experimentObservationSchema>;
 export type ExperimentObservationRef = z.infer<
   typeof experimentObservationRefSchema
@@ -371,6 +779,10 @@ export type VerificationCompletionInput = z.infer<
 >;
 export type VerificationRecord = z.infer<typeof verificationRecordSchema>;
 export type VerificationRecordRef = z.infer<typeof verificationRecordRefSchema>;
+export type FindingMechanismGroup = z.infer<typeof findingMechanismGroupSchema>;
+export type FindingMechanismGroups = z.infer<
+  typeof findingMechanismGroupsSchema
+>;
 export type VerificationBlockReason = z.infer<
   typeof verificationBlockReasonSchema
 >;
@@ -387,7 +799,9 @@ export interface IndependentVerifier {
 }
 
 export interface LabControl {
-  execute(plan: ExperimentPlan): Promise<ExperimentObservationRef>;
+  execute(
+    request: ExperimentExecutionRequest,
+  ): Promise<ExperimentObservationRef>;
 }
 
 export interface Verification {
@@ -427,10 +841,12 @@ export class LabControlBlockedError extends Error {
 
 export class IndependentVerifierBlockedError extends Error {
   readonly reason: VerificationBlockReason;
+  readonly usage: ModelAttemptUsageV2 | undefined;
 
-  constructor(reason: VerificationBlockReason) {
+  constructor(reason: VerificationBlockReason, usage?: ModelAttemptUsageV2) {
     super(`Independent Verifier blocked Verification: ${reason}`);
     this.name = "IndependentVerifierBlockedError";
     this.reason = reason;
+    this.usage = usage;
   }
 }

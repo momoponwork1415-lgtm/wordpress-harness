@@ -1,17 +1,54 @@
 import type { NewCampaignInput } from "../contracts.js";
+import type { SemanticFinderCheckpointRef } from "../exploration/semantic-contracts.js";
+import type {
+  ApproachFamilyRegistry,
+  ApproachFamilyRegistryRef,
+  SemanticIterationDecisionRef,
+} from "../exploration/semantic-approach-family-registry.js";
+import type {
+  ApproachFamilyRegistryRefV3,
+  ApproachFamilyRegistryV3,
+  SemanticIterationDecisionRefV3,
+} from "../exploration/semantic-approach-family-registry-v3.js";
+import type {
+  IterationDecisionV2,
+  IterationDecisionV3,
+} from "../exploration/semantic-contracts.js";
+import type { ChainSynthesis } from "../exploration/semantic-chain-synthesis.js";
+import type { DepthIterationDecision } from "../exploration/semantic-depth-evaluation.js";
+import type { SemanticDepthWorkQueue } from "../exploration/semantic-depth-work-queue.js";
+import type { TargetFileManifestRef } from "../source-mapping/contracts.js";
 import type {
   CampaignAttemptCompletion,
   CampaignAttemptIntent,
   CampaignAttemptRecordView,
+  CampaignAttemptCompletionV2,
+  CampaignAttemptIntentV2,
+  CampaignAttemptRecordViewV2,
   CampaignRunCompletionInput,
+  CampaignRunCompletionInputV2,
+  CampaignRunCompletionInputV3,
   CampaignRunPlan,
+  CampaignRunPlanV2,
+  CampaignRunPlanV3,
   CampaignRunRecordView,
+  CampaignRunRecordViewV2,
+  CampaignRunRecordViewV3,
+  AnyCampaignRunRecordView,
 } from "../campaign-control/contracts.js";
 import type {
   VerificationCompletionInput,
   VerificationPlan,
+  VerificationRecordRef,
   VerificationRecordView,
 } from "../verification/contracts.js";
+import type { CampaignProgressView } from "../campaign-progress-contracts.js";
+import type {
+  ValidationCandidate,
+  ValidationCandidateRef,
+  ValidationFrontierGapRef,
+  ValidationRecordRef as SourceValidationRecordRef,
+} from "../validation/contracts.js";
 
 export interface PreparationRecord {
   readonly campaignId: string;
@@ -19,6 +56,7 @@ export interface PreparationRecord {
   readonly occurredAt: string;
   readonly inputDigest: string;
   readonly input: NewCampaignInput;
+  readonly targetFileManifest?: TargetFileManifestRef;
 }
 
 export interface RecordPreparationResult {
@@ -28,7 +66,10 @@ export interface RecordPreparationResult {
 }
 
 export interface ResearchRecord {
-  recordPreparation(input: NewCampaignInput): Promise<RecordPreparationResult>;
+  recordPreparation(
+    input: NewCampaignInput,
+    targetFileManifest?: TargetFileManifestRef,
+  ): Promise<RecordPreparationResult>;
   readPreparation(campaignId: string): Promise<PreparationRecord | undefined>;
   recordCampaignRunStart(
     plan: CampaignRunPlan,
@@ -36,10 +77,19 @@ export interface ResearchRecord {
   recordCampaignRunCompletion(
     input: CampaignRunCompletionInput,
   ): Promise<CampaignRunRecordView>;
+  recordSemanticCampaignRunStart(
+    plan: CampaignRunPlanV2 | CampaignRunPlanV3,
+  ): Promise<RecordSemanticCampaignRunStartResult>;
+  recordSemanticCampaignRunCompletion(
+    input: CampaignRunCompletionInputV2,
+  ): Promise<CampaignRunRecordViewV2>;
+  recordSemanticCampaignRunCompletionV3(
+    input: CampaignRunCompletionInputV3,
+  ): Promise<CampaignRunRecordViewV3>;
   readCampaignRun(
     campaignId: string,
     runId: string,
-  ): Promise<CampaignRunRecordView | undefined>;
+  ): Promise<AnyCampaignRunRecordView | undefined>;
   recordCampaignAttemptStart(
     intent: CampaignAttemptIntent,
   ): Promise<RecordCampaignAttemptStartResult>;
@@ -50,6 +100,86 @@ export interface ResearchRecord {
     campaignId: string,
     runId: string,
   ): Promise<readonly CampaignAttemptRecordView[]>;
+  recordSemanticCampaignAttemptStart(
+    intent: CampaignAttemptIntentV2,
+  ): Promise<RecordSemanticCampaignAttemptStartResult>;
+  recordSemanticCampaignAttemptCompletion(
+    completion: CampaignAttemptCompletionV2,
+  ): Promise<CampaignAttemptRecordViewV2>;
+  listSemanticCampaignAttempts(
+    campaignId: string,
+    runId: string,
+  ): Promise<readonly CampaignAttemptRecordViewV2[]>;
+  recordSemanticFinderCheckpoint(
+    checkpoint: SemanticFinderCheckpointRef,
+  ): Promise<SemanticFinderCheckpointRecordView>;
+  listSemanticFinderCheckpoints(
+    campaignId: string,
+    runId: string,
+  ): Promise<readonly SemanticFinderCheckpointRecordView[]>;
+  recordSemanticIterationDecision(
+    campaignId: string,
+    runId: string,
+    decision: IterationDecisionV2,
+  ): Promise<SemanticIterationDecisionRecordView>;
+  recordSemanticIterationDecisionV3(
+    campaignId: string,
+    runId: string,
+    decision: IterationDecisionV3,
+  ): Promise<SemanticIterationDecisionRecordViewV3>;
+  recordSemanticDepthIteration(
+    campaignId: string,
+    runId: string,
+    input: {
+      readonly queue: SemanticDepthWorkQueue;
+      readonly synthesis: ChainSynthesis;
+      readonly decision: DepthIterationDecision;
+    },
+  ): Promise<ApproachFamilyRegistryRecordView>;
+  recordSemanticMissingLinkEvidence(
+    campaignId: string,
+    runId: string,
+    decisionDigest: string,
+    followUpQueues: readonly SemanticDepthWorkQueue[],
+  ): Promise<ApproachFamilyRegistryRecordView>;
+  recordSemanticFamilyVerificationOutcomes(
+    campaignId: string,
+    runId: string,
+    resolutions: readonly {
+      readonly familyId: string;
+      readonly verification: VerificationRecordRef;
+    }[],
+  ): Promise<ApproachFamilyRegistryRecordView>;
+  readApproachFamilyRegistry(
+    campaignId: string,
+    runId: string,
+  ): Promise<ApproachFamilyRegistryRecordView | undefined>;
+  readApproachFamilyRegistryV3(
+    campaignId: string,
+    runId: string,
+  ): Promise<ApproachFamilyRegistryRecordViewV3 | undefined>;
+  recordValidationIntents(
+    campaignId: string,
+    runId: string,
+    candidates: readonly ValidationCandidate[],
+  ): Promise<readonly ValidationIntentRecordView[]>;
+  listValidationIntents(
+    campaignId: string,
+    runId: string,
+  ): Promise<readonly ValidationIntentRecordView[]>;
+  recordValidationCompletion(
+    campaignId: string,
+    runId: string,
+    validation: SourceValidationRecordRef,
+  ): Promise<ValidationCompletionRecordView>;
+  listValidationCompletions(
+    campaignId: string,
+    runId: string,
+  ): Promise<readonly ValidationCompletionRecordView[]>;
+  listValidationFrontierGaps(
+    campaignId: string,
+    runId: string,
+  ): Promise<readonly ValidationFrontierGapRecordView[]>;
   recordVerificationStart(
     plan: VerificationPlan,
   ): Promise<RecordVerificationStartResult>;
@@ -60,6 +190,9 @@ export interface ResearchRecord {
     campaignId: string,
     verificationId: string,
   ): Promise<VerificationRecordView | undefined>;
+  readCampaignProgress(
+    campaignId: string,
+  ): Promise<CampaignProgressView | undefined>;
   close(): void;
 }
 
@@ -90,6 +223,33 @@ export type RecordCampaignRunStartResult =
       readonly run: CampaignRunRecordView;
     };
 
+export type RecordSemanticCampaignAttemptStartResult =
+  | {
+      readonly disposition: "started" | "in-progress";
+      readonly attempt: CampaignAttemptRecordViewV2;
+    }
+  | {
+      readonly disposition: "completed";
+      readonly attempt: CampaignAttemptRecordViewV2 & {
+        readonly completion: NonNullable<
+          CampaignAttemptRecordViewV2["completion"]
+        >;
+      };
+    };
+
+export type RecordSemanticCampaignRunStartResult =
+  | {
+      readonly disposition: "started";
+      readonly planDigest: string;
+      readonly ledgerHead: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly disposition: "completed";
+      readonly planDigest: string;
+      readonly run: CampaignRunRecordViewV2 | CampaignRunRecordViewV3;
+    };
+
 export type RecordVerificationStartResult =
   | {
       readonly disposition: "started";
@@ -103,9 +263,86 @@ export type RecordVerificationStartResult =
       readonly verification: VerificationRecordView;
     };
 
+export interface SemanticFinderCheckpointRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly checkpoint: SemanticFinderCheckpointRef;
+}
+
+export interface SemanticIterationDecisionRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly decision: SemanticIterationDecisionRef;
+  readonly registry: ApproachFamilyRegistryRef;
+}
+
+export interface ApproachFamilyRegistryRecordView {
+  readonly ref: ApproachFamilyRegistryRef;
+  readonly value: ApproachFamilyRegistry;
+}
+
+export interface SemanticIterationDecisionRecordViewV3 {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly decision: SemanticIterationDecisionRefV3;
+  readonly registry: ApproachFamilyRegistryRefV3;
+}
+
+export interface ApproachFamilyRegistryRecordViewV3 {
+  readonly ref: ApproachFamilyRegistryRefV3;
+  readonly value: ApproachFamilyRegistryV3;
+}
+
+export interface ValidationIntent {
+  readonly kind: "validation-intent";
+  readonly schemaVersion: 1;
+  readonly id: string;
+  readonly campaignId: string;
+  readonly runId: string;
+  readonly validationId: string;
+  readonly candidate: ValidationCandidateRef;
+  readonly approachFamilyIds: readonly string[];
+  readonly rootEvaluationDigests: readonly string[];
+}
+
+export interface ValidationIntentRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly intent: ValidationIntent;
+  readonly registry: ApproachFamilyRegistryRefV3;
+}
+
+export interface ValidationCompletion {
+  readonly kind: "validation-completion";
+  readonly schemaVersion: 1;
+  readonly validation: SourceValidationRecordRef;
+  readonly disposition:
+    | "ready-for-human"
+    | "needs-research"
+    | "disproven"
+    | "rejected"
+    | "validation-pending";
+  readonly approachFamilyIds: readonly string[];
+  readonly frontierGap?: ValidationFrontierGapRef | undefined;
+}
+
+export interface ValidationCompletionRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly completion: ValidationCompletion;
+  readonly registry: ApproachFamilyRegistryRefV3;
+}
+
+export interface ValidationFrontierGapRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly frontierGap: ValidationFrontierGapRef;
+}
+
 export interface OpenResearchRecordOptions {
   readonly databasePath: string;
   readonly clock?: () => Date;
+  readonly artifactStore?: JsonArtifactStore;
 }
 
 export interface JsonArtifactStore {

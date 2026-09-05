@@ -4,78 +4,99 @@ Status: accepted design; current implementation is tracked only in the [Codebase
 
 ## Owner and purpose
 
-`Campaign Control`は、一つの固定`Target Snapshot`を有限のWork Waveで前進させる。探索方法、provider process、実験手順をcallerへ漏らさず、記録済みのterminal decisionだけを返す。
+Researchの`Campaign Control`は、一つの固定Target Snapshotを有限のSemantic Research Wave、conditional Depth、source-only Validation、Human Review Packet handoffまで前進させる。探索方法、provider process、validator fan-out、Human OSのqueueまたはruntime reproductionをcallerへ漏らさず、記録済みのResearch terminalだけを返す。
 
 ```ts
 interface CampaignRunner {
-  prepare(input: NewCampaignInputV1): Promise<PreparedCampaign>;
-  run(plan: CampaignRunPlanV1): Promise<CampaignRunRecordRef>;
+  prepare(input: NewCampaignInput): Promise<PreparedCampaign>;
+  prepareFromTargetIntake(input: TargetIntakeCampaignPreparationInput): Promise<PreparedCampaign>;
+  run(plan: CampaignRunPlan): Promise<CampaignRunRecordRef>;
 }
 ```
 
-`advanceWave`、`runFinder`、`verifyHypothesis`等のphase別methodは公開しない。安全な順序、予算、再開、stable orderingは`run`の背後へ隠す。
+schema version overloadは既存Ledger replay用に維持できるが、新しいphase別public methodを増やさない。`advanceWave`、`runFinder`、`validateCandidate`、`synthesizeValidation`等は`run`の背後へ隠す。
 
-## Campaign lifecycle
+`CampaignReader.inspect`はterminal Run、実行中progress、Validation disposition、Review Packet refsをResearch Ledger/CASだけから決定的に再構築する。progress reporterはbest-effort observerであり、表示失敗またはheartbeatがCampaign outcomeを変更しない。
+
+## Preparation and plan boundary
+
+`prepareFromTargetIntake`はreadyなTarget Intake PacketとReceiptをResearch CASへdigest固定で複製し、Target SnapshotとTargetFileManifestをcallerに再入力させない。Target Intelligenceの内部storageまたは受入policyをResearchから再実行しない。artifact欠落、改変、binding不一致はworker起動前のtyped integrity failureとする。
+
+新しいCampaign Planは次を固定する。
+
+- Target SnapshotとTargetFileManifest
+- oracle-free Target metadata
+- Exploration、Validation、Model Executionのversioned policy/profile
+- role別budget、Campaign全体budget、最大並列数、Wave ceiling
+- read-only Source Tool PolicyとPrompt/Knowledge refs
+- legacy policyか現行policyかを分けるschema version
+
+Surface Mapは任意であり、source identity、candidate admission、closureの条件にしない。Lab Baseline、Experiment registry、Human Verification backend、CVE、advisory、patch、expected route/payload、credentialを現行Research Planへ含めない。
+
+## Lifecycle
 
 ```mermaid
 flowchart TB
     plan["Campaign Run Plan"]
-    validate{"Identity and policy<br/>valid?"}
+    integrity{"Identity and policy valid?"}
     intent[("Run intent")]
-    explore["Exploration decides<br/>finite Work Wave"]
-    attempts["Independent Attempts"]
+    wave["Recon + independent Finders"]
+    checkpoints[("Durable checkpoints")]
     barrier["Wave Barrier"]
-    hypotheses["Hypotheses and<br/>Route Fragments"]
-    verify["Independent Verification"]
-    review["Iteration Review"]
-    terminal[("Terminal run record")]
-    reject["Reject before<br/>external work"]
+    evaluation{"Root Evaluation"}
+    depth["Conditional Depth"]
+    validation["Dedup + source-only Validation"]
+    packet[["Human Review Packet"]]
+    terminal[("Research terminal")]
+    reject["Reject before external work"]
 
-    plan --> validate
-    validate -->|"no"| reject
-    validate -->|"yes"| intent --> explore --> attempts --> barrier
-    barrier --> hypotheses --> verify --> review --> terminal
-    review -->|"next finite wave"| explore
+    plan --> integrity
+    integrity -->|"no"| reject
+    integrity -->|"yes"| intent --> wave --> checkpoints --> barrier --> evaluation
+    evaluation -->|"strong frontier"| depth --> wave
+    evaluation -->|"candidate"| validation
+    validation -->|"needs research"| depth
+    validation -->|"ready"| packet --> terminal
+    validation -->|"negative or pending"| terminal
+    evaluation -->|"closure/incomplete"| terminal
 ```
 
-一Waveは全Attemptがterminalになるまで合流しない。完了順ではなくWork Lease identityで正規化し、少数派または一件だけのsource-bound routeを多数決で捨てない。
+Finder checkpointはTarget、Manifest、Attempt、Work Lease、ordinalへbindして即時durableにするが、Validation開始はWave BarrierとRoot Evaluation後である。Root Evaluationはcheckpointを含む全subjectを一つ以上のactionへ明示的に置く。invalid evaluationまたはsilent omissionをcandidate rejectionへ丸めない。
 
-## Plan boundary
+一つのValidation CandidateがReady-for-humanになってもactive Family、frontier、gapまたはplanned Waveを消さない。Research terminalは全Exploration workとValidation workのterminal/incomplete状態から決め、Human Deferred、Human Verification、Findingを待たない。
 
-```mermaid
-flowchart TB
-    subgraph allowed["Planが固定するもの"]
-        target["Target Snapshot"]
-        policies["Policies and Profiles"]
-        budgets["Budgets and concurrency"]
-        tools["Tool permissions"]
-        baseline["Lab Baseline"]
-    end
+## Exploration and Depth orchestration
 
-    subgraph excluded["workerへ渡さないもの"]
-        oracle["CVE / advisory / patch"]
-        expected["Expected route or payload"]
-        secrets["Credentials"]
-        sessions["Provider sessions"]
-    end
+初期Waveはwhole-target Baseline FinderとSource-aware Reconを並行開始し、Reconから最大三つのFocused/Wildcard Finderを追加できる。全Finderは同じTarget Snapshot全体へpivotでき、支持数または到着順でcandidateを捨てない。
 
-    allowed --> digest["Canonical plan digest"]
-    excluded -. "prohibited" .-> digest
-```
+Iteration Decision、Approach Family change、Depth Work Queue、Root Synthesis、Adversarial Critique、Depth Root Evaluation、Missing-link Waveは各stageのartifactとeventをdurableにしてから次stageを始める。Familyごと最大三つのevidence-generation Wave、Campaign全体最大十二Wave、各Wave最大四Finderを初期ceilingとし、容量を越えたgapは`unscheduledGaps`として残す。
 
-Target、Preparation、Lab、artifactのbindingが一致しなければ、modelまたはLabを起動する前に拒否する。一Campaignへ複数のTarget Snapshotを混ぜない。
+`needs-research`のValidation proof gapは同じApproach FamilyのFrontier Gapとしてのみ戻し、Familyの既存Wave ceilingを消費する。Validationが新しいFamilyを作らず、Campaign Controlがsemantic attach先を推測しない。
 
-## Owned orchestration
+Closureは最後のmaterial evidence以後に二回連続するcomplete no-material-delta evaluationを必要とし、後者はfresh Wildcardまたは独立Gap Reviewを含む。active/blocked Family、未解決gap、pending Validation、invalid Attempt、budget overflowがあればCoverage Closureへ丸めない。
 
-`Campaign Control`が所有するのは次だけである。
+## Validation orchestration
 
-- intentを先に記録すること
-- 有限Wave、予約予算、最大並列数を固定すること
-- terminal artifactをstable orderで次Moduleへ渡すこと
-- Verification結果をIteration Reviewへfoldすること
-- terminal recordからidempotentに再生すること
+Wave BarrierとRoot Evaluationがdurableになった後、Target、Manifest、attacker premise、broken property、ordered route、source anchorからexact candidate identityを作る。Finder、Depth、別proposalから同じidentityが来ても一つのValidation intentへ収束する。
 
-脆弱性の真偽は`Verification`、探索上の次手は`Exploration`、provider差は`Model Execution`、永続化は`Research Record`が所有する。
+Campaign Controlは[Validation seam](validation-seam.md)へ一つの`ValidationPlan`を渡すだけで、二つのfresh Validator、material conflict時の第三Validator、tool-free Synthesisを個別scheduleしない。Validation Moduleが返すDispositionを次のように扱う。
+
+- Ready-for-human: Risk AssessmentとHuman Review Packetをdurableにしてhandoffする。
+- Needs-research: 同じFamilyへ具体的Frontier Gapを戻す。
+- Disproved/Rejected: exact candidateのterminal negativeとして保持する。
+- Validation-pending: budget/provider/tool/integrity reason付きでResearchをIncompleteにする。
+
+Validation reserveはCampaign全体USD 150のうち初期USD 30とし、Explorationへ貸し出さない。Validatorのcandidate件数quota、tokenだけ、severity scoreで打ち切らず、累積provider costとwall timeをhard stopにする。reserve exhaustionをDisproved、RejectedまたはHuman Deferredへ読み替えない。
+
+## Research and product terminals
+
+Research terminalはExploration/Depth/Validationと全Review Packet handoffの結果を持つ。次を区別する。
+
+- `completed`: 全Research workがterminalで、0件以上のReview Packetをhandoffした。
+- `coverage-closed`: evidence-backed Closureを満たし、pending workがない。
+- `incomplete`: active Family、gap、Validation-pending、provider/tool/budget failure等が残る。
+
+Product terminalはHuman OSが所有し、active Human Review CaseのDispositionから決める。ResearchのcompletedをProduct successと呼ばず、Human OSのqueue状態をResearch Ledgerへ複製しない。
 
 ## Durable side-effect ordering
 
@@ -83,55 +104,43 @@ Target、Preparation、Lab、artifactのbindingが一致しなければ、model�
 sequenceDiagram
     participant CC as Campaign Control
     participant RR as Research Record
-    participant EX as External worker
-    participant CAS as Private CAS
+    participant EX as Exploration
+    participant VA as Validation
+    participant HO as Human OS
 
-    CC->>RR: append launch intent
+    CC->>RR: append run intent
     CC->>EX: start fresh work
-    EX-->>CC: terminal result
-    CC->>CAS: write artifact
-    CAS-->>CC: artifact ref
-    CC->>RR: append terminal event
-    RR-->>CC: durable record ref
+    EX-->>RR: checkpoint subjects
+    EX-->>RR: persist Wave Barrier and Root Evaluation
+    CC->>VA: validate deduped candidates
+    VA-->>RR: persist Attempts and Synthesis
+    VA-->>RR: persist Risk and Review Packet
+    RR-->>HO: versioned packet handoff
+    CC->>RR: append Research terminal
 ```
 
-crash後、terminal eventがなければ古いprovider session、stdout、writable Labを証拠として再利用しない。再開可能条件が揃わないAttemptは`orphaned`として閉じ、残予算内でfresh workを作る。
+外部workより先にintentをappendする。artifactをCAS、参照eventをLedgerへdurableにしてからackまたは次stageを開始する。crash後は最後のdurable boundaryから再開し、未ack payload、partial model output、provider conversation、writable stateを別Attemptへ渡さない。
 
-## Terminal decisions
+## Replay and legacy compatibility
 
-```mermaid
-flowchart TB
-    evidence["Terminal wave evidence"] --> decision{"Iteration decision"}
-    decision --> continue["Continue<br/>finite next work"]
-    decision --> verify["Await verification<br/>or calibration"]
-    decision --> blocked["Blocked<br/>typed reason"]
-    decision --> close["Close<br/>evidence-backed"]
-```
+同じ完了済みPlanの再実行はproviderを起動せず既存refへ収束する。旧Map-first、旧checkpoint-immediate Verification、旧Finding schemaは元policyのままread-only replayし、新policyのValidation dispositionへ自動変換しない。旧/new Campaignはread modelでpolicy versionを明示し、metricを混ぜない。
 
-一回のAttempt失敗、Hypothesis 0件、modelの「見つからない」という自己申告だけではcloseしない。provider障害、予算切れ、unsupported experiment、evidence-backed closureを別のterminal reasonとして保つ。
+新policyのdefault切替後は旧Verification Queueへ新しいintentを作らない。既存gVisor LabはHuman OSの任意Assistantとして別Seamから利用する。
 
-## Invariants
+## Failure semantics
 
-1. public入口は`prepare`と`run`だけである。
-2. 外部副作用より先にversioned intentを記録する。
-3. 同じPlan digestの完了済みrunは同じrecord refへ収束する。
-4. 到着順、model confidence、支持model数で候補を採否しない。
-5. FinderとVerifierはsession、scratch、payload、mutable Labを共有しない。
-6. Surface Mapは任意の補助入力であり、Depth Campaign開始条件または探索上限にしない。
-7. private calibration oracleをproduction worker inputへ戻さない。
+- integrity/policy不正はmodel起動前に拒否する。
+- provider failure、invalid output、policy denial、budget exhaustionをno-new-evidenceまたはnegativeへ丸めない。
+- 一Attempt failureで他Attemptまたはdurable checkpointを取り消さない。
+- Root Evaluation不成立時はheuristic admission/closureへfallbackしない。
+- Validation-pendingをfalse positiveまたはHuman Deferredにしない。
+- observer、progress reporter、private transcript sinkの失敗はCampaign outcomeを変えない。
+- Human OS handoff失敗はResearch packet artifactを保持し、context間delivery failureとして区別する。
 
 ## Behavior test surface
 
-Testは`CampaignRunner.run`と`CampaignReader`から得るdurable viewだけを観測する。内部helper、process argv、call count、timingを固定しない。
+Testは`prepare`、`prepareFromTargetIntake`、`run`、`CampaignReader.inspect`から観測し、private phase method、SQL row、provider argv、prompt wordingを固定しない。
 
-最低限、次を保護する。
+最低限、Target/Manifest integrity、Mapなし開始、Recon/Baseline並行、checkpoint durability、Wave Barrier後のRoot Evaluation、Root Evaluation前にValidationしないこと、minority candidate保持、Depth三Wave ceiling、二段Closure、exact Validation dedup、Validation dispositionのCampaign反映、needs-researchのsame-Family feedback、Ready-for-human後の残探索継続、USD reserve、validation-pending、Research/Product terminal分離、packet handoff、close/reopen replay、legacy Ledger互換を保護する。
 
-1. 一つのPlanが有限Waveからterminal decisionまで閉じる。
-2. Attempt完了順が変わってもterminal digestが変わらない。
-3. 一件の失敗が他のcandidateを消さない。
-4. typed Verification blockerがCampaignでも同じ意味を保つ。
-5. crash境界ごとの再実行が副作用を重複させない。
-6. oracle、既知payload、credentialがworker-visible inputへ入らない。
-7. raw-source CampaignをSurface Mapなしで開始できる。
-
-探索の判断は[Exploration seam](exploration-seam.md)、実行transportは[Model execution seam](model-execution-seam.md)、証明は[Verification seam](verification-seam.md)を正本とする。対象別の実測は[実験記録](../experiments/README.md)にだけ置く。
+探索判断は[Exploration seam](exploration-seam.md)、candidate処遇は[Validation seam](validation-seam.md)、Human OS handoff後は[Human Verification seam](human-verification-seam.md)、provider差は[Model Execution seam](model-execution-seam.md)を正本とする。

@@ -1,10 +1,30 @@
 export type {
+  CampaignProgressSubjectRef,
+  CampaignProgressView,
+  CampaignProgressUsage,
+  CampaignProgressRole,
+} from "./campaign-progress-contracts.js";
+export {
+  formatCampaignProgress,
+  openCampaignProgressReporter,
+} from "./campaign-progress-reporter.js";
+export type {
+  CampaignProgressReporter,
+  OpenCampaignProgressReporterOptions,
+} from "./campaign-progress-reporter.js";
+export type {
   CampaignReader,
   CampaignRunSubjectRef,
   CampaignRunSubjectView,
   CampaignRunner,
   CampaignView,
+  CanonicalFileManifest,
   NewCampaignInput,
+  NewCampaignInputV1,
+  NewCampaignInputV2,
+  NewCampaignInputV3,
+  FindingMechanismGroupsSubjectRef,
+  FindingMechanismGroupsSubjectView,
   OpenResearchOptions,
   PreparedCampaign,
   PreparationSubjectRef,
@@ -13,6 +33,8 @@ export type {
   SubjectRef,
   SubjectView,
   TargetSnapshotRef,
+  TargetIntakeBinding,
+  TargetIntakeCampaignPreparationInput,
 } from "./contracts.js";
 export type {
   AttemptPlanMaterializationInput,
@@ -25,37 +47,122 @@ export type {
   CalibrationReviewResult,
   BoundaryPairEvidenceRef,
   CampaignExecutionDependencies,
+  AnyCampaignRunPlan,
+  AnyCampaignRunRecord,
+  AnyCampaignRunRecordRef,
+  AnyCampaignRunRecordView,
   CampaignRunCompletionInput,
+  CampaignRunCompletionInputV2,
+  CampaignRunCompletionInputV3,
   CampaignRunPlan,
+  CampaignRunPlanV2,
+  CampaignRunPlanV3,
+  DefaultSemanticCampaignRunPlanV2,
+  DefaultSemanticCampaignRunPlanV3,
+  PreparedWaveCampaignRunPlanV2,
   CampaignRunRecord,
+  CampaignRunRecordV2,
+  CampaignRunRecordV3,
+  SemanticCampaignUsage,
+  SemanticDepthResearch,
   CampaignRunRecordRef,
+  CampaignRunRecordRefV2,
+  CampaignRunRecordRefV3,
   CampaignRunRecordView,
+  CampaignRunRecordViewV2,
+  CampaignRunRecordViewV3,
+  CampaignAttemptCompletionV2,
+  CampaignAttemptIntentV2,
+  CampaignAttemptRecordViewV2,
   FinderAttemptMaterialization,
   FiniteWork,
   FiniteWorkRef,
   IterationDecision,
 } from "./campaign-control/contracts.js";
+export type {
+  ApproachFamily,
+  ApproachFamilyRef,
+  ApproachFamilyRegistry,
+  ApproachFamilyRegistryRef,
+  SemanticIterationDecisionRef,
+} from "./exploration/index.js";
 export {
   CampaignRunConflictError,
+  LegacyMapFirstExecutionDisabledError,
+  RetiredSemanticBudgetPolicyError,
   boundaryPairEvidenceRefSchema,
   calibrationReviewResultSchema,
   campaignAttemptCompletionSchema,
+  campaignAttemptCompletionV2Schema,
   campaignAttemptIntentSchema,
+  campaignAttemptIntentV2Schema,
+  campaignRunCompletionInputV2Schema,
+  campaignRunCompletionInputV3Schema,
+  campaignDefaultSemanticRunPlanV2Schema,
+  campaignDefaultSemanticRunPlanV3Schema,
   campaignRunPlanSchema,
+  campaignRunPlanV2Schema,
+  campaignRunPlanV3Schema,
   campaignRunRecordRefSchema,
+  campaignRunRecordRefV2Schema,
+  campaignRunRecordRefV3Schema,
   campaignRunRecordSchema,
+  campaignRunRecordV2Schema,
+  campaignRunRecordV3Schema,
+  semanticResearchBudgetPolicySchema,
+  semanticResearchBudgetPolicyV6Schema,
+  semanticCampaignUsageSchema,
+  semanticDepthResearchSchema,
   finderAttemptMaterializationSchema,
   finiteWorkRefSchema,
   finiteWorkSchema,
   iterationDecisionSchema,
 } from "./campaign-control/contracts.js";
 export {
+  approachFamilyRefSchema,
+  approachFamilyRegistryRefSchema,
+  approachFamilyRegistrySchema,
+  approachFamilySchema,
+  semanticIterationDecisionRefSchema,
+} from "./exploration/index.js";
+export {
+  CampaignPreparationIntegrityError,
   CampaignPreparationConflictError,
   decodeNewCampaignInput,
   LedgerIntegrityError,
+  newCampaignInputV3Schema,
+  targetIntakeBindingSchema,
+  targetIntakeCampaignPreparationInputSchema,
   UnsupportedLedgerSchemaError,
 } from "./contracts.js";
+export { TargetIntakeHandoffIntegrityError } from "./campaign-control/target-intake-campaign-handoff.js";
+export { TargetFileManifestIntegrityError } from "./source-mapping/target-file-manifest.js";
 export { openResearch } from "./open-research.js";
+export {
+  FindingMechanismGroupingIntegrityError,
+  findingMechanismGroupSchema,
+  findingMechanismGroupsSchema,
+} from "./verification/index.js";
+export type {
+  FindingMechanismGroup,
+  FindingMechanismGroups,
+} from "./verification/index.js";
+export {
+  openValidation,
+  validationCandidateId,
+  validationCandidateSchema,
+  validationPlanSchema,
+  validationRecordRefSchema,
+  validationRecordSchema,
+} from "./validation/index.js";
+export type {
+  OpenValidationOptions,
+  Validation,
+  ValidationCandidate,
+  ValidationPlan,
+  ValidationRecord,
+  ValidationRecordRef,
+} from "./validation/index.js";
 export {
   openFinderAttemptMaterializer,
   openToolFreeFinderAttemptMaterializer,

@@ -1,90 +1,88 @@
-# Campaign setup seam
+# Human Verification setup seam
 
-Status: accepted, 2026-09-01
+Status: accepted, 2026-09-05
 
 ## Owner and purpose
 
-ResearchのSource Understanding内部にあるLab Baseline Builderが所有する。受入済みTarget Snapshotをtarget code未実行の状態から、探索と独立Verificationが共通に参照できるsealed Lab Baselineへ変換する複雑性を一つのinterfaceの背後へ隠す。
+Human OSの`Human Verification Environment Builder`が所有する。Researchから受け取ったHuman Review Packetの固定Target/versionを、host上でtarget codeを実行せず、人間が実Target interfaceをfreshに再現できる使い捨て環境へ変換する複雑性を一つのInterfaceの背後へ隠す。
+
+Research Campaignの開始条件ではなく、source-only Validationはこの環境を要求しない。setup failureをValidation negativeまたはfalse positiveへ逆流させない。
 
 ## Interface
 
 ```ts
-interface LabBaselineBuilder {
-  establish(request: BaselineRequest): Promise<SetupDisposition>;
+interface HumanVerificationEnvironmentBuilder {
+  establish(request: EnvironmentRequest): Promise<SetupDisposition>;
 }
 
 type SetupDisposition =
-  | { status: "ready"; receipt: SetupReceiptRef; baseline: LabBaselineRef }
+  | { status: "ready"; receipt: SetupReceiptRef; environment: EnvironmentRef }
   | { status: "setup-blocked"; receipt: SetupReceiptRef; reasons: readonly SetupReason[] };
 ```
 
-`BaselineRequest`はTarget Snapshot ref、環境依存スナップショットrefs、Runtime Profile ref、Canonical ConfigurationまたはConfiguration Variantを表すSetup Plan ref、Setup Policy ref、必要なExternal Dependency Grant refsを固定する。callerはcontainer、network、database、browser、host pathまたはstep orderingを渡さない。
+`EnvironmentRequest`はHuman Review Packet ref、Target Snapshot、環境依存スナップショットrefs、Runtime Profile、Canonical ConfigurationまたはConfiguration Variantを表すSetup Plan、Setup Policy、必要なExternal Dependency Grant refsを固定する。backendはgVisor Assistant、専用VM、安全に構成したcontainerのversioned profileから選び、callerは任意container argv、network、database command、browser command、host pathまたはstep orderingを渡さない。
 
 ## Interface invariants
 
-- 同じrequest digestは同じSetup Dispositionへ収束し、成功済みbaselineを暗黙に再構築しない。
-- `ready`を返す前にSetup Receipt、全gate observation、filesystem/database snapshot、effective configuration、Lab Baseline manifestをdurableにする。
-- `setup-blocked`は最後に成功したstep、安定したreason code、runtime receipt、sanitized log refsを持ち、Lab Baselineを返さない。
-- Intake Disposition、Target Snapshot、Runtime Profile、Setup Planを遡って変更しない。
-- target-controlled codeはgVisor `runsc`内だけで実行し、hostまたはplain Dockerへfallbackしない。
-- mutable image tag、wall clock、host path、random container nameをbaseline identityへ含めない。
-- BuilderはHypothesisまたはFindingを知らず、setup failureを脆弱性または誤検出と判断しない。Setup Planのmodel proposalを受け取る場合も、untrusted inputとしてdecodeする。
+- 同じrequest digestは同じSetup Dispositionへ収束し、成功済みenvironmentを暗黙に再構築しない。
+- `ready`前にSetup Receipt、全gate observation、effective configuration、Target/runtime identityをdurableにする。
+- `setup-blocked`は最後に成功したstep、安定reason code、runtime receipt、sanitized log refsを持ち、ready environmentを返さない。
+- Human Review Packet、Target Snapshot、Runtime Profile、Setup Planを遡って変更しない。
+- target-controlled codeをhost上で実行せず、privileged container、host network、container engine socket、credential-bearing host path、許可外egressを使わない。
+- mutable image tag、wall clock、host path、random instance nameをenvironment identityへ含めない。
+- BuilderはFindingまたはReview Dispositionを決めず、setup failureを脆弱性または誤検出と判断しない。
 
-## Runtime Profile
+## Runtime and isolation profiles
 
-Runtime ProfileはWordPress core artifact digest、PHP・database・web server等のOCI image digest、gVisor `runsc` build identity、CPU architecture、必須runtime capabilityを持つ。tagやdisplay versionは診断metadataにできるが、digestに代えて実行対象を選ばない。Campaign preparation後に同じprofile idの内容を変えない。
+Runtime ProfileはWordPress core artifact digest、PHP・database・web server等のimage digest、CPU architecture、backend identity、必須runtime capabilityを持つ。tagやdisplay versionは診断metadataにできるが、digestに代えて実行対象を選ばない。
+
+gVisor Human Verification Assistantを選ぶprofileは`runsc`を必須にし、利用不能時にrunc、plain Dockerまたはhostへevidentiary fallbackしない。専用VMまたはcontainerを人間の別proof methodとして選ぶ場合は、その選択をrequestに明示し、filesystem、network、credential、cleanupのisolation capabilityを事前検査する。Assistant失敗から別backendへsilentに切り替えない。
 
 ## Setup Plan
 
-Setup Planはschema version、content digest、configuration kind、固定locale・timezone、主対象と環境依存スナップショット、宣言順、Lab principals、typed setup actions、各actionの事前に定義したpostcondition、正常機能確認を持つ。Canonical Configurationの基準はUTCと`en_US`とし、locale、timezoneその他の条件を変える場合は根拠を持つConfiguration Variantの別Planにする。
+Setup Planはschema version、content digest、configuration kind、locale・timezone、主対象と環境依存スナップショット、宣言順、Lab principals、typed setup actions、各actionの事前success criterion、正常機能確認を持つ。Canonical Configurationの基準はUTCと`en_US`とし、異なる条件は根拠を持つConfiguration Variantの別Planにする。
 
-Lab Baseline Builder内部のvalidatorはPlan全体を実行前にdecodeし、参照digest、操作種別、引数scope、順序制約、credential scope、network grantを検査する。LLMはSetup Plan Proposalを作れるが、その自由文または自己評価は権限にも成功証拠にもならない。schemaとpolicyを通過したPlanだけを実行し、不許可操作を削って続行せず`setup-blocked: invalid-or-unsafe-plan`にする。
+Plan全体を実行前にdecodeし、参照digest、操作種別、引数scope、順序制約、credential scope、network grantを検査する。不許可操作を削って続行せず`setup-blocked: invalid-or-unsafe-plan`にする。
 
-Planが使用できるのは、harnessがversion固定したplugin配置・activation、WordPress option、Lab principal作成、trusted database seed、HTTP、browser、外部依存fixture、観測とsnapshot等のtyped actionだけとする。adapter内部でWP-CLI等を使えてもPlanから任意argvを渡さない。任意shell、任意PHPまたはeval、target Composer/npm script、未固定dependencyのdownload・install、汎用network requestを許可しない。
+使用できるのはharnessがversion固定したplugin配置・activation、WordPress option、Lab principal作成、trusted database seed、HTTP、browser、外部依存fixture、観測、snapshot等のtyped actionだけとする。任意shell、任意PHP/eval、target Composer/npm script、未固定dependency download、汎用network requestを許可しない。
 
-環境依存pluginはEnvironment Dependency Snapshotのidentityとdigestを指定し、宣言順にだけ配置する。activation中に新たな依存要求を検出しても自動取得せず、理由付き`setup-blocked`とする。
-
-各Lab principalはpurposeとWordPress roleを持ち、認証情報をLabごとに生成してSecretRefで参照する。setup administratorをPermitted Attackerとして再利用しない。成立証拠にprivileged victimが必要な場合も、setup administratorとは別principalをExperiment Planで指定する。raw credentialをPlan、Ledger、prompt、CASへ保存しない。
+各principalはpurposeとWordPress roleを持ち、認証情報を環境ごとに生成してSecretRefで参照する。setup administratorをattackerとして再利用せず、raw credentialをPlan、record、prompt、CASへ保存しない。
 
 ## Establishment gates
 
 Builderはfresh filesystemとdatabaseから次を決定順に実行する。
 
-1. Runtime ProfileとgVisor capabilityを確認する。
-2. 固定WordPress core、database、web serverを起動し、fresh installとmigrationを完了する。
-3. 環境依存pluginを宣言順にcanonical locationへ配置・activateする。
+1. backend profileとisolation capabilityを確認する。
+2. 固定WordPress core、database、web serverを起動する。
+3. 環境依存pluginを宣言順に配置・activateする。
 4. 主対象をcanonical Plugin Basenameどおりに配置・activateする。
-5. 検証済みSetup Planのtyped actionだけでCanonical Configurationを適用する。
-6. fatal errorがないことと、frontend・admin・RESTの基本healthを確認する。
-7. 対象pluginの正常機能確認を実行し、客観的postconditionを確認する。
-8. filesystem、database、configuration、seed state、observationsをsealする。
+5. 検証済みSetup Planのtyped actionだけでConfigurationを適用する。
+6. frontend、admin、RESTの基本healthとfatal error不在を確認する。
+7. 対象pluginのFunctional Smokeを客観的postconditionで確認する。
+8. Target/runtime/configuration/seed/observationをreceiptへsealする。
 
-各gateは開始前にtyped success criterionを持つ。post-hocなmodel judgementまたはHTTP 200一件だけでreadyにしない。通常機能がstateを変更する場合は通常利用者の操作後に別の観測でeffectを読み戻し、表示専用plugin等では決定的なread-only postconditionを使う。
+HTTP 200一件またはmodel judgementだけでreadyにしない。状態変更型の正常機能確認は通常操作後のeffectを別観測で読み戻す。
 
-外部serviceはsemanticに十分なlocal emulator、固定record/replay、live External Dependency Grantの順で選ぶ。live接続はCampaign専用・非production・使い捨て可能なresearch accountをSecretRefで参照し、grant scope外へ接続しない。live serviceが利用不能でもpluginの脆弱性を反証したことにはせず、dependency reason付き`setup-blocked`にする。
+外部serviceはlocal emulator、固定record/replay、live External Dependency Grantの順で選ぶ。live接続はCampaign専用・非production・使い捨てaccountをSecretRefで参照し、grant scope外へ接続しない。障害をcandidateの反証にせずdependency reason付き`setup-blocked`にする。
 
-## Baseline use
+## Environment use
 
-VerificationはLab Baseline refからExperimentごとにfresh sibling Labを作り、setupを再実行またはbaselineを変更しない。Configuration Variantが必要なら、Target SnapshotとRuntime Profileを維持しつつ別Setup Planを使う別requestから別baselineを作る。Setup Plan、Runtime Profile、dependency digest、seedまたはpolicyを変える場合も新しいbaselineを作り、canonical baselineとvariant baselineは別digestで共存する。
+ready environmentは一つのHuman Review Caseだけに使い、Case後に破棄する。別Packetまたは別Configuration Variantへstateを引き継がない。Human Verification AssistantがWitness/Control pairを作る場合は同じsealed baselineからfresh siblingを作り、従来のgVisor no-fallbackとcausal evidence条件を適用する。
 
-## Test surface
+人間がVMまたはcontainerで別proof methodを使う場合も、Target/version、runtime、configuration、attacker role、手順、観測、cleanupをHuman Verification recordへ残す。BuilderまたはenvironmentはFindingを自動生成しない。
 
-behavior testは`establish(request)`のSetup Dispositionと、返されたreceiptまたはbaseline refから読めるimmutable viewだけを観測する。gVisor process、container count、step helper、database queryを直接assertしない。system seamにはproductionのgVisor adapterとcontrolled test adapterを置けるが、test adapterの結果をevidentiary baselineとしてCampaignへ昇格させない。gVisor integration suiteでproduction `ready` receiptのruntime identityとisolationを別途確認する。
+## Failure semantics
 
-## Acceptance scenarios
+- invalid/unsafe Planは何も実行せず`setup-blocked`にする。
+- activation、dependency、health、Functional Smoke failureをRejectedまたはDisprovedへ丸めない。
+- isolation capability不足時はhost executionへfallbackしない。
+- partial environmentはpublicにせずcleanupし、同じrequestのretryはreceiptから安全に収束する。
+- Assistant unavailableは人間が別backendを明示選択することを妨げないが、既存requestをsilent変更しない。
 
-1. digest固定した完全なrequestは全gateを通過し、sealed Lab Baseline refを一つ返す。
-2. mutable tagの参照先が変わっても、既存Runtime Profileの実行対象とbaseline identityは変わらない。
-3. dependency activation failureはreason付きsetup-blockedになり、主対象をactivateしない。
-4. 主対象がactiveでもfrontend、admin、RESTまたは正常機能確認が失敗すればreadyにしない。
-5. gVisor unavailable時はhostまたはplain Dockerへfallbackせずsetup-blockedになる。
-6. 同じrequestのcrash後retryはpartial baselineを公開せず、既存receiptから安全に収束する。
-7. VerificationのWitnessとCausal Controlは同じsealed baselineから別々のfresh siblingを生成する。
-8. 任意shell、任意PHP、未固定downloadを含むPlanは一部実行せず、invalid-or-unsafe-planとしてsetup-blockedになる。
-9. modelがsetup成功と出力しても、typed postconditionが不成立ならreadyにならない。
-10. 状態変更型pluginの正常機能確認は通常操作後のeffectを別観測で読み戻す。
-11. setup administratorとPermitted Attackerは別principalとSecretRefを持ち、raw credentialはreceiptに残らない。
-12. 基準PlanはUTC・en_USで成立し、別localeはcanonical baselineを変更せず別variant baselineになる。
-13. 未固定dependencyをactivation中に要求しても自動取得せずsetup-blockedになる。
-14. live serviceは有効なGrantと専用research accountがある場合だけ接続し、障害をpluginの反証にしない。
-15. Setup PlanまたはRuntime Profileのdigestを変更した実行は既存baselineを変更せず、新しいbaseline refを返す。
+## Behavior test surface
+
+Testは`establish(request)`のSetup Dispositionとimmutable receipt/environment viewだけを観測する。process、instance count、step helper、database queryを固定しない。
+
+最低限、valid requestのready、mutable tag非依存、dependency/activation/health/Functional Smokeのsetup-blocked、host execution拒否、gVisor Assistant no-fallback、VM/container profileのcapability検査、same-request idempotency、unsafe Plan拒否、principal分離、secret除外、Configuration Variant分離、external grant enforcement、partial cleanupを保護する。
+
+Human Verificationの判断contractは[Human Verification seam](human-verification-seam.md)、Research側のhandoffは[Validation seam](validation-seam.md)を正本とする。

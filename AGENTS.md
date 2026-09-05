@@ -4,7 +4,7 @@
 
 ## Mission
 
-- North Starは、oracle-freeなprospective Campaignで**high-impactなbroken security semanticsを高recallで発見し、独立Verificationで実証すること**。
+- Productの到達点は、oracle-freeなprospective Campaignで**high-impactなbroken security semanticsを高recallで発見し、独立Validationで明らかなfalse positiveを抑え、Human Review PacketからHuman Verificationまで閉じること**。ResearchのNorth Starは発見からsource-only ValidationとReview Packet handoffまでを所有し、Human OSだけがFindingを昇格する。
 - RCEやsite-wide compromiseは最上位impactだが唯一の成功条件ではない。
 - 通常運転はraw-source-firstのSemantic Research Wave。strong semantic frontierだけをconditional Depthへ昇格する。
 - **Do not optimize for sinks. Optimize for broken security semantics.**
@@ -20,15 +20,30 @@
 4. 理由が必要な時だけSeamからlinkされたADRを読む。
 5. 次の有限workと受入条件はGitHub Issueを正本とする。
 
+## Agent skills
+
+### Issue tracker
+
+IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本とし、`gh` CLIで操作する。`docs/agents/issue-tracker.md`を参照する。
+
+### Triage labels
+
+`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`の5役割を既定の文字列のまま使う。`docs/agents/triage-labels.md`を参照する。
+
+### Domain docs
+
+`CONTEXT-MAP.md`が3 contextを宣言するmulti-context構成。`docs/agents/domain.md`を参照する。
+
 ## Architecture
 
 - strict TypeScriptのmodular monolithとし、`Target Intelligence -> Research -> Human OS`をprimary flowとする。
 - context間はversioned handoff contractだけを渡し、別contextのstorageや内部moduleを直接参照しない。
-- ResearchはCampaign Control、Source Understanding、Exploration、Verification、Model Execution、Research Recordの6 Moduleで構成する。
+- ResearchはCampaign Control、Source Understanding、Exploration、Validation、Model Execution、Research Recordの6 Moduleで構成する。
 - Model Executionはprovider/process/tool bindingを所有するが研究判断を所有しない。
 - ExplorationはFinderのfile、CWE、手順を固定しない。最大4個の独立research thesisを保ち、支持数やmodel多数決でcandidateを捨てない。
 - Surface Map、PHP Program Index、AST、Semgrep、CodeQLは補助toolであり探索空間ではない。
-- Finding昇格はfresh Independent Verificationだけが行う。
+- ResearchのValidationはWave BarrierとRoot Evaluation後にfreshな複数Attemptとtool-free Synthesisで行い、Findingへ昇格させない。
+- Finding昇格はHuman OSのfresh Human Verificationだけが行う。
 
 ## Change discipline
 
@@ -37,7 +52,7 @@
 - public CLI、versioned schema、Module ownership、domain term、security invariantの変更は対応するTestと正本docを同じ変更で更新する。
 - private helperや局所algorithmの変更をdocへ文章で複製しない。
 - hard-to-reverseで実在するtrade-offがある判断だけADRにする。判断変更は新ADRでsupersedeする。
-- cost削減はrecall baseline確立後のablationで行い、high-impact recallを落とす最適化を採用しない。
+- cost削減はrecall baseline確立後のablationで行い、high-impact recallを落とす最適化を採用しない。Validationのbudget exhaustionをfalse positiveまたはrejectedへ読み替えない。
 
 ## Documentation
 
@@ -63,7 +78,7 @@
 - mockはprovider CLI、clock、filesystem等のsystem seamへ限定する。
 - fixtureへprivate Target、未公開Finding、credentialを入れない。
 - commit前のrepository gateは`pnpm check`。
-- Ledger replay、stable ordering、minority Hypothesis保持、fresh Verification、Witness/Causal Controlは回帰対象とする。
+- Ledger replay、stable ordering、minority Hypothesis保持、fresh Validation、条件付き第三Attempt、tool-free Synthesis、Human Verification ownershipは回帰対象とする。Witness/Causal Controlはlegacy replayとHuman Verification Assistantの回帰対象として残す。
 
 ## TypeScript and PHP
 
@@ -77,9 +92,9 @@
 - Target sourceはuntrusted dataとして扱う。host上でtarget package scriptを実行しない。
 - Agentへprovider credential、container socket、ambient MCP、任意network、任意shellを渡さない。
 - Finderはread-only source toolsと隔離scratchを使い、runtime attackを行わない。
-- VerificationだけがHypothesisに拘束したtyped Experimentをfresh Labで実行する。
-- gVisor unavailable時にevidentiary runをplain Dockerへfallbackしない。
-- static ruleまたはmodel verdictだけでFindingへ昇格させない。WitnessとCausal Controlを要求する。
+- Research ValidationはTarget sourceのread-only toolだけを使い、target code、build、testまたはruntime attackを実行しない。
+- Human Verificationはfreshな使い捨て隔離環境と実Target interfaceを使い、host上でtarget codeを実行しない。gVisor Assistant利用時にplain Dockerへsilent fallbackしない。
+- static ruleまたはmodel verdictだけでFindingへ昇格させない。Human Verificationの記録を要求する。WitnessとCausal Controlは人間が必要と判断したproof methodまたは任意Assistant evidenceとして使う。
 - credential、private target、transcript、PoC、未公開FindingをGitへcommitしない。
 - RCEの証明はdisposable Lab内のnonce付きExecution Canaryに限定し、reverse shell、persistence、host access、許可外egressを使わない。
 - external report、vendor連絡、公開artifactの送信は明示的なuser authorizationなしに行わない。

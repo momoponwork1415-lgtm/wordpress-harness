@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { modelAttemptUsageV2Schema } from "../model-attempt-usage-contracts.js";
 import {
   surfaceMapRefSchema,
   surfaceMapSchema,
@@ -208,6 +209,7 @@ export const routeFragmentProposalSchema = z.strictObject({
   attackerPremise: z.enum([
     "unauthenticated",
     "subscriber",
+    "contributor",
     "customer",
     "unresolved",
   ]),
@@ -262,6 +264,7 @@ export const sourceBoundHypothesisSchema = z.strictObject({
   attackerPremise: z.enum([
     "unauthenticated",
     "subscriber",
+    "contributor",
     "customer",
     "unresolved",
   ]),
@@ -271,15 +274,15 @@ export const sourceBoundHypothesisSchema = z.strictObject({
     "account-takeover",
     "sql-injection",
     "stored-xss",
+    "reflected-xss",
+    "dom-xss",
     "authorization-bypass",
     "file-write",
     "path-traversal",
     "other",
   ]),
   route: z.strictObject({
-    anchorNodeId: digestSchema,
-    nodeIds: z.array(digestSchema).min(1),
-    relationIds: z.array(digestSchema),
+    anchors: z.array(sourceEvidenceAnchorSchema).min(1),
   }),
   unknowns: z.array(unresolvedEvidenceSchema).min(1),
   falsifier: boundedTextSchema,
@@ -302,6 +305,7 @@ export const finderAttemptResultSchema = z.discriminatedUnion("status", [
     leaseId: digestSchema,
     status: z.literal("completed"),
     output: finderOutputSchema,
+    usage: modelAttemptUsageV2Schema.optional(),
   }),
   z.strictObject({
     kind: z.literal("finder-attempt-result"),
@@ -318,6 +322,7 @@ export const finderAttemptResultSchema = z.discriminatedUnion("status", [
       "orphaned",
     ]),
     reason: boundedTextSchema,
+    usage: modelAttemptUsageV2Schema.optional(),
   }),
 ]);
 

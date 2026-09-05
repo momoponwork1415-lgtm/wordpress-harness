@@ -1,0 +1,37 @@
+export { openValidation } from "./validation.js";
+export { projectValidationFrontierGap } from "./validation-frontier-gap.js";
+export {
+  validationAttemptOutputSchema,
+  validationCandidateId,
+  validationCandidateRefSchema,
+  validationCandidateSchema,
+  referenceValidationCandidate,
+  validationCriteria,
+  validationCriterionSchema,
+  validationPlanSchema,
+  validationFrontierGapRefSchema,
+  validationFrontierGapSchema,
+  validationProofGapSchema,
+  validationRecordRefSchema,
+  validationRecordSchema,
+  validationSourceAnchorSchema,
+  validationSynthesisOutputSchema,
+  validationThreatContextSchema,
+} from "./contracts.js";
+export type {
+  OpenValidationOptions,
+  Validation,
+  ValidationAttemptOutput,
+  ValidationCandidate,
+  ValidationCandidateRef,
+  ValidationFrontierGap,
+  ValidationFrontierGapRef,
+  ValidationCandidateIdentityInput,
+  ValidationPlan,
+  ValidationRecord,
+  ValidationRecordRef,
+  ValidationSynthesisAttemptPlan,
+  ValidationSynthesisOutput,
+  ValidationThreatContext,
+  ValidatorAttemptPlan,
+} from "./contracts.js";

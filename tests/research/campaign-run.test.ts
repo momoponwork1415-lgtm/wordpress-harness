@@ -10,6 +10,7 @@ import {
   type AttemptPlanMaterializer,
   type CampaignRunPlan,
 } from "../../src/research/index.js";
+import { openLegacyMapFirstResearchForTests } from "../../src/research/open-research.js";
 import type {
   AttemptExecutionResult,
   ModelExecution,
@@ -104,7 +105,7 @@ function explorationPolicy(): ExplorationBootstrapPolicy {
   };
 }
 
-function hypothesis(anchorNodeId: string): SourceBoundHypothesis {
+function hypothesis(): SourceBoundHypothesis {
   return {
     kind: "source-bound-hypothesis",
     schemaVersion: 1,
@@ -116,9 +117,14 @@ function hypothesis(anchorNodeId: string): SourceBoundHypothesis {
     attackerPremise: "unauthenticated",
     impact: "stored-xss",
     route: {
-      anchorNodeId,
-      nodeIds: [anchorNodeId],
-      relationIds: [],
+      anchors: [
+        {
+          path: "includes/form.php",
+          fileDigest: digest("d"),
+          startLine: 12,
+          endLine: 18,
+        },
+      ],
     },
     unknowns: [
       {
@@ -137,6 +143,9 @@ function finder(
 ): ModelExecution {
   return {
     run: async (plan): Promise<AttemptExecutionResult> => {
+      if (plan.schemaVersion !== 1) {
+        throw new Error("Legacy Finder fixture received a version 2 plan");
+      }
       const value = {
         kind: "finder-attempt-result" as const,
         schemaVersion: 1 as const,
@@ -169,6 +178,9 @@ function finder(
 function emptyFinder(artifacts: JsonArtifactStore): ModelExecution {
   return {
     run: async (plan) => {
+      if (plan.schemaVersion !== 1) {
+        throw new Error("Legacy Finder fixture received a version 2 plan");
+      }
       const value = {
         kind: "finder-attempt-result" as const,
         schemaVersion: 1 as const,
@@ -201,6 +213,9 @@ function emptyFinder(artifacts: JsonArtifactStore): ModelExecution {
 function providerFailedFinder(artifacts: JsonArtifactStore): ModelExecution {
   return {
     run: async (plan) => {
+      if (plan.schemaVersion !== 1) {
+        throw new Error("Legacy Finder fixture received a version 2 plan");
+      }
       const value = {
         kind: "finder-attempt-result" as const,
         schemaVersion: 1 as const,
@@ -322,12 +337,16 @@ function sourcePolicyBoundFinder(
   const enabled = finder(artifacts, candidate);
   const unavailable = providerFailedFinder(artifacts);
   return {
-    run: (plan) =>
-      plan.sourceToolPolicy?.id === "finder-source-evidence-v1" &&
-      plan.sourceToolPolicy.digest === digest("c") &&
-      plan.budget.maxSourceQueries === 12
+    run: (plan) => {
+      if (plan.schemaVersion !== 1) {
+        throw new Error("Legacy Finder fixture received a version 2 plan");
+      }
+      return plan.sourceToolPolicy?.id === "finder-source-evidence-v1" &&
+        plan.sourceToolPolicy.digest === digest("c") &&
+        plan.budget.maxSourceQueries === 12
         ? enabled.run(plan)
-        : unavailable.run(plan),
+        : unavailable.run(plan);
+    },
   };
 }
 
@@ -361,7 +380,7 @@ function verifier(): IndependentVerifier {
 
 function lab(artifacts: JsonArtifactStore): LabControl {
   return {
-    execute: async (plan) => {
+    execute: async ({ plan }) => {
       const isWitness = plan.role === "witness";
       const observation: ExperimentObservation = {
         kind: "experiment-observation",
@@ -439,7 +458,7 @@ async function openScenario(
     id: policy.id,
     digest: await artifacts.putJson(policy),
   };
-  const candidate = hypothesis(map.nodes[0]!.id);
+  const candidate = hypothesis();
   const input = {
     ...createCampaignInput(),
     targetSnapshot: {
@@ -552,7 +571,7 @@ async function openScenario(
           },
         }),
   };
-  const research = openResearch({
+  const research = openLegacyMapFirstResearchForTests({
     databasePath,
     clock: () => new Date(fixedNow),
     campaignExecution: {
@@ -569,6 +588,24 @@ async function openScenario(
 }
 
 describe("CampaignRunner.run", () => {
+  it("rejects a new Map-first v1 run through the public CampaignRunner", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "campaign-map-first-off-"));
+    const scenario = await openScenario(directory, finder);
+    const publicResearch = openResearch({
+      databasePath: scenario.databasePath,
+    });
+
+    try {
+      await expect(publicResearch.runner.run(scenario.plan)).rejects.toThrow(
+        "Map-first Campaign execution is retired",
+      );
+    } finally {
+      publicResearch.close();
+      scenario.research.close();
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("admits four Finder attempts per Wave and rejects a fifth", async () => {
     const directory = await mkdtemp(join(tmpdir(), "campaign-finder-cap-"));
     const scenario = await openScenario(directory, finder, 4);
@@ -641,8 +678,11 @@ describe("CampaignRunner.run", () => {
         kind: "run",
         runId: plan.runId,
       });
+      const progress = await first.reader.inspect(input.campaignId, {
+        kind: "progress",
+      });
 
-      expect({ terminalRef, terminal }).toMatchObject({
+      expect({ terminalRef, terminal, progress }).toMatchObject({
         terminalRef: {
           kind: "campaign-run-record",
           schemaVersion: 1,
@@ -662,6 +702,27 @@ describe("CampaignRunner.run", () => {
             },
           },
         },
+        progress: {
+          kind: "progress",
+          schemaVersion: 1,
+          campaignId: input.campaignId,
+          status: "completed",
+          counts: {
+            runs: { started: 1, completed: 1, active: 0 },
+            attempts: { started: 2, completed: 2, active: 0 },
+            verifications: {
+              started: 1,
+              completed: 1,
+              active: 0,
+              finding: 1,
+              disproved: 0,
+              blocked: 0,
+            },
+          },
+          activeAttempts: [],
+          activeVerifications: [],
+          lastDurableEvent: { kind: "campaign.run-completed" },
+        },
       });
       first.close();
 
@@ -673,6 +734,9 @@ describe("CampaignRunner.run", () => {
             runId: plan.runId,
           }),
         ).resolves.toEqual(terminal);
+        await expect(
+          reopened.reader.inspect(input.campaignId, { kind: "progress" }),
+        ).resolves.toEqual(progress);
         await expect(reopened.runner.run(plan)).resolves.toEqual(terminalRef);
       } finally {
         reopened.close();
@@ -836,7 +900,7 @@ describe("CampaignRunner.run", () => {
 
       let freshExecutions = 0;
       const recoveredFinder = finder(scenario.artifacts, scenario.candidate);
-      const recovered = openResearch({
+      const recovered = openLegacyMapFirstResearchForTests({
         databasePath: scenario.databasePath,
         clock: () => new Date(fixedNow),
         campaignExecution: {

@@ -657,9 +657,16 @@ function stage(map: SurfaceMap, policyValue = policy()) {
   };
 }
 
+function routeAnchor(
+  path: string,
+  fileDigest: string,
+  startLine: number,
+): SourceBoundHypothesis["route"]["anchors"][number] {
+  return { path, fileDigest, startLine, endLine: startLine + 4 };
+}
+
 function hypothesisFor(
-  anchorNodeId: string,
-  routeNodeIds: readonly string[] = [anchorNodeId],
+  anchors: readonly SourceBoundHypothesis["route"]["anchors"][number][],
   rootCause = "missing-rest-authorization",
 ): SourceBoundHypothesis {
   return {
@@ -672,11 +679,7 @@ function hypothesisFor(
     },
     attackerPremise: "unauthenticated",
     impact: "account-takeover",
-    route: {
-      anchorNodeId,
-      nodeIds: [...routeNodeIds],
-      relationIds: [],
-    },
+    route: { anchors: [...anchors] },
     unknowns: [
       {
         claim: "callback permits a password-reset-link disclosure",
@@ -1196,11 +1199,12 @@ describe("Exploration Finder result ingestion", () => {
     if (bootstrap.kind !== "run-wave") return;
 
     const lease = bootstrap.plan.leases[0];
-    const anchor = map.nodes.find((node) => node.kind === "entry");
-    if (lease === undefined || anchor === undefined) {
+    if (lease === undefined) {
       throw new Error("Incomplete minority Hypothesis fixture");
     }
-    const hypothesis = hypothesisFor(anchor.id);
+    const hypothesis = hypothesisFor([
+      routeAnchor("plugin.php", phpDigest, 11),
+    ]);
     const result = finderResult("attempt-1", lease.id, [hypothesis]);
     const results = completeWaveResults(
       bootstrap.plan.leases.map((candidate) => candidate.id),
@@ -1230,10 +1234,7 @@ describe("Exploration Finder result ingestion", () => {
         {
           id: sha256Digest({
             causalIdentity: hypothesis.causalIdentity,
-            routeShape: {
-              nodeIds: hypothesis.route.nodeIds,
-              relationIds: hypothesis.route.relationIds,
-            },
+            routeShape: { anchors: hypothesis.route.anchors },
           }),
           sourceResult: result.ref,
         },
@@ -1255,21 +1256,20 @@ describe("Exploration Finder result ingestion", () => {
     }
     const firstLease = bootstrap.plan.leases[0];
     const secondLease = bootstrap.plan.leases[1];
-    const entry = map.nodes.find((node) => node.kind === "entry");
-    const sink = map.nodes.find((node) => node.kind === "sink");
-    if (
-      firstLease === undefined ||
-      secondLease === undefined ||
-      entry === undefined ||
-      sink === undefined
-    ) {
+    if (firstLease === undefined || secondLease === undefined) {
       throw new Error("Incomplete conflicting-route fixture");
     }
     const first = finderResult("attempt-a", firstLease.id, [
-      hypothesisFor(entry.id, [entry.id], "shared-root-cause"),
+      hypothesisFor(
+        [routeAnchor("plugin.php", phpDigest, 11)],
+        "shared-root-cause",
+      ),
     ]);
     const second = finderResult("attempt-b", secondLease.id, [
-      hypothesisFor(sink.id, [sink.id], "shared-root-cause"),
+      hypothesisFor(
+        [routeAnchor("direct.php", directPhpDigest, 6)],
+        "shared-root-cause",
+      ),
     ]);
     const allResults = completeWaveResults(
       bootstrap.plan.leases.map((candidate) => candidate.id),
@@ -1301,7 +1301,75 @@ describe("Exploration Finder result ingestion", () => {
     expect(forward.hypotheses).toHaveLength(2);
   });
 
-  it("rejects a schema-valid Hypothesis whose anchor is absent from the Map", () => {
+  it("admits a Hypothesis anchored to a file that owns no Surface Map node", () => {
+    const map = initialMap();
+    const unmappedDigest = `sha256:${"9".repeat(64)}`;
+    map.inventory = [
+      ...map.inventory,
+      {
+        path: "unmapped.php",
+        digest: unmappedDigest,
+        size: 120,
+        classification: "php" as const,
+        coverage: { status: "indexed" as const },
+      },
+    ].sort((left, right) => compareText(left.path, right.path));
+    map.summary = { ...map.summary, files: map.inventory.length };
+    expect(
+      map.nodes.some(
+        (node) =>
+          node.evidence.kind === "observed" &&
+          node.evidence.evidence.some(
+            (anchor) => anchor.path === "unmapped.php",
+          ),
+      ),
+    ).toBe(false);
+
+    const policyValue = policy({ eligibleModelFamilies: ["claude"] });
+    const staged = stage(map, policyValue);
+    const bootstrap = staged.exploration.decide({
+      kind: "bootstrap",
+      map: staged.mapRef,
+      policy: staged.policyRef,
+    });
+    if (bootstrap.kind !== "run-wave") {
+      throw new Error("Expected a Work Wave fixture");
+    }
+    const lease = bootstrap.plan.leases[0];
+    if (lease === undefined) throw new Error("Missing Work Lease fixture");
+    const hypothesis = hypothesisFor([
+      routeAnchor("unmapped.php", unmappedDigest, 12),
+    ]);
+    const result = finderResult("attempt-unmapped", lease.id, [hypothesis]);
+    const results = completeWaveResults(
+      bootstrap.plan.leases.map((candidate) => candidate.id),
+      [result],
+    );
+    const exploration = openExploration({
+      surfaceMap: { ref: staged.mapRef, value: map },
+      policy: { ref: staged.policyRef, value: policyValue },
+      waveCompletion: {
+        state: bootstrap.plan.state,
+        wave: { ref: bootstrap.plan.ref, value: bootstrap.plan },
+        results,
+      },
+    });
+
+    expect(
+      exploration.decide({
+        kind: "wave-completed",
+        map: staged.mapRef,
+        state: bootstrap.plan.state,
+        wave: bootstrap.plan.ref,
+        results: results.map((candidate) => candidate.ref),
+      }),
+    ).toMatchObject({
+      kind: "verify",
+      hypotheses: [{ digest: sha256Digest(hypothesis) }],
+    });
+  });
+
+  it("rejects a Hypothesis whose source anchor is absent from the Target Snapshot", () => {
     const map = initialMap();
     const policyValue = policy({ eligibleModelFamilies: ["claude"] });
     const staged = stage(map, policyValue);
@@ -1315,9 +1383,8 @@ describe("Exploration Finder result ingestion", () => {
     }
     const lease = bootstrap.plan.leases[0];
     if (lease === undefined) throw new Error("Missing Work Lease fixture");
-    const absentNode = sha256Digest("absent-surface-node");
     const result = finderResult("attempt-invalid-anchor", lease.id, [
-      hypothesisFor(absentNode),
+      hypothesisFor([routeAnchor("absent.php", phpDigest, 11)]),
     ]);
     const results = completeWaveResults(
       bootstrap.plan.leases.map((candidate) => candidate.id),

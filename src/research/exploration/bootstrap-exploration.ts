@@ -308,16 +308,11 @@ function isSourceBound(
   hypothesis: SourceBoundHypothesis,
   map: SurfaceMap,
 ): boolean {
-  const nodes = new Map(map.nodes.map((node) => [node.id, node]));
-  const relations = new Set(map.relations.map((relation) => relation.id));
-  const anchor = nodes.get(hypothesis.route.anchorNodeId);
-  return (
-    anchor?.evidence.kind === "observed" &&
-    hypothesis.route.nodeIds.includes(hypothesis.route.anchorNodeId) &&
-    hypothesis.route.nodeIds.every((nodeId) => nodes.has(nodeId)) &&
-    hypothesis.route.relationIds.every((relationId) =>
-      relations.has(relationId),
-    )
+  const inventory = new Map(
+    map.inventory.map((entry) => [entry.path, entry.digest] as const),
+  );
+  return hypothesis.route.anchors.every(
+    (anchor) => inventory.get(anchor.path) === anchor.fileDigest,
   );
 }
 
@@ -642,10 +637,7 @@ class BootstrapExploration implements Exploration {
         }
         const id = sha256Digest({
           causalIdentity: artifact.causalIdentity,
-          routeShape: {
-            nodeIds: artifact.route.nodeIds,
-            relationIds: artifact.route.relationIds,
-          },
+          routeShape: { anchors: artifact.route.anchors },
         });
         const candidate = {
           kind: "hypothesis" as const,

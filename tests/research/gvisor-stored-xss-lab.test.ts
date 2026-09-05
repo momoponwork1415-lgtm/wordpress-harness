@@ -16,6 +16,7 @@ import {
   LabControlBlockedError,
   openNativeLabProcessRunner,
   openGvisorStoredXssLabControl,
+  type ExperimentExecutionRequest,
   type ExperimentPlan,
   type LabProcessRunner,
 } from "../../src/research/verification/index.js";
@@ -77,6 +78,23 @@ const testTargetManifest = {
   ],
 };
 const testTargetManifestDigest = sha256Digest(testTargetManifest);
+const testProtocol = {
+  kind: "source-route-experiment-protocol" as const,
+  schemaVersion: 1 as const,
+  adapterVersion: "stored-xss-browser@v1" as const,
+  requiredSourceEvidence: [
+    {
+      path: "admin/plugin.php",
+      fileDigest: rawDigest(testTargetPluginContent),
+      startLine: 1,
+      endLine: 1,
+    },
+  ],
+};
+const browserEffectProtocol = {
+  ...testProtocol,
+  adapterVersion: "browser-script-execution@v1" as const,
+};
 const testConfigurationDigest = sha256Digest({
   kind: "stored-xss-lab-configuration",
   schemaVersion: 1,
@@ -90,6 +108,7 @@ const testConfigurationDigest = sha256Digest({
   }),
   browserWorkerDigest: rawDigest(testWorkerContent),
   browserInputDigest: rawDigest(testInputContent),
+  protocolDigest: sha256Digest(testProtocol),
 });
 const testBaselineDigest = sha256Digest({
   kind: "lab-baseline-definition",
@@ -98,6 +117,29 @@ const testBaselineDigest = sha256Digest({
   runtimeProfileDigest: testRuntimeProfileDigest,
   setupPlanDigest: testSetupPlanDigest,
   configurationDigest: testConfigurationDigest,
+});
+const browserEffectConfigurationDigest = sha256Digest({
+  kind: "stored-xss-lab-configuration",
+  schemaVersion: 1,
+  targetPluginSlug: "fixture-plugin",
+  targetManifestDigest: testTargetManifestDigest,
+  fixturePluginSlug: "harness-fixture",
+  fixtureManifestDigest: sha256Digest({
+    kind: "trusted-fixture-manifest",
+    schemaVersion: 1,
+    entries: [],
+  }),
+  browserWorkerDigest: rawDigest(testWorkerContent),
+  browserInputDigest: rawDigest(testInputContent),
+  protocolDigest: sha256Digest(browserEffectProtocol),
+});
+const browserEffectBaselineDigest = sha256Digest({
+  kind: "lab-baseline-definition",
+  schemaVersion: 1,
+  targetSnapshotDigest: digest("4"),
+  runtimeProfileDigest: testRuntimeProfileDigest,
+  setupPlanDigest: testSetupPlanDigest,
+  configurationDigest: browserEffectConfigurationDigest,
 });
 
 function storedXssExperimentPlan(): ExperimentPlan {
@@ -125,6 +167,89 @@ function storedXssExperimentPlan(): ExperimentPlan {
       successCriterion: "privileged-browser-execution-canary",
       causalFactorState: "present",
     },
+  };
+}
+
+function browserScriptExecutionPlan(): ExperimentPlan {
+  return {
+    ...storedXssExperimentPlan(),
+    bindings: {
+      targetSnapshotDigest: digest("4"),
+      labBaselineDigest: browserEffectBaselineDigest,
+      runtimeProfileDigest: testRuntimeProfileDigest,
+      setupPlanDigest: testSetupPlanDigest,
+      configurationDigest: browserEffectConfigurationDigest,
+      adapterVersion: "browser-script-execution@v1",
+    },
+    mechanism: {
+      kind: "browser-script-execution",
+      schemaVersion: 1,
+      adapterVersion: "browser-script-execution@v1",
+      causalFactor: "attacker-controlled-rendered-value",
+      successCriterion: "browser-execution-canary",
+      victimContext: "privileged",
+      causalFactorState: "present",
+    },
+  };
+}
+
+function storedXssExecutionRequest(
+  plan: ExperimentPlan,
+): ExperimentExecutionRequest {
+  const sourceRederivation = {
+    kind: "source-rederivation" as const,
+    schemaVersion: 1 as const,
+    verificationId: plan.verificationId,
+    targetSnapshotDigest: plan.bindings.targetSnapshotDigest,
+    hypothesisDigest: plan.hypothesisDigest,
+    status: "supported" as const,
+    sourceEvidence: testProtocol.requiredSourceEvidence,
+    experiment: {
+      kind: "stored-xss-browser" as const,
+      schemaVersion: 1 as const,
+      adapterVersion: "stored-xss-browser@v1" as const,
+      causalFactor: plan.mechanism.causalFactor,
+      successCriterion: "privileged-browser-execution-canary" as const,
+    },
+  };
+  return {
+    kind: "experiment-execution-request",
+    schemaVersion: 1,
+    plan,
+    sourceRederivation,
+    sourceRederivationDigest: sha256Digest(sourceRederivation),
+  };
+}
+
+function browserScriptExecutionRequest(
+  plan: ExperimentPlan,
+): ExperimentExecutionRequest {
+  if (plan.mechanism.kind !== "browser-script-execution") {
+    throw new Error("Expected browser script execution Plan");
+  }
+  const sourceRederivation = {
+    kind: "source-rederivation" as const,
+    schemaVersion: 1 as const,
+    verificationId: plan.verificationId,
+    targetSnapshotDigest: plan.bindings.targetSnapshotDigest,
+    hypothesisDigest: plan.hypothesisDigest,
+    status: "supported" as const,
+    sourceEvidence: browserEffectProtocol.requiredSourceEvidence,
+    experiment: {
+      kind: "browser-script-execution" as const,
+      schemaVersion: 1 as const,
+      adapterVersion: "browser-script-execution@v1" as const,
+      causalFactor: plan.mechanism.causalFactor,
+      successCriterion: "browser-execution-canary" as const,
+      victimContext: plan.mechanism.victimContext,
+    },
+  };
+  return {
+    kind: "experiment-execution-request",
+    schemaVersion: 1,
+    plan,
+    sourceRederivation,
+    sourceRederivationDigest: sha256Digest(sourceRederivation),
   };
 }
 
@@ -162,6 +287,10 @@ async function writeLabDefinition(
       kind: "stored-xss-lab-definition",
       schemaVersion: 1,
       bindings: plan.bindings,
+      protocol:
+        plan.mechanism.kind === "browser-script-execution"
+          ? browserEffectProtocol
+          : testProtocol,
       images: testImages,
       target: {
         sourceDirectory: targetDirectory,
@@ -186,6 +315,144 @@ async function writeLabDefinition(
 }
 
 describe("gVisor Stored XSS Lab Control", () => {
+  it("records browser execution without requiring a persistent-state claim", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "gvisor-browser-effect-"));
+    const artifactStore = openFileJsonArtifactStore(join(directory, "cas"));
+    const plan = browserScriptExecutionPlan();
+
+    try {
+      const definition = await writeLabDefinition(directory, plan);
+      const processRunner: LabProcessRunner = {
+        run: async (request) => {
+          if (request.args[0] === "info") {
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({ runsc: { path: "runsc" } }),
+              stderr: "",
+            };
+          }
+          if (request.args[0] === "inspect") {
+            return {
+              exitCode: 0,
+              stdout: request.args.at(-1)?.endsWith("-database")
+                ? "172.30.0.2\n"
+                : "172.30.0.3\n",
+              stderr: "",
+            };
+          }
+          if (
+            request.args[0] === "run" &&
+            request.args.includes(definition.browserImage)
+          ) {
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({
+                kind: "browser-script-execution-result",
+                schemaVersion: 1,
+                normalFunction: "preserved",
+                attackerSequenceExecuted: true,
+                victimContextEstablished: true,
+                browserCanaryExecuted: true,
+              }),
+              stderr: "",
+            };
+          }
+          return { exitCode: 0, stdout: "", stderr: "" };
+        },
+      };
+      const labControl = openGvisorStoredXssLabControl({
+        artifactStore,
+        processRunner,
+        definitionFile: definition.definitionFile,
+      });
+
+      const ref = await labControl.execute(browserScriptExecutionRequest(plan));
+      await expect(artifactStore.readJson(ref.digest)).resolves.toMatchObject({
+        result: {
+          kind: "browser-script-execution",
+          attackerSequenceExecuted: true,
+          victimContextEstablished: true,
+          browserCanaryExecuted: true,
+        },
+      });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("retries one failed runsc Lab in a distinct fresh namespace", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "gvisor-fresh-retry-"));
+    const artifactStore = openFileJsonArtifactStore(join(directory, "cas"));
+    const plan = browserScriptExecutionPlan();
+    const networks: string[] = [];
+    let browserAttempts = 0;
+
+    try {
+      const definition = await writeLabDefinition(directory, plan);
+      const processRunner: LabProcessRunner = {
+        run: async (request) => {
+          if (request.args[0] === "info") {
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({ runsc: { path: "runsc" } }),
+              stderr: "",
+            };
+          }
+          if (request.args[0] === "network" && request.args[1] === "create") {
+            networks.push(request.args.at(-1) ?? "");
+          }
+          if (request.args[0] === "inspect") {
+            return {
+              exitCode: 0,
+              stdout: request.args.at(-1)?.endsWith("-database")
+                ? "172.30.0.2\n"
+                : "172.30.0.3\n",
+              stderr: "",
+            };
+          }
+          if (
+            request.args[0] === "run" &&
+            request.args.includes(definition.browserImage)
+          ) {
+            browserAttempts += 1;
+            if (browserAttempts === 1) {
+              return { exitCode: 1, stdout: "", stderr: "transient" };
+            }
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({
+                kind: "browser-script-execution-result",
+                schemaVersion: 1,
+                normalFunction: "preserved",
+                attackerSequenceExecuted: true,
+                victimContextEstablished: true,
+                browserCanaryExecuted: true,
+              }),
+              stderr: "",
+            };
+          }
+          return { exitCode: 0, stdout: "", stderr: "" };
+        },
+      };
+      const labControl = openGvisorStoredXssLabControl({
+        artifactStore,
+        processRunner,
+        definitionFile: definition.definitionFile,
+      });
+
+      const ref = await labControl.execute(browserScriptExecutionRequest(plan));
+
+      await expect(artifactStore.readJson(ref.digest)).resolves.toMatchObject({
+        result: { browserCanaryExecuted: true },
+      });
+      expect(browserAttempts).toBe(2);
+      expect(networks).toHaveLength(2);
+      expect(new Set(networks)).toHaveProperty("size", 2);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("passes Docker arguments without shell interpretation", async () => {
     const directory = await mkdtemp(join(tmpdir(), "native-lab-process-"));
     const shellMarker = join(directory, "shell-marker");
@@ -241,10 +508,69 @@ describe("gVisor Stored XSS Lab Control", () => {
       processRunner,
     });
 
-    await expect(labControl.execute(storedXssExperimentPlan())).rejects.toEqual(
-      new LabControlBlockedError("gvisor-unavailable"),
-    );
+    await expect(
+      labControl.execute(storedXssExecutionRequest(storedXssExperimentPlan())),
+    ).rejects.toEqual(new LabControlBlockedError("unsupported-experiment"));
     expect(targetLaunchAttempted).toBe(false);
+  });
+
+  it("does not run a fixed Lab procedure for a different source route", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "gvisor-protocol-bind-"));
+    const artifactStore = openFileJsonArtifactStore(join(directory, "cas"));
+    const plan = storedXssExperimentPlan();
+    let processCalls = 0;
+
+    try {
+      const definition = await writeLabDefinition(directory, plan);
+      const sourceRederivation = {
+        kind: "source-rederivation" as const,
+        schemaVersion: 1 as const,
+        verificationId: plan.verificationId,
+        targetSnapshotDigest: plan.bindings.targetSnapshotDigest,
+        hypothesisDigest: plan.hypothesisDigest,
+        status: "supported" as const,
+        sourceEvidence: [
+          {
+            path: "README.md",
+            fileDigest: rawDigest(testTargetReadmeContent),
+            startLine: 1,
+            endLine: 1,
+          },
+        ],
+        experiment: {
+          kind: "stored-xss-browser" as const,
+          schemaVersion: 1 as const,
+          adapterVersion: "stored-xss-browser@v1" as const,
+          causalFactor: plan.mechanism.causalFactor,
+          successCriterion: "privileged-browser-execution-canary" as const,
+        },
+      };
+      const sourceRederivationDigest =
+        await artifactStore.putJson(sourceRederivation);
+      const labControl = openGvisorStoredXssLabControl({
+        artifactStore,
+        processRunner: {
+          run: async () => {
+            processCalls += 1;
+            throw new Error("A mismatched protocol must not start preflight");
+          },
+        },
+        definitionFile: definition.definitionFile,
+      });
+
+      await expect(
+        labControl.execute({
+          kind: "experiment-execution-request",
+          schemaVersion: 1,
+          plan,
+          sourceRederivation,
+          sourceRederivationDigest,
+        }),
+      ).rejects.toEqual(new LabControlBlockedError("unsupported-experiment"));
+      expect(processCalls).toBe(0);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
   });
 
   it("records only a sanitized browser observation from a fresh runsc Lab", async () => {
@@ -316,7 +642,7 @@ describe("gVisor Stored XSS Lab Control", () => {
         definitionFile: definition.definitionFile,
       });
 
-      const ref = await labControl.execute(plan);
+      const ref = await labControl.execute(storedXssExecutionRequest(plan));
       const observation = await artifactStore.readJson(ref.digest);
 
       expect(observation).toMatchObject({
@@ -417,9 +743,9 @@ describe("gVisor Stored XSS Lab Control", () => {
         definitionFile: definition.definitionFile,
       });
 
-      await expect(labControl.execute(plan)).rejects.toEqual(
-        new LabControlBlockedError("baseline-unavailable"),
-      );
+      await expect(
+        labControl.execute(storedXssExecutionRequest(plan)),
+      ).rejects.toEqual(new LabControlBlockedError("baseline-unavailable"));
       expect(labCreationAttempted).toBe(false);
     } finally {
       await rm(directory, { force: true, recursive: true });
@@ -461,9 +787,9 @@ describe("gVisor Stored XSS Lab Control", () => {
         definitionFile: definition.definitionFile,
       });
 
-      await expect(labControl.execute(plan)).rejects.toThrow(
-        "Stored XSS Lab runtime profile binding mismatch",
-      );
+      await expect(
+        labControl.execute(storedXssExecutionRequest(plan)),
+      ).rejects.toThrow("Stored XSS Lab runtime profile binding mismatch");
       expect(labCreationAttempted).toBe(false);
     } finally {
       await rm(directory, { force: true, recursive: true });
@@ -501,9 +827,9 @@ describe("gVisor Stored XSS Lab Control", () => {
         definitionFile: definition.definitionFile,
       });
 
-      await expect(labControl.execute(plan)).rejects.toThrow(
-        "Stored XSS Lab configuration binding mismatch",
-      );
+      await expect(
+        labControl.execute(storedXssExecutionRequest(plan)),
+      ).rejects.toThrow("Stored XSS Lab configuration binding mismatch");
       expect(labCreationAttempted).toBe(false);
     } finally {
       await rm(directory, { force: true, recursive: true });
@@ -544,9 +870,9 @@ describe("gVisor Stored XSS Lab Control", () => {
         definitionFile: definition.definitionFile,
       });
 
-      await expect(labControl.execute(plan)).rejects.toThrow(
-        "Stored XSS Lab Target source binding mismatch",
-      );
+      await expect(
+        labControl.execute(storedXssExecutionRequest(plan)),
+      ).rejects.toThrow("Stored XSS Lab Target source binding mismatch");
       expect(labCreationAttempted).toBe(false);
     } finally {
       await rm(directory, { force: true, recursive: true });

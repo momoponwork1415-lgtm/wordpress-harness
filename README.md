@@ -1,20 +1,21 @@
 # WordPress Harness
 
-WordPressプラグインを対象に、LLMの自由なsource reasoningと独立Verificationを反復するresearch harnessです。第一目的は、既知脆弱性のoracleなしに**high-impactなbroken security semanticsを取りこぼさず発見すること**です。
+WordPressプラグインを対象に、LLMの自由なsource reasoningと独立Validationを反復するbug bounty research harnessです。Productの到達点は、既知脆弱性のoracleなしに**high-impactなbroken security semanticsを取りこぼさず発見し、明らかなfalse positiveを抑え、人間のfresh Verificationまで閉じること**です。
 
 > **Do not optimize for sinks. Optimize for broken security semantics.**
 >
 > **Harness owns the research process; agents own research decisions.**
 
-通常運転はraw-source-firstの有限`Semantic Research Wave`です。単独で重大なSQLi、Stored XSS、PrivEsc等はIndependent Verificationへ進め、強いread/write/file/auth/state primitive、persistent state、cross-request flow、decode/reparse等の`strong semantic frontier`が残るTargetだけをDepth Admissionからwp2shell / Argus-likeなSynthesis・Critic・missing-link Waveへ昇格します。RCEやsite-wide compromiseは最上位impactですが、長いchainだけを成功とは定義しません。
+通常運転はraw-source-firstの有限`Semantic Research Wave`です。単独で重大なSQLi、Stored XSS、PrivEsc等はRoot Evaluation後のsource-only Validationへ進め、強いread/write/file/auth/state primitive、persistent state、cross-request flow、decode/reparse等の`strong semantic frontier`が残るTargetだけをDepth Admissionからwp2shell / Argus-likeなSynthesis・Critic・missing-link Waveへ昇格します。RCEやsite-wide compromiseは最上位impactですが、長いchainだけを成功とは定義しません。
 
 ```mermaid
 flowchart LR
     target["Target"] --> semantic["Semantic Research"]
-    semantic -->|"重大Hypothesis"| verify["Independent Verification"]
+    semantic -->|"重大Hypothesis"| validate["Independent Validation"]
     semantic -->|"strong frontier"| depth["Depth Escalation"]
-    depth --> verify
-    verify --> result["Finding / Negative"]
+    depth --> validate
+    validate --> packet["Review Packet / Negative"]
+    packet --> human["Human Verification"]
 ```
 
 現段階ではtoken costやwall timeよりhigh-impact recallとroot-cause qualityを優先します。budgetはhard ceilingとして持ち、cost最適化はrecall baseline確立後にablationで行います。
@@ -47,4 +48,4 @@ node dist/cli.js campaign inspect --database .private/research.sqlite --campaign
 
 ## Scope
 
-現在のResearch対象はWordPress pluginsです。Target Intelligenceによる自動選定、Human OS、submission、vendor communication、patch generation、dashboardはResearch capabilityの外側または後段に置きます。能力の拡張順は[Roadmap](docs/design/roadmap.md)を参照してください。
+現在のResearch対象はWordPress pluginsです。最初のproduct goalは、手動投入した最新TargetのProspective CampaignからHuman Verification済みFindingまでです。Target Intelligenceによる自動選定、自動submission、vendor communication、patch generation、dashboardは後段に置きます。外部行動はHuman Verificationと分離し、案件ごとの明示承認なしに行いません。能力の拡張順は[Roadmap](docs/design/roadmap.md)を参照してください。

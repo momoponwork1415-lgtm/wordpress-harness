@@ -1,6 +1,6 @@
 # Research
 
-特定versionのWordPressプラグインを対象に、source semanticsからhigh-impactなsecurity-property破壊を探索し、独立検証、記録、学習の反復によって未知の脆弱性を発見・実証する調査context。
+特定versionのWordPressプラグインを対象に、source semanticsからhigh-impactなsecurity-property破壊を探索し、独立したsource-only Validation、記録、学習の反復によって人間が検証すべき未知candidateを作る調査context。
 
 ## Language
 
@@ -8,44 +8,12 @@
 WordPress.org配布または正規入手したpremium WordPress pluginの名前空間付きidentity、canonicalなPlugin Basename、正規化source tree identity、照合済みversion、取得原本と由来を結び付けた不変の調査対象。themeとWordPress CoreはこのcontextのTargetに含まない。
 _Avoid_: Target、Plugin copy、Theme Snapshot、Core Snapshot
 
-**Environment Dependency Snapshot**:
-主対象pluginの通常動作または特定Configuration Variantに必要な追加pluginのsource、version、設定、由来を固定した環境条件。独立したTargetまたは組合せ探索の起点ではない。
-_Avoid_: Secondary Target、Plugin bundle、Dependency Campaign
-
-**Canonical Configuration**:
-pluginをsingle-site WordPressへinstall・activateし、公式手順に沿って最小限の通常機能を利用可能にした再現可能な設定。基準localeは`en_US`、timezoneはUTCとし、異なる条件はConfiguration Variantとして扱う。
-_Avoid_: Default state、Test setup
-
-**Setup Plan**:
-Canonical ConfigurationまたはConfiguration Variantを成立させるための、許可された操作、順序、客観的な成功条件を版とdigestへ固定した計画。自由形式のinstall scriptまたはmodelの成功判断ではない。
-_Avoid_: Shell script、Setup prompt、Runbook
-
-**Setup Receipt**:
-一つのSetup Planについて、固定入力、各段階の結果、runtime identity、sanitized evidence、最終的なreadyまたはセットアップ阻害を結び付けた不変の記録。
-_Avoid_: Install log、Container log
-
-**Functional Smoke**:
-対象pluginの代表的な通常利用操作と、その客観的な結果を確認する最小の試行。単なるHTTP health checkまたはmodelの主観判断ではない。
-_Avoid_: Page ping、Security Experiment、Model verdict
-
-**Configuration Variant**:
-特定Hypothesisの成立に必要なoptional feature、Multisite、環境依存、install directory、またはstateを、Canonical Configurationとの差分と具体的根拠付きで固定した設定。
-_Avoid_: Special setup、Hidden premise
-
 **Campaign**:
-一つの主対象Target Snapshotと、必要な場合のみ明示した環境依存スナップショットに対して、目的、許可範囲、予算、停止条件を固定した一連の研究活動。
+一つのTarget Snapshotに対して、目的、許可範囲、予算、停止条件を固定した一連のsource-only研究活動。
 _Avoid_: Scan、Run
 
-**Setup Blocked**:
-受入済みTarget Snapshotから隔離環境内でCanonical Configurationを成立させられず、Researchを開始できない未完了Campaign状態。受入拒否、脆弱性不在、誤検出を意味しない。
-_Avoid_: Install error、Rejected Target、No findings
-
-**Runtime Profile**:
-Labを再現するWordPress、PHP、database、web server、OCI image、gVisor runtimeのidentityをdigest付きで固定した実行条件。Campaign中に`latest`を再解決しない。
-_Avoid_: Environment name、Docker tag、Current stack
-
 **Budget Envelope**:
-Campaignの実行時間、Attempt数、Work Wave数、並列数の上限と、少なくとも一つの上位Hypothesisを完全検証できる検証予約を開始前に固定した制約。provider usage、token、推定金額は取得できる場合の観測値であり、high-impact recallを下げるための自動最適化目標ではない。
+Campaignと各Attemptのquery、source scan / response bytes、turn、token、structured output、実行時間、Attempt数、Work Wave数、並列数のhard ceilingと、Validation専用予約を開始前に固定した制約。消費目標ではなく、ceiling到達をClosureまたはfalse positiveへ読み替えず、provider usage、token、推定金額をhigh-impact recall低下の自動最適化目標にしない。
 _Avoid_: Cost estimate、Token quota、Open-ended budget
 
 **Follow-up Campaign**:
@@ -57,7 +25,7 @@ _Avoid_: Resume、Budget extension、Retry run
 _Avoid_: Model、Provider config
 
 **Attempt Plan**:
-一つのWork Leaseを一つのModel Profileで実行するために、固定入力、role、Prompt Set、許可tool、出力schema、予算をdigestへ結び付けた不変の計画。
+一つのrole-specific assignmentを一つのModel Profileで実行するために、Target Snapshot、TargetFileManifest、role、assignment、Prompt Set、selected Knowledge、Source Tool Policy、出力schema、予算をdigestへ結び付けた不変の計画。FinderではWork WaveとWork Leaseをassignmentへ含め、判断roleでは評価対象のimmutable artifact refを含める。workerへ何を見せ、どの条件で実行するかの正本であり、別のFinder Context artifactを作らない。
 _Avoid_: CLI command、Prompt、Mutable job
 
 **Source Tool Policy**:
@@ -101,11 +69,11 @@ _Avoid_: Programme scope、Blocklist、Model confidence
 _Avoid_: Finding policy、Current web page、Research scope
 
 **Source Evidence Query**:
-一つのFinder Attemptが同じTarget Snapshot内のdefinition、usage、caller、callee、wrapper、guard、stateまたはsource rangeを追うために行う、Source Tool Policyへ拘束された一時的な読み取り。Surface Mapを変更しない。
+一つのFinderまたはCritic Attemptが同じTarget Snapshot内のdefinition、usage、caller、callee、wrapper、guard、stateまたはsource rangeを追うために行う、TargetFileManifestとSource Tool Policyへ拘束された一時的な読み取り。Surface Mapを変更しない。
 _Avoid_: Context Request、Mapping Evidence Request、Provider filesystem tool
 
 **Tool Receipt**:
-一つのSource Evidence Queryについて、Attempt、Work Lease、Target Snapshot、Source Tool Policy、request、許可判断、走査量、truncation、result digestを結び付けた不変の記録。
+一つのSource Evidence Queryについて、Attempt、role-specific assignment、Target Snapshot、TargetFileManifest、Source Tool Policy、request、許可判断、走査量、partial / terminal result、responseとcontinuationのdigestを結び付けた不変の記録。
 _Avoid_: Model transcript、Source Map relation、Finding evidence
 
 **Context Request**:
@@ -117,7 +85,7 @@ _Avoid_: Unrecorded file read、Network fetch、Wishlist without reason
 _Avoid_: Prompt append、Untracked context、File path only
 
 **Mapping Evidence Request**:
-探索中に見つかった未解決relationについて、攻撃面マップの次revisionで決める問い、根拠anchor、期待する情報利得をSource Mappingへ返す要求。source追加または実行時観測のどちらを使うかは指定しない。
+探索中に見つかった未解決relationについて、攻撃面マップの次revisionでsourceから決める問い、根拠anchor、期待する情報利得をSource Mappingへ返す要求。runtime actionを要求しない。
 _Avoid_: Context Request、Runtime command、Finder tool call
 
 **Development Cohort**:
@@ -133,8 +101,8 @@ Boundary PairのCase role、期待条件、評価対象をResearch workerから�
 _Avoid_: Finder hint、Campaign Policy、Known-vulnerability prompt
 
 **Calibration Review**:
-同じCausal Identityのpositive Finding、patched Disproved、正常機能維持、oracle-free negativeの非昇格が揃ったかを判定するprivate評価。脆弱性の探索またはFindingのVerificationではない。
-_Avoid_: Verification、Finder review、Model judge
+同じCausal Identityのpositive `ready-for-human`、patched Disproved、正常機能維持、oracle-free negativeの非昇格が揃ったかを判定するprivate評価。脆弱性の探索、ValidationまたはHuman Verificationではない。
+_Avoid_: Validation、Human Verification、Finder review、Model judge
 
 **Boundary Pair Evidence**:
 Calibration Reviewの全条件が成立したことをterminalなResearch evidenceへ結び付けた不変の評価記録。
@@ -153,7 +121,7 @@ _Avoid_: Production scan、Live exploitation、Benchmark run
 _Avoid_: Low-privilege user、Normal user
 
 **Frontier Discovery Capability**:
-既知脆弱性のoracleなしに、Permitted Attackerからhigh-impactなsecurity-property破壊へ至る未知routeをsource semanticsから発見し、独立VerificationとHuman Confirmationまで到達できる能力。RCEまたは同等のsite-wide compromiseは最上位impactだが唯一の成功条件ではなく、ATO、PrivEsc、unauthenticated SQLi、強いStored XSS、arbitrary file operation、object injection等を含む。
+既知脆弱性のoracleなしに、Permitted Attackerからhigh-impactなsecurity-property破壊へ至る未知routeをsource semanticsから発見し、独立Validation、Human Review Packet、Human Verificationまで到達できる能力。RCEまたは同等のsite-wide compromiseは最上位impactだが唯一の成功条件ではなく、ATO、PrivEsc、unauthenticated SQLi、強いStored XSS、arbitrary file operation、object injection等を含む。
 _Avoid_: RCE detector、Sink coverage、CWE recall、Static rule coverage
 
 **Researcher Reference**:
@@ -169,7 +137,7 @@ Target Snapshotのentry point、trust transition、guard、state、sink、関連
 _Avoid_: Threat model、Scan result、Exploration scope
 
 **Evidence State**:
-Surface Mapのnodeまたはrelationを、固定sourceまたは型付き実行時観測から直接確認した`observed`、根拠から導いた`inferred`、接続を確定できない未解決（`unknown`）のいずれかとして表す区分。不明を観測事実へ昇格させない。
+Surface Mapのnodeまたはrelationを固定sourceから直接確認した`observed`、source根拠から導いた`inferred`、接続を確定できない未解決（`unknown`）のいずれかとして表す区分。不明を観測事実へ昇格させない。
 _Avoid_: Confidence score、Model certainty、Boolean known
 
 **Map Delta Proposal**:
@@ -185,15 +153,19 @@ _Avoid_: Mapper output、Confidence report、Validation log
 _Avoid_: Parser object、Raw AST dump、Surface Map、Exploration scope
 
 **Analysis Unit**:
-一つのWork Leaseに対し、Target Snapshot、任意のSurface Map、PHP Program Index等から決定的に選び、最初に渡すsource range、関連artifact、選択理由、上限をTarget digestへ結び付けた版付きの有限context。初期seedであって、読めるfile、call graphの完全性、到達可能性、脆弱性を主張しない。
+optionalなmap-assisted coverageの一つのWork Leaseに対し、Target Snapshot、Surface Map、PHP Program Index等から決定的に選び、最初に渡すsource range、関連artifact、選択理由、上限をTarget digestへ結び付けた版付きの有限context。初期seedであって探索scopeではなく、Default raw-sourceまたはmissing-link Work Waveの必須artifactではない。
 _Avoid_: Prompt chunk、Complete call graph、Exploration scope
 
+**Research Thesis**:
+Target Snapshot、oracle-freeなmetadata、TargetFileManifestの観測、または明示的に許可された同一Snapshotの先行artifactからRoot Plannerが作る、調べるべきsecurity assumptionまたは機能間interactionを表した未検証の研究方向。Hypothesis、file scope、脆弱性class、Finderが従う固定手順ではない。
+_Avoid_: Hypothesis、Focus Area、Finder procedure、File scope
+
 **Focus Area**:
-coverageまたは有限workのためにTargetから切り出した観測上の研究領域。FinderがTarget全体へpivotする権利を制限せず、Map外candidateを拒否するscopeではない。
+optionalなmap-assisted coverageのためにTargetから切り出した観測上の研究領域。FinderがTarget全体へpivotする権利を制限せず、Map外candidateを拒否するscopeではない。
 _Avoid_: Agent task、Vulnerability class、Exploration boundary
 
 **Work Lease**:
-一つのresearch thesis、Focus Area、Hypothesisまたはmissing linkを一つのworkerへ期限・予算付きで割り当てた記録。探索手順またはfile scopeを固定しない。
+一つのResearch Thesis、Frontier GapまたはFocus Areaを一つのworkerへ期限・予算付きで割り当てた記録。探索手順またはfile scopeを固定しない。
 _Avoid_: Prompt、Agent procedure
 
 **Work Wave**:
@@ -201,23 +173,47 @@ _Avoid_: Prompt、Agent procedure
 _Avoid_: Open-ended swarm、Arrival-order batch
 
 **Semantic Research Wave**:
-Target Snapshot全体へraw-source-firstで到達できる最大4個の独立free-reasoning Finder Attemptを持ち、high-impact Hypothesis、Route Fragment、Unknownを集める通常運転のWork Wave。長いchainまたは特定CWEを必須成果にせず、Surface Mapを探索境界にしない。
+Target Snapshot全体へraw-source-firstで到達できる最大4個の独立free-reasoning Finder Attemptを持ち、high-impact Hypothesis、Route Fragment、source-boundなunknownを集める通常運転のWork Wave。unknownは独立した自由文artifactにせず、必要fact、source evidence、falsifier、次の決定的actionを持つFrontier Gapへ正規化する。長いchainまたは特定CWEを必須成果にせず、Surface Mapを探索境界にしない。
 _Avoid_: Breadth scan、Depth Campaign、Sink sweep
 
+**Root Evaluation**:
+Work Waveの全Attemptがterminalになった時、またはDepthのAdversarial Critiqueがdurableになった時に、boundedなtyped artifactをstable orderで評価してIteration Decisionを作るExploration所有のmodel判断。fresh contextで実行し、Harnessはartifact completeness、source provenance、参照、policyだけを決定論的に検査する。raw transcript、confidence、model identity、到着順、private oracleを入力または採否根拠にしない。
+_Avoid_: Deterministic severity filter、Majority vote、Finder self-review、Verification
+
 **Depth Admission**:
-Semantic Research Waveまたは他の探索artifactから、strong read/write/file/auth/state capability、persistent state、cross-request/cross-actor flow、parser/transform mismatch、security assumption mismatch、具体的missing link等のsource-bound evidenceを根拠に、同じTargetへmulti-waveの追加推論予算を投資すると確定した研究判断。既知の最終RCE/ATO/PrivEscを要求しない。
+Semantic Research Waveまたは他の探索artifactから、少なくとも一つのsource-boundなstrong read/write/file/auth/state capabilityまたはsecurity-semantic mechanismと、Permitted Attackerからhigh-impactへ伸びるplausibleなcompositionまたは具体的Frontier Gapを根拠に、同じTargetへmulti-waveの追加推論予算を投資すると確定した研究判断。persistent state、cross-request/cross-actor flow、parser/transform mismatch、producer/consumer mismatch、security assumption mismatch等は独立した十分条件候補であり、全項目の一致や既知の最終RCE/ATO/PrivEscを要求しない。
 _Avoid_: Severity threshold、RCE sink match、Model confidence
+
+**Approach Family**:
+一つのCampaignとTarget Snapshot内で、同じcore security assumptionとstateまたはcapability transition mechanismを追うresearch lineage。複数のRoute Fragment、Hypothesis、Frontier Gapを参照でき、一つのFragmentも複数Familyから参照できるが、file、surface、表現、想定impactの違いだけでは分けず、独立に反証できるmechanismだけを別Familyにする。
+_Avoid_: Prompt variant、Vulnerability class、File scope、Worker role
+
+**Approach Family Admission**:
+Wave Barrier後のRoot Evaluationが、一つのcore security assumptionとmechanism、根拠subject、falsifier、次actionをまとめ、同じIteration DecisionのValidation / Depth actionから参照可能にした不変のFamily開始宣言。local keyは同じDecision内のgroupingにだけ使い、Campaign-localなFamily identityまたは状態をmodelに決めさせない。
+_Avoid_: Free-form tag、Global family ID、Validation verdict、Mutable registry entry
+
+**Approach Family Registry**:
+一つのCampaignに属するApproach Familyのidentity、evidence、round、`active / blocked / exhausted`状態、blocked理由、Reopen Conditionを表す再構築可能な現在view。Familyの意味と状態判断はExplorationに属し、永続事実とreplayはResearch Recordに属する。
+_Avoid_: Mutable source of truth、Global memory、Exploration Queue
+
+**Reopen Condition**:
+`blocked`または`exhausted`のApproach Familyを再び`active`にできる、新しい必要fact、evidence種別、比較対象となる先行evidence、次の決定的actionを固定した条件。時間経過、retry回数、言い換えだけでは成立しない。
+_Avoid_: Retry trigger、Free-form reminder、Timeout
 
 **Depth Campaign**:
 Depth AdmissionされたTarget frontierに対し、Approach Family Registry、Root Synthesis、Adversarial Critic、fresh missing-link Work Waveを反復し、高impact routeのclosureまたはevidence-backed stopまで追うCampaign運行。
 _Avoid_: Default Campaign、Long single session、RCE-only scan
 
+**Depth Work Queue**:
+Iteration Decisionの`admit-depth`と`schedule-work`を、Target、TargetFileManifest、元Wave、全subject ref、falsifier、次actionへbindしたversioned待機集合。最大4件のstable batchへ分けるが、枠を超えたitemを削除せず後続batchへ保持する。
+_Avoid_: Priority heap、Dropped overflow、Unrecorded next prompt
+
 **Iteration Decision**:
-一つのWork Waveのterminal evidenceから、Verification、Depth Admission、有限の次作業、能力阻害、評価待ち、またはCampaign停止のいずれかを確定した研究判断。
+一つのWork Waveのterminal evidence、またはそのDepth SynthesisとCritiqueから、Validation candidate、Depth Admission、有限の次作業、retain、Closure Record、能力阻害を非排他的なtyped actionとして確定し、Campaignを`continue`、`coverage-closed`、`incomplete`のいずれに置くかを示す研究判断。同じHypothesisまたはfrontierをValidationとDepthの両方へ送れる。全semantic inputに一つ以上の明示的処遇を要求し、黙示的なcandidate破棄を許さない。
 _Avoid_: Agent suggestion、Next prompt、Unrecorded scheduler state
 
 **Exploration Lane**:
-探索portfolioの偏りを観測するためWork Leaseへ付けられる目的区分。worker role、model identity、Verification Queue、固定手順ではない。
+探索portfolioの偏りを観測するためWork Leaseへ付けられる目的区分。worker role、model identity、Validation Queue、固定手順ではない。
 _Avoid_: Agent type、Model specialization、Queue
 
 **Frontier Lane**:
@@ -245,12 +241,16 @@ _Avoid_: Same-prompt voting、Model ensemble、Vulnerability checklist
 _Avoid_: Unbounded brainstorming、Random prompt、Oracle hint
 
 **Chain Synthesis**:
-terminalなWork Waveの型付きRoute Fragment、Hypothesis、state transitionを照合し、semanticなchain候補またはFrontier Gapを作るmodel-owned探索判断。Harnessのdeterministic scriptまたはFinding昇格ではない。
+durableなApproach Family Registryにある型付きRoute Fragment、Hypothesis、Frontier Gap、state transitionを照合し、semanticなChain Proposalを作るmodel-owned探索判断。Harnessのdeterministic scriptまたはFinding昇格ではない。
 _Avoid_: Worker chat、Transcript merge、Finding composition
 
-**Runtime Observation**:
-静的に確定できないregistration、dispatch、state transition等をfresh Lab cloneで低影響に観測し、Surface Map revisionへ根拠を返す型付き試行。security propertyの破壊を示す成立証拠ではない。
-_Avoid_: Experiment、Witness、Discovery shell
+**Chain Proposal**:
+Root SynthesisがFamily、Fragment、Hypothesis、Frontier Gapをsemanticに接続して提案する未検証artifact。順序付きroute step、actor、request、state identity、値の受渡し、sourceで観測したrelationと提案connectionの区別、attacker premise、security property、unknown、falsifier、次actionを持つが、Evidence Route、Source-bound Hypothesis、Validation Candidate、Findingではない。
+_Avoid_: Proven route、Deterministic graph path、Finding
+
+**Adversarial Critique**:
+fresh Adversarial Criticが全Chain Proposalについてattacker premise、actor、state identity、request ordering、defense、causal hop、source bindingを独立に攻撃し、`survives / needs-evidence / contradicted`、falsifier、具体的Frontier Gapとして残すtyped artifact。Verification verdict、work scheduling、Family transition、Finding昇格ではない。
+_Avoid_: Finder self-review、Disproved、Severity score
 
 **Gap Review**:
 Closure Recordとは独立に、未観測surface、未解決relation、未追跡state、探索重複を調べるcoverage review。新しい根拠が既存closureの前提を変えた場合は研究workを再開する。
@@ -261,12 +261,12 @@ static rule matchまたは決定的解析が示した、出自付きの未確認
 _Avoid_: Scanner finding、Verified route、Automatic verdict
 
 **Attempt**:
-一つのWork Leaseを、一つの固定Model Profileとfresh contextで完了させようとする実行単位。独立性、予算、outcomeの境界となる。
+一つのrole-specific assignmentを、一つの固定Model Profileとfresh contextで完了させようとする実行単位。Finderは一つのWork Leaseを、判断roleは一つのboundedなartifact集合をassignmentとし、独立性、予算、outcomeの境界となる。
 _Avoid_: CLI process、Session、Retry
 
-**Independent Reproduction**:
-同じFrontier Hypothesisを、過去Attemptのconversation、scratch、payload、writable stateを使わず、freshなVerifierとLabで再導出して成立証拠と因果対照実験を再現する試行。
-_Avoid_: Retry、Session resume、Replay of prior payload
+**Independent Validation Attempt**:
+同じValidation Candidateを、Finder、Criticまたは別Validatorのconversation、scratch、verdictを使わず、fresh contextとread-only source toolで共通Validation Rubricへ照らす試行。Target code、build、testまたはruntime attackを実行しない。
+_Avoid_: Finder self-review、Runtime Verification、Vote
 
 **Model Separation Exception**:
 Frontier reviewで異なるmodel familyを割り当てられず、同じfamilyを再利用した理由と影響を残す記録。
@@ -280,112 +280,108 @@ _Avoid_: Attempt、Campaign resume
 一つのAttemptのnative agent processと許可toolだけを実行し、Target Snapshotをread-only、scratchをwriteableにした隔離zone。
 _Avoid_: 隔離検証環境、Host process
 
-**Verification Lab**:
-固定runtime上でWordPress、plugin、database、browserを実行し、typed Experimentごとに破棄または既知stateへ戻す隔離zone。
-_Avoid_: Agent Sandbox、Development environment
-
-**Lab Baseline**:
-成立証拠と因果対照実験のfresh sibling Labを生成する、Runtime Profile、Target Snapshot、Setup Plan、seed state、正常機能確認をhash固定した変更不能な起点。
-_Avoid_: Running Lab、Docker image only
-
-**External Dependency Grant**:
-隔離検証環境が特定の外部serviceへ接続する必要性、最小接続範囲、test account、credential、記録、上限をCampaign開始前に固定したnetwork capability。
-_Avoid_: Internet access、Domain allowlist only
-
-**SecretRef**:
-Credential Brokerが保持するsecretを値を露出せず参照するopaque identity。Ledgerにはscope、期限、receiptだけを残す。
-_Avoid_: Token、Environment variable
-
-**Credential Broker**:
-External Dependency Grantに従い、専用test credentialを最終利用境界で注入し、rotation、revocation、redactionを記録するtrusted control-plane component。
-_Avoid_: Secret file mount、Shared account
-
 **Exploration Queue**:
 novelty、expected information gain、high-impact potential、未解決frontier、探索費用から、次に調べるresearch thesisまたはgapを並べた作業列。
-_Avoid_: Verification Queue、Global priority
+_Avoid_: Validation Queue、Global priority
 
 **Hypothesis**:
 特定のattacker premiseからsecurity impactへ至る可能性を、反証可能なrouteと不足証拠で表した未確認の主張。
 _Avoid_: Lead、Candidate、Finding
 
 **Evidence Route**:
-一つのattacker premiseから一つのsecurity impactまでを、sourceまたはExperiment evidence付きの因果関係で結ぶ最小subgraph。Target全体のcall graphや自由文の攻撃物語ではない。
+一つのattacker premiseから一つのsecurity impactまでを、source evidence付きの因果関係で結ぶ最小subgraph。Target全体のcall graphや自由文の攻撃物語ではない。
 _Avoid_: Call graph、Transcript、Exploit narrative
 
 **Route Fragment**:
-同じTarget Snapshot内で複数Hypothesisが参照できる、連続したobserved Evidence Routeの一部。新しい接続関係やterminal impactを証明せず、Targetを越えてobserved stateを継承しない。単独severityが低くてもhigh-impact compositionに必要なsemantic mechanismなら保持できる。
+同じTarget Snapshot内で複数HypothesisまたはApproach Familyが参照できる、immutableで連続したobserved Evidence Routeの一部。特定Familyには所属せず、新しい接続関係やterminal impactを証明せず、Targetを越えてobserved stateを継承しない。単独severityが低くてもhigh-impact compositionに必要なsemantic mechanismなら保持できる。
 _Avoid_: Finding、Exploit primitive library、Global fact
 
 **Frontier Gap**:
-現在のEvidence RouteまたはRoute Fragmentからhigh-impactなsecurity-property破壊へ至るために必要な、未確認のessential causal relation。必要fact、falsifier、次の決定的research actionまたはExperimentを伴う。
+現在のEvidence RouteまたはRoute Fragmentからhigh-impactなsecurity-property破壊へ至るために必要な、未確認のessential causal relation。必要fact、source evidence、falsifier、次の決定的research actionを伴う。根拠または決定可能な次actionを持たない自由文のunknownはFrontier Gapにしない。
 _Avoid_: Confidence score、Missing-edge count、Speculation
 
 **Source-bound Hypothesis**:
-少なくとも一つの実在するentryまたはsecurity-relevant nodeをEvidence Route内でsource evidenceへ結び、unknown、falsifier、次のExperimentを明示したHypothesis。
+causal routeをTarget Snapshot内の実在するsource range（path、file digest、line range）へ結び、unknown、falsifier、次の決定的なsource investigationまたはHuman Verification uncertaintyを明示したHypothesis。Surface Map nodeの存在を成立条件にしない。
 _Avoid_: Suspicion、Idea
 
 **Preflight Disposition**:
 Hypothesisのsymbol実在、entry到達性、権限・nonce等の防御、security-relevant effectへのrouteを固定sourceで検査した`passed`、`conclusively-disproved`、`inconclusive`の三値判定。不明は反証ではない。
 _Avoid_: Heuristic score、Model confidence、Finding
 
-**Verification Queue**:
-事前検査で反証されていないHypothesisを、impact、到達根拠、次の決定的Experiment、費用、coverageで並べた待機集合。Finder confidenceが低いこと、予算内で選ばれないことは却下を意味しない。
-_Avoid_: Finding Queue、Rejected hypotheses、FIFO
+**Validation Candidate**:
+Wave BarrierとRoot Evaluationを通過し、exact duplicateをまとめた一つのSource-bound Hypothesisまたはsource-bound Chain Proposal。Validationの開始単位であり、FindingまたはHuman Review Packetではない。
+_Avoid_: Finder checkpoint、Finding、Scanner alert
 
-**Experiment**:
-一つのHypothesisを支持または反証するために、事前にsuccess criterionを定めて行う再現可能な試行。
-_Avoid_: Test、Probe
+**Validation Intent**:
+Root Evaluationがadmitしたexact Validation CandidateをCASへ固定し、起動前にCampaign、Run、全origin Approach Familyへbindした追記型の実行意思。重複起動を防ぎ、Familyのpending ValidationをLedgerから再構築する。
+_Avoid_: Validator output、Validation Disposition、Mutable queue row
 
-**Witness**:
-Experimentがsecurity propertyの破壊を客観的に示した実行結果。
-_Avoid_: Argument、Model verdict
+**Validation Threat Context**:
+versioned WordPress threat baseline、Permitted Attacker、Target Snapshot metadata、公開surface、主張するbroken security property、明示的なtechnical exclusionをValidation Candidateへbindした入力。programme eligibilityまたは既知Findingを含めない。
+_Avoid_: Programme scope、Target oracle、Unversioned threat model
 
-**Execution Canary**:
-使い捨ての隔離検証環境内だけでcodeまたはcommand executionを示す、一回限りのnonce付き無害effect。interactive access、外部egress、実data取得、永続backdoorを含まない。
-_Avoid_: Reverse shell、Persistent payload、Host command
+**Validation Rubric**:
+`source integrity`、`reachability and premise`、`broken control`、`causal route and security effect`、`counterevidence and proof gap`を各`pass / fail / unknown`とsource evidenceで評価する共通contract。severity、model confidence、支持数をcriterionにしない。
+_Avoid_: Score threshold、CWE checklist、Majority vote
 
-**Causal Control**:
-成立証拠と同じsurfaceおよび環境を使い、仮定した原因要素だけを除くことでsecurity propertyの破壊が消えることを示す比較結果。
-_Avoid_: Benign sample、Unrelated negative test
+**Validation Queue**:
+Root Evaluation後のValidation Candidateをstable identityとBudget Envelopeへbindした待機集合。通常は二つのIndependent Validation Attemptを開始し、material conflict時だけ三つ目を追加する。予算内で実行されないことは却下または削除を意味しない。
+_Avoid_: Finder checkpoint queue、Finding Queue、FIFO
+
+**Validation Synthesis**:
+同じValidation Candidateに対するIndependent Validation Attemptのrubric結果を、source toolなしのfresh contextで統合する判断。新しいevidenceまたはrouteを書き足さず、多数決ではなく参照可能な根拠と反証からValidation Dispositionを作る。
+_Avoid_: Validator vote、Source research、Finding promotion
+
+**Validation Disposition**:
+Validation Synthesisがcandidate全体へ付ける`ready-for-human`、`needs-research`、`disproven`、`rejected`または`validation-pending`の理由付きterminalまたは保留判断。severityとRisk Assessmentを含めない。
+_Avoid_: Finding、Human decision、Confidence label
+
+**Validation Frontier Gap**:
+`needs-research`のValidation Synthesisが選んだ一つのValidator Attemptの具体的proof gapを、元のValidation Candidateと全origin Approach Familyへ結び付けた不変artifact。Finder Attempt、Work Lease、Work Waveのprovenanceを持たず、新しいApproach Familyを開始しない。
+_Avoid_: New Family、Finder checkpoint、Free-form research request
+
+**Ready-for-human**:
+Validation Rubricの全criterionがpassし、残るunknownがruntime reproductionだけであるValidation Disposition。FindingまたはHuman Verification成功を意味しない。
+_Avoid_: Confirmed、Verified Finding、Approved
+
+**Risk Assessment**:
+Validation Synthesis後にattacker role、prerequisite、exposed surface、security effect、configuration、blast radiusを構造化したartifact。Validityを変更せず、programme eligibilityまたは外部行動を判断しない。
+_Avoid_: Validation verdict、CVSS-only ranking、Programme Disposition
+
+**Human Review Packet**:
+一つのReady-for-human candidateについてTarget/version、Manifest、deduped Hypothesis、attacker premise、source route、調べたcontrol、Validation AttemptとSynthesis、runtime uncertainty、Risk Assessment、reproduction sketchをdigest固定したHuman OSへのversioned handoff。raw transcript、credential、内部推論を含めない。
+_Avoid_: Finding、Report、Transcript
 
 **Skeptic Review**:
 成立主張を崩す観点から、attacker premise、到達可能性、既存防御、因果関係、scopeを独立に再確認するreview。
 _Avoid_: Model self-review、Approval
 
-**Finding**:
-固定したTarget Snapshotに対し、独立Verificationがrouteを再導出し、cleanなlocal WordPress環境で成立証拠と因果対照実験を確認した脆弱性。
-_Avoid_: Hypothesis、Report
-
-**Programme Disposition**:
-Findingを特定のWordfence適格性スナップショットに照らし、`eligible`、`ineligible`、`needs-current-policy`のいずれかと根拠へ固定した外部行動用の判定。Findingの技術的真偽を変更しない。
-_Avoid_: Verification outcome、False positive、Submission receipt
-
-**Known Duplicate Disposition**:
-技術的に成立したFindingを、対象plugin、affected versionの重なり、Causal IdentityによってWordfence等の既知脆弱性と照合し、新規、重複、または判定不能と根拠へ固定した外部行動用の判定。Researchの探索、Verification、Findingの技術的真偽へ逆流させない。
-_Avoid_: Hypothesis deduplication、Oracle hint、Disproved
-
 **Causal Identity**:
-root cause、attacker-controlled primitive、破壊されるsecurity propertyの組で表すHypothesisまたはFindingの重複単位。
+root cause、attacker-controlled primitive、破壊されるsecurity propertyの組で表すHypothesisまたはValidation Candidateの重複単位。
 _Avoid_: File match、Vulnerability-class match
 
+**Legacy Automated Finding**:
+ADR 0122より前のVerification schemaで、source再導出、Witness、Causal Control、Lab bindingから自動生成されたread-only Finding record。元のLedger上の意味を維持するが、新policyのFinding、Ready-for-humanまたはHuman Verificationへ再解釈しない。
+_Avoid_: Current Finding、Ready-for-human、Migrated Finding
+
 **Calibration Fingerprint**:
-同じBoundary Pairのterminal Findingを異なるAttemptやModel Profileの間で照合するため、Target Snapshot、Evidence Routeのsource anchor、Experiment protocol、WitnessとCausal Controlの観測を固定した構造的identity。modelが生成したCausal Identityの文言または既知答えを探索へ渡すものではない。
+同じBoundary Pairのterminal candidateを異なるAttemptやModel Profileの間で照合するため、Target Snapshot、Evidence Routeのsource anchorとHuman Verification結果を固定した構造的identity。modelが生成したCausal Identityの文言または既知答えを探索へ渡すものではない。
 _Avoid_: Normalized Causal Identity、Model string match、Finder hint
 
 **Blocked**:
-必要なsource、runtime、tool、または前提を取得できず、Hypothesisを支持も反証もできないVerification結果。
-_Avoid_: Failed、Disproved
+必要なsource、tool、providerまたは前提を取得できず、Validation Candidateを支持も反証もできないlegacy表現。新policyでは原因付き`validation-pending`を使う。
+_Avoid_: Failed、Disproved、Rejected
 
 **Disproved**:
-独立Verificationが、必要なroute、premise、security property、または成立証拠条件の不成立を証拠付きで示したHypothesis結果。
+独立Validationが、必要なroute、premise、controlまたはsecurity propertyの不成立をsource evidence付きで示したValidation Disposition。
 _Avoid_: Blocked、Rejected
 
 **Coverage Closure**:
-主要なresearch thesis、high-impact frontier、未解決gapが理由付きterminalとなり、独立したgap passを繰り返しても新しいsource evidence、Hypothesis、Route Fragment、priority変化が生じないCampaign状態。Map coverageの完成またはFinder自己申告だけでは成立しない。
+主要なresearch thesis、high-impact frontier、未解決gap、Validation Queueが理由付きterminalとなり、独立したgap passを繰り返しても新しいsource anchor、state transition、capability、causal relation、Hypothesis、Route Fragment、attacker premiseまたはpriority変化が生じないResearch状態。Human DeferredまたはHuman Verificationの完了をResearch closure条件にしない。支持model数、confidence、同じtool hit、Map coverageの完成、Finder自己申告、一Waveの空振りだけでは成立しない。
 _Avoid_: Timeout、Zero findings、Agent done、Map complete
 
 **Incomplete Campaign**:
-予算、tool、runtime、provider、または証拠不足により、active research thesis、Blocked Hypothesis、strong frontier、検証待ち項目のいずれかを残して停止したCampaign。脆弱性がないという結論ではない。
+予算、tool、provider、Root Evaluation不成立、または証拠不足により、active research thesis、strong frontier、未解決gap、Validation Candidateのいずれかを残して停止したResearch状態。Review Packetが存在していても残workがあればIncompleteになり得る。脆弱性がないという結論ではない。
 _Avoid_: Completed、No vulnerabilities、Failed run
 
 **Closure Record**:
@@ -393,7 +389,7 @@ _Avoid_: Completed、No vulnerabilities、Failed run
 _Avoid_: Worker summary、Done flag
 
 **Research Ledger**:
-Hypothesis、Experiment、証拠、判断、費用、次の行動を因果関係ごと追跡できる追記型の研究記録。
+Hypothesis、Validation、source evidence、判断、費用、次の行動を因果関係ごと追跡できる追記型の研究記録。
 _Avoid_: Transcript、Log
 
 **Lesson**:

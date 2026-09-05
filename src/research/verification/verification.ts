@@ -8,6 +8,7 @@ import {
   experimentObservationRefSchema,
   experimentObservationSchema,
   experimentPlanSchema,
+  independentVerifierResultSchema,
   sourceRederivationSchema,
   verificationPlanSchema,
   type ExperimentObservation,
@@ -19,11 +20,13 @@ import {
   type VerificationPlan,
   type VerificationRecordRef,
 } from "./contracts.js";
+import type { ModelAttemptUsageV2 } from "../model-attempt-usage-contracts.js";
 
 function experimentPlan(
   plan: VerificationPlan,
   planDigest: string,
   rederivation: ReturnType<typeof sourceRederivationSchema.parse>,
+  rederivationDigest: string,
   role: "witness" | "control",
 ): ExperimentPlan {
   return experimentPlanSchema.parse({
@@ -32,6 +35,7 @@ function experimentPlan(
     experimentId: sha256Digest({
       kind: "verification-experiment",
       planDigest,
+      sourceRederivationDigest: rederivationDigest,
       role,
     }),
     verificationId: plan.verificationId,
@@ -39,6 +43,7 @@ function experimentPlan(
     siblingGroupId: sha256Digest({
       kind: "verification-sibling-group",
       planDigest,
+      sourceRederivationDigest: rederivationDigest,
       labBaselineDigest: plan.labBaseline.digest,
     }),
     hypothesisDigest: plan.hypothesisDigest,
@@ -73,6 +78,15 @@ async function readObservation(
   return observation;
 }
 
+function requireVerifierUsage(
+  usage: ModelAttemptUsageV2 | undefined,
+): ModelAttemptUsageV2 {
+  if (usage === undefined) {
+    throw new Error("Verification v2 completed without Verifier usage");
+  }
+  return usage;
+}
+
 function isBoundExperimentPair(
   plan: VerificationPlan,
   witnessPlan: ExperimentPlan,
@@ -87,11 +101,28 @@ function isBoundExperimentPair(
       controlPlan.mechanism.kind === "stored-xss-browser" &&
       witness.result.kind === "stored-xss-browser" &&
       control.result.kind === "stored-xss-browser") ||
+    ((plan.hypothesis.impact === "stored-xss" ||
+      plan.hypothesis.impact === "reflected-xss" ||
+      plan.hypothesis.impact === "dom-xss") &&
+      witnessPlan.mechanism.kind === "browser-script-execution" &&
+      controlPlan.mechanism.kind === "browser-script-execution" &&
+      witness.result.kind === "browser-script-execution" &&
+      control.result.kind === "browser-script-execution") ||
     (plan.hypothesis.impact === "sql-injection" &&
       witnessPlan.mechanism.kind === "sql-injection-database" &&
       controlPlan.mechanism.kind === "sql-injection-database" &&
       witness.result.kind === "sql-injection-database" &&
-      control.result.kind === "sql-injection-database");
+      control.result.kind === "sql-injection-database") ||
+    (plan.hypothesis.impact === "sql-injection" &&
+      witnessPlan.mechanism.kind === "sql-query-semantic-effect" &&
+      controlPlan.mechanism.kind === "sql-query-semantic-effect" &&
+      witness.result.kind === "sql-query-semantic-effect" &&
+      control.result.kind === "sql-query-semantic-effect") ||
+    (plan.hypothesis.impact === "account-takeover" &&
+      witnessPlan.mechanism.kind === "authentication-state-transition" &&
+      controlPlan.mechanism.kind === "authentication-state-transition" &&
+      witness.result.kind === "authentication-state-transition" &&
+      control.result.kind === "authentication-state-transition");
   return (
     mechanismMatchesImpact &&
     witness.experimentId === witnessPlan.experimentId &&
@@ -133,14 +164,51 @@ function hasCompleteExperimentEvidence(
     isBoundExperimentPair(plan, witnessPlan, controlPlan, witness, control) &&
     witness.normalFunction === "preserved" &&
     control.normalFunction === "preserved" &&
-    witness.result.attackerRequestAccepted &&
-    control.result.attackerRequestAccepted
+    ("attackerSequenceExecuted" in witness.result
+      ? witness.result.attackerSequenceExecuted
+      : witness.result.attackerRequestAccepted) &&
+    ("attackerSequenceExecuted" in control.result
+      ? control.result.attackerSequenceExecuted
+      : control.result.attackerRequestAccepted)
   );
 }
 
 type MechanismEvidenceState = "finding" | "disproved" | "inconclusive";
 
+function sqlQueryEffectObserved(
+  plan: Extract<
+    ExperimentPlan["mechanism"],
+    { kind: "sql-query-semantic-effect" }
+  >,
+  observation: Extract<
+    ExperimentObservation["result"],
+    { kind: "sql-query-semantic-effect" }
+  >,
+): boolean | undefined {
+  if (plan.effect.kind !== observation.effect.kind) return undefined;
+  switch (observation.effect.kind) {
+    case "database-readback-canary":
+    case "database-state-change-canary":
+      return observation.effect.observed;
+    case "http-response-differential":
+      return observation.effect.relationObserved;
+    case "timing-differential":
+      if (
+        plan.effect.kind !== "timing-differential" ||
+        observation.effect.sampleCount < plan.effect.minimumSamples
+      ) {
+        return undefined;
+      }
+      return observation.effect.medianDeltaMs >= plan.effect.minimumDeltaMs;
+    case "target-account-authentication-canary":
+      return observation.effect.attackerContextInitiallyAuthenticated
+        ? undefined
+        : observation.effect.targetAccountAuthenticationObserved;
+  }
+}
+
 function mechanismEvidenceState(
+  witnessPlan: ExperimentPlan,
   witness: ExperimentObservation,
   control: ExperimentObservation,
 ): MechanismEvidenceState {
@@ -162,6 +230,28 @@ function mechanismEvidenceState(
       : "inconclusive";
   }
   if (
+    witnessPlan.mechanism.kind === "browser-script-execution" &&
+    witness.result.kind === "browser-script-execution" &&
+    control.result.kind === "browser-script-execution"
+  ) {
+    if (
+      !witness.result.victimContextEstablished ||
+      !control.result.victimContextEstablished
+    ) {
+      return "inconclusive";
+    }
+    if (
+      witness.result.browserCanaryExecuted &&
+      !control.result.browserCanaryExecuted
+    ) {
+      return "finding";
+    }
+    return !witness.result.browserCanaryExecuted &&
+      !control.result.browserCanaryExecuted
+      ? "disproved"
+      : "inconclusive";
+  }
+  if (
     witness.result.kind === "sql-injection-database" &&
     control.result.kind === "sql-injection-database"
   ) {
@@ -173,6 +263,42 @@ function mechanismEvidenceState(
     }
     return !witness.result.databaseReadbackCanaryObserved &&
       !control.result.databaseReadbackCanaryObserved
+      ? "disproved"
+      : "inconclusive";
+  }
+  if (
+    witnessPlan.mechanism.kind === "sql-query-semantic-effect" &&
+    witness.result.kind === "sql-query-semantic-effect" &&
+    control.result.kind === "sql-query-semantic-effect"
+  ) {
+    const witnessEffect = sqlQueryEffectObserved(
+      witnessPlan.mechanism,
+      witness.result,
+    );
+    const controlEffect = sqlQueryEffectObserved(
+      witnessPlan.mechanism,
+      control.result,
+    );
+    if (witnessEffect === true && controlEffect === false) return "finding";
+    if (witnessEffect === false && controlEffect === false) return "disproved";
+    return "inconclusive";
+  }
+  if (
+    witness.result.kind === "authentication-state-transition" &&
+    control.result.kind === "authentication-state-transition"
+  ) {
+    if (
+      !witness.result.attackerContextInitiallyAuthenticated &&
+      !control.result.attackerContextInitiallyAuthenticated &&
+      witness.result.targetAccountAuthenticationObserved &&
+      !control.result.targetAccountAuthenticationObserved
+    ) {
+      return "finding";
+    }
+    return !witness.result.attackerContextInitiallyAuthenticated &&
+      !control.result.attackerContextInitiallyAuthenticated &&
+      !witness.result.targetAccountAuthenticationObserved &&
+      !control.result.targetAccountAuthenticationObserved
       ? "disproved"
       : "inconclusive";
   }
@@ -199,7 +325,7 @@ function supportsFinding(
   ) {
     return false;
   }
-  return mechanismEvidenceState(witness, control) === "finding";
+  return mechanismEvidenceState(witnessPlan, witness, control) === "finding";
 }
 
 function supportsDisproved(
@@ -220,7 +346,7 @@ function supportsDisproved(
   ) {
     return false;
   }
-  return mechanismEvidenceState(witness, control) === "disproved";
+  return mechanismEvidenceState(witnessPlan, witness, control) === "disproved";
 }
 
 function hasSiblingIsolationFailure(
@@ -265,40 +391,50 @@ class IndependentVerification implements Verification {
       readonly sourceRederivationDigest?: string;
       readonly witness?: ExperimentObservationRef;
       readonly control?: ExperimentObservationRef;
+      readonly verifierUsage?: ModelAttemptUsageV2;
     } = {},
   ): Promise<VerificationRecordRef> {
-    const blocked = await this.#options.record.recordVerificationCompletion({
+    const partialEvidence = {
+      kind: "partial" as const,
+      ...(evidence.sourceRederivationDigest === undefined
+        ? {}
+        : {
+            sourceRederivation: {
+              kind: "source-rederivation" as const,
+              schemaVersion: 1 as const,
+              digest: evidence.sourceRederivationDigest,
+            },
+          }),
+      ...(evidence.witness === undefined ? {} : { witness: evidence.witness }),
+      ...(evidence.control === undefined ? {} : { control: evidence.control }),
+    };
+    const identity = {
       kind: "verification-completion",
-      schemaVersion: 1,
       verificationId: plan.verificationId,
       campaignId: plan.campaignId,
       planDigest,
       targetSnapshotDigest: plan.targetSnapshot.digest,
       hypothesisDigest: plan.hypothesisDigest,
-      evidence: {
-        kind: "partial",
-        ...(evidence.sourceRederivationDigest === undefined
-          ? {}
-          : {
-              sourceRederivation: {
-                kind: "source-rederivation" as const,
-                schemaVersion: 1 as const,
-                digest: evidence.sourceRederivationDigest,
-              },
-            }),
-        ...(evidence.witness === undefined
-          ? {}
-          : { witness: evidence.witness }),
-        ...(evidence.control === undefined
-          ? {}
-          : { control: evidence.control }),
-      },
       outcome: {
         kind: "blocked",
         reason,
         causalIdentity: plan.hypothesis.causalIdentity,
       },
-    });
+    } as const;
+    const blocked = await this.#options.record.recordVerificationCompletion(
+      plan.schemaVersion === 2
+        ? {
+            ...identity,
+            schemaVersion: 2,
+            evidence: {
+              ...partialEvidence,
+              ...(evidence.verifierUsage === undefined
+                ? {}
+                : { verifierUsage: evidence.verifierUsage }),
+            },
+          }
+        : { ...identity, schemaVersion: 1, evidence: partialEvidence },
+    );
     return blocked.ref;
   }
 
@@ -310,12 +446,55 @@ class IndependentVerification implements Verification {
     }
 
     let rederivationValue: unknown;
+    let verifierUsage: ModelAttemptUsageV2 | undefined;
     try {
-      rederivationValue =
+      const verifierResult =
         await this.#options.independentVerifier.rederive(plan);
+      if (plan.schemaVersion === 2) {
+        const parsedResult =
+          independentVerifierResultSchema.safeParse(verifierResult);
+        if (!parsedResult.success) {
+          return this.#recordBlocked(
+            plan,
+            start.planDigest,
+            "verifier-usage-incomplete",
+          );
+        }
+        const parsed = parsedResult.data;
+        rederivationValue = parsed.decision;
+        verifierUsage = parsed.usage;
+        if (
+          verifierUsage.measurement !== "reported" ||
+          verifierUsage.estimatedCostUsd === undefined
+        ) {
+          return this.#recordBlocked(
+            plan,
+            start.planDigest,
+            "verifier-usage-incomplete",
+            { verifierUsage },
+          );
+        }
+        if (
+          (plan.budget.reportedUsageEnforcement !== "telemetry-only" &&
+            (verifierUsage.modelTurns > plan.budget.maxModelTurns ||
+              verifierUsage.modelTokens.total > plan.budget.maxModelTokens)) ||
+          verifierUsage.estimatedCostUsd > plan.budget.maxProviderCostUsd
+        ) {
+          return this.#recordBlocked(
+            plan,
+            start.planDigest,
+            "budget-exhausted",
+            { verifierUsage },
+          );
+        }
+      } else {
+        rederivationValue = verifierResult;
+      }
     } catch (error) {
       if (!(error instanceof IndependentVerifierBlockedError)) throw error;
-      return this.#recordBlocked(plan, start.planDigest, error.reason);
+      return this.#recordBlocked(plan, start.planDigest, error.reason, {
+        ...(error.usage === undefined ? {} : { verifierUsage: error.usage }),
+      });
     }
     const rederivation = sourceRederivationSchema.parse(rederivationValue);
     if (
@@ -337,35 +516,51 @@ class IndependentVerification implements Verification {
       plan,
       start.planDigest,
       rederivation,
+      rederivationDigest,
       "witness",
     );
     const controlPlan = experimentPlan(
       plan,
       start.planDigest,
       rederivation,
+      rederivationDigest,
       "control",
     );
     let witnessRef: ExperimentObservationRef;
     try {
       witnessRef = experimentObservationRefSchema.parse(
-        await this.#options.labControl.execute(witnessPlan),
+        await this.#options.labControl.execute({
+          kind: "experiment-execution-request",
+          schemaVersion: 1,
+          plan: witnessPlan,
+          sourceRederivation: rederivation,
+          sourceRederivationDigest: rederivationDigest,
+        }),
       );
     } catch (error) {
       if (!(error instanceof LabControlBlockedError)) throw error;
       return this.#recordBlocked(plan, start.planDigest, error.reason, {
         sourceRederivationDigest: rederivationDigest,
+        ...(verifierUsage === undefined ? {} : { verifierUsage }),
       });
     }
     let controlRef: ExperimentObservationRef;
     try {
       controlRef = experimentObservationRefSchema.parse(
-        await this.#options.labControl.execute(controlPlan),
+        await this.#options.labControl.execute({
+          kind: "experiment-execution-request",
+          schemaVersion: 1,
+          plan: controlPlan,
+          sourceRederivation: rederivation,
+          sourceRederivationDigest: rederivationDigest,
+        }),
       );
     } catch (error) {
       if (!(error instanceof LabControlBlockedError)) throw error;
       return this.#recordBlocked(plan, start.planDigest, error.reason, {
         sourceRederivationDigest: rederivationDigest,
         witness: witnessRef,
+        ...(verifierUsage === undefined ? {} : { verifierUsage }),
       });
     }
     const witness = await readObservation(
@@ -402,6 +597,7 @@ class IndependentVerification implements Verification {
           sourceRederivationDigest: rederivationDigest,
           witness: witnessRef,
           control: controlRef,
+          ...(verifierUsage === undefined ? {} : { verifierUsage }),
         });
       }
       if (
@@ -421,6 +617,7 @@ class IndependentVerification implements Verification {
             sourceRederivationDigest: rederivationDigest,
             witness: witnessRef,
             control: controlRef,
+            ...(verifierUsage === undefined ? {} : { verifierUsage }),
           },
         );
       }
@@ -435,15 +632,14 @@ class IndependentVerification implements Verification {
             sourceRederivationDigest: rederivationDigest,
             witness: witnessRef,
             control: controlRef,
+            ...(verifierUsage === undefined ? {} : { verifierUsage }),
           },
         );
       }
       throw new Error("Verification evidence is inconclusive");
     }
-
-    const completed = await this.#options.record.recordVerificationCompletion({
+    const completionIdentity = {
       kind: "verification-completion",
-      schemaVersion: 1,
       verificationId: plan.verificationId,
       campaignId: plan.campaignId,
       planDigest: start.planDigest,
@@ -456,7 +652,21 @@ class IndependentVerification implements Verification {
         control: controlRef,
       },
       outcome,
-    });
+    } as const;
+    const completed =
+      plan.schemaVersion === 2
+        ? await this.#options.record.recordVerificationCompletion({
+            ...completionIdentity,
+            schemaVersion: 2,
+            evidence: {
+              ...completionIdentity.evidence,
+              verifierUsage: requireVerifierUsage(verifierUsage),
+            },
+          })
+        : await this.#options.record.recordVerificationCompletion({
+            ...completionIdentity,
+            schemaVersion: 1,
+          });
     return completed.ref;
   }
 }

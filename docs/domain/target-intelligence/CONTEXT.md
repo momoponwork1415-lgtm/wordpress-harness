@@ -46,7 +46,7 @@ _Avoid_: Score、Approval
 
 **Target Acquisition**:
 選ばれたplugin sourceと配布metadataを、provenanceを失わずResearchへ受け渡せる状態にする行為。
-_Avoid_: Download、Campaign setup
+_Avoid_: Download、Human Verification setup
 
 **Acquisition Original**:
 archiveまたはdirectoryとして受け取ったsourceを、展開・正規化前の内容と入手経路へ結び付けて不変化した原本。

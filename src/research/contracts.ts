@@ -1,11 +1,24 @@
 import { z } from "zod";
 
+import { readyIntakeDispositionSchema } from "../target-intelligence/acquisition/contracts.js";
 import type {
   CampaignExecutionDependencies,
-  CampaignRunPlan,
-  CampaignRunRecord,
-  CampaignRunRecordRef,
+  AnyCampaignRunPlan,
+  AnyCampaignRunRecord,
+  AnyCampaignRunRecordRef,
 } from "./campaign-control/contracts.js";
+import {
+  canonicalFileManifestSchema,
+  normalizedRelativePathSchema,
+  type CanonicalFileManifest,
+} from "./source-file-contracts.js";
+import type { TargetFileManifestRef } from "./source-mapping/contracts.js";
+import type { JsonArtifactStore } from "./research-record/contracts.js";
+import type { FindingMechanismGroups } from "./verification/contracts.js";
+import type {
+  CampaignProgressSubjectRef,
+  CampaignProgressView,
+} from "./campaign-progress-contracts.js";
 
 const identifierSchema = z
   .string()
@@ -33,9 +46,8 @@ const campaignBudgetSchema = z.strictObject({
   maxModelTokens: z.number().int().positive(),
 });
 
-export const newCampaignInputSchema = z.strictObject({
+const campaignConfigurationShape = {
   campaignId: identifierSchema,
-  targetSnapshot: targetSnapshotRefSchema,
   campaignPolicy: immutableRefSchema,
   runtimeProfile: immutableRefSchema,
   promptSet: immutableRefSchema,
@@ -43,13 +55,64 @@ export const newCampaignInputSchema = z.strictObject({
   knowledgeCapsules: z.array(immutableRefSchema),
   experimentRegistry: immutableRefSchema,
   budget: campaignBudgetSchema,
+};
+
+const newCampaignInputShape = {
+  ...campaignConfigurationShape,
+  targetSnapshot: targetSnapshotRefSchema,
+};
+
+export const newCampaignInputV1Schema = z.strictObject(newCampaignInputShape);
+
+export const newCampaignInputV2Schema = z.strictObject({
+  schemaVersion: z.literal(2),
+  ...newCampaignInputShape,
+  canonicalFileManifest: canonicalFileManifestSchema,
 });
+
+export const targetIntakeBindingSchema = z.strictObject({
+  packet: immutableRefSchema,
+  receipt: immutableRefSchema,
+  pluginIdentity: z.string().min(1),
+  canonicalInstallDirectory: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
+  mainPluginFile: normalizedRelativePathSchema,
+  pluginBasename: normalizedRelativePathSchema,
+  sourceTreeDigest: digestSchema,
+});
+
+export const newCampaignInputV3Schema = z.strictObject({
+  schemaVersion: z.literal(3),
+  ...newCampaignInputShape,
+  canonicalFileManifest: canonicalFileManifestSchema,
+  targetIntake: targetIntakeBindingSchema,
+});
+
+export const targetIntakeCampaignPreparationInputSchema = z.strictObject({
+  kind: z.literal("target-intake-campaign-preparation"),
+  schemaVersion: z.literal(1),
+  ...campaignConfigurationShape,
+  intake: readyIntakeDispositionSchema,
+});
+
+export const newCampaignInputSchema = z.union([
+  newCampaignInputV3Schema,
+  newCampaignInputV2Schema,
+  newCampaignInputV1Schema,
+]);
 
 export function decodeNewCampaignInput(value: unknown): NewCampaignInput {
   return newCampaignInputSchema.parse(value);
 }
 
 export type NewCampaignInput = z.infer<typeof newCampaignInputSchema>;
+export type NewCampaignInputV1 = z.infer<typeof newCampaignInputV1Schema>;
+export type NewCampaignInputV2 = z.infer<typeof newCampaignInputV2Schema>;
+export type NewCampaignInputV3 = z.infer<typeof newCampaignInputV3Schema>;
+export type TargetIntakeBinding = z.infer<typeof targetIntakeBindingSchema>;
+export type TargetIntakeCampaignPreparationInput = z.infer<
+  typeof targetIntakeCampaignPreparationInputSchema
+>;
+export type { CanonicalFileManifest };
 export type TargetSnapshotRef = z.infer<typeof targetSnapshotRefSchema>;
 
 export interface CampaignView {
@@ -59,13 +122,17 @@ export interface CampaignView {
   readonly preparedAt: string;
   readonly inputDigest: string;
   readonly targetSnapshot: TargetSnapshotRef;
+  readonly targetFileManifest?: TargetFileManifestRef;
 }
 
 export type PreparedCampaign = CampaignView;
 
 export interface CampaignRunner {
   prepare(input: NewCampaignInput): Promise<PreparedCampaign>;
-  run(plan: CampaignRunPlan): Promise<CampaignRunRecordRef>;
+  prepareFromTargetIntake(
+    input: TargetIntakeCampaignPreparationInput,
+  ): Promise<PreparedCampaign>;
+  run(plan: AnyCampaignRunPlan): Promise<AnyCampaignRunRecordRef>;
 }
 
 export interface CampaignReader {
@@ -82,7 +149,16 @@ export interface CampaignRunSubjectRef {
   readonly runId: string;
 }
 
-export type SubjectRef = PreparationSubjectRef | CampaignRunSubjectRef;
+export interface FindingMechanismGroupsSubjectRef {
+  readonly kind: "finding-mechanism-groups";
+  readonly runId: string;
+}
+
+export type SubjectRef =
+  | PreparationSubjectRef
+  | CampaignRunSubjectRef
+  | FindingMechanismGroupsSubjectRef
+  | CampaignProgressSubjectRef;
 
 export interface PreparationSubjectView {
   readonly kind: "preparation";
@@ -90,6 +166,7 @@ export interface PreparationSubjectView {
   readonly preparedAt: string;
   readonly inputDigest: string;
   readonly input: NewCampaignInput;
+  readonly targetFileManifest?: TargetFileManifestRef;
 }
 
 export interface CampaignRunSubjectView {
@@ -97,10 +174,16 @@ export interface CampaignRunSubjectView {
   readonly campaignId: string;
   readonly runId: string;
   readonly occurredAt: string;
-  readonly value: CampaignRunRecord;
+  readonly value: AnyCampaignRunRecord;
 }
 
-export type SubjectView = PreparationSubjectView | CampaignRunSubjectView;
+export type FindingMechanismGroupsSubjectView = FindingMechanismGroups;
+
+export type SubjectView =
+  | PreparationSubjectView
+  | CampaignRunSubjectView
+  | FindingMechanismGroupsSubjectView
+  | CampaignProgressView;
 
 export interface ResearchModule {
   readonly runner: CampaignRunner;
@@ -111,7 +194,18 @@ export interface ResearchModule {
 export interface OpenResearchOptions {
   readonly databasePath: string;
   readonly clock?: () => Date;
+  readonly artifactStore?: JsonArtifactStore;
   readonly campaignExecution?: CampaignExecutionDependencies;
+}
+
+export class CampaignPreparationIntegrityError extends Error {
+  readonly reason: "artifact-store-unavailable";
+
+  constructor(reason: "artifact-store-unavailable") {
+    super(`Campaign preparation integrity check failed: ${reason}`);
+    this.name = "CampaignPreparationIntegrityError";
+    this.reason = reason;
+  }
 }
 
 export class CampaignPreparationConflictError extends Error {
@@ -146,7 +240,8 @@ export class LedgerIntegrityError extends Error {
     | "verification-plan-digest-mismatch"
     | "verification-record-digest-mismatch"
     | "campaign-run-plan-digest-mismatch"
-    | "campaign-run-record-digest-mismatch";
+    | "campaign-run-record-digest-mismatch"
+    | "target-file-manifest-binding-mismatch";
 
   constructor(
     campaignId: string,
@@ -158,7 +253,8 @@ export class LedgerIntegrityError extends Error {
       | "verification-plan-digest-mismatch"
       | "verification-record-digest-mismatch"
       | "campaign-run-plan-digest-mismatch"
-      | "campaign-run-record-digest-mismatch",
+      | "campaign-run-record-digest-mismatch"
+      | "target-file-manifest-binding-mismatch",
   ) {
     super(`Ledger integrity check failed: ${campaignId} (${reason})`);
     this.name = "LedgerIntegrityError";

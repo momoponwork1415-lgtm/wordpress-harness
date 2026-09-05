@@ -280,7 +280,7 @@ async function cleanup(
   );
 }
 
-export async function runFreshGvisorWordPressLab(
+async function runFreshGvisorWordPressLabAttempt(
   options: RunFreshGvisorWordPressLabOptions,
 ): Promise<{ readonly labId: string; readonly stdout: string }> {
   const nonce = randomUUID();
@@ -441,4 +441,18 @@ export async function runFreshGvisorWordPressLab(
   if (executionError !== undefined) throw executionError;
   if (!cleaned || workerStdout === undefined) throw new LabCommandFailedError();
   return { labId, stdout: workerStdout };
+}
+
+export async function runFreshGvisorWordPressLab(
+  options: RunFreshGvisorWordPressLabOptions,
+): Promise<{ readonly labId: string; readonly stdout: string }> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await runFreshGvisorWordPressLabAttempt(options);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }

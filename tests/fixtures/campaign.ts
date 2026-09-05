@@ -1,8 +1,8 @@
-import type { NewCampaignInput } from "../../src/research/index.js";
+import type { NewCampaignInputV1 } from "../../src/research/index.js";
 
 export function createCampaignInput(
   campaignId = "campaign-brizy-2-8-11",
-): NewCampaignInput {
+): NewCampaignInputV1 {
   return {
     campaignId,
     targetSnapshot: {
