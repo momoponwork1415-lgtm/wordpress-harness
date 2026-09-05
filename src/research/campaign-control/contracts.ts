@@ -71,6 +71,11 @@ import {
   validationFrontierGapRefSchema,
   validationRecordSchema,
 } from "../validation/contracts.js";
+import {
+  humanReviewPacketHandoffSchema,
+  humanReviewPacketPreparationFailureSchema,
+  type HumanReviewPacketDelivery,
+} from "../validation/human-review-packet.js";
 
 const identifierSchema = z
   .string()
@@ -1193,6 +1198,7 @@ const currentSemanticTerminalDecisionSchema = z.discriminatedUnion("kind", [
       "evaluation-incomplete",
       "validation-pending",
       "research-work-remains",
+      "review-packet-pending",
     ]),
   }),
 ]);
@@ -1213,6 +1219,14 @@ const campaignDefaultSemanticCompletionInputV3Schema = z.strictObject({
   depthResearch: currentSemanticDepthResearchSchema.optional(),
   validations: z.array(validationRecordSchema).max(64),
   validationFrontierGaps: z.array(validationFrontierGapRefSchema).max(64),
+  humanReviewPackets: z
+    .array(humanReviewPacketHandoffSchema)
+    .max(64)
+    .optional(),
+  humanReviewPacketFailures: z
+    .array(humanReviewPacketPreparationFailureSchema)
+    .max(64)
+    .optional(),
   decision: currentSemanticTerminalDecisionSchema,
 });
 
@@ -1420,6 +1434,7 @@ export interface CampaignExecutionDependencies {
   readonly independentVerifier: IndependentVerifier;
   readonly labControl: LabControl;
   readonly calibrationReview?: CalibrationReview;
+  readonly humanReviewPacketDelivery?: HumanReviewPacketDelivery;
 }
 
 export class CampaignRunConflictError extends Error {

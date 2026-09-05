@@ -97,10 +97,22 @@ import {
 } from "../verification/index.js";
 import {
   openValidation,
+  referenceValidationCandidate,
+  validationRecordRefSchema,
   validationRecordSchema,
   validationThreatContextSchema,
+  type ValidationCandidate,
   type ValidationRecord,
 } from "../validation/index.js";
+import {
+  humanReviewPacketDeliveryReceiptSchema,
+  humanReviewPacketHandoffSchema,
+  humanReviewPacketPreparationFailureSchema,
+  humanReviewPacketSchema,
+  prepareHumanReviewPacket,
+  type HumanReviewPacketHandoff,
+  type HumanReviewPacketPreparationFailure,
+} from "../validation/human-review-packet.js";
 import {
   CampaignRunConflictError,
   LegacyMapFirstExecutionDisabledError,
@@ -1197,6 +1209,136 @@ async function executeCurrentSemanticDepthRound(
   };
 }
 
+async function prepareCurrentHumanReviewPackets(
+  record: ResearchRecord,
+  dependencies: CampaignExecutionDependencies,
+  plan: DefaultSemanticCampaignRunPlanV3,
+  candidates: readonly ValidationCandidate[],
+  validations: readonly ValidationRecord[],
+): Promise<{
+  readonly handoffs: readonly HumanReviewPacketHandoff[];
+  readonly failures: readonly HumanReviewPacketPreparationFailure[];
+}> {
+  const candidatesById = new Map(
+    candidates.map((candidate) => [candidate.id, candidate]),
+  );
+  const handoffs: HumanReviewPacketHandoff[] = [];
+  const failures: HumanReviewPacketPreparationFailure[] = [];
+  for (const validation of [...validations].sort((left, right) =>
+    compareText(left.candidateId, right.candidateId),
+  )) {
+    if (validation.status !== "ready-for-human") continue;
+    const candidate = candidatesById.get(validation.candidateId);
+    if (candidate === undefined) {
+      throw new Error("Ready Validation lost its Candidate");
+    }
+    const candidateRef = referenceValidationCandidate(candidate);
+    const validationRef = validationRecordRefSchema.parse({
+      kind: validation.kind,
+      schemaVersion: validation.schemaVersion,
+      validationId: validation.validationId,
+      candidateId: validation.candidateId,
+      digest: sha256Digest(validation),
+    });
+    let packetRecord = await record.readHumanReviewPacket(
+      plan.campaignId,
+      candidate.id,
+    );
+    let packet;
+    if (packetRecord === undefined) {
+      let hypothesis:
+        | ReturnType<typeof sourceBoundHypothesisArtifactSchema.parse>
+        | undefined;
+      for (const origin of [...candidate.origins].sort((left, right) =>
+        compareText(left.subjectDigest, right.subjectDigest),
+      )) {
+        const raw = await dependencies.artifactStore.readJson(
+          origin.subjectDigest,
+        );
+        if (sha256Digest(raw) !== origin.subjectDigest) {
+          throw new Error("Review Packet origin CAS mismatch");
+        }
+        const parsed = sourceBoundHypothesisArtifactSchema.safeParse(raw);
+        if (parsed.success) {
+          hypothesis = parsed.data;
+          break;
+        }
+      }
+      const prepared =
+        hypothesis === undefined
+          ? { kind: "incomplete" as const, reason: "invalid-binding" as const }
+          : prepareHumanReviewPacket({ candidate, validation, hypothesis });
+      if (prepared.kind === "incomplete") {
+        failures.push(
+          humanReviewPacketPreparationFailureSchema.parse({
+            kind: "human-review-packet-preparation-failure",
+            schemaVersion: 1,
+            candidate: candidateRef,
+            validation: validationRef,
+            reason: prepared.reason,
+          }),
+        );
+        continue;
+      }
+      packet = prepared.packet;
+      packetRecord = await record.recordHumanReviewPacket(
+        plan.campaignId,
+        plan.runId,
+        prepared.riskAssessment,
+        prepared.packet,
+      );
+    } else {
+      const rawPacket = await dependencies.artifactStore.readJson(
+        packetRecord.packet.digest,
+      );
+      if (sha256Digest(rawPacket) !== packetRecord.packet.digest) {
+        throw new Error("Human Review Packet CAS mismatch");
+      }
+      packet = humanReviewPacketSchema.parse(rawPacket);
+    }
+    const previousHandoff = packetRecord.handoffs.find(
+      (handoff) => handoff.runId === plan.runId,
+    );
+    if (previousHandoff !== undefined) {
+      handoffs.push(previousHandoff.handoff);
+      continue;
+    }
+    let delivery: HumanReviewPacketHandoff["delivery"];
+    if (dependencies.humanReviewPacketDelivery === undefined) {
+      delivery = {
+        status: "delivery-failed",
+        reason: "human-os-admission-unavailable",
+      };
+    } else {
+      try {
+        const receipt = humanReviewPacketDeliveryReceiptSchema.parse(
+          await dependencies.humanReviewPacketDelivery.deliver(packet),
+        );
+        delivery =
+          receipt.packetDigest === packetRecord.packet.digest
+            ? { status: "delivered", receipt }
+            : { status: "delivery-failed", reason: "delivery-failed" };
+      } catch {
+        delivery = { status: "delivery-failed", reason: "delivery-failed" };
+      }
+    }
+    const handoff = humanReviewPacketHandoffSchema.parse({
+      kind: "human-review-packet-handoff",
+      schemaVersion: 1,
+      packet: packetRecord.packet,
+      riskAssessment: packetRecord.riskAssessment,
+      delivery,
+    });
+    await record.recordHumanReviewPacketHandoff(
+      plan.campaignId,
+      plan.runId,
+      handoff,
+    );
+    handoffs.push(handoff);
+  }
+  return { handoffs, failures };
+}
+
 async function completeCurrentSemanticIteration(
   record: ResearchRecord,
   dependencies: CampaignExecutionDependencies,
@@ -1359,6 +1501,13 @@ async function completeCurrentSemanticIteration(
       validationRef,
     );
   }
+  const reviewPackets = await prepareCurrentHumanReviewPackets(
+    record,
+    dependencies,
+    plan,
+    candidates,
+    validationRecords,
+  );
 
   const registry = await record.readApproachFamilyRegistryV3(
     plan.campaignId,
@@ -1407,11 +1556,15 @@ async function completeCurrentSemanticIteration(
       compareText(left.validationId, right.validationId),
     ),
     validationFrontierGaps: frontierGaps.map((gap) => gap.frontierGap),
+    humanReviewPackets: [...reviewPackets.handoffs],
+    humanReviewPacketFailures: [...reviewPackets.failures],
     decision: pendingValidation
       ? { kind: "incomplete", reason: "validation-pending" }
-      : researchWorkRemains
-        ? { kind: "incomplete", reason: "research-work-remains" }
-        : { kind: "complete" },
+      : reviewPackets.failures.length > 0
+        ? { kind: "incomplete", reason: "review-packet-pending" }
+        : researchWorkRemains
+          ? { kind: "incomplete", reason: "research-work-remains" }
+          : { kind: "complete" },
   });
 }
 

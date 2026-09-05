@@ -179,6 +179,8 @@ describe("CampaignRunner.run source-only Validation", () => {
     let validationDisposition: "ready-for-human" | "needs-research" =
       "ready-for-human";
     let depthFailure: "none" | "budget-exhausted" = "none";
+    let packetDelivery: "success" | "failure" = "failure";
+    const deliveredPacketDigests: string[] = [];
     const modelExecution: ModelExecution = {
       run: async (plan) => {
         if (plan.schemaVersion !== 2) {
@@ -542,6 +544,23 @@ describe("CampaignRunner.run source-only Validation", () => {
             throw new Error("Lab must not run in source-only Validation");
           },
         },
+        humanReviewPacketDelivery: {
+          deliver: async (packet) => {
+            deliveredPacketDigests.push(sha256Digest(packet));
+            if (packetDelivery === "failure") {
+              throw new Error("Injected Human OS delivery failure");
+            }
+            return {
+              kind: "human-review-packet-delivery-receipt",
+              schemaVersion: 1,
+              packetDigest: sha256Digest(packet),
+              receiptDigest: sha256Digest({
+                packetId: packet.id,
+                status: "admitted",
+              }),
+            };
+          },
+        },
       },
     });
 
@@ -770,6 +789,23 @@ describe("CampaignRunner.run source-only Validation", () => {
               ],
             },
             validations: [{ status: "ready-for-human" }],
+            humanReviewPacketFailures: [],
+            humanReviewPackets: [
+              {
+                packet: {
+                  schemaVersion: 1,
+                  candidateId: expect.any(String),
+                },
+                riskAssessment: {
+                  schemaVersion: 1,
+                  candidateId: expect.any(String),
+                },
+                delivery: {
+                  status: "delivery-failed",
+                  reason: "delivery-failed",
+                },
+              },
+            ],
             approachFamilyRegistry: {
               schemaVersion: 3,
               states: { active: 1 },
@@ -846,6 +882,47 @@ describe("CampaignRunner.run source-only Validation", () => {
         ).resolves.toMatchObject({
           value: { depthDecisions: [expect.any(String), expect.any(String)] },
         });
+        if (
+          inspected.kind !== "run" ||
+          inspected.value.schemaVersion !== 3 ||
+          !("humanReviewPackets" in inspected.value)
+        ) {
+          throw new Error("Expected a current Human Review Packet handoff");
+        }
+        const candidateId =
+          inspected.value.humanReviewPackets?.[0]?.packet.candidateId;
+        if (candidateId === undefined) {
+          throw new Error("Expected a Human Review Packet candidate");
+        }
+        const packet = await record.readHumanReviewPacket(
+          input.campaignId,
+          candidateId,
+        );
+        expect(packet).toMatchObject({
+          packet: {
+            targetSnapshotDigest: input.targetSnapshot.digest,
+            manifestDigest: prepared.targetFileManifest.digest,
+          },
+          riskAssessment: { validationId: candidateId },
+          handoffs: [
+            {
+              runId: plan.runId,
+              handoff: { delivery: { status: "delivery-failed" } },
+            },
+          ],
+        });
+        if (packet === undefined) throw new Error("Expected Review Packet");
+        await expect(
+          artifacts.readJson(packet.packet.digest),
+        ).resolves.toMatchObject({
+          target: input.targetSnapshot,
+          causalIdentity: { brokenSecurityProperty: "state-ownership" },
+          attackerPremise: "unauthenticated",
+          reviewBoundary: {
+            validity: "source-validated-not-human-verified",
+            findingEligible: false,
+          },
+        });
       } finally {
         record.close();
       }
@@ -870,6 +947,8 @@ describe("CampaignRunner.run source-only Validation", () => {
         needsResearchInspected: {
           value: {
             validations: [{ status: "needs-research" }],
+            humanReviewPackets: [],
+            humanReviewPacketFailures: [],
             validationFrontierGaps: [
               {
                 kind: "validation-frontier-gap",
@@ -918,6 +997,7 @@ describe("CampaignRunner.run source-only Validation", () => {
 
       validationDisposition = "ready-for-human";
       depthFailure = "budget-exhausted";
+      packetDelivery = "success";
       validatorAttemptIds.length = 0;
       const failurePlan = campaignDefaultSemanticRunPlanV3Schema.parse({
         ...plan,
@@ -954,6 +1034,15 @@ describe("CampaignRunner.run source-only Validation", () => {
               ],
             },
             approachFamilyRegistry: { states: { active: 1 } },
+            humanReviewPacketFailures: [],
+            humanReviewPackets: [
+              {
+                delivery: {
+                  status: "delivered",
+                  receipt: { packetDigest: expect.any(String) },
+                },
+              },
+            ],
             decision: {
               kind: "incomplete",
               reason: "research-work-remains",
@@ -968,6 +1057,8 @@ describe("CampaignRunner.run source-only Validation", () => {
       expect(
         failureCalls.filter((attempt) => attempt.role === "adversarial-critic"),
       ).toEqual([]);
+      expect(deliveredPacketDigests).toHaveLength(2);
+      expect(new Set(deliveredPacketDigests)).toHaveProperty("size", 1);
     } finally {
       research.close();
       await rm(directory, { force: true, recursive: true });

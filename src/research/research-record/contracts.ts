@@ -66,6 +66,13 @@ import type {
   ValidationFrontierGapRef,
   ValidationRecordRef as SourceValidationRecordRef,
 } from "../validation/contracts.js";
+import type {
+  HumanReviewPacket,
+  HumanReviewPacketHandoff,
+  HumanReviewPacketRef,
+  RiskAssessment,
+  RiskAssessmentRef,
+} from "../validation/human-review-packet.js";
 
 export interface PreparationRecord {
   readonly campaignId: string;
@@ -232,6 +239,21 @@ export interface ResearchRecord {
     campaignId: string,
     runId: string,
   ): Promise<readonly ValidationFrontierGapRecordView[]>;
+  recordHumanReviewPacket(
+    campaignId: string,
+    runId: string,
+    riskAssessment: RiskAssessment,
+    packet: HumanReviewPacket,
+  ): Promise<HumanReviewPacketRecordView>;
+  readHumanReviewPacket(
+    campaignId: string,
+    candidateId: string,
+  ): Promise<HumanReviewPacketRecordView | undefined>;
+  recordHumanReviewPacketHandoff(
+    campaignId: string,
+    runId: string,
+    handoff: HumanReviewPacketHandoff,
+  ): Promise<HumanReviewPacketRecordView>;
   recordVerificationStart(
     plan: VerificationPlan,
   ): Promise<RecordVerificationStartResult>;
@@ -411,6 +433,19 @@ export interface ValidationCompletion {
     | "validation-pending";
   readonly approachFamilyIds: readonly string[];
   readonly frontierGap?: ValidationFrontierGapRef | undefined;
+}
+
+export interface HumanReviewPacketRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly packet: HumanReviewPacketRef;
+  readonly riskAssessment: RiskAssessmentRef;
+  readonly handoffs: readonly {
+    readonly ledgerHead: number;
+    readonly occurredAt: string;
+    readonly runId: string;
+    readonly handoff: HumanReviewPacketHandoff;
+  }[];
 }
 
 export interface ValidationCompletionRecordView {

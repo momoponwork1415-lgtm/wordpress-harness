@@ -1,6 +1,19 @@
 export { openValidation } from "./validation.js";
 export { projectValidationFrontierGap } from "./validation-frontier-gap.js";
 export {
+  humanReproductionSketchSchema,
+  humanReviewPacketDeliveryReceiptSchema,
+  humanReviewPacketHandoffSchema,
+  humanReviewPacketPreparationFailureSchema,
+  humanReviewPacketRefSchema,
+  humanReviewPacketSchema,
+  prepareHumanReviewPacket,
+  referenceHumanReviewPacket,
+  referenceRiskAssessment,
+  riskAssessmentRefSchema,
+  riskAssessmentSchema,
+} from "./human-review-packet.js";
+export {
   validationAttemptOutputSchema,
   validationCandidateId,
   validationCandidateRefSchema,
@@ -18,6 +31,17 @@ export {
   validationSynthesisOutputSchema,
   validationThreatContextSchema,
 } from "./contracts.js";
+export type {
+  HumanReviewPacket,
+  HumanReviewPacketDelivery,
+  HumanReviewPacketDeliveryReceipt,
+  HumanReviewPacketHandoff,
+  HumanReviewPacketPreparationFailure,
+  HumanReviewPacketPreparationResult,
+  HumanReviewPacketRef,
+  RiskAssessment,
+  RiskAssessmentRef,
+} from "./human-review-packet.js";
 export type {
   OpenValidationOptions,
   Validation,

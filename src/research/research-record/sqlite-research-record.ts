@@ -153,6 +153,15 @@ import {
   type ValidationRecordRef as SourceValidationRecordRef,
 } from "../validation/contracts.js";
 import { projectValidationFrontierGap } from "../validation/validation-frontier-gap.js";
+import {
+  humanReviewPacketHandoffSchema,
+  humanReviewPacketRefSchema,
+  humanReviewPacketSchema,
+  referenceHumanReviewPacket,
+  referenceRiskAssessment,
+  riskAssessmentRefSchema,
+  riskAssessmentSchema,
+} from "../validation/human-review-packet.js";
 import type { ModelAttemptUsageV2 } from "../model-attempt-usage-contracts.js";
 import { canonicalJson, sha256Digest } from "./canonical-json.js";
 import type {
@@ -180,6 +189,7 @@ import type {
   ValidationIntent,
   ValidationIntentRecordView,
   JsonArtifactStore,
+  HumanReviewPacketRecordView,
 } from "./contracts.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
@@ -495,6 +505,17 @@ const semanticDepthEvaluationIncompletePayloadV2Schema = z.strictObject({
   evaluation: currentDepthEvaluationIncompleteSchema,
 });
 
+const humanReviewPacketPreparedPayloadSchema = z.strictObject({
+  runId: z.string().min(1).max(128),
+  riskAssessment: riskAssessmentRefSchema,
+  packet: humanReviewPacketRefSchema,
+});
+
+const humanReviewPacketHandedOffPayloadSchema = z.strictObject({
+  runId: z.string().min(1).max(128),
+  handoff: humanReviewPacketHandoffSchema,
+});
+
 const validationIntentSchema = z.strictObject({
   kind: z.literal("validation-intent"),
   schemaVersion: z.literal(1),
@@ -685,6 +706,7 @@ interface LedgerProjection {
     string,
     ValidationFrontierGapRecordView
   >;
+  readonly humanReviewPackets: ReadonlyMap<string, HumanReviewPacketRecordView>;
   readonly verifications: ReadonlyMap<string, StoredVerification>;
 }
 
@@ -1826,6 +1848,66 @@ class SqliteResearchRecord implements ResearchRecord {
             input.campaignId,
             "invalid-event-order",
           );
+        }
+        const recordedHandoffs = [...ledger.humanReviewPackets.values()]
+          .flatMap((packet) =>
+            packet.handoffs
+              .filter((handoff) => handoff.runId === input.runId)
+              .map((handoff) => handoff.handoff),
+          )
+          .sort((left, right) =>
+            compareText(left.packet.digest, right.packet.digest),
+          );
+        const requestedHandoffs = [...(input.humanReviewPackets ?? [])].sort(
+          (left, right) => compareText(left.packet.digest, right.packet.digest),
+        );
+        if (
+          canonicalJson(recordedHandoffs) !== canonicalJson(requestedHandoffs)
+        ) {
+          throw new LedgerIntegrityError(
+            input.campaignId,
+            "invalid-event-order",
+          );
+        }
+        if (
+          input.humanReviewPackets !== undefined ||
+          input.humanReviewPacketFailures !== undefined
+        ) {
+          const ready = new Map(
+            recordedCompletions
+              .filter(
+                (record) => record.completion.disposition === "ready-for-human",
+              )
+              .map((record) => [
+                record.completion.validation.candidateId,
+                record.completion.validation,
+              ]),
+          );
+          const accounted = [
+            ...(input.humanReviewPackets ?? []).map(
+              (handoff) => handoff.packet.candidateId,
+            ),
+            ...(input.humanReviewPacketFailures ?? []).map(
+              (failure) => failure.candidate.id,
+            ),
+          ];
+          if (
+            accounted.length !== ready.size ||
+            new Set(accounted).size !== accounted.length ||
+            accounted.some((candidateId) => !ready.has(candidateId)) ||
+            (input.humanReviewPacketFailures ?? []).some((failure) => {
+              const validation = ready.get(failure.candidate.id);
+              return (
+                validation === undefined ||
+                canonicalJson(validation) !== canonicalJson(failure.validation)
+              );
+            })
+          ) {
+            throw new LedgerIntegrityError(
+              input.campaignId,
+              "invalid-event-order",
+            );
+          }
         }
       }
 
@@ -3243,6 +3325,205 @@ class SqliteResearchRecord implements ResearchRecord {
       );
   }
 
+  async recordHumanReviewPacket(
+    campaignId: string,
+    runId: string,
+    riskAssessmentValue: z.infer<typeof riskAssessmentSchema>,
+    packetValue: z.infer<typeof humanReviewPacketSchema>,
+  ): Promise<HumanReviewPacketRecordView> {
+    const riskAssessment = riskAssessmentSchema.parse(riskAssessmentValue);
+    const packet = humanReviewPacketSchema.parse(packetValue);
+    const riskAssessmentRef = referenceRiskAssessment(riskAssessment);
+    const packetRef = referenceHumanReviewPacket(packet);
+    if (
+      canonicalJson(packet.riskAssessment) !==
+        canonicalJson(riskAssessmentRef) ||
+      packet.candidate.id !== riskAssessment.candidate.id ||
+      packet.target.digest !== riskAssessment.candidate.targetSnapshotDigest ||
+      packet.manifest.digest !== riskAssessment.candidate.manifestDigest
+    ) {
+      throw new CampaignRunConflictError(campaignId, runId);
+    }
+    if (this.#artifactStore === undefined) {
+      throw new Error("Human Review Packet requires an Artifact Store");
+    }
+    const candidateInput = await this.#artifactStore.readJson(
+      packet.candidate.digest,
+    );
+    const candidate = validationCandidateSchema.parse(candidateInput);
+    if (
+      sha256Digest(candidate) !== packet.candidate.digest ||
+      candidate.id !== packet.candidate.id ||
+      canonicalJson(candidate.target) !== canonicalJson(packet.target) ||
+      canonicalJson(candidate.manifest) !== canonicalJson(packet.manifest) ||
+      candidate.brokenSecurityProperty !==
+        packet.causalIdentity.brokenSecurityProperty ||
+      candidate.attackerPremise !== packet.attackerPremise ||
+      canonicalJson(candidate.causalRoute) !==
+        canonicalJson(packet.orderedRoute) ||
+      riskAssessment.securityEffect !==
+        packet.causalIdentity.brokenSecurityProperty ||
+      canonicalJson(riskAssessment.counterevidence) !==
+        canonicalJson(packet.counterevidence) ||
+      canonicalJson(riskAssessment.runtimeUncertainties) !==
+        canonicalJson(packet.runtimeUncertainties) ||
+      canonicalJson(riskAssessment.humanReproductionSketch) !==
+        canonicalJson(packet.humanReproductionSketch)
+    ) {
+      throw new CampaignRunConflictError(campaignId, runId);
+    }
+    const riskDigest = await this.#artifactStore.putJson(riskAssessment);
+    const packetDigest = await this.#artifactStore.putJson(packet);
+    if (
+      riskDigest !== riskAssessmentRef.digest ||
+      packetDigest !== packetRef.digest
+    ) {
+      throw new Error("Human Review Packet CAS mismatch");
+    }
+    const transact = this.#database.transaction(
+      (): HumanReviewPacketRecordView => {
+        const rows = this.#readRows(campaignId);
+        if (rows.length === 0) {
+          throw new Error(`Campaign not found: ${campaignId}`);
+        }
+        const ledger = this.#decodeLedger(campaignId, rows);
+        const existing = ledger.humanReviewPackets.get(packet.candidate.id);
+        if (existing !== undefined) {
+          if (
+            canonicalJson(existing.packet) !== canonicalJson(packetRef) ||
+            canonicalJson(existing.riskAssessment) !==
+              canonicalJson(riskAssessmentRef)
+          ) {
+            throw new CampaignRunConflictError(campaignId, runId);
+          }
+          return existing;
+        }
+        const run = ledger.semanticRuns.get(runId);
+        const validation = [...ledger.validationCompletions.values()].find(
+          (record) =>
+            record.completion.validation.validationId ===
+              riskAssessment.validation.validationId &&
+            record.completion.validation.digest ===
+              riskAssessment.validation.digest &&
+            record.completion.disposition === "ready-for-human",
+        );
+        const intent = [...ledger.validationIntents.values()].find(
+          (record) =>
+            record.intent.runId === runId &&
+            record.intent.validationId ===
+              riskAssessment.validation.validationId,
+        );
+        if (
+          run === undefined ||
+          run.completed !== undefined ||
+          run.plan.schemaVersion !== 3 ||
+          validation === undefined ||
+          intent === undefined ||
+          canonicalJson(intent.intent.candidate) !==
+            canonicalJson(riskAssessment.candidate) ||
+          packet.target.digest !== run.plan.target.digest ||
+          packet.manifest.digest !== run.plan.manifest.digest
+        ) {
+          throw new CampaignRunConflictError(campaignId, runId);
+        }
+        const occurredAt = this.#clock().toISOString();
+        const ledgerHead = rows.length + 1;
+        this.#insertEvent(
+          campaignId,
+          ledgerHead,
+          "validation.review-packet-prepared",
+          occurredAt,
+          humanReviewPacketPreparedPayloadSchema.parse({
+            runId,
+            riskAssessment: riskAssessmentRef,
+            packet: packetRef,
+          }),
+          1,
+        );
+        return {
+          ledgerHead,
+          occurredAt,
+          packet: packetRef,
+          riskAssessment: riskAssessmentRef,
+          handoffs: [],
+        };
+      },
+    );
+    return transact();
+  }
+
+  async readHumanReviewPacket(
+    campaignId: string,
+    candidateId: string,
+  ): Promise<HumanReviewPacketRecordView | undefined> {
+    const rows = this.#readRows(campaignId);
+    if (rows.length === 0) return undefined;
+    return this.#decodeLedger(campaignId, rows).humanReviewPackets.get(
+      candidateId,
+    );
+  }
+
+  async recordHumanReviewPacketHandoff(
+    campaignId: string,
+    runId: string,
+    handoffValue: z.infer<typeof humanReviewPacketHandoffSchema>,
+  ): Promise<HumanReviewPacketRecordView> {
+    const handoff = humanReviewPacketHandoffSchema.parse(handoffValue);
+    const transact = this.#database.transaction(
+      (): HumanReviewPacketRecordView => {
+        const rows = this.#readRows(campaignId);
+        if (rows.length === 0) {
+          throw new Error(`Campaign not found: ${campaignId}`);
+        }
+        const ledger = this.#decodeLedger(campaignId, rows);
+        const run = ledger.semanticRuns.get(runId);
+        const existing = ledger.humanReviewPackets.get(
+          handoff.packet.candidateId,
+        );
+        if (
+          run === undefined ||
+          run.completed !== undefined ||
+          run.plan.schemaVersion !== 3 ||
+          existing === undefined ||
+          canonicalJson(existing.packet) !== canonicalJson(handoff.packet) ||
+          canonicalJson(existing.riskAssessment) !==
+            canonicalJson(handoff.riskAssessment) ||
+          (handoff.delivery.status === "delivered" &&
+            handoff.delivery.receipt.packetDigest !== handoff.packet.digest)
+        ) {
+          throw new CampaignRunConflictError(campaignId, runId);
+        }
+        const prior = existing.handoffs.find(
+          (candidate) => candidate.runId === runId,
+        );
+        if (prior !== undefined) {
+          if (canonicalJson(prior.handoff) !== canonicalJson(handoff)) {
+            throw new CampaignRunConflictError(campaignId, runId);
+          }
+          return existing;
+        }
+        const occurredAt = this.#clock().toISOString();
+        const ledgerHead = rows.length + 1;
+        this.#insertEvent(
+          campaignId,
+          ledgerHead,
+          "validation.review-packet-handed-off",
+          occurredAt,
+          humanReviewPacketHandedOffPayloadSchema.parse({ runId, handoff }),
+          1,
+        );
+        return {
+          ...existing,
+          handoffs: [
+            ...existing.handoffs,
+            { ledgerHead, occurredAt, runId, handoff },
+          ],
+        };
+      },
+    );
+    return transact();
+  }
+
   async recordSemanticDepthIteration(
     campaignId: string,
     runId: string,
@@ -3863,6 +4144,7 @@ class SqliteResearchRecord implements ResearchRecord {
       string,
       ValidationFrontierGapRecordView
     >();
+    const humanReviewPackets = new Map<string, HumanReviewPacketRecordView>();
     const verifications = new Map<string, StoredVerification>();
     for (const event of rows.slice(1)) {
       if (event.kind === "campaign.prepared") {
@@ -4523,6 +4805,92 @@ class SqliteResearchRecord implements ResearchRecord {
         approachFamilyRegistriesV3.set(payload.runId, projected);
         continue;
       }
+      if (event.kind === "validation.review-packet-prepared") {
+        if (event.schema_version !== 1) {
+          throw new UnsupportedLedgerSchemaError(
+            event.kind,
+            event.schema_version,
+          );
+        }
+        const payload = humanReviewPacketPreparedPayloadSchema.parse(
+          this.#parsePayload(event),
+        );
+        const run = semanticRuns.get(payload.runId);
+        const validation = validationCompletions.get(
+          payload.riskAssessment.validationId,
+        );
+        const intent = [...validationIntents.values()].find(
+          (record) =>
+            record.intent.runId === payload.runId &&
+            record.intent.validationId === payload.riskAssessment.validationId,
+        );
+        if (
+          run === undefined ||
+          run.completed !== undefined ||
+          run.plan.schemaVersion !== 3 ||
+          validation?.completion.disposition !== "ready-for-human" ||
+          intent === undefined ||
+          payload.packet.candidateId !== payload.riskAssessment.candidateId ||
+          payload.packet.candidateId !== intent.intent.candidate.id ||
+          payload.packet.targetSnapshotDigest !== run.plan.target.digest ||
+          payload.packet.manifestDigest !== run.plan.manifest.digest ||
+          humanReviewPackets.has(payload.packet.candidateId)
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        humanReviewPackets.set(payload.packet.candidateId, {
+          ledgerHead: event.campaign_sequence,
+          occurredAt: event.occurred_at,
+          packet: payload.packet,
+          riskAssessment: payload.riskAssessment,
+          handoffs: [],
+        });
+        continue;
+      }
+      if (event.kind === "validation.review-packet-handed-off") {
+        if (event.schema_version !== 1) {
+          throw new UnsupportedLedgerSchemaError(
+            event.kind,
+            event.schema_version,
+          );
+        }
+        const payload = humanReviewPacketHandedOffPayloadSchema.parse(
+          this.#parsePayload(event),
+        );
+        const run = semanticRuns.get(payload.runId);
+        const packet = humanReviewPackets.get(
+          payload.handoff.packet.candidateId,
+        );
+        if (
+          run === undefined ||
+          run.completed !== undefined ||
+          run.plan.schemaVersion !== 3 ||
+          packet === undefined ||
+          canonicalJson(packet.packet) !==
+            canonicalJson(payload.handoff.packet) ||
+          canonicalJson(packet.riskAssessment) !==
+            canonicalJson(payload.handoff.riskAssessment) ||
+          packet.handoffs.some((handoff) => handoff.runId === payload.runId) ||
+          (payload.handoff.delivery.status === "delivered" &&
+            payload.handoff.delivery.receipt.packetDigest !==
+              payload.handoff.packet.digest)
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        humanReviewPackets.set(payload.handoff.packet.candidateId, {
+          ...packet,
+          handoffs: [
+            ...packet.handoffs,
+            {
+              ledgerHead: event.campaign_sequence,
+              occurredAt: event.occurred_at,
+              runId: payload.runId,
+              handoff: payload.handoff,
+            },
+          ],
+        });
+        continue;
+      }
       if (event.kind === "exploration.depth-iteration-decided") {
         if (event.schema_version === 3) {
           const payload = semanticDepthIterationDecidedPayloadV3Schema.parse(
@@ -5001,6 +5369,70 @@ class SqliteResearchRecord implements ResearchRecord {
             ) {
               throw new LedgerIntegrityError(campaignId, "invalid-event-order");
             }
+            const recordedHandoffs = [...humanReviewPackets.values()]
+              .flatMap((packet) =>
+                packet.handoffs
+                  .filter((handoff) => handoff.runId === payload.record.runId)
+                  .map((handoff) => handoff.handoff),
+              )
+              .sort((left, right) =>
+                compareText(left.packet.digest, right.packet.digest),
+              );
+            const embeddedHandoffs = [
+              ...(payload.record.humanReviewPackets ?? []),
+            ].sort((left, right) =>
+              compareText(left.packet.digest, right.packet.digest),
+            );
+            if (
+              canonicalJson(recordedHandoffs) !==
+              canonicalJson(embeddedHandoffs)
+            ) {
+              throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+            }
+            if (
+              payload.record.humanReviewPackets !== undefined ||
+              payload.record.humanReviewPacketFailures !== undefined
+            ) {
+              const ready = new Map(
+                recordedCompletions
+                  .filter(
+                    (record) =>
+                      record.completion.disposition === "ready-for-human",
+                  )
+                  .map((record) => [
+                    record.completion.validation.candidateId,
+                    record.completion.validation,
+                  ]),
+              );
+              const accounted = [
+                ...(payload.record.humanReviewPackets ?? []).map(
+                  (handoff) => handoff.packet.candidateId,
+                ),
+                ...(payload.record.humanReviewPacketFailures ?? []).map(
+                  (failure) => failure.candidate.id,
+                ),
+              ];
+              if (
+                accounted.length !== ready.size ||
+                new Set(accounted).size !== accounted.length ||
+                accounted.some((candidateId) => !ready.has(candidateId)) ||
+                (payload.record.humanReviewPacketFailures ?? []).some(
+                  (failure) => {
+                    const validation = ready.get(failure.candidate.id);
+                    return (
+                      validation === undefined ||
+                      canonicalJson(validation) !==
+                        canonicalJson(failure.validation)
+                    );
+                  },
+                )
+              ) {
+                throw new LedgerIntegrityError(
+                  campaignId,
+                  "invalid-event-order",
+                );
+              }
+            }
           }
           semanticRuns.set(payload.record.runId, {
             ...existing,
@@ -5240,6 +5672,7 @@ class SqliteResearchRecord implements ResearchRecord {
       validationIntents,
       validationCompletions,
       validationFrontierGaps,
+      humanReviewPackets,
       verifications,
     };
   }

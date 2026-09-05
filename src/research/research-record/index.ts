@@ -3,6 +3,7 @@ export { openSqliteResearchRecord } from "./sqlite-research-record.js";
 export type {
   JsonArtifactStore,
   ApproachFamilyRegistryRecordViewV3,
+  HumanReviewPacketRecordView,
   OpenResearchRecordOptions,
   PreparationRecord,
   RecordPreparationResult,
