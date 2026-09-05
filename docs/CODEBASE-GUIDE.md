@@ -45,13 +45,13 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 
 ### Patchstack Programme Adapter
 
-**Interface:** `createPatchstackProgrammeAdapters -> ProgrammePolicySourceAdapter[]`
-
-- **Purpose:** Rules / Terms、report form、leaderboard、marketing pageの4 sourceを優先順付きで取得・parseし、programme-neutralなProgramme Eligibility Snapshotへ統合する。
+- **Purpose:** Rules / Terms、report form、leaderboard、mVDP directory、marketing pageの5 Intelligence Sourceを優先順付きで取得・parseし、programme-neutralなProgramme Eligibility Snapshotへ統合する。
+- **Interface:** `createPatchstackProgrammeAdapters -> ProgrammePolicySourceAdapter[]`
 - **Invariants:** Rulesをeligibilityの正本とし、lower-precedence sourceで上書きしない。latest stable、3年以内更新、active-install threshold、attacker role、mVDP例外をeligibilityへ固定する。Monthly CompetitionとZerodayを別のFinding-only reward routeにし、XP factor、contribution share、rejection-rate reduction、monthly poolをsource digestへbindする。named plugin、CVE、affected version、researcher detailsをnormalized policyへ含めない。
-- **Failures:** required source取得失敗は`stale`、必須ruleまたはstrict page contract不成立は`parse-failed`、source間の実質的矛盾は`policy-conflict`。marketing表示だけでRulesを置き換えない。
-- **Status:** 4-source group parse、source provenance、reward-route分離、conflict / stale / driftのsanitized fixture Behavior Testを実装。
-- **Code / Tests:** [patchstack-programme](../src/target-intelligence/patchstack-programme) · [Behavior Test](../tests/target-intelligence/patchstack-programme-adapter.test.ts)
+- **Failure semantics:** required Intelligence Source取得失敗は`stale`、必須ruleまたはstrict page contract不成立は`parse-failed`、source間の実質的矛盾は`policy-conflict`。marketing表示だけでRulesを置き換えない。
+- **Behavior Test:** [Patchstack Programme Adapter](../tests/target-intelligence/patchstack-programme-adapter.test.ts)
+- **Status:** 5-source group parse、source provenance、reward-route分離、conflict / stale / driftのsanitized fixture Behavior Testを実装。
+- **Code:** [patchstack-programme](../src/target-intelligence/patchstack-programme)
 
 ### Wordfence Programme Adapter
 

@@ -19,6 +19,7 @@ const sourceOrder: readonly PatchstackProgrammeSourceKind[] = [
   "rules",
   "report-form",
   "leaderboard",
+  "mvdp-directory",
   "marketing",
 ];
 
@@ -187,7 +188,7 @@ export function createPatchstackProgrammeAdapters(
       (kind) => pages.filter((page) => page.sourceKind === kind).length !== 1,
     )
   ) {
-    throw new Error("Patchstack Programme requires exactly four source pages");
+    throw new Error("Patchstack Programme requires exactly five source pages");
   }
   return sourceOrder.map((kind) => {
     const page = pages.find((candidate) => candidate.sourceKind === kind);

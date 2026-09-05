@@ -2,7 +2,7 @@
   "kind": "patchstack-programme-page",
   "schemaVersion": 1,
   "sourceKind": "marketing",
-  "precedence": 4,
+  "precedence": 5,
   "assertions": {
     "programmeOpportunityBand": "broad",
     "rewardRoutes": [

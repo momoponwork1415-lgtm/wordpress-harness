@@ -10,6 +10,7 @@ export const patchstackProgrammeSourceKindSchema = z.enum([
   "rules",
   "report-form",
   "leaderboard",
+  "mvdp-directory",
   "marketing",
 ]);
 
@@ -17,7 +18,7 @@ export const patchstackProgrammePageDocumentSchema = z.strictObject({
   kind: z.literal("patchstack-programme-page"),
   schemaVersion: z.literal(1),
   sourceKind: patchstackProgrammeSourceKindSchema,
-  precedence: z.number().int().min(1).max(4),
+  precedence: z.number().int().min(1).max(5),
   assertions: z.strictObject({
     eligibility: programmeEligibilitySchema.partial().optional(),
     programmeOpportunityBand: z

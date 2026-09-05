@@ -36,6 +36,11 @@ const sources = [
     fixture: "leaderboard.json",
   },
   {
+    sourceKind: "mvdp-directory",
+    sourceUrl: "https://patchstack.com/database/managed-vdp/",
+    fixture: "mvdp-directory.json",
+  },
+  {
     sourceKind: "marketing",
     sourceUrl: "https://patchstack.com/bug-bounty/",
     fixture: "marketing.json",
@@ -208,7 +213,7 @@ describe("Patchstack Programme Adapter", () => {
   it("returns stale when any required Patchstack source cannot be refreshed", async () => {
     const directory = await mkdtemp(join(tmpdir(), "patchstack-stale-"));
     const pages = fixturePageAdapters().map((page) =>
-      page.sourceKind === "leaderboard"
+      page.sourceKind === "mvdp-directory"
         ? {
             ...page,
             retrieve: () => Promise.reject(new Error("fixture unavailable")),
@@ -243,7 +248,8 @@ describe("Patchstack Programme Adapter", () => {
           { sourceId: "programme:patchstack:01-rules" },
           { sourceId: "programme:patchstack:02-report-form" },
           { sourceId: "programme:patchstack:03-leaderboard" },
-          { sourceId: "programme:patchstack:04-marketing" },
+          { sourceId: "programme:patchstack:04-mvdp-directory" },
+          { sourceId: "programme:patchstack:05-marketing" },
         ],
       });
     } finally {
