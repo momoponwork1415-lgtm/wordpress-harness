@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { canonicalJson, sha256Digest } from "../acquisition/canonical-json.js";
 import {
+  legacyTargetResearchAdmissionRequestSchema,
+  legacyTargetResearchHistoryRecordInputSchema,
   targetResearchAdmissionRequestSchema,
   targetResearchHistoryRecordInputSchema,
   type OpenTargetResearchHistoryOptions,
@@ -17,7 +19,7 @@ import {
 
 const storedSelectedEventSchema = z.strictObject({
   kind: z.literal("target-research-campaign-selected"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   targetId: z.string(),
   campaignId: z.string(),
   campaignDigest: z.string(),
@@ -26,13 +28,30 @@ const storedSelectedEventSchema = z.strictObject({
 
 const storedRecordEventSchema = z.strictObject({
   kind: z.literal("target-research-campaign-recorded"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   input: targetResearchHistoryRecordInputSchema,
 });
 
-const storedEventSchema = z.discriminatedUnion("kind", [
+const legacyStoredSelectedEventSchema = z.strictObject({
+  kind: z.literal("target-research-campaign-selected"),
+  schemaVersion: z.literal(1),
+  targetId: z.string(),
+  campaignId: z.string(),
+  campaignDigest: z.string(),
+  request: legacyTargetResearchAdmissionRequestSchema,
+});
+
+const legacyStoredRecordEventSchema = z.strictObject({
+  kind: z.literal("target-research-campaign-recorded"),
+  schemaVersion: z.literal(1),
+  input: legacyTargetResearchHistoryRecordInputSchema,
+});
+
+const storedEventSchema = z.union([
   storedSelectedEventSchema,
   storedRecordEventSchema,
+  legacyStoredSelectedEventSchema,
+  legacyStoredRecordEventSchema,
 ]);
 
 type StoredEvent = z.infer<typeof storedEventSchema>;
@@ -55,7 +74,11 @@ function shortId(prefix: string, digest: string): string {
   return `${prefix}:${digest.slice("sha256:".length, "sha256:".length + 24)}`;
 }
 
-function targetIdentityDigest(request: TargetResearchAdmissionRequest): string {
+function targetIdentityDigest(
+  request:
+    | TargetResearchAdmissionRequest
+    | z.infer<typeof legacyTargetResearchAdmissionRequestSchema>,
+): string {
   return sha256Digest({
     kind: "target-research-identity",
     schemaVersion: 1,
@@ -64,14 +87,50 @@ function targetIdentityDigest(request: TargetResearchAdmissionRequest): string {
 }
 
 function campaignIdentityDigest(
-  request: TargetResearchAdmissionRequest,
+  request:
+    | TargetResearchAdmissionRequest
+    | z.infer<typeof legacyTargetResearchAdmissionRequestSchema>,
 ): string {
   return sha256Digest({
     kind: "target-research-campaign-identity",
-    schemaVersion: 1,
+    schemaVersion: request.schemaVersion,
     target: request.target,
     definition: request.campaign,
   });
+}
+
+function projectDefinition(
+  stored:
+    | z.infer<typeof legacyStoredSelectedEventSchema>
+    | z.infer<typeof storedSelectedEventSchema>,
+): TargetResearchCampaign["definition"] {
+  if (stored.schemaVersion === 2) {
+    return stored.request.campaign;
+  }
+  const definition = stored.request.campaign;
+  const purpose = {
+    prospective: "prospective-security-research",
+    "development-cohort": "development-cohort-evaluation",
+    calibration: "selection-calibration",
+    "independent-repeat": "independent-recall-repeat",
+  } as const;
+  const reason =
+    definition.kind === "prospective"
+      ? definition.runOrdinal > 1
+        ? "incomplete-source-frontier-follow-up"
+        : undefined
+      : purpose[definition.kind];
+  return {
+    kind: definition.kind,
+    runOrdinal: definition.runOrdinal,
+    policy: definition.policy,
+    profile: definition.profile,
+    purpose: purpose[definition.kind],
+    ...(reason === undefined ? {} : { reason }),
+    ...(definition.followUp === undefined
+      ? {}
+      : { followUp: definition.followUp }),
+  };
 }
 
 function parseStoredEvent(row: StoredEventRow): StoredEvent {
@@ -111,7 +170,8 @@ function project(rows: readonly StoredEventRow[]): Projection {
         digest: stored.campaignDigest,
         targetId: stored.targetId,
         target: stored.request.target,
-        definition: stored.request.campaign,
+        definition: projectDefinition(stored),
+        historySchemaVersion: stored.schemaVersion,
         status: "selected",
         selectedAt: row.occurred_at,
       });
@@ -158,7 +218,10 @@ function project(rows: readonly StoredEventRow[]): Projection {
       status: "incomplete",
       completedAt: row.occurred_at,
       terminalStatus: "incomplete",
-      terminalReason: stored.input.event.reason,
+      terminalReason:
+        stored.schemaVersion === 1
+          ? "legacy-unclassified"
+          : stored.input.event.reason,
     });
   }
   return { campaigns };
@@ -257,7 +320,7 @@ class SqliteTargetResearchHistory implements TargetResearchHistory {
 
       const stored: StoredEvent = {
         kind: "target-research-campaign-selected",
-        schemaVersion: 1,
+        schemaVersion: 2,
         targetId,
         campaignId,
         campaignDigest,
@@ -279,7 +342,7 @@ class SqliteTargetResearchHistory implements TargetResearchHistory {
     const input = targetResearchHistoryRecordInputSchema.parse(inputValue);
     const stored: StoredEvent = {
       kind: "target-research-campaign-recorded",
-      schemaVersion: 1,
+      schemaVersion: 2,
       input,
     };
     const eventDigest = sha256Digest(stored);
@@ -295,6 +358,11 @@ class SqliteTargetResearchHistory implements TargetResearchHistory {
         if (campaign === undefined) {
           throw new Error(
             "Target Research History record has unknown Campaign",
+          );
+        }
+        if (campaign.historySchemaVersion !== 2) {
+          throw new Error(
+            "Legacy Target Research Campaign is read-only; v1 and v2 writers cannot mix",
           );
         }
         if (input.event.kind === "campaign-started") {
@@ -336,6 +404,11 @@ class SqliteTargetResearchHistory implements TargetResearchHistory {
     const stored = parseStoredEvent(row);
     if (stored.kind !== "target-research-campaign-recorded") {
       throw new Error("Target Research History record identity is occupied");
+    }
+    if (stored.schemaVersion !== 2) {
+      throw new Error(
+        "Legacy Target Research History event cannot be returned through the v2 writer",
+      );
     }
     const campaign = project(this.#selectEvents()).campaigns.get(
       stored.input.campaignId,

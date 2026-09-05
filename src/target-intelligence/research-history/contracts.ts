@@ -39,6 +39,67 @@ export const targetResearchIncompleteReasonSchema = z.enum([
   "execution-interrupted",
 ]);
 
+export const legacyTargetResearchCampaignDefinitionSchema = z
+  .strictObject({
+    kind: z.enum([
+      "prospective",
+      "development-cohort",
+      "calibration",
+      "independent-repeat",
+    ]),
+    runOrdinal: z.number().int().positive(),
+    policy: immutableIdentitySchema,
+    profile: immutableIdentitySchema,
+    purpose: z.string().trim().min(1).max(512),
+    reason: z.string().trim().min(1).max(512).optional(),
+    followUp: z
+      .strictObject({
+        campaignId: identifierSchema,
+      })
+      .optional(),
+  })
+  .superRefine((definition, context) => {
+    if (definition.kind !== "prospective" && definition.reason === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["reason"],
+        message: "An intentional Campaign requires a reason",
+      });
+    }
+    if (
+      definition.kind !== "prospective" &&
+      definition.followUp !== undefined
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["followUp"],
+        message: "Only a prospective Campaign can follow up Incomplete work",
+      });
+    }
+    if (
+      definition.kind === "prospective" &&
+      definition.runOrdinal === 1 &&
+      definition.followUp !== undefined
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["followUp"],
+        message: "The first prospective run cannot be a follow-up",
+      });
+    }
+    if (
+      definition.kind === "prospective" &&
+      definition.runOrdinal > 1 &&
+      (definition.reason === undefined || definition.followUp === undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["reason"],
+        message: "A later prospective run requires a reasoned follow-up",
+      });
+    }
+  });
+
 export const targetResearchIdentitySchema = z.strictObject({
   pluginIdentity: pluginIdentitySchema,
   verifiedVersion: z.string().min(1).max(64),
@@ -149,12 +210,41 @@ export const targetResearchCampaignDefinitionSchema = z
 
 export const targetResearchAdmissionRequestSchema = z.strictObject({
   kind: z.literal("target-research-admission"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   target: targetResearchIdentitySchema,
   campaign: targetResearchCampaignDefinitionSchema,
 });
 
 export const targetResearchHistoryRecordInputSchema = z.strictObject({
+  kind: z.literal("target-research-history-record"),
+  schemaVersion: z.literal(2),
+  campaignId: identifierSchema,
+  event: z.union([
+    z.strictObject({ kind: z.literal("campaign-started") }),
+    z.strictObject({
+      kind: z.literal("campaign-progressed"),
+      progressRef: immutableIdentitySchema,
+    }),
+    z.strictObject({
+      kind: z.literal("campaign-completed"),
+      terminalStatus: z.literal("coverage-closed"),
+    }),
+    z.strictObject({
+      kind: z.literal("campaign-completed"),
+      terminalStatus: z.literal("incomplete"),
+      reason: targetResearchIncompleteReasonSchema,
+    }),
+  ]),
+});
+
+export const legacyTargetResearchAdmissionRequestSchema = z.strictObject({
+  kind: z.literal("target-research-admission"),
+  schemaVersion: z.literal(1),
+  target: targetResearchIdentitySchema,
+  campaign: legacyTargetResearchCampaignDefinitionSchema,
+});
+
+export const legacyTargetResearchHistoryRecordInputSchema = z.strictObject({
   kind: z.literal("target-research-history-record"),
   schemaVersion: z.literal(1),
   campaignId: identifierSchema,
@@ -171,7 +261,7 @@ export const targetResearchHistoryRecordInputSchema = z.strictObject({
     z.strictObject({
       kind: z.literal("campaign-completed"),
       terminalStatus: z.literal("incomplete"),
-      reason: targetResearchIncompleteReasonSchema,
+      reason: z.string().trim().min(1).max(512),
     }),
   ]),
 });
@@ -195,13 +285,16 @@ export interface TargetResearchCampaign {
   readonly targetId: string;
   readonly target: TargetResearchIdentity;
   readonly definition: TargetResearchCampaignDefinition;
+  readonly historySchemaVersion: 1 | 2;
   readonly status: "active" | "coverage-closed" | "incomplete" | "selected";
   readonly selectedAt: string;
   readonly startedAt?: string;
   readonly lastProgressAt?: string;
   readonly completedAt?: string;
   readonly terminalStatus?: "coverage-closed" | "incomplete";
-  readonly terminalReason?: string;
+  readonly terminalReason?:
+    | z.infer<typeof targetResearchIncompleteReasonSchema>
+    | "legacy-unclassified";
 }
 
 export interface NewTargetResearchAdmission {

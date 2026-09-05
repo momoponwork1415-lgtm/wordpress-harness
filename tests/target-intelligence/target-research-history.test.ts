@@ -2,7 +2,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 
 import { openTargetResearchHistory } from "../../src/target-intelligence/index.js";
@@ -10,12 +9,13 @@ import type {
   TargetResearchAdmissionRequest,
   TargetResearchHistory,
 } from "../../src/target-intelligence/index.js";
+import { createLegacyTargetResearchHistoryFixture } from "../fixtures/target-intelligence/legacy-target-research-history.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 
 const prospectiveAdmission = {
   kind: "target-research-admission" as const,
-  schemaVersion: 1 as const,
+  schemaVersion: 2 as const,
   target: {
     pluginIdentity: "wporg:example-security",
     verifiedVersion: "2.4.1",
@@ -73,7 +73,7 @@ describe("TargetResearchHistory", () => {
       currentTime = "2030-01-01T00:05:00.000Z";
       const startedInput = {
         kind: "target-research-history-record" as const,
-        schemaVersion: 1 as const,
+        schemaVersion: 2 as const,
         campaignId: admitted.campaign.id,
         event: { kind: "campaign-started" as const },
       };
@@ -119,7 +119,7 @@ describe("TargetResearchHistory", () => {
       const admitted = await admitNew(history, prospectiveAdmission);
       await history.record({
         kind: "target-research-history-record",
-        schemaVersion: 1,
+        schemaVersion: 2,
         campaignId: admitted.campaign.id,
         event: { kind: "campaign-started" },
       });
@@ -128,9 +128,12 @@ describe("TargetResearchHistory", () => {
       await expect(
         history.record({
           kind: "target-research-history-record",
-          schemaVersion: 1,
+          schemaVersion: 2,
           campaignId: admitted.campaign.id,
-          event: { kind: "campaign-progressed", progressId: "wave-1" },
+          event: {
+            kind: "campaign-progressed",
+            progressRef: { id: "wave-1", digest: digest("6") },
+          },
         }),
       ).resolves.toMatchObject({
         status: "appended",
@@ -142,7 +145,7 @@ describe("TargetResearchHistory", () => {
       currentTime = "2030-02-01T02:00:00.000Z";
       const completedInput = {
         kind: "target-research-history-record" as const,
-        schemaVersion: 1 as const,
+        schemaVersion: 2 as const,
         campaignId: admitted.campaign.id,
         event: {
           kind: "campaign-completed" as const,
@@ -180,30 +183,72 @@ describe("TargetResearchHistory", () => {
     }
   });
 
-  it("rejects an invalid stored row before replaying its public projection", async () => {
+  it("replays legacy v1 history read-only without projecting its free-text Oracle fields", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "target-history-legacy-"));
+    const databasePath = join(directory, "target-intelligence.sqlite");
+    try {
+      const fixture = createLegacyTargetResearchHistoryFixture(databasePath);
+      const history = openTargetResearchHistory({ databasePath });
+
+      const admission = await history.admit(prospectiveAdmission);
+      expect(admission).toMatchObject({
+        status: "follow-up-required",
+        campaign: {
+          id: fixture.campaignId,
+          historySchemaVersion: 1,
+          definition: { purpose: "prospective-security-research" },
+          terminalReason: "legacy-unclassified",
+        },
+      });
+      expect(JSON.stringify(admission)).not.toMatch(/CVE|advisory|Finding/);
+
+      await expect(
+        history.record({
+          kind: "target-research-history-record",
+          schemaVersion: 2,
+          campaignId: fixture.campaignId,
+          event: {
+            kind: "campaign-progressed",
+            progressRef: { id: "wave-2", digest: digest("7") },
+          },
+        }),
+      ).rejects.toThrow("v1 and v2 writers cannot mix");
+
+      const restarted = openTargetResearchHistory({ databasePath });
+      await expect(restarted.admit(prospectiveAdmission)).resolves.toEqual(
+        admission,
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an invalid clock value at the public persistence boundary", async () => {
     const directory = await mkdtemp(join(tmpdir(), "target-history-row-"));
     const databasePath = join(directory, "target-intelligence.sqlite");
     try {
+      class InvalidIsoDate extends Date {
+        override toISOString(): string {
+          return "not-a-timestamp";
+        }
+      }
       const history = openTargetResearchHistory({
+        databasePath,
+        clock: () => new InvalidIsoDate(),
+      });
+      await expect(history.admit(prospectiveAdmission)).rejects.toThrow(
+        "occurred_at",
+      );
+
+      const restarted = openTargetResearchHistory({
         databasePath,
         clock: () => new Date("2030-02-01T00:00:00.000Z"),
       });
-      await admitNew(history, prospectiveAdmission);
-
-      const database = new Database(databasePath);
-      database
-        .prepare(
-          `UPDATE target_research_history_events
-              SET occurred_at = ?
-            WHERE global_sequence = 1`,
-        )
-        .run("not-a-timestamp");
-      database.close();
-
-      const restarted = openTargetResearchHistory({ databasePath });
-      await expect(restarted.admit(prospectiveAdmission)).rejects.toThrow(
-        "occurred_at",
-      );
+      await expect(
+        restarted.admit(prospectiveAdmission),
+      ).resolves.toMatchObject({
+        status: "new",
+      });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -221,13 +266,13 @@ describe("TargetResearchHistory", () => {
       const admitted = await admitNew(history, prospectiveAdmission);
       await history.record({
         kind: "target-research-history-record",
-        schemaVersion: 1,
+        schemaVersion: 2,
         campaignId: admitted.campaign.id,
         event: { kind: "campaign-started" },
       });
       const incomplete = await history.record({
         kind: "target-research-history-record",
-        schemaVersion: 1,
+        schemaVersion: 2,
         campaignId: admitted.campaign.id,
         event: {
           kind: "campaign-completed",
@@ -261,13 +306,13 @@ describe("TargetResearchHistory", () => {
       });
       await history.record({
         kind: "target-research-history-record",
-        schemaVersion: 1,
+        schemaVersion: 2,
         campaignId: followUp.campaign.id,
         event: { kind: "campaign-started" },
       });
       const covered = await history.record({
         kind: "target-research-history-record",
-        schemaVersion: 1,
+        schemaVersion: 2,
         campaignId: followUp.campaign.id,
         event: {
           kind: "campaign-completed",
@@ -339,13 +384,13 @@ describe("TargetResearchHistory", () => {
         const original = await admitNew(history, prospectiveAdmission);
         await history.record({
           kind: "target-research-history-record",
-          schemaVersion: 1,
+          schemaVersion: 2,
           campaignId: original.campaign.id,
           event: { kind: "campaign-started" },
         });
         await history.record({
           kind: "target-research-history-record",
-          schemaVersion: 1,
+          schemaVersion: 2,
           campaignId: original.campaign.id,
           event: {
             kind: "campaign-completed",
@@ -454,7 +499,7 @@ describe("TargetResearchHistory", () => {
       }
       await history.record({
         kind: "target-research-history-record",
-        schemaVersion: 1,
+        schemaVersion: 2,
         campaignId: cleanAdmission.campaign.id,
         event: { kind: "campaign-started" },
       });
@@ -462,7 +507,7 @@ describe("TargetResearchHistory", () => {
         Reflect.apply(history.record, history, [
           {
             kind: "target-research-history-record",
-            schemaVersion: 1,
+            schemaVersion: 2,
             campaignId: cleanAdmission.campaign.id,
             event: {
               kind: "campaign-completed",

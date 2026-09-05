@@ -77,10 +77,10 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 
 - **Purpose:** Plugin Identity、verified version、Canonical File Manifest digestでTargetを固定し、Campaignの選定、進行、terminal statusをappend-onlyに記録して重複Researchを制御する。
 - **Interface:** `TargetResearchHistory.admit / record`
-- **Invariants:** activeは既存Campaignへresumeし、Coverage Closedは通常のprospective選定を`already-covered`にする。Incomplete後のprospective再実行は元Campaignと理由codeを固定したfollow-upだけを許可する。同じplugin/versionの異なるManifest digestはprovenance conflict、新しいverified versionは別Targetにする。Campaign purposeと理由は列挙済みcodeだけを受け付け、Oracle Factを自由記述として保存しない。Research Ledgerを参照せず、保存rowをruntime validationしてからpublic projectionをreplayする。
-- **Failure semantics:** admission判断は`new / resume / already-covered / follow-up-required / provenance-conflict`。不正contract、保存row、Campaign bindingまたはlifecycle順序の不一致、durable write failureだけをerrorにする。
+- **Invariants:** activeは既存Campaignへresumeし、Coverage Closedは通常のprospective選定を`already-covered`にする。Incomplete後のprospective再実行は元Campaignと理由codeを固定したfollow-upだけを許可する。同じplugin/versionの異なるManifest digestはprovenance conflict、新しいverified versionは別Targetにする。v2 writerはCampaign purpose、理由、progressを列挙codeまたはcontent-bound refだけで受け付け、Oracle Factを自由記述として保存しない。v1 eventは読取専用でreplayし、自由記述をpublic projectionへ出さず、v2 eventを追記しない。Research Ledgerを参照せず、保存rowをruntime validationしてからpublic projectionをreplayする。
+- **Failure semantics:** admission判断は`new / resume / already-covered / follow-up-required / provenance-conflict`。不正contract、保存row、Campaign binding、lifecycle順序、v1 / v2 writer混在、durable write failureだけをerrorにする。
 - **Behavior Test:** [Target Research History](../tests/target-intelligence/target-research-history.test.ts)
-- **Status:** Target Intelligence専用SQLite eventからCampaign viewをreplayする。Development Cohort、calibration、意図的な独立反復はkind、run ordinal、理由を固定して許可する。
+- **Status:** Target Intelligence専用SQLite eventからCampaign viewをreplayする。v1 replay migration projectionとv2-only writeを実装。Development Cohort、calibration、意図的な独立反復はkind、run ordinal、理由を固定して許可する。
 - **Code:** [research-history](../src/target-intelligence/research-history)
 
 ### Target Selection
