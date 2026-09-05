@@ -8,4 +8,4 @@
 
 補助的な公開資料は必要な設計判断の中で直接引用する。採用済みの結論を説明するためだけに長いreference noteを増やさない。
 
-現役の内部調査資料は[Research Notes](research/README.md)に限定する。Anthropic等をこのrepositoryへどう適用するかは[Research Design Principles](design/research-design-principles.md)を正本とする。
+現役の内部調査資料は[Research Notes](research/README.md)に限定する。Anthropic等をこのrepositoryへどう適用するかは[Research Design](RESEARCH-DESIGN.md)を正本とする。

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1080" viewBox="0 0 1800 1080" role="img" aria-labelledby="title desc">
-  <title id="title">WordPress Semantic Security Research Harness architecture</title>
+  <title id="title">WordPress Semantic Security Research Harness whole-system architecture</title>
   <desc id="desc">Target Intelligence, Research, and Human OS connected by versioned handoffs, with model isolation, durable records, source-only validation, human verification, and external action authorization.</desc>
   <defs>
     <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
