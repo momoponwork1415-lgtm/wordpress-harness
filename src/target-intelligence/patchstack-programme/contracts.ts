@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 import {
-  directoryEligibilityRuleSchema,
   policyTermSchema,
   programmeEligibilitySchema,
   programmeRewardRouteSchema,
@@ -28,7 +27,16 @@ export const patchstackProgrammePageDocumentSchema = z.strictObject({
     rewardFactors: z.array(policyTermSchema).min(1).optional(),
     rewardRoutes: z.array(programmeRewardRouteSchema).optional(),
     directoryEligibilityRules: z
-      .array(directoryEligibilityRuleSchema)
+      .array(
+        z.strictObject({
+          directoryIdentity: z.literal(
+            "managed-vulnerability-disclosure-programme",
+          ),
+          requiredMembership: z.literal("listed-plugin"),
+          eligibilityEffect: z.literal("contributor-attacker-role-exception"),
+          authorizationCondition: z.literal("mvdp-scope-exception"),
+        }),
+      )
       .min(1)
       .optional(),
   }),

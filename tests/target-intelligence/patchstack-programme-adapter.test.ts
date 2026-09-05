@@ -312,6 +312,61 @@ describe("Patchstack Programme Adapter", () => {
     }
   });
 
+  it("rejects an Oracle-labeled mVDP exception instead of projecting it", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "patchstack-mvdp-oracle-"));
+    const pages = fixturePageAdapters().map((page) =>
+      page.sourceKind === "mvdp-directory"
+        ? {
+            ...page,
+            parse: async (bytes: Uint8Array) => {
+              const document = JSON.parse(
+                Buffer.from(bytes).toString("utf8"),
+              ) as {
+                assertions: {
+                  directoryEligibilityRules: Array<Record<string, unknown>>;
+                };
+              };
+              const first = document.assertions.directoryEligibilityRules[0];
+              if (first !== undefined) {
+                first.eligibilityEffect = "known-vulnerability-priority";
+              }
+              return document;
+            },
+          }
+        : page,
+    );
+    try {
+      const intelligence = openProgrammeIntelligence({
+        storageDirectory: directory,
+        sourceAdapters: createPatchstackProgrammeAdapters({ pages }),
+        freshnessPolicy: {
+          kind: "programme-eligibility-freshness-policy",
+          schemaVersion: 1,
+          id: "programme-freshness-v1",
+          digest: digest("f"),
+          maximumAgeMs: {
+            targetSelectionBatch: 86_400_000,
+            submissionStaging: 3_600_000,
+          },
+        },
+      });
+      const result = await intelligence.refresh({
+        kind: "programme-intelligence-refresh",
+        schemaVersion: 1,
+        programmeIdentity: "programme:patchstack",
+      });
+      expect(result).toMatchObject({
+        status: "parse-failed",
+        programmeIdentity: "programme:patchstack",
+      });
+      expect(JSON.stringify(result)).not.toContain(
+        "known-vulnerability-priority",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("rejects required-rule drift and Oracle fields without reusing an old default", async () => {
     const directory = await mkdtemp(join(tmpdir(), "patchstack-drift-"));
     const pages = fixturePageAdapters().map((page) =>
