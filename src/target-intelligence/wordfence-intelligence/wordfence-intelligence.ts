@@ -1800,8 +1800,9 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       },
     });
     const snapshotRef = snapshotReference(snapshot);
+    let durableProjection: WordfenceIntelligenceResult;
     try {
-      this.#storeSnapshot(
+      durableProjection = this.#storeSnapshot(
         snapshot,
         snapshotRef,
         normalized.records,
@@ -1823,7 +1824,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       }
       throw error;
     }
-    return currentResult(snapshot, snapshotRef);
+    return durableProjection;
   }
 
   async #productionIndexFailure(
@@ -1870,110 +1871,114 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   ): Promise<WordfenceIntelligenceResult> {
     const request =
       wordfenceIntelligenceInspectionRequestSchema.parse(requestValue);
-    const transaction = this.#database.transaction(() => {
-      const result = this.#inspectSnapshot(request);
-      const currentReference = this.#currentReference();
-      if (
-        request.snapshotRef !== undefined &&
-        (currentReference === undefined ||
-          request.snapshotRef.id !== currentReference.id ||
-          request.snapshotRef.digest !== currentReference.digest)
-      ) {
-        if (result.status === "current" || result.status === "stale") {
-          this.#validatedRecordSet(result.snapshot, result.snapshotRef);
-        }
-        return result;
+    const transaction = this.#database.transaction(() =>
+      this.#productionProjection(request),
+    );
+    return transaction.deferred();
+  }
+
+  #productionProjection(
+    request: WordfenceIntelligenceInspectionRequest,
+  ): WordfenceIntelligenceResult {
+    const result = this.#inspectSnapshot(request);
+    const currentReference = this.#currentReference();
+    if (
+      request.snapshotRef !== undefined &&
+      (currentReference === undefined ||
+        request.snapshotRef.id !== currentReference.id ||
+        request.snapshotRef.digest !== currentReference.digest)
+    ) {
+      if (result.status === "current" || result.status === "stale") {
+        this.#validatedRecordSet(result.snapshot, result.snapshotRef);
       }
-      this.#requireProductionRefreshBindings(currentReference?.digest);
-      const activeAttempt = refreshAttemptRowSchema.optional().parse(
-        this.#database
-          .prepare(
-            `SELECT sequence, attempted_at, current_snapshot_digest
+      return result;
+    }
+    this.#requireProductionRefreshBindings(currentReference?.digest);
+    const activeAttempt = refreshAttemptRowSchema.optional().parse(
+      this.#database
+        .prepare(
+          `SELECT sequence, attempted_at, current_snapshot_digest
                FROM wordfence_intelligence_refresh_attempts
               ORDER BY sequence DESC
               LIMIT 1`,
-          )
-          .get(),
-      );
-      const row = refreshStateRowSchema.optional().parse(
-        this.#database
-          .prepare(
-            `SELECT state_json
+        )
+        .get(),
+    );
+    const row = refreshStateRowSchema.optional().parse(
+      this.#database
+        .prepare(
+          `SELECT state_json
              FROM wordfence_intelligence_refresh_state
             WHERE singleton = 1`,
-          )
-          .get(),
-      );
-      if (activeAttempt !== undefined) {
-        if (result.status === "failed") {
-          if (
-            result.reason === "not-refreshed" &&
-            activeAttempt.current_snapshot_digest === null
-          ) {
-            return failure("storage-failure");
-          }
-          if (result.reason === "not-refreshed") {
-            throw new SnapshotConflictError();
-          }
-          return result;
-        }
-        if (
-          activeAttempt.current_snapshot_digest !== result.snapshotRef.digest
-        ) {
-          throw new SnapshotConflictError();
-        }
-        return staleWordfenceIntelligenceSnapshotSchema.parse({
-          ...result,
-          status: "stale",
-          latestRefresh: {
-            kind: "wordfence-intelligence-refresh-attempt",
-            schemaVersion: 1,
-            attemptedAt: activeAttempt.attempted_at,
-            result: failure("storage-failure"),
-          },
-        });
-      }
-      if (row === undefined) {
-        return result;
-      }
-      const state = productionRefreshStateSchema.parse(
-        JSON.parse(row.state_json),
-      );
-      const currentSnapshotDigest = state.currentSnapshotDigest;
-      const latestRefresh =
-        state.kind === "wordfence-intelligence-production-refresh-in-progress"
-          ? wordfenceIntelligenceRefreshAttemptSchema.parse({
-              kind: "wordfence-intelligence-refresh-attempt",
-              schemaVersion: 1,
-              attemptedAt: state.attemptedAt,
-              result: failure("storage-failure"),
-            })
-          : state.latestRefresh;
+        )
+        .get(),
+    );
+    if (activeAttempt !== undefined) {
       if (result.status === "failed") {
         if (
           result.reason === "not-refreshed" &&
-          currentSnapshotDigest === undefined
+          activeAttempt.current_snapshot_digest === null
         ) {
-          return latestRefresh.result;
+          return failure("storage-failure");
         }
         if (result.reason === "not-refreshed") {
           throw new SnapshotConflictError();
         }
         return result;
       }
-      if (result.status === "stale") {
-        return result;
-      }
-      if (currentSnapshotDigest !== result.snapshotRef.digest) {
+      if (activeAttempt.current_snapshot_digest !== result.snapshotRef.digest) {
         throw new SnapshotConflictError();
       }
       return staleWordfenceIntelligenceSnapshotSchema.parse({
         ...result,
         status: "stale",
-        latestRefresh,
+        latestRefresh: {
+          kind: "wordfence-intelligence-refresh-attempt",
+          schemaVersion: 1,
+          attemptedAt: activeAttempt.attempted_at,
+          result: failure("storage-failure"),
+        },
       });
+    }
+    if (row === undefined) {
+      return result;
+    }
+    const state = productionRefreshStateSchema.parse(
+      JSON.parse(row.state_json),
+    );
+    const currentSnapshotDigest = state.currentSnapshotDigest;
+    const latestRefresh =
+      state.kind === "wordfence-intelligence-production-refresh-in-progress"
+        ? wordfenceIntelligenceRefreshAttemptSchema.parse({
+            kind: "wordfence-intelligence-refresh-attempt",
+            schemaVersion: 1,
+            attemptedAt: state.attemptedAt,
+            result: failure("storage-failure"),
+          })
+        : state.latestRefresh;
+    if (result.status === "failed") {
+      if (
+        result.reason === "not-refreshed" &&
+        currentSnapshotDigest === undefined
+      ) {
+        return latestRefresh.result;
+      }
+      if (result.reason === "not-refreshed") {
+        throw new SnapshotConflictError();
+      }
+      return result;
+    }
+    if (result.status === "stale") {
+      return result;
+    }
+    if (currentSnapshotDigest !== result.snapshotRef.digest) {
+      throw new SnapshotConflictError();
+    }
+    return staleWordfenceIntelligenceSnapshotSchema.parse({
+      ...result,
+      status: "stale",
+      latestRefresh,
     });
-    return transaction.deferred();
   }
 
   async requireCurrentProductionArtifact(
@@ -2101,7 +2106,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     reference: WordfenceIntelligenceSnapshotRef,
     records: readonly WordfenceStoredPluginRecord[],
     productionAttempt: ProductionRefreshAttemptToken | undefined,
-  ): void {
+  ): WordfenceIntelligenceResult {
     const transaction = this.#database.transaction(() => {
       let refreshOrder: z.infer<typeof refreshOrderRowSchema> | undefined;
       if (productionAttempt !== undefined) {
@@ -2165,7 +2170,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
                snapshot_digest = excluded.snapshot_digest`,
           )
           .run(reference.digest);
-        return;
+        return currentResult(snapshot, reference);
       }
       if (refreshOrder === undefined) {
         throw new SnapshotConflictError();
@@ -2240,8 +2245,12 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
             productionAttempt.sequence,
           ),
         );
+      return this.#productionProjection({
+        kind: "wordfence-intelligence-inspection",
+        schemaVersion: 1,
+      });
     });
-    transaction.immediate();
+    return transaction.immediate();
   }
 
   #assertStoredRecords(
@@ -2273,7 +2282,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     reason: WordfenceIntelligenceFailure["reason"],
     backoff?: WordfenceRateLimitBackoff,
     productionAttempt?: ProductionRefreshAttemptToken,
-  ): WordfenceIntelligenceFailure {
+  ): WordfenceIntelligenceResult {
     return this.#recordRefreshFailure(
       failure(reason, backoff),
       productionAttempt,
@@ -2318,7 +2327,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   #recordRefreshFailure(
     result: WordfenceIntelligenceFailure,
     productionAttempt?: ProductionRefreshAttemptToken,
-  ): WordfenceIntelligenceFailure {
+  ): WordfenceIntelligenceResult {
     const parsed = wordfenceIntelligenceFailureSchema.parse(result);
     if (!this.#productionComposition) {
       return parsed;
@@ -2349,7 +2358,10 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
                  state_json = excluded.state_json`,
             )
             .run(canonicalJson(state));
-          return;
+          return this.#productionProjection({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          });
         }
         this.#requireProductionRefreshBindings(currentSnapshotDigest);
         this.#requireActiveAttempt(productionAttempt);
@@ -2408,9 +2420,12 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
               productionAttempt.sequence,
             ),
           );
+        return this.#productionProjection({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        });
       });
-      transaction.immediate();
-      return parsed;
+      return transaction.immediate();
     } catch (error) {
       if (isStorageFailure(error)) {
         return failure("storage-failure");
@@ -2765,7 +2780,7 @@ async function usePinnedProductionDirectory(
   try {
     await directory.handle.close();
   } catch {
-    return result.status === "failed" ? result : failure("storage-failure");
+    return result.status === "current" ? failure("storage-failure") : result;
   }
   return result;
 }
@@ -2891,13 +2906,21 @@ export function openWordfenceIntelligenceRefresh(
             await current.intelligence.requireCurrentProductionArtifact(
               current.artifactDirectory,
             );
-            return wordfenceIntelligenceResultSchema.parse(
+            const result = wordfenceIntelligenceResultSchema.parse(
               await current.intelligence.refresh(
                 request,
                 current.artifactDirectory,
                 requireCurrentIndexIdentity,
               ),
             );
+            if (result.status === "current" || result.status === "stale") {
+              await verifyStoredArtifact(
+                current.artifactDirectory,
+                result.snapshot.source.contentDigest,
+              );
+              await requireCurrentIndexIdentity();
+            }
+            return result;
           },
         );
       } catch (error) {

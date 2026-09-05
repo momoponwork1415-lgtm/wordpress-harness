@@ -599,18 +599,22 @@ describe("WordfenceIntelligenceRefresh", () => {
         if (current.status !== "current") {
           throw new Error("Expected a current snapshot");
         }
-        await expect(
-          refresh.run({
-            kind: "wordfence-intelligence-refresh",
-            schemaVersion: 1,
-          }),
-        ).resolves.toMatchObject({ status: "failed", reason: "not-found" });
+        const stale = await refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        });
+        expect(stale).toMatchObject({
+          status: "stale",
+          latestRefresh: {
+            result: { status: "failed", reason: "not-found" },
+          },
+        });
         await expect(
           refresh.inspect({
             kind: "wordfence-intelligence-inspection",
             schemaVersion: 1,
           }),
-        ).resolves.toMatchObject({ status: "stale" });
+        ).resolves.toEqual(stale);
 
         const artifactPath = join(
           artifactDirectory,
@@ -1124,7 +1128,12 @@ describe("WordfenceIntelligenceRefresh", () => {
           kind: "wordfence-intelligence-refresh",
           schemaVersion: 1,
         }),
-      ).resolves.toMatchObject({ status: "failed", reason: "not-found" });
+      ).resolves.toMatchObject({
+        status: "stale",
+        latestRefresh: {
+          result: { status: "failed", reason: "not-found" },
+        },
+      });
     } finally {
       filesystemFault.directoryCloseFailuresRemaining = 0;
       filesystemFault.directoryClosePath = undefined;
@@ -2105,7 +2114,12 @@ describe("WordfenceIntelligenceRefresh", () => {
           kind: "wordfence-intelligence-refresh",
           schemaVersion: 1,
         }),
-      ).resolves.toMatchObject({ status: "failed", reason: "not-found" });
+      ).resolves.toMatchObject({
+        status: "stale",
+        latestRefresh: {
+          result: { status: "failed", reason: "not-found" },
+        },
+      });
 
       const corruption = new Database(databasePath);
       corruption
@@ -2301,47 +2315,47 @@ describe("WordfenceIntelligenceRefresh", () => {
         },
       });
 
+      const rateLimitedFailure = {
+        kind: "wordfence-intelligence-result",
+        schemaVersion: 1 as const,
+        status: "failed" as const,
+        reason: "rate-limited" as const,
+        backoff: {
+          kind: "wordfence-rate-limit-backoff" as const,
+          schemaVersion: 2 as const,
+          automaticRetries: 0,
+          boundedAt: "2030-08-01T00:00:00.000Z",
+          maximumDelaySeconds: 86_400,
+          retryAfter: {
+            kind: "delay-seconds" as const,
+            seconds: 120,
+            capped: false,
+          },
+        },
+      };
       const rateLimited = await refresh.run({
         kind: "wordfence-intelligence-refresh",
         schemaVersion: 1,
       });
       expect(rateLimited).toEqual({
-        kind: "wordfence-intelligence-result",
-        schemaVersion: 1,
-        status: "failed",
-        reason: "rate-limited",
-        backoff: {
-          kind: "wordfence-rate-limit-backoff",
-          schemaVersion: 2,
-          automaticRetries: 0,
-          boundedAt: "2030-08-01T00:00:00.000Z",
-          maximumDelaySeconds: 86_400,
-          retryAfter: {
-            kind: "delay-seconds",
-            seconds: 120,
-            capped: false,
-          },
+        ...current,
+        status: "stale",
+        latestRefresh: {
+          kind: "wordfence-intelligence-refresh-attempt",
+          schemaVersion: 1,
+          attemptedAt: "2030-08-01T00:00:00.000Z",
+          result: rateLimitedFailure,
         },
       });
       expect(wordfenceIntelligenceResultSchema.parse(rateLimited)).toEqual(
         rateLimited,
       );
       expect(wordfenceIntelligenceResultSchema.parse(current)).toEqual(current);
-      const latestRefresh = {
-        kind: "wordfence-intelligence-refresh-attempt",
-        schemaVersion: 1,
-        attemptedAt: "2030-08-01T00:00:00.000Z",
-        result: rateLimited,
-      } as const;
       const stale = await refresh.inspect({
         kind: "wordfence-intelligence-inspection",
         schemaVersion: 1,
       });
-      expect(stale).toEqual({
-        ...current,
-        status: "stale",
-        latestRefresh,
-      });
+      expect(stale).toEqual(rateLimited);
       expect(wordfenceIntelligenceResultSchema.parse(stale)).toEqual(stale);
 
       const replayFetch = vi.fn<typeof fetch>(() =>
@@ -2428,26 +2442,26 @@ describe("WordfenceIntelligenceRefresh", () => {
           schemaVersion: 1,
         });
         expect(partial).toEqual({
-          kind: "wordfence-intelligence-result",
-          schemaVersion: 1,
-          status: "failed",
-          reason: "partial-response",
-        });
-        await expect(
-          refresh.inspect({
-            kind: "wordfence-intelligence-inspection",
-            schemaVersion: 1,
-          }),
-        ).resolves.toEqual({
           ...current,
           status: "stale",
           latestRefresh: {
             kind: "wordfence-intelligence-refresh-attempt",
             schemaVersion: 1,
             attemptedAt: "2030-08-02T00:00:00.000Z",
-            result: partial,
+            result: {
+              kind: "wordfence-intelligence-result",
+              schemaVersion: 1,
+              status: "failed",
+              reason: "partial-response",
+            },
           },
         });
+        await expect(
+          refresh.inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual(partial);
       } finally {
         await rm(directory, { recursive: true, force: true });
       }
@@ -2495,27 +2509,23 @@ describe("WordfenceIntelligenceRefresh", () => {
           throw new Error("Expected an initial current snapshot");
         }
 
-        await expect(
-          refresh.run({
-            kind: "wordfence-intelligence-refresh",
-            schemaVersion: 1,
-          }),
-        ).resolves.toEqual({
-          kind: "wordfence-intelligence-result",
+        const partial = await refresh.run({
+          kind: "wordfence-intelligence-refresh",
           schemaVersion: 1,
-          status: "failed",
-          reason: "partial-response",
+        });
+        expect(partial).toMatchObject({
+          status: "stale",
+          snapshotRef: current.snapshotRef,
+          latestRefresh: {
+            result: { status: "failed", reason: "partial-response" },
+          },
         });
         await expect(
           refresh.inspect({
             kind: "wordfence-intelligence-inspection",
             schemaVersion: 1,
           }),
-        ).resolves.toMatchObject({
-          status: "stale",
-          snapshot: current.snapshot,
-          snapshotRef: current.snapshotRef,
-        });
+        ).resolves.toEqual(partial);
       } finally {
         await rm(directory, { recursive: true, force: true });
       }
@@ -2590,16 +2600,16 @@ describe("WordfenceIntelligenceRefresh", () => {
         throw new Error("Expected an initial current snapshot");
       }
 
-      await expect(
-        refresh.run({
-          kind: "wordfence-intelligence-refresh",
-          schemaVersion: 1,
-        }),
-      ).resolves.toEqual({
-        kind: "wordfence-intelligence-result",
+      const partial = await refresh.run({
+        kind: "wordfence-intelligence-refresh",
         schemaVersion: 1,
-        status: "failed",
-        reason: "partial-response",
+      });
+      expect(partial).toMatchObject({
+        status: "stale",
+        snapshotRef: current.snapshotRef,
+        latestRefresh: {
+          result: { status: "failed", reason: "partial-response" },
+        },
       });
       expect(cancellationAttempted).toBe(true);
       await expect(
@@ -2607,11 +2617,7 @@ describe("WordfenceIntelligenceRefresh", () => {
           kind: "wordfence-intelligence-inspection",
           schemaVersion: 1,
         }),
-      ).resolves.toMatchObject({
-        status: "stale",
-        snapshot: current.snapshot,
-        snapshotRef: current.snapshotRef,
-      });
+      ).resolves.toEqual(partial);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -2739,21 +2745,23 @@ describe("WordfenceIntelligenceRefresh", () => {
         throw new Error("Expected a current snapshot");
       }
       now = new Date("2030-08-03T00:00:00.000Z");
-      await expect(
-        refresh.run({
-          kind: "wordfence-intelligence-refresh",
-          schemaVersion: 1,
-        }),
-      ).resolves.toMatchObject({ status: "failed", reason: "not-found" });
+      const stale = await refresh.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      expect(stale).toMatchObject({
+        status: "stale",
+        snapshotRef: current.snapshotRef,
+        latestRefresh: {
+          result: { status: "failed", reason: "not-found" },
+        },
+      });
       await expect(
         refresh.inspect({
           kind: "wordfence-intelligence-inspection",
           schemaVersion: 1,
         }),
-      ).resolves.toMatchObject({
-        status: "stale",
-        snapshotRef: current.snapshotRef,
-      });
+      ).resolves.toEqual(stale);
       await expect(
         refresh.inspect({
           kind: "wordfence-intelligence-inspection",
@@ -2825,27 +2833,23 @@ describe("WordfenceIntelligenceRefresh", () => {
         throw new Error("Expected an initial current snapshot");
       }
 
-      await expect(
-        refresh.run({
-          kind: "wordfence-intelligence-refresh",
-          schemaVersion: 1,
-        }),
-      ).resolves.toEqual({
-        kind: "wordfence-intelligence-result",
+      const disconnected = await refresh.run({
+        kind: "wordfence-intelligence-refresh",
         schemaVersion: 1,
-        status: "failed",
-        reason: "network-failure",
+      });
+      expect(disconnected).toMatchObject({
+        status: "stale",
+        snapshotRef: current.snapshotRef,
+        latestRefresh: {
+          result: { status: "failed", reason: "network-failure" },
+        },
       });
       await expect(
         refresh.inspect({
           kind: "wordfence-intelligence-inspection",
           schemaVersion: 1,
         }),
-      ).resolves.toMatchObject({
-        status: "stale",
-        snapshot: current.snapshot,
-        snapshotRef: current.snapshotRef,
-      });
+      ).resolves.toEqual(disconnected);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -2886,27 +2890,23 @@ describe("WordfenceIntelligenceRefresh", () => {
         throw new Error("Expected an initial current snapshot");
       }
 
-      await expect(
-        refresh.run({
-          kind: "wordfence-intelligence-refresh",
-          schemaVersion: 1,
-        }),
-      ).resolves.toEqual({
-        kind: "wordfence-intelligence-result",
+      const malformedResult = await refresh.run({
+        kind: "wordfence-intelligence-refresh",
         schemaVersion: 1,
-        status: "failed",
-        reason: "schema-drift",
+      });
+      expect(malformedResult).toMatchObject({
+        status: "stale",
+        snapshotRef: current.snapshotRef,
+        latestRefresh: {
+          result: { status: "failed", reason: "schema-drift" },
+        },
       });
       await expect(
         refresh.inspect({
           kind: "wordfence-intelligence-inspection",
           schemaVersion: 1,
         }),
-      ).resolves.toMatchObject({
-        status: "stale",
-        snapshot: current.snapshot,
-        snapshotRef: current.snapshotRef,
-      });
+      ).resolves.toEqual(malformedResult);
       expect(
         await readdir(
           join(directory, "artifacts", "wordfence-intelligence-v3"),
@@ -3223,21 +3223,7 @@ describe("WordfenceIntelligenceRefresh", () => {
           kind: "wordfence-intelligence-inspection",
           schemaVersion: 1,
         }),
-      ).resolves.toEqual({
-        ...successfulFirstResult,
-        status: "stale",
-        latestRefresh: {
-          kind: "wordfence-intelligence-refresh-attempt",
-          schemaVersion: 1,
-          attemptedAt: "2030-08-05T00:00:00.000Z",
-          result: {
-            kind: "wordfence-intelligence-result",
-            schemaVersion: 1,
-            status: "failed",
-            reason: "storage-failure",
-          },
-        },
-      });
+      ).resolves.toEqual(successfulFirstResult);
       failureLastFetch.respond(
         new Response(undefined, {
           status: 429,
@@ -3256,16 +3242,7 @@ describe("WordfenceIntelligenceRefresh", () => {
           kind: "wordfence-intelligence-inspection",
           schemaVersion: 1,
         }),
-      ).resolves.toEqual({
-        ...successfulFirstResult,
-        status: "stale",
-        latestRefresh: {
-          kind: "wordfence-intelligence-refresh-attempt",
-          schemaVersion: 1,
-          attemptedAt: "2030-08-05T00:00:00.000Z",
-          result: failedLastResult,
-        },
-      });
+      ).resolves.toEqual(failedLastResult);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -3307,7 +3284,34 @@ describe("WordfenceIntelligenceRefresh", () => {
           ),
           "2030-08-04T00:00:00.000Z",
         );
+      const successfulProjectionAt = async (name: string, at: string) => {
+        const control = openWordfenceIntelligenceRefresh({
+          databasePath: join(directory, name, "target-intelligence.sqlite"),
+          artifactDirectory: join(directory, name, "artifacts"),
+          credentialBroker,
+          fetch: vi.fn<typeof fetch>(async () =>
+            Promise.resolve(new Response(validBytes, { status: 200 })),
+          ),
+          clock: () => new Date(at),
+        });
+        const result = await control.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        });
+        if (result.status !== "current") {
+          throw new Error("Expected a control current snapshot");
+        }
+        return result;
+      };
       try {
+        const expectedEarlierSuccess = await successfulProjectionAt(
+          "earlier-success-control",
+          "2030-08-02T00:00:00.000Z",
+        );
+        const expectedLaterSuccess = await successfulProjectionAt(
+          "later-success-control",
+          "2030-08-03T00:00:00.000Z",
+        );
         const seed = openRefresh(
           vi.fn<typeof fetch>(async () =>
             Promise.resolve(new Response(validBytes, { status: 200 })),
@@ -3357,30 +3361,36 @@ describe("WordfenceIntelligenceRefresh", () => {
             : new Response(undefined, { status: 404 }),
         );
         const laterResult = await laterRun;
-        const pendingBase = later === "success" ? laterResult : initial;
-        if (pendingBase.status !== "current") {
-          throw new Error("Expected a current pending base snapshot");
-        }
+        const pendingBase =
+          later === "success" ? expectedLaterSuccess : initial;
+        const pendingProjection = {
+          ...pendingBase,
+          status: "stale" as const,
+          latestRefresh: {
+            kind: "wordfence-intelligence-refresh-attempt" as const,
+            schemaVersion: 1 as const,
+            attemptedAt: "2030-08-02T00:00:00.000Z",
+            result: {
+              kind: "wordfence-intelligence-result" as const,
+              schemaVersion: 1 as const,
+              status: "failed" as const,
+              reason: "storage-failure" as const,
+            },
+          },
+        };
+        await expect(
+          laterRefresh.inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual(pendingProjection);
         await expect(
           inspectOnly().inspect({
             kind: "wordfence-intelligence-inspection",
             schemaVersion: 1,
           }),
-        ).resolves.toEqual({
-          ...pendingBase,
-          status: "stale",
-          latestRefresh: {
-            kind: "wordfence-intelligence-refresh-attempt",
-            schemaVersion: 1,
-            attemptedAt: "2030-08-02T00:00:00.000Z",
-            result: {
-              kind: "wordfence-intelligence-result",
-              schemaVersion: 1,
-              status: "failed",
-              reason: "storage-failure",
-            },
-          },
-        });
+        ).resolves.toEqual(pendingProjection);
+        expect(laterResult).toEqual(pendingProjection);
 
         earlierFetch.respond(
           earlier === "success"
@@ -3388,35 +3398,45 @@ describe("WordfenceIntelligenceRefresh", () => {
             : new Response(undefined, { status: 404 }),
         );
         const earlierResult = await earlierRun;
-        const finalInspection = inspectOnly().inspect({
-          kind: "wordfence-intelligence-inspection",
-          schemaVersion: 1,
-        });
-        if (later === "success") {
-          await expect(finalInspection).resolves.toEqual(laterResult);
-          if (earlierResult.status === "current") {
-            await expect(
-              inspectOnly().inspect({
-                kind: "wordfence-intelligence-inspection",
-                schemaVersion: 1,
-                snapshotRef: earlierResult.snapshotRef,
-              }),
-            ).resolves.toEqual(earlierResult);
-          }
-        } else {
-          if (earlierResult.status !== "current") {
-            throw new Error("Expected the earlier success snapshot");
-          }
-          await expect(finalInspection).resolves.toEqual({
-            ...earlierResult,
-            status: "stale",
-            latestRefresh: {
-              kind: "wordfence-intelligence-refresh-attempt",
+        const finalProjection =
+          later === "success"
+            ? expectedLaterSuccess
+            : {
+                ...expectedEarlierSuccess,
+                status: "stale" as const,
+                latestRefresh: {
+                  kind: "wordfence-intelligence-refresh-attempt" as const,
+                  schemaVersion: 1 as const,
+                  attemptedAt: "2030-08-03T00:00:00.000Z",
+                  result: {
+                    kind: "wordfence-intelligence-result" as const,
+                    schemaVersion: 1 as const,
+                    status: "failed" as const,
+                    reason: "not-found" as const,
+                  },
+                },
+              };
+        await expect(
+          earlierRefresh.inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual(finalProjection);
+        await expect(
+          inspectOnly().inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual(finalProjection);
+        expect(earlierResult).toEqual(finalProjection);
+        if (later === "success" && earlier === "success") {
+          await expect(
+            inspectOnly().inspect({
+              kind: "wordfence-intelligence-inspection",
               schemaVersion: 1,
-              attemptedAt: "2030-08-03T00:00:00.000Z",
-              result: laterResult,
-            },
-          });
+              snapshotRef: expectedEarlierSuccess.snapshotRef,
+            }),
+          ).resolves.toEqual(expectedEarlierSuccess);
         }
       } finally {
         await rm(directory, { recursive: true, force: true });
