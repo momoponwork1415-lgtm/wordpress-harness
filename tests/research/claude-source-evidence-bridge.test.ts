@@ -368,6 +368,31 @@ function fakeClaudeIdentityMismatchV2(): string {
     );
 }
 
+function fakeClaudeInvalidQueryThenRecoversV2(): string {
+  return fakeClaudeSourceV2().replace(
+    "  const inventory = await rpc({",
+    `  const invalidInventory = await rpc({
+    jsonrpc: "2.0",
+    id: 19,
+    method: "tools/call",
+    params: {
+      name: "source_list",
+      arguments: {
+        selector: { scope: { kind: "directory", path: "includes" }, traversal: "recursive" },
+        cursor: "stale-model-supplied-cursor",
+        reason: "Mistakenly supplied both a fresh selector and a continuation cursor.",
+      },
+    },
+  });
+  const invalidInventoryEvidence = JSON.parse(invalidInventory.result.content[0].text);
+  if (invalidInventoryEvidence.status !== "invalid-query") {
+    throw new Error("expected a recoverable invalid query result");
+  }
+
+  const inventory = await rpc({`,
+  );
+}
+
 function fakeClaudeCheckpointThenFailV2(): string {
   return fakeClaudeSourceV2()
     .replace(
@@ -919,6 +944,74 @@ describe("ModelExecution.run Claude source evidence bridge", () => {
     } finally {
       await fixture.close();
       await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps a recoverable v2 invalid query as evidence and lets the Finder correct it", async () => {
+    const fixture = await openSourceEvidenceFixture({
+      files: {
+        "includes/dispatcher.php":
+          "<?php\nreturn custom_db_query($_POST['id']);\n",
+        "includes/wrapper.php":
+          "<?php\nfunction custom_db_query($id) {\n  return $GLOBALS['wpdb']->get_results('SELECT ' . $id);\n}\n",
+      },
+      search: { maxScanBytes: 4096, maxResults: 8 },
+      inventoryMaxResults: 64,
+    });
+    const directory = await mkdtemp(join(tmpdir(), "claude-invalid-v2-"));
+    const executablePath = join(directory, "fake-claude");
+    await writeFile(
+      executablePath,
+      fakeClaudeInvalidQueryThenRecoversV2(),
+      "utf8",
+    );
+    await chmod(executablePath, 0o700);
+    const execution = openClaudeModelExecution({
+      artifactDirectory: fixture.attemptArtifactDirectory,
+      executablePath,
+      executableVersion: "2.1.258",
+      workingDirectory: directory,
+      sourceEvidenceGateway: fixture.gateway,
+    });
+
+    try {
+      const result = await execution.run(attemptPlanV2(fixture));
+      expect(result).toMatchObject({
+        status: "completed",
+        value: {
+          status: "completed",
+          output: { kind: "finder-output", leaseId, hypotheses: [] },
+          sourceEvidenceReceipts: [{}, {}, {}, {}],
+          usage: { source: { queries: 4 } },
+        },
+      });
+      const receipts = (
+        await Promise.all(
+          (await readdir(fixture.artifactDirectory)).map(async (name) =>
+            JSON.parse(
+              await readFile(join(fixture.artifactDirectory, name), "utf8"),
+            ),
+          ),
+        )
+      )
+        .filter(
+          (artifact) =>
+            artifact.kind === "source-evidence-receipt" &&
+            artifact.schemaVersion === 2 &&
+            artifact.attemptId === "attempt-claude-source-tools-v2",
+        )
+        .sort((left, right) => left.queryOrdinal - right.queryOrdinal);
+      expect(receipts.map((receipt) => receipt.result)).toEqual([
+        { status: "invalid-query", reason: "selector-cursor-conflict" },
+        expect.objectContaining({ status: "completed" }),
+        expect.objectContaining({ status: "completed" }),
+        expect.objectContaining({ status: "completed" }),
+      ]);
+    } finally {
+      await Promise.all([
+        fixture.close(),
+        rm(directory, { force: true, recursive: true }),
+      ]);
     }
   });
 

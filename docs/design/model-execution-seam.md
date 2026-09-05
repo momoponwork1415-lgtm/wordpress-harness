@@ -117,7 +117,7 @@ flowchart TB
 
 provider組込みshell、web、ambient plugin、hook、memory、subagentは無効化する。ReconへはTarget-boundなread-only source toolだけを、Finderへは同じsource tool、隔離scratch、owner-boundな`checkpoint_research`だけを許可し、Experiment toolを渡さない。provider transportへprivate MCPを使う場合もallowlistされたHarness gatewayだけを公開する。VerifierのExperimentもHypothesisとmechanismへ拘束したtyped actionだけにする。
 
-各tool requestにはAttempt、role-specific assignment、Target Snapshot、Policy、query ordinal、budgetをharness側で結合する。FinderではassignmentにWork Leaseも含める。path escape、digest mismatch、unknown tool、schema mismatch、budget超過を実行前に拒否する。
+各tool requestにはAttempt、role-specific assignment、Target Snapshot、Policy、query ordinal、budgetをharness側で結合する。FinderではassignmentにWork Leaseも含める。path escape、digest mismatch、unknown tool、schema mismatch、budget超過を実行前に拒否する。Source Understandingが意味を確定できるschema-valid callを`invalid-query`と判定した場合は、そのReceiptをmodelへ返して同じAttempt内の修正を許す。Target / Policy binding違反、path escape、budget超過はAttempt terminalのままとする。
 
 Source Understandingがmanifest-boundな`list / search / read`の論理的意味、canonical path、pagination cursor、result分類、source responseを所有し、Model Executionはそれらをprovider固有toolへbindする。Model ExecutionはAttempt、role-specific assignment、Target Snapshot、TargetFileManifest、Source Tool Policy、query ordinal、残予算をmodel入力ではなくtrusted control planeで注入し、成功、schema不正、denyを含む全tool callをTool Receiptへ固定する。provider Adapterはdirectoryをprefixへ変換したり、partial / not-found / identity mismatchを別結果へ丸めたりしない。file identity mismatchはsourceを返さない回復可能なquery resultであり、ReceiptをIteration Evaluationへ渡しつつFinderの次queryを許す。path escape、Target / Policy binding違反、source query ceilingはAttempt terminalのままにする。
 

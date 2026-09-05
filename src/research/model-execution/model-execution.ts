@@ -361,14 +361,6 @@ class FirstFinderModelExecution implements ModelExecution {
                 };
               } else if (
                 sourceToolTerminal === undefined &&
-                result.status === "invalid-query"
-              ) {
-                sourceToolTerminal = {
-                  status: "policy-denied",
-                  reason: `source-tool-invalid-query:${result.reason}`,
-                };
-              } else if (
-                sourceToolTerminal === undefined &&
                 result.status === "budget-exhausted"
               ) {
                 sourceToolTerminal = {
