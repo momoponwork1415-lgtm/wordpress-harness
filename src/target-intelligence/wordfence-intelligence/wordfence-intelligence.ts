@@ -2478,21 +2478,13 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
         )
         .all(),
     );
-    const sqliteSequence = sqliteSequenceRowSchema.optional().parse(
-      this.#database
-        .prepare(
-          `SELECT seq
-             FROM sqlite_sequence
-            WHERE name = 'wordfence_intelligence_refresh_attempts'`,
-        )
-        .get(),
-    );
+    const allocatedSequence = this.#allocatedRefreshSequence();
     const firstActiveSequence = activeAttempts[0]?.sequence;
     const publicationSequence =
       currentSnapshotDigest === undefined
         ? 0
         : firstActiveSequence === undefined
-          ? (sqliteSequence?.seq ?? 0)
+          ? allocatedSequence
           : Math.max(0, firstActiveSequence - 1);
     const order = refreshOrderRowSchema.parse({
       publication_sequence: publicationSequence,
@@ -2506,6 +2498,20 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       )
       .run(order.publication_sequence, order.latest_completed_sequence);
     return order;
+  }
+
+  #allocatedRefreshSequence(): number {
+    return (
+      sqliteSequenceRowSchema.optional().parse(
+        this.#database
+          .prepare(
+            `SELECT seq
+               FROM sqlite_sequence
+              WHERE name = 'wordfence_intelligence_refresh_attempts'`,
+          )
+          .get(),
+      )?.seq ?? 0
+    );
   }
 
   #requireActiveAttempt(attempt: ProductionRefreshAttemptToken): void {
@@ -2550,14 +2556,37 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     ) {
       throw new SnapshotConflictError();
     }
+    const allocatedSequence = this.#allocatedRefreshSequence();
     const order = this.#refreshOrder();
     if (order === undefined) {
-      if (state?.schemaVersion === 2 || attempts.length > 0) {
+      if (
+        state?.schemaVersion === 2 ||
+        attempts.length > 0 ||
+        (allocatedSequence > 0 &&
+          currentSnapshotDigest === undefined &&
+          state === undefined)
+      ) {
         throw new SnapshotConflictError();
       }
       return;
     }
+    const activeSequence = attempts.at(-1)?.sequence ?? 0;
+    if (
+      order.publication_sequence > order.latest_completed_sequence ||
+      order.publication_sequence > allocatedSequence ||
+      order.latest_completed_sequence > allocatedSequence ||
+      allocatedSequence !==
+        Math.max(order.latest_completed_sequence, activeSequence)
+    ) {
+      throw new SnapshotConflictError();
+    }
     if (order.publication_sequence > 0 && currentSnapshotDigest === undefined) {
+      throw new SnapshotConflictError();
+    }
+    if (
+      order.latest_completed_sequence > order.publication_sequence &&
+      state?.schemaVersion !== 2
+    ) {
       throw new SnapshotConflictError();
     }
     if (state?.schemaVersion === 2) {
