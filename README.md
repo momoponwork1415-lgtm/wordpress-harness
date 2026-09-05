@@ -44,7 +44,7 @@ node dist/cli.js campaign inspect --database .private/research.sqlite --campaign
 - [Codebase Guide](docs/CODEBASE-GUIDE.md) — 現在の実装状態、Interface、Test、sourceの対応
 - [Development Rules](AGENTS.md) — repositoryで作業するagent / contributor向け規則
 
-判断理由は[ADR index](docs/adr/README.md)を参照します。公開CVEでの実測や外部実装の比較証拠は、通常の読み順から外した[Knowledge](docs/knowledge/)に置きます。
+判断理由は`docs/adr/`を参照します。公開CVEでの実測や外部実装の比較証拠は、通常の読み順から外した`docs/knowledge/`に置きます。
 
 ## Scope
 

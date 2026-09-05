@@ -20,7 +20,6 @@ This repo is **multi-context** (a `CONTEXT-MAP.md` exists at the root). Contexts
 ├── CONTEXT.md              ← glossary for the Research context
 ├── docs/
 │   ├── adr/                ← system-wide decisions
-│   ├── JAPANESE-GLOSSARY.md
 │   └── domain/
 │       ├── target-intelligence/CONTEXT.md
 │       └── human-os/CONTEXT.md
@@ -29,10 +28,7 @@ This repo is **multi-context** (a `CONTEXT-MAP.md` exists at the root). Contexts
 
 ## Repository-specific gate
 
-`pnpm docs:check` enforces two rules that any skill touching docs must respect:
-
-1. Every relative Markdown link must resolve to a file that exists.
-2. Every canonical term in a `CONTEXT.md` (`**Term**:` form) must also appear in `docs/JAPANESE-GLOSSARY.md`. Adding a term without the glossary row fails the gate.
+`pnpm docs:check` requires every relative Markdown link to resolve to an existing file.
 
 ## Use the glossary's vocabulary
 
