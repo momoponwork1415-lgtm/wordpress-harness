@@ -199,13 +199,29 @@ export const wordfenceIntelligenceFailureReasonSchema = z.enum([
   "storage-failure",
 ]);
 
-export const wordfenceIntelligenceFailureSchema = z.strictObject({
+const wordfenceNonRateLimitedFailureReasonSchema =
+  wordfenceIntelligenceFailureReasonSchema.exclude(["rate-limited"]);
+
+const wordfenceFailureEnvelope = {
   kind: z.literal("wordfence-intelligence-result"),
   schemaVersion: z.literal(1),
   status: z.literal("failed"),
-  reason: wordfenceIntelligenceFailureReasonSchema,
-  backoff: wordfenceRateLimitBackoffSchema.optional(),
-});
+} as const;
+
+export const wordfenceIntelligenceFailureSchema = z.discriminatedUnion(
+  "reason",
+  [
+    z.strictObject({
+      ...wordfenceFailureEnvelope,
+      reason: z.literal("rate-limited"),
+      backoff: wordfenceRateLimitBackoffSchema,
+    }),
+    z.strictObject({
+      ...wordfenceFailureEnvelope,
+      reason: wordfenceNonRateLimitedFailureReasonSchema,
+    }),
+  ],
+);
 
 export const currentWordfenceIntelligenceSnapshotSchema = z.strictObject({
   kind: z.literal("wordfence-intelligence-result"),
@@ -231,14 +247,11 @@ export const staleWordfenceIntelligenceSnapshotSchema = z.strictObject({
   latestRefresh: wordfenceIntelligenceRefreshAttemptSchema,
 });
 
-export const wordfenceIntelligenceResultSchema = z.discriminatedUnion(
-  "status",
-  [
-    currentWordfenceIntelligenceSnapshotSchema,
-    staleWordfenceIntelligenceSnapshotSchema,
-    wordfenceIntelligenceFailureSchema,
-  ],
-);
+export const wordfenceIntelligenceResultSchema = z.union([
+  currentWordfenceIntelligenceSnapshotSchema,
+  staleWordfenceIntelligenceSnapshotSchema,
+  wordfenceIntelligenceFailureSchema,
+]);
 
 export const wordfenceKnownRecordProjectionSchema = z.strictObject({
   kind: z.literal("wordfence-known-record-projection"),

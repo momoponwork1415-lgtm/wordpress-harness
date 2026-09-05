@@ -8,6 +8,7 @@ import {
   createWordfenceIntelligenceV3FetchAdapter,
   knownRecordAccessAuthorizationSchema,
   openWordfenceIntelligence,
+  wordfenceIntelligenceFailureSchema,
   type WordfenceIntelligenceV3Adapter,
 } from "../../src/target-intelligence/index.js";
 
@@ -72,6 +73,45 @@ function fixtureAdapter(): WordfenceIntelligenceV3Adapter {
 }
 
 describe("WordfenceIntelligence", () => {
+  it("requires bounded backoff exactly for rate-limited failures", () => {
+    const backoff = {
+      kind: "wordfence-rate-limit-backoff",
+      schemaVersion: 2,
+      automaticRetries: 0,
+      boundedAt: "2030-08-01T00:00:00.000Z",
+      maximumDelaySeconds: 86_400,
+      retryAfter: { kind: "unspecified" },
+    } as const;
+    expect(
+      wordfenceIntelligenceFailureSchema.safeParse({
+        ...resultEnvelope,
+        status: "failed",
+        reason: "rate-limited",
+      }).success,
+    ).toBe(false);
+    expect(
+      wordfenceIntelligenceFailureSchema.safeParse({
+        ...resultEnvelope,
+        status: "failed",
+        reason: "network-failure",
+        backoff,
+      }).success,
+    ).toBe(false);
+    expect(
+      wordfenceIntelligenceFailureSchema.parse({
+        ...resultEnvelope,
+        status: "failed",
+        reason: "rate-limited",
+        backoff,
+      }),
+    ).toEqual({
+      ...resultEnvelope,
+      status: "failed",
+      reason: "rate-limited",
+      backoff,
+    });
+  });
+
   it("atomically refreshes the v3 feed while separating selection aggregate from verified-Finding records", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordfence-intelligence-"));
     try {
@@ -379,6 +419,7 @@ describe("WordfenceIntelligence", () => {
             }),
           },
           credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+          clock: () => new Date("2030-08-01T00:00:00.000Z"),
           ...configuration,
         });
         await expect(
@@ -386,7 +427,23 @@ describe("WordfenceIntelligence", () => {
             kind: "wordfence-intelligence-refresh",
             schemaVersion: 1,
           }),
-        ).resolves.toEqual({ ...resultEnvelope, status: "failed", reason });
+        ).resolves.toEqual({
+          ...resultEnvelope,
+          status: "failed",
+          reason,
+          ...(reason === "rate-limited"
+            ? {
+                backoff: {
+                  kind: "wordfence-rate-limit-backoff",
+                  schemaVersion: 2,
+                  automaticRetries: 0,
+                  boundedAt: "2030-08-01T00:00:00.000Z",
+                  maximumDelaySeconds: 86_400,
+                  retryAfter: { kind: "unspecified" },
+                },
+              }
+            : {}),
+        });
         await expect(
           intelligence.inspect({
             kind: "wordfence-intelligence-inspection",

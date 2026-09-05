@@ -49,6 +49,7 @@ import {
   type WordfenceKnownRecord,
   type WordfenceKnownRecordInspectionRequest,
   type WordfenceKnownRecordProjection,
+  type WordfenceRateLimitBackoff,
   type WordfenceSecretRef,
   type WordfenceStoredPluginRecord,
 } from "./contracts.js";
@@ -191,7 +192,11 @@ const storageFailureCodes = new Set([
   "EDQUOT",
   "EIO",
   "EEXIST",
+  "EMFILE",
+  "ENAMETOOLONG",
   "ENOENT",
+  "ENFILE",
+  "ENOMEM",
   "ENOSPC",
   "ENOTDIR",
   "EPERM",
@@ -200,6 +205,7 @@ const storageFailureCodes = new Set([
   "SQLITE_CANTOPEN",
   "SQLITE_FULL",
   "SQLITE_LOCKED",
+  "SQLITE_NOMEM",
   "SQLITE_PERM",
   "SQLITE_READONLY",
 ]);
@@ -256,7 +262,7 @@ async function persistBytes(path: string, bytes: Uint8Array): Promise<void> {
 
 function failure(
   reason: WordfenceIntelligenceFailure["reason"],
-  backoff?: WordfenceIntelligenceFailure["backoff"],
+  backoff?: WordfenceRateLimitBackoff,
 ): WordfenceIntelligenceFailure {
   return wordfenceIntelligenceFailureSchema.parse({
     kind: "wordfence-intelligence-result",
@@ -282,6 +288,7 @@ function currentResult(
 
 function responseFailure(
   response: WordfenceIntelligenceSourceResponse,
+  clock: () => Date,
 ): WordfenceIntelligenceFailure | undefined {
   const { status } = response;
   if (status === 401 || status === 403) {
@@ -291,12 +298,26 @@ function responseFailure(
     return failure("not-found");
   }
   if (status === 429) {
-    return failure("rate-limited", response.backoff);
+    return failure(
+      "rate-limited",
+      response.backoff ?? unspecifiedRateLimitBackoff(clock()),
+    );
   }
   if (status < 200 || status >= 300) {
     return failure("network-failure");
   }
   return undefined;
+}
+
+function unspecifiedRateLimitBackoff(now: Date): WordfenceRateLimitBackoff {
+  return wordfenceRateLimitBackoffSchema.parse({
+    kind: "wordfence-rate-limit-backoff",
+    schemaVersion: 2,
+    automaticRetries: 0,
+    boundedAt: now.toISOString(),
+    maximumDelaySeconds: MAXIMUM_RETRY_AFTER_SECONDS,
+    retryAfter: { kind: "unspecified" },
+  });
 }
 
 function normalizeDate(value: string | null): string | undefined {
@@ -728,8 +749,12 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     | OpenWordfenceIntelligenceOptions["knownRecordAuthorizationProvider"]
     | undefined;
   readonly #clock: () => Date;
+  readonly #productionComposition: boolean;
 
-  constructor(options: OpenWordfenceIntelligenceOptions) {
+  constructor(
+    options: OpenWordfenceIntelligenceOptions,
+    productionComposition = false,
+  ) {
     this.#artifactDirectory = options.artifactDirectory;
     this.#adapter = options.adapter;
     this.#credential = wordfenceSecretRefSchema.parse(options.credential);
@@ -737,6 +762,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     this.#knownRecordAuthorizationProvider =
       options.knownRecordAuthorizationProvider;
     this.#clock = options.clock ?? (() => new Date());
+    this.#productionComposition = productionComposition;
     const database = new Database(options.databasePath);
     try {
       database.pragma("journal_mode = WAL");
@@ -781,7 +807,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
         maximumBytes: this.#maximumFeedBytes,
       });
     } catch (error) {
-      return failure(
+      return this.#refreshFailure(
         error instanceof ResponseTooLargeError
           ? "response-byte-ceiling-exceeded"
           : error instanceof PartialResponseError
@@ -794,30 +820,30 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     const parsedResponse =
       wordfenceIntelligenceSourceResponseSchema.safeParse(unvalidated);
     if (!parsedResponse.success) {
-      return failure("schema-drift");
+      return this.#refreshFailure("schema-drift");
     }
     const response = parsedResponse.data;
     if (
       response.redirected === true ||
       response.sourceUrl !== this.#adapter.sourceUrl
     ) {
-      return failure("source-mismatch");
+      return this.#refreshFailure("source-mismatch");
     }
-    const responseFailureResult = responseFailure(response);
+    const responseFailureResult = responseFailure(response, this.#clock);
     if (responseFailureResult !== undefined) {
-      return responseFailureResult;
+      return this.#recordRefreshFailure(responseFailureResult);
     }
     if (!response.complete) {
-      return failure("partial-response");
+      return this.#refreshFailure("partial-response");
     }
     if (response.bytes.byteLength > this.#maximumFeedBytes) {
-      return failure("response-byte-ceiling-exceeded");
+      return this.#refreshFailure("response-byte-ceiling-exceeded");
     }
     let normalized: ReturnType<typeof normalizeFeed>;
     try {
       normalized = normalizeFeed(response.bytes);
     } catch (error) {
-      return failure(
+      return this.#refreshFailure(
         error instanceof AttributionMissingError
           ? "attribution-missing"
           : "schema-drift",
@@ -836,7 +862,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       );
     } catch (error) {
       if (isStorageFailure(error)) {
-        return failure("storage-failure");
+        return this.#refreshFailure("storage-failure");
       }
       throw error;
     }
@@ -854,10 +880,15 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     });
     const snapshotRef = snapshotReference(snapshot);
     try {
-      this.#storeSnapshot(snapshot, snapshotRef, normalized.records);
+      this.#storeSnapshot(
+        snapshot,
+        snapshotRef,
+        normalized.records,
+        this.#productionComposition,
+      );
     } catch (error) {
       if (isStorageFailure(error)) {
-        return failure("storage-failure");
+        return this.#refreshFailure("storage-failure");
       }
       throw error;
     }
@@ -875,43 +906,6 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     }
     const snapshot = this.#readSnapshot(ref);
     return currentResult(snapshot, ref);
-  }
-
-  recordProductionRefresh(result: WordfenceIntelligenceResult): void {
-    const parsed = wordfenceIntelligenceResultSchema.parse(result);
-    if (parsed.status === "current") {
-      this.#database
-        .prepare(
-          `DELETE FROM wordfence_intelligence_refresh_state
-           WHERE singleton = 1`,
-        )
-        .run();
-      return;
-    }
-    if (parsed.status === "stale") {
-      throw new Error("A stale inspection cannot be recorded as a refresh");
-    }
-    const currentSnapshotDigest = this.#currentReference()?.digest;
-    const state = productionRefreshStateSchema.parse({
-      kind: "wordfence-intelligence-production-refresh-state",
-      schemaVersion: 1,
-      ...(currentSnapshotDigest === undefined ? {} : { currentSnapshotDigest }),
-      latestRefresh: {
-        kind: "wordfence-intelligence-refresh-attempt",
-        schemaVersion: 1,
-        attemptedAt: this.#clock().toISOString(),
-        result: parsed,
-      },
-    });
-    this.#database
-      .prepare(
-        `INSERT INTO wordfence_intelligence_refresh_state (
-           singleton, state_json
-         ) VALUES (1, ?)
-         ON CONFLICT(singleton) DO UPDATE SET
-           state_json = excluded.state_json`,
-      )
-      .run(canonicalJson(state));
   }
 
   async inspectProduction(
@@ -1057,6 +1051,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     snapshot: WordfenceIntelligenceSnapshot,
     reference: WordfenceIntelligenceSnapshotRef,
     records: readonly WordfenceStoredPluginRecord[],
+    clearProductionRefreshState: boolean,
   ): void {
     const transaction = this.#database.transaction(() => {
       const snapshotJson = canonicalJson(snapshot);
@@ -1097,8 +1092,66 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
              snapshot_digest = excluded.snapshot_digest`,
         )
         .run(reference.digest);
+      if (clearProductionRefreshState) {
+        this.#database
+          .prepare(
+            `DELETE FROM wordfence_intelligence_refresh_state
+             WHERE singleton = 1`,
+          )
+          .run();
+      }
     });
-    transaction();
+    transaction.immediate();
+  }
+
+  #refreshFailure(
+    reason: WordfenceIntelligenceFailure["reason"],
+    backoff?: WordfenceRateLimitBackoff,
+  ): WordfenceIntelligenceFailure {
+    return this.#recordRefreshFailure(failure(reason, backoff));
+  }
+
+  #recordRefreshFailure(
+    result: WordfenceIntelligenceFailure,
+  ): WordfenceIntelligenceFailure {
+    const parsed = wordfenceIntelligenceFailureSchema.parse(result);
+    if (!this.#productionComposition) {
+      return parsed;
+    }
+    try {
+      const transaction = this.#database.transaction(() => {
+        const currentSnapshotDigest = this.#currentReference()?.digest;
+        const state = productionRefreshStateSchema.parse({
+          kind: "wordfence-intelligence-production-refresh-state",
+          schemaVersion: 1,
+          ...(currentSnapshotDigest === undefined
+            ? {}
+            : { currentSnapshotDigest }),
+          latestRefresh: {
+            kind: "wordfence-intelligence-refresh-attempt",
+            schemaVersion: 1,
+            attemptedAt: this.#clock().toISOString(),
+            result: parsed,
+          },
+        });
+        this.#database
+          .prepare(
+            `INSERT INTO wordfence_intelligence_refresh_state (
+               singleton, state_json
+             ) VALUES (1, ?)
+             ON CONFLICT(singleton) DO UPDATE SET
+               state_json = excluded.state_json`,
+          )
+          .run(canonicalJson(state));
+      });
+      transaction.immediate();
+      return parsed;
+    } catch (error) {
+      if (isStorageFailure(error)) {
+        return failure("storage-failure");
+      }
+      throw error;
+    }
   }
 
   #currentReference(): WordfenceIntelligenceSnapshotRef | undefined {
@@ -1216,7 +1269,10 @@ export function openWordfenceIntelligenceRefresh(
       await mkdir(dirname(intelligenceOptions.databasePath), {
         recursive: true,
       });
-      intelligence ??= new SqliteWordfenceIntelligence(intelligenceOptions);
+      intelligence ??= new SqliteWordfenceIntelligence(
+        intelligenceOptions,
+        true,
+      );
       return intelligence;
     } catch (error) {
       if (isStorageFailure(error)) {
@@ -1232,18 +1288,9 @@ export function openWordfenceIntelligenceRefresh(
       if (current === undefined) {
         return failure("storage-failure");
       }
-      const result = wordfenceIntelligenceResultSchema.parse(
+      return wordfenceIntelligenceResultSchema.parse(
         await current.refresh(request),
       );
-      try {
-        current.recordProductionRefresh(result);
-      } catch (error) {
-        if (isStorageFailure(error)) {
-          return failure("storage-failure");
-        }
-        throw error;
-      }
-      return result;
     },
     inspect: async (request) => {
       wordfenceIntelligenceInspectionRequestSchema.parse(request);
