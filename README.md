@@ -30,6 +30,7 @@ node dist/cli.js campaign inspect --database .private/research.sqlite --campaign
 
 ## Docs
 
+- [System Walkthrough](docs/SYSTEM-WALKTHROUGH.md) — 六つの図で処理、artifact、実例、状態、隔離境界を追う
 - [Documentation index](docs/README.md) — 目的別の最短reading path
 - [Research Design](docs/RESEARCH-DESIGN.md) — high-impact semantic recallとHarness/Agent境界
 - [Harness Architecture](docs/ARCHITECTURE.md) — system context、Module、research loop、trust zones

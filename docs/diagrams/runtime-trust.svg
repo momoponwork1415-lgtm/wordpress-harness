@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="700" viewBox="0 0 1600 700" role="img" aria-labelledby="title desc">
+  <title id="title">Runtime and Trust Boundaries</title>
+  <desc id="desc">Host、AI Lab、Human Lab、Private Evidenceの隔離境界。</desc>
+  <defs>
+    <style>
+      text { font-family: Inter, "Noto Sans JP", "Segoe UI", sans-serif; fill: #172033; }
+      .page-title { font-size: 48px; font-weight: 800; letter-spacing: -1.5px; }
+      .subtitle { font-size: 19px; fill: #536177; }
+      .eyebrow { font-size: 13px; font-weight: 800; letter-spacing: 2px; fill: #367fd3; }
+      .section-no { font-size: 13px; font-weight: 900; letter-spacing: 2px; fill: #367fd3; }
+      .section-title { font-size: 31px; font-weight: 800; letter-spacing: -0.5px; }
+      .question { font-size: 15px; font-weight: 700; fill: #536177; }
+      .box-title { font-size: 16px; font-weight: 800; }
+      .box-title-small { font-size: 14px; font-weight: 800; }
+      .body { font-size: 13px; fill: #5f6d83; }
+      .small { font-size: 11px; fill: #68768b; }
+      .micro { font-size: 10px; fill: #68768b; }
+      .label { font-size: 11px; font-weight: 800; letter-spacing: 0.7px; }
+      .white { fill: #ffffff; }
+      .center { text-anchor: middle; }
+      .right { text-anchor: end; }
+      .panel { fill: #ffffff; stroke: #d9e0ea; stroke-width: 1.5; }
+      .blue { fill: #edf5ff; stroke: #91bdeb; stroke-width: 1.5; }
+      .purple { fill: #f4f0ff; stroke: #bcaee6; stroke-width: 1.5; }
+      .green { fill: #eaf8f0; stroke: #8fc8aa; stroke-width: 1.5; }
+      .amber { fill: #fff6df; stroke: #dcb66e; stroke-width: 1.5; }
+      .red { fill: #fff0ee; stroke: #d99991; stroke-width: 1.5; }
+      .gray { fill: #f5f7fa; stroke: #c8d0dc; stroke-width: 1.5; }
+      .dark { fill: #172033; stroke: #172033; stroke-width: 1.5; }
+      .dash { stroke-dasharray: 8 7; }
+      .line { fill: none; stroke: #8190a6; stroke-width: 2; marker-end: url(#arrow); }
+      .line-purple { fill: none; stroke: #7254c6; stroke-width: 2.5; marker-end: url(#arrow-purple); }
+      .line-green { fill: none; stroke: #2f9363; stroke-width: 2.5; marker-end: url(#arrow-green); }
+      .line-dash { fill: none; stroke: #9aa7b9; stroke-width: 2; stroke-dasharray: 7 6; marker-end: url(#arrow); }
+      .divider { stroke: #d9e0ea; stroke-width: 1; }
+      .timeline { stroke: #c8d0dc; stroke-width: 3; }
+      .dot-purple { fill: #7254c6; stroke: #ffffff; stroke-width: 4; }
+      .dot-green { fill: #2f9363; stroke: #ffffff; stroke-width: 4; }
+    </style>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#1e2f4d" flood-opacity="0.08"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#8190a6"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#7254c6"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#2f9363"/>
+    </marker>
+  </defs>
+  <rect width="1600" height="700" fill="#f7f9fc"/>
+  <g transform="translate(40 40)">
+    <rect width="1520" height="620" rx="24" class="panel" filter="url(#shadow)"/>
+    <text x="28" y="38" class="section-no">06 · RUNTIME / TRUST MAP</text>
+    <text x="28" y="78" class="section-title">何がどこで動き、何を互いに渡してはいけないか</text>
+    <text x="28" y="107" class="question">source-only Research、AI runtime、人間runtimeを別のtrust boundaryとして描く。</text>
+
+    <rect x="28" y="140" width="338" height="340" rx="18" class="gray dash"/>
+    <text x="50" y="172" class="label">HOST / ORCHESTRATOR</text>
+    <rect x="50" y="194" width="294" height="72" rx="12" class="panel"/>
+    <text x="197" y="220" class="box-title-small center">Campaign Control + Ledger / CAS</text>
+    <text x="197" y="242" class="small center">lifecycle · budget · identity · replay</text>
+    <rect x="50" y="282" width="294" height="84" rx="12" class="blue"/>
+    <text x="197" y="308" class="box-title-small center">Immutable Target Snapshot</text>
+    <text x="197" y="330" class="small center">manifest-bound · read-only</text>
+    <text x="197" y="348" class="small center">target PHP / scriptsをhostで実行しない</text>
+    <rect x="50" y="382" width="294" height="72" rx="12" class="purple"/>
+    <text x="197" y="408" class="box-title-small center">Provider worker</text>
+    <text x="197" y="430" class="small center">source toolsだけ · ambient権限なし</text>
+
+    <path d="M366 310 H412" class="line-purple"/>
+    <text x="389" y="296" class="micro center">Runtime Packet</text>
+
+    <rect x="430" y="140" width="318" height="340" rx="18" class="purple dash"/>
+    <text x="452" y="172" class="label">FRESH AI LAB</text>
+    <rect x="452" y="194" width="274" height="78" rx="12" class="panel"/>
+    <text x="589" y="220" class="box-title-small center">Disposable gVisor environment</text>
+    <text x="589" y="242" class="small center">実Target interface · bounded egress</text>
+    <rect x="452" y="288" width="274" height="78" rx="12" class="panel"/>
+    <text x="589" y="314" class="box-title-small center">AI Reproduction</text>
+    <text x="589" y="336" class="small center">observation · Recipe · refs</text>
+    <rect x="452" y="382" width="274" height="72" rx="12" class="red"/>
+    <text x="589" y="408" class="box-title-small center">Private evidence output</text>
+    <text x="589" y="430" class="small center">exact payload · request · logs</text>
+
+    <path d="M748 310 H794" class="line-green"/>
+    <text x="771" y="296" class="micro center">Triage Packet</text>
+
+    <rect x="812" y="140" width="318" height="340" rx="18" class="green dash"/>
+    <text x="834" y="172" class="label">SEPARATE FRESH HUMAN LAB</text>
+    <rect x="834" y="194" width="274" height="78" rx="12" class="panel"/>
+    <text x="971" y="220" class="box-title-small center">New environment identity</text>
+    <text x="971" y="242" class="small center">AI Labをreuseしない</text>
+    <rect x="834" y="288" width="274" height="78" rx="12" class="blue"/>
+    <text x="971" y="314" class="box-title-small center">Mandatory human rerun</text>
+    <text x="971" y="336" class="small center">同じpayload · 全step · 自分で観測</text>
+    <rect x="834" y="382" width="274" height="72" rx="12" class="green"/>
+    <text x="971" y="408" class="box-title-small center">Human Verification Record</text>
+    <text x="971" y="430" class="small center">Finding昇格を許す唯一の記録</text>
+
+    <path d="M1130 310 H1176" class="line-green"/>
+    <text x="1153" y="296" class="micro center">approved refs</text>
+
+    <rect x="1194" y="140" width="298" height="340" rx="18" class="red dash"/>
+    <text x="1216" y="172" class="label">PRIVATE / EXTERNAL BOUNDARY</text>
+    <rect x="1216" y="194" width="254" height="78" rx="12" class="red"/>
+    <text x="1343" y="220" class="box-title-small center">Private Evidence Store</text>
+    <text x="1343" y="242" class="small center">Git / Research artifactへ戻さない</text>
+    <rect x="1216" y="288" width="254" height="78" rx="12" class="green"/>
+    <text x="1343" y="314" class="box-title-small center">Approved Submission Draft</text>
+    <text x="1343" y="336" class="small center">human-approved revisionだけ</text>
+    <rect x="1216" y="382" width="254" height="72" rx="12" class="gray"/>
+    <text x="1343" y="408" class="box-title-small center">Programme form</text>
+    <text x="1343" y="430" class="small center">auto-stage → human Submit</text>
+
+    <rect x="28" y="510" width="348" height="72" rx="12" class="panel"/>
+    <text x="202" y="536" class="box-title-small center">Credential</text>
+    <text x="202" y="558" class="small center">必要なadapterへ最小範囲だけ</text>
+    <rect x="392" y="510" width="348" height="72" rx="12" class="panel"/>
+    <text x="566" y="536" class="box-title-small center">Network / shell</text>
+    <text x="566" y="558" class="small center">Finder / Validatorへambient提供しない</text>
+    <rect x="756" y="510" width="348" height="72" rx="12" class="panel"/>
+    <text x="930" y="536" class="box-title-small center">Isolation</text>
+    <text x="930" y="558" class="small center">gVisor失敗時にplain Dockerへfallbackしない</text>
+    <rect x="1120" y="510" width="372" height="72" rx="12" class="panel"/>
+    <text x="1306" y="536" class="box-title-small center">Promotion</text>
+    <text x="1306" y="558" class="small center">static/model verdictだけでFindingにしない</text>
+  </g>
+</svg>

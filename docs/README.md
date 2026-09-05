@@ -1,9 +1,10 @@
 # Documentation
 
-主要文書はこのdirectory直下に置く。GitHubでは、まず次の三つだけを目的に応じて読む。
+主要文書はこのdirectory直下に置く。GitHubでは、まず次の入口だけを目的に応じて読む。
 
 | Question | Canonical document |
 | --- | --- |
+| 図を追ってsystem全体の処理、artifact、状態、隔離境界を理解したい | [System Walkthrough](SYSTEM-WALKTHROUGH.md) |
 | system全体、Module、artifact、Research loopを理解したい | [Harness Architecture](ARCHITECTURE.md) |
 | 現在どこまで動き、どのcode/testがownerか知りたい | [Codebase Guide](CODEBASE-GUIDE.md) |
 | 探索・Validation・costの判断原則を知りたい | [Research Design](RESEARCH-DESIGN.md) |
@@ -15,12 +16,14 @@
 ```text
 docs/
 ├── ARCHITECTURE.md          # 一つのwhole-system view
+├── SYSTEM-WALKTHROUGH.md    # 六つの図を順に読むvisual atlas
 ├── CODEBASE-GUIDE.md        # 現在の実装状態
 ├── RESEARCH-DESIGN.md       # research policy
 ├── adr/                     # 現在有効なhard-to-reverse decision
 ├── knowledge/               # 普段は読まない外部根拠と公開実測
 ├── domain/                  # context固有のdomain language
-└── agents/                  # repository作業規則の補足
+├── agents/                  # repository作業規則の補足
+└── diagrams/                # walkthroughから開くSVG assets
 ```
 
 ## Source of truth
@@ -41,7 +44,7 @@ docs/
 
 1. 新規docより既存のArchitecture、Research Design、Codebase Guideへの更新を優先する。
 2. implementation statusはCodebase Guide、作業予定はIssue、公開可能な実測はKnowledgeへ置く。
-3. Architecture diagramは全体図一枚を基本とし、Module内の時系列が文章より明確な時だけ小さなMermaidを使う。
+3. Architecture diagramは所有境界、System Walkthroughは処理理解に限定し、同じ説明を増やさない。
 4. superseded ADR、完了計画、旧設計、過去snapshotはGit履歴から読み、現役docsへ残さない。
 5. Knowledgeは根拠と再利用可能な知見だけを持ち、採用済み結論はResearch Design、Codebase Guide、ADRのいずれかへ残す。
 6. 同じ図、status table、ownership説明を複製しない。

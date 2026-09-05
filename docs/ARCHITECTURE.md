@@ -4,7 +4,7 @@ Status: accepted whole-system view, 2026-09-05
 
 WordPress Targetの自律選定から無人Research、人間のfresh再実行、report承認、Submit直前のstagingまでの全体像を示す。実装状況とModule契約は[Codebase Guide](CODEBASE-GUIDE.md)を正本とする。
 
-[Editable draw.io source](architecture.drawio) · [SVG view](architecture.svg)
+[Editable draw.io source](architecture.drawio) · [SVG view](architecture.svg) · [Detailed system walkthrough](SYSTEM-WALKTHROUGH.md)
 
 ![WordPress Semantic Security Research Harnessの全体アーキテクチャ](architecture.svg)
 
