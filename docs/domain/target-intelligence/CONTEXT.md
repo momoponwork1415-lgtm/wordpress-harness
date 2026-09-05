@@ -64,6 +64,10 @@ _Avoid_: Campaign Wave、Submission batch、Leaderboard quota
 選ばれたplugin sourceと配布metadataを、provenanceを失わずResearchへ受け渡せる状態にする行為。
 _Avoid_: Download、Human Verification setup
 
+**Target Research History**:
+Plugin Identity、verified version、Canonical File Manifest digestで固定したTargetについて、Campaign kind、policy/profile identity、purpose、run ordinal、選定・進行・terminal時刻をTarget Intelligenceがappend-onlyに所有する重複管理記録。activeのresume、Coverage Closedの既探索、Incompleteの理由付きfollow-up、新version、同versionで異なるbytesのprovenance conflictを区別する。CVE、advisory、Finding、Hypothesis、known vulnerable rangeまたはknown routeを持たず、Research Ledgerを参照しない。
+_Avoid_: Research Ledger、Finding history、Vulnerability History Aggregate
+
 **Acquisition Original**:
 archiveまたはdirectoryとして受け取ったsourceを、展開・正規化前の内容と入手経路へ結び付けて不変化した原本。
 _Avoid_: Working copy、Extracted plugin、Target Snapshot

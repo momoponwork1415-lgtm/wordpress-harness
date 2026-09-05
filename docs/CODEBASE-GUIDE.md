@@ -32,6 +32,16 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 
 ## Target Intelligence
 
+### Target Research History
+
+**Interface:** `TargetResearchHistory.admit / record`
+
+- **Purpose:** Plugin Identity、verified version、Canonical File Manifest digestでTargetを固定し、Campaignの選定、進行、terminal statusをappend-onlyに記録して重複Researchを制御する。
+- **Invariants:** activeは既存Campaignへresumeし、Coverage Closedは通常のprospective選定を`already-covered`にする。Incomplete後のprospective再実行は元Campaignと理由を明示したfollow-upだけを許可する。同じplugin/versionの異なるManifest digestはprovenance conflict、新しいverified versionは別Targetにする。Oracle Factをcontractへ含めず、Research Ledgerを参照しない。
+- **Failures:** admission判断は`new / resume / already-covered / follow-up-required / provenance-conflict`。不正contract、Campaign bindingまたはlifecycle順序の不一致、durable write failureだけをerrorにする。
+- **Status:** Target Intelligence専用SQLite eventからCampaign viewをreplayする。Development Cohort、calibration、意図的な独立反復はkind、run ordinal、理由を固定して許可する。
+- **Code / Tests:** [research-history](../src/target-intelligence/research-history) · [Behavior Test](../tests/target-intelligence/target-research-history.test.ts)
+
 ### Target Intake
 
 **Interface:** `TargetIntake.intake(request) -> ready | deferred | rejected`
