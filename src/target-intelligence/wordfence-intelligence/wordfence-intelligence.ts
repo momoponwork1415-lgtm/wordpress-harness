@@ -110,15 +110,15 @@ const rawCopyrightSchema = z.object({
 
 const rawFeedSchema = z.record(z.string(), z.unknown());
 
-interface SnapshotRow {
-  readonly snapshot_digest: string;
-  readonly snapshot_id: string;
-  readonly snapshot_json: string;
-}
+const snapshotRowSchema = z.strictObject({
+  snapshot_digest: z.string(),
+  snapshot_id: z.string(),
+  snapshot_json: z.string(),
+});
 
-interface RecordRow {
-  readonly record_json: string;
-}
+const recordRowSchema = z.strictObject({ record_json: z.string() });
+
+type SnapshotRow = z.infer<typeof snapshotRowSchema>;
 
 class AttributionMissingError extends Error {
   constructor() {
@@ -761,15 +761,17 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   }
 
   #currentReference(): WordfenceIntelligenceSnapshotRef | undefined {
-    const row = this.#database
-      .prepare(
-        `SELECT s.snapshot_digest, s.snapshot_id, s.snapshot_json
+    const row = snapshotRowSchema.optional().parse(
+      this.#database
+        .prepare(
+          `SELECT s.snapshot_digest, s.snapshot_id, s.snapshot_json
            FROM wordfence_intelligence_current c
            JOIN wordfence_intelligence_snapshots s
              ON s.snapshot_digest = c.snapshot_digest
           WHERE c.singleton = 1`,
-      )
-      .get() as SnapshotRow | undefined;
+        )
+        .get(),
+    );
     if (row === undefined) {
       return undefined;
     }
@@ -805,27 +807,31 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   }
 
   #snapshotRow(digest: string): SnapshotRow | undefined {
-    return this.#database
-      .prepare(
-        `SELECT snapshot_digest, snapshot_id, snapshot_json
+    return snapshotRowSchema.optional().parse(
+      this.#database
+        .prepare(
+          `SELECT snapshot_digest, snapshot_id, snapshot_json
            FROM wordfence_intelligence_snapshots
           WHERE snapshot_digest = ?`,
-      )
-      .get(digest) as SnapshotRow | undefined;
+        )
+        .get(digest),
+    );
   }
 
   #records(
     snapshotDigest: string,
     pluginSlug: string,
   ): readonly WordfenceKnownRecord[] {
-    const rows = this.#database
-      .prepare(
-        `SELECT record_json
+    const rows = recordRowSchema.array().parse(
+      this.#database
+        .prepare(
+          `SELECT record_json
            FROM wordfence_intelligence_records
           WHERE snapshot_digest = ? AND plugin_slug = ?
           ORDER BY record_id`,
-      )
-      .all(snapshotDigest, pluginSlug) as RecordRow[];
+        )
+        .all(snapshotDigest, pluginSlug),
+    );
     return rows.map((row) =>
       wordfenceKnownRecordSchema.parse(JSON.parse(row.record_json)),
     );

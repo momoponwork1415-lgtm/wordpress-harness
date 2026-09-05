@@ -1,0 +1,28 @@
+[
+  {
+    "kind": "programme-assignment-route-binding",
+    "schemaVersion": 2,
+    "programmeAssignmentRef": {
+      "id": "programme-assignment:fixture",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "pluginIdentity": "wporg:route-refresh-fixture",
+    "routeDigest": "sha256:41eb5f8aacff3362ff4e2bfa587b426ec34ce92353201e33e01c6bd3b28570f1",
+    "boundAt": "2030-09-02T12:00:00.000Z",
+    "id": "assignment-route-binding:2f023663b7f5a80f3a846bec",
+    "digest": "sha256:2f023663b7f5a80f3a846bec2000df596af65b029b5482960bc945fdc7ecd34c"
+  },
+  {
+    "kind": "programme-assignment-route-binding",
+    "schemaVersion": 2,
+    "programmeAssignmentRef": {
+      "id": "programme-assignment:different-target",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "pluginIdentity": "wporg:different-target",
+    "routeDigest": "sha256:41eb5f8aacff3362ff4e2bfa587b426ec34ce92353201e33e01c6bd3b28570f1",
+    "boundAt": "2030-09-02T12:00:00.000Z",
+    "id": "assignment-route-binding:7d4f9f6e60f3dd83a70e1169",
+    "digest": "sha256:7d4f9f6e60f3dd83a70e116962b34693bf0b41712234675a327a00f4cc12a7ea"
+  }
+]

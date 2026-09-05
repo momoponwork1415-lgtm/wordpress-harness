@@ -131,6 +131,33 @@ function request(
 }
 
 describe("TargetSelection", () => {
+  it("rejects duplicate Target identities through the public selection seam before ranking", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "target-selection-duplicate-target-"),
+    );
+    let modelCalls = 0;
+    try {
+      const first = candidate("candidate-first");
+      const second = candidate("candidate-second", { target: first.target });
+      const selection = openTargetSelection({
+        storageDirectory: directory,
+        model: {
+          rank: async () => {
+            modelCalls += 1;
+            throw new Error("duplicate Target must not reach ranking");
+          },
+        },
+      });
+
+      await expect(selection.select(request([first, second]))).rejects.toThrow(
+        "A Target may occur only once in the Candidate Pool",
+      );
+      expect(modelCalls).toBe(0);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("selects one stable finite batch from a programme-neutral Candidate Pool", async () => {
     const directory = await mkdtemp(join(tmpdir(), "target-selection-"));
     let modelCalls = 0;

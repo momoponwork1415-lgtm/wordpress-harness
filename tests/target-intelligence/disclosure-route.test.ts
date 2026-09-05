@@ -7,9 +7,9 @@ import { describe, expect, it } from "vitest";
 import {
   DisclosureRouteError,
   openDisclosureRoute,
+  programmeAssignmentRouteBindingSchema,
   type DisclosureRouteSourceAdapter,
 } from "../../src/target-intelligence/index.js";
-import { sha256Digest } from "../../src/target-intelligence/acquisition/canonical-json.js";
 
 const fixtureDirectory = join(
   import.meta.dirname,
@@ -40,28 +40,38 @@ function fixtureSource(
   };
 }
 
-function assignmentBinding(
+async function assignmentBinding(
   pluginIdentity: string,
   routeDigest: string,
   assignmentId = "programme-assignment:fixture",
-) {
-  const body = {
-    kind: "programme-assignment-route-binding" as const,
-    schemaVersion: 2 as const,
-    programmeAssignmentRef: {
-      id: assignmentId,
-      digest: `sha256:${"a".repeat(64)}`,
-    },
-    pluginIdentity,
-    routeDigest,
-    boundAt: "2030-09-02T12:00:00.000Z",
+): Promise<{
+  readonly artifact: ReturnType<
+    typeof programmeAssignmentRouteBindingSchema.parse
+  >;
+  readonly ref: {
+    readonly kind: "programme-assignment-route-binding-ref";
+    readonly schemaVersion: 2;
+    readonly id: string;
+    readonly digest: string;
   };
-  const digest = sha256Digest(body);
-  const artifact = {
-    ...body,
-    id: `assignment-route-binding:${digest.slice(7, 31)}`,
-    digest,
-  };
+}> {
+  const fixture = JSON.parse(
+    await readFile(
+      join(fixtureDirectory, "programme-assignment-route-bindings.json"),
+      "utf8",
+    ),
+  ) as unknown;
+  const artifact = programmeAssignmentRouteBindingSchema
+    .array()
+    .parse(fixture)
+    .find(
+      (candidate) =>
+        candidate.pluginIdentity === pluginIdentity &&
+        candidate.programmeAssignmentRef.id === assignmentId,
+    );
+  if (artifact === undefined || artifact.routeDigest !== routeDigest) {
+    throw new Error("Missing Programme Assignment route binding fixture");
+  }
   return {
     artifact,
     ref: {
@@ -334,7 +344,7 @@ describe("DisclosureRoute", () => {
       });
       expect(changedRef.routeDigest).not.toBe(selectionRef.routeDigest);
 
-      const bound = assignmentBinding(
+      const bound = await assignmentBinding(
         "wporg:route-refresh-fixture",
         selectionRef.routeDigest,
       );
@@ -383,7 +393,7 @@ describe("DisclosureRoute", () => {
         }),
       ).rejects.toMatchObject({ code: "assignment-binding-unverified" });
 
-      const mismatched = assignmentBinding(
+      const mismatched = await assignmentBinding(
         "wporg:different-target",
         selectionRef.routeDigest,
         "programme-assignment:different-target",

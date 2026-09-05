@@ -6,10 +6,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createWordfenceIntelligenceV3FetchAdapter,
+  knownRecordAccessAuthorizationSchema,
   openWordfenceIntelligence,
   type WordfenceIntelligenceV3Adapter,
 } from "../../src/target-intelligence/index.js";
-import { sha256Digest } from "../../src/target-intelligence/acquisition/canonical-json.js";
 
 const fixturePath = join(
   import.meta.dirname,
@@ -21,31 +21,36 @@ const fixturePath = join(
 );
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 
-function knownRecordAuthorization(
+async function knownRecordAuthorization(
   verifiedVersion: string,
   canonicalFileManifestDigest = digest("c"),
-) {
-  const body = {
-    kind: "known-record-access-authorization" as const,
-    schemaVersion: 2 as const,
-    verifiedFindingRef: {
-      id: "verified-finding:fixture",
-      digest: digest("f"),
-    },
-    purpose: "known-duplicate-disposition" as const,
-    subject: {
-      pluginIdentity: "wporg:fixture-plugin",
-      verifiedVersion,
-      canonicalFileManifestDigest,
-    },
-    authorizedAt: "2030-08-02T00:00:00.000Z",
-  };
-  const authorizationDigest = sha256Digest(body);
-  return {
-    ...body,
-    id: `known-record-access:${authorizationDigest.slice(7, 31)}`,
-    digest: authorizationDigest,
-  };
+): Promise<ReturnType<typeof knownRecordAccessAuthorizationSchema.parse>> {
+  const fixture = JSON.parse(
+    await readFile(
+      join(
+        import.meta.dirname,
+        "..",
+        "fixtures",
+        "target-intelligence",
+        "wordfence-intelligence-v3",
+        "known-record-authorizations.json",
+      ),
+      "utf8",
+    ),
+  ) as unknown;
+  const authorization = knownRecordAccessAuthorizationSchema
+    .array()
+    .parse(fixture)
+    .find(
+      (candidate) =>
+        candidate.subject.verifiedVersion === verifiedVersion &&
+        candidate.subject.canonicalFileManifestDigest ===
+          canonicalFileManifestDigest,
+    );
+  if (authorization === undefined) {
+    throw new Error("Missing known-record authorization fixture");
+  }
+  return authorization;
 }
 
 function fixtureAdapter(): WordfenceIntelligenceV3Adapter {
@@ -66,7 +71,7 @@ describe("WordfenceIntelligence", () => {
   it("atomically refreshes the v3 feed while separating selection aggregate from verified-Finding records", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordfence-intelligence-"));
     try {
-      const authorization = knownRecordAuthorization("1.2.0");
+      const authorization = await knownRecordAuthorization("1.2.0");
       const intelligence = openWordfenceIntelligence({
         databasePath: join(directory, "target-intelligence.sqlite"),
         artifactDirectory: join(directory, "artifacts"),
@@ -379,8 +384,10 @@ describe("WordfenceIntelligence", () => {
   it("requires verified-Finding authorization and applies affected-version interval boundaries", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordfence-interval-"));
     try {
-      const authorizations = ["1.4.1", "2.0.0", "2.0"].map((version) =>
-        knownRecordAuthorization(version),
+      const authorizations = await Promise.all(
+        ["1.4.1", "2.0.0", "2.0"].map((version) =>
+          knownRecordAuthorization(version),
+        ),
       );
       const authorization = authorizations[0];
       if (authorization === undefined) {
