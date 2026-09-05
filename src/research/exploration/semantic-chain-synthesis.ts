@@ -74,6 +74,7 @@ const chainProposalOutputSchema = z.strictObject({
   attackerPremise: z.enum([
     "unauthenticated",
     "subscriber",
+    "contributor",
     "customer",
     "unresolved",
   ]),

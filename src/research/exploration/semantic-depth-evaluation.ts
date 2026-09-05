@@ -318,10 +318,7 @@ function resolveOutput(
     seen.add(disposition.proposalId);
     const proposalRef = referenceChainProposal(proposal);
     if (disposition.action === "request-verification") {
-      if (
-        critique.verdict !== "survives" ||
-        disposition.hypothesis.attackerPremise !== proposal.attackerPremise
-      ) {
+      if (critique.verdict !== "survives") {
         return { kind: "failed", reason: "invalid-disposition" };
       }
       const anchors = [

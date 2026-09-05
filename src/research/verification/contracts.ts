@@ -76,7 +76,12 @@ const verificationPlanBaseFields = {
   campaignId: identifierSchema,
   targetSnapshot: targetSnapshotRefSchema,
   scope: z.strictObject({
-    permittedAttacker: z.enum(["unauthenticated", "subscriber", "customer"]),
+    permittedAttacker: z.enum([
+      "unauthenticated",
+      "subscriber",
+      "contributor",
+      "customer",
+    ]),
   }),
   hypothesis: sourceBoundHypothesisSchema,
   hypothesisDigest: digestSchema,

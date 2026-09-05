@@ -209,6 +209,7 @@ export const routeFragmentProposalSchema = z.strictObject({
   attackerPremise: z.enum([
     "unauthenticated",
     "subscriber",
+    "contributor",
     "customer",
     "unresolved",
   ]),
@@ -263,6 +264,7 @@ export const sourceBoundHypothesisSchema = z.strictObject({
   attackerPremise: z.enum([
     "unauthenticated",
     "subscriber",
+    "contributor",
     "customer",
     "unresolved",
   ]),

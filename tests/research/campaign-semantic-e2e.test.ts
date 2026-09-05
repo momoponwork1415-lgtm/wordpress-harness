@@ -333,6 +333,7 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
     let verifierCalls = 0;
     let missingLinkCriticCalls = 0;
     const observedVerificationManifests: unknown[] = [];
+    const observedVerificationPremises: string[] = [];
     let scenario:
       | "happy"
       | "planning-failure"
@@ -346,6 +347,7 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
       | "missing-link-depth"
       | "missing-link-overflow"
       | "depth-verification"
+      | "depth-premise-correction"
       | "depth-blocked"
       | "depth-disproved"
       | "unbound-depth-genesis"
@@ -708,7 +710,10 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
             proposals: Array.from({ length: proposalCount }, (_, index) => ({
               itemIds: plan.assignment.itemIds,
               subjectDigests: plan.assignment.subjectDigests,
-              attackerPremise: "unauthenticated",
+              attackerPremise:
+                scenario === "depth-premise-correction"
+                  ? "subscriber"
+                  : "unauthenticated",
               securityProperty: `Privileged browser integrity route ${index + 1}.`,
               steps: [
                 {
@@ -824,15 +829,20 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
               rootCause:
                 scenario === "depth-verification"
                   ? "composed-cross-request-reader-chain"
-                  : scenario === "depth-blocked"
-                    ? "composed-cross-request-reader-chain-blocked"
-                    : scenario === "depth-disproved"
-                      ? "composed-cross-request-reader-chain-disproved"
-                      : "stored-value-output-without-context-escaping",
+                  : scenario === "depth-premise-correction"
+                    ? "critic-corrected-attacker-premise-chain"
+                    : scenario === "depth-blocked"
+                      ? "composed-cross-request-reader-chain-blocked"
+                      : scenario === "depth-disproved"
+                        ? "composed-cross-request-reader-chain-disproved"
+                        : "stored-value-output-without-context-escaping",
               attackerControlledPrimitive: "unauthenticated-persistent-value",
               brokenSecurityProperty: "privileged-browser-integrity",
             },
-            attackerPremise: "unauthenticated" as const,
+            attackerPremise:
+              scenario === "depth-premise-correction"
+                ? ("contributor" as const)
+                : ("unauthenticated" as const),
             impact: "stored-xss" as const,
             unknowns: [
               {
@@ -1159,6 +1169,9 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
               verificationPlan.schemaVersion === 2
                 ? verificationPlan.manifest
                 : undefined,
+            );
+            observedVerificationPremises.push(
+              verificationPlan.hypothesis.attackerPremise,
             );
             if (
               !happyFinderTerminalReturned &&
@@ -1696,6 +1709,43 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
         },
       });
       expect(verifierCalls - verifierCallsBeforeDepth).toBe(1);
+
+      scenario = "depth-premise-correction";
+      const premisesBeforeCorrection = observedVerificationPremises.length;
+      const premiseCorrectionPlan =
+        campaignDefaultSemanticRunPlanV2Schema.parse({
+          ...plan,
+          runId: "semantic-e2e-depth-premise-correction",
+        });
+      await research.runner.run(premiseCorrectionPlan);
+      const premiseCorrectionRun = await research.reader.inspect(
+        input.campaignId,
+        { kind: "run", runId: premiseCorrectionPlan.runId },
+      );
+      expect(premiseCorrectionRun).toMatchObject({
+        kind: "run",
+        value: {
+          depthResearch: {
+            rounds: [
+              {
+                batches: [
+                  {
+                    kind: "semantic-depth-batch-result",
+                    verificationHypotheses: [
+                      {
+                        kind: "source-bound-hypothesis",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      });
+      expect(
+        observedVerificationPremises.slice(premisesBeforeCorrection),
+      ).toContain("contributor");
 
       scenario = "unbound-depth-genesis";
       missingLinkCriticCalls = 0;
