@@ -38,6 +38,7 @@ export function projectValidationFrontierGap(input: {
   const candidateRef = validationCandidateRefSchema.parse(input.candidateRef);
   if (
     validation.status !== "needs-research" ||
+    validation.schemaVersion !== validationRef.schemaVersion ||
     validation.validationId !== validationRef.validationId ||
     validation.candidateId !== validationRef.candidateId ||
     validationRef.candidateId !== candidateRef.id
@@ -46,19 +47,22 @@ export function projectValidationFrontierGap(input: {
       "Validation Record does not contain Needs-research feedback",
     );
   }
-  const proofGapAttemptId =
-    validation.synthesisAttempt.output.proofGapAttemptId;
-  const proofAttempt = validation.validatorAttempts.find(
-    (attempt) =>
-      attempt.status === "completed" &&
-      attempt.execution.attemptId === proofGapAttemptId,
-  );
-  if (
-    proofAttempt?.status !== "completed" ||
-    proofAttempt.output.proposedDisposition !== "needs-research" ||
-    proofAttempt.output.proofGap === undefined
-  ) {
-    throw new Error("Validation Synthesis selected no concrete proof gap");
+  const legacyProofAttempt =
+    validation.schemaVersion === 1
+      ? validation.validatorAttempts.find(
+          (attempt) =>
+            attempt.execution.attemptId ===
+            validation.synthesisAttempt.output.proofGapAttemptId,
+        )
+      : undefined;
+  const proofGap =
+    validation.schemaVersion === 2
+      ? validation.validatorAttempt.output.proofGap
+      : legacyProofAttempt?.status === "completed"
+        ? legacyProofAttempt.output.proofGap
+        : undefined;
+  if (proofGap === undefined) {
+    throw new Error("Validation selected no concrete proof gap");
   }
   const approachFamilyIds = [...input.approachFamilyIds].sort(compareText);
   const identity = {
@@ -71,7 +75,7 @@ export function projectValidationFrontierGap(input: {
     validation: validationRef,
     candidate: candidateRef,
     approachFamilyIds,
-    value: proofAttempt.output.proofGap,
+    value: proofGap,
   };
   const value = validationFrontierGapSchema.parse({
     ...identity,

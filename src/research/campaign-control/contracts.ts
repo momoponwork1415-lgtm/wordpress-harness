@@ -76,6 +76,11 @@ import {
   humanReviewPacketPreparationFailureSchema,
   type HumanReviewPacketDelivery,
 } from "../validation/human-review-packet.js";
+import {
+  runtimeVerificationPacketHandoffSchema,
+  runtimeVerificationPacketPreparationFailureSchema,
+  type RuntimeVerificationPacketDelivery,
+} from "../validation/runtime-verification-packet.js";
 
 const identifierSchema = z
   .string()
@@ -368,7 +373,7 @@ const modelBudgetSchema = z.strictObject({
   reportedUsageEnforcement: z.literal("telemetry-only").optional(),
 });
 
-const validationConfigurationSchema = z.strictObject({
+const validationConfigurationFields = {
   wordpressBaseline: z.strictObject({
     id: identifierSchema,
     digest: digestSchema,
@@ -380,18 +385,29 @@ const validationConfigurationSchema = z.strictObject({
   promptSet: promptSetRefSchema,
   validatorModelProfile:
     semanticModelRoleConfigurationSchema.shape.modelProfile,
-  synthesisModelProfile:
-    semanticModelRoleConfigurationSchema.shape.modelProfile,
   sourceToolPolicy: sourceToolPolicyRefSchema,
   publicSurface: z.array(z.string().min(1).max(2_000)).max(64),
   technicalExclusions: z.array(z.string().min(1).max(2_000)).max(64),
+} as const;
+
+const validatorValidationBudgetSchema = modelBudgetSchema.extend({
+  maxSourceQueries: z.number().int().positive(),
+  maxSourceScanBytes: z.number().int().positive().optional(),
+  maxSourceResponseBytes: z.number().int().positive().optional(),
+  sourceLimitTerminalOutput: z.literal("preserve").optional(),
+});
+
+const currentValidationConfigurationSchema = z.strictObject({
+  ...validationConfigurationFields,
+  budget: z.strictObject({ validator: validatorValidationBudgetSchema }),
+});
+
+const legacyValidationConfigurationSchema = z.strictObject({
+  ...validationConfigurationFields,
+  synthesisModelProfile:
+    semanticModelRoleConfigurationSchema.shape.modelProfile,
   budget: z.strictObject({
-    validator: modelBudgetSchema.extend({
-      maxSourceQueries: z.number().int().positive(),
-      maxSourceScanBytes: z.number().int().positive().optional(),
-      maxSourceResponseBytes: z.number().int().positive().optional(),
-      sourceLimitTerminalOutput: z.literal("preserve").optional(),
-    }),
+    validator: validatorValidationBudgetSchema,
     synthesis: modelBudgetSchema,
   }),
 });
@@ -609,7 +625,10 @@ export const campaignDefaultSemanticRunPlanV3Schema = z.strictObject({
   evaluator: semanticModelRoleConfigurationSchema.extend({
     budget: modelBudgetSchema,
   }),
-  validation: validationConfigurationSchema,
+  validation: z.union([
+    currentValidationConfigurationSchema,
+    legacyValidationConfigurationSchema,
+  ]),
   budgetPolicy: semanticResearchBudgetPolicyV6Schema,
 });
 
@@ -1199,6 +1218,7 @@ const currentSemanticTerminalDecisionSchema = z.discriminatedUnion("kind", [
       "validation-pending",
       "research-work-remains",
       "review-packet-pending",
+      "runtime-packet-pending",
     ]),
   }),
 ]);
@@ -1225,6 +1245,14 @@ const campaignDefaultSemanticCompletionInputV3Schema = z.strictObject({
     .optional(),
   humanReviewPacketFailures: z
     .array(humanReviewPacketPreparationFailureSchema)
+    .max(64)
+    .optional(),
+  runtimeVerificationPackets: z
+    .array(runtimeVerificationPacketHandoffSchema)
+    .max(64)
+    .optional(),
+  runtimeVerificationPacketFailures: z
+    .array(runtimeVerificationPacketPreparationFailureSchema)
     .max(64)
     .optional(),
   decision: currentSemanticTerminalDecisionSchema,
@@ -1435,6 +1463,7 @@ export interface CampaignExecutionDependencies {
   readonly labControl: LabControl;
   readonly calibrationReview?: CalibrationReview;
   readonly humanReviewPacketDelivery?: HumanReviewPacketDelivery;
+  readonly runtimeVerificationPacketDelivery?: RuntimeVerificationPacketDelivery;
 }
 
 export class CampaignRunConflictError extends Error {

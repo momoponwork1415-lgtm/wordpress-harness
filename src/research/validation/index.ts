@@ -1,6 +1,21 @@
 export { openValidation } from "./validation.js";
 export { projectValidationFrontierGap } from "./validation-frontier-gap.js";
 export {
+  defineRuntimeVerificationPacketDeliveryRequest,
+  prepareRuntimeVerificationPacket,
+  referenceRuntimeRiskAssessment,
+  referenceRuntimeVerificationPacket,
+  runtimeReproductionSketchSchema,
+  runtimeRiskAssessmentRefSchema,
+  runtimeRiskAssessmentSchema,
+  runtimeVerificationPacketDeliveryReceiptSchema,
+  runtimeVerificationPacketDeliveryRequestSchema,
+  runtimeVerificationPacketHandoffSchema,
+  runtimeVerificationPacketPreparationFailureSchema,
+  runtimeVerificationPacketRefSchema,
+  runtimeVerificationPacketSchema,
+} from "./runtime-verification-packet.js";
+export {
   humanReproductionSketchSchema,
   defineHumanReviewPacketDeliveryRequest,
   humanReviewPacketDeliveryReceiptSchema,
@@ -15,8 +30,22 @@ export {
   riskAssessmentRefSchema,
   riskAssessmentSchema,
 } from "./human-review-packet.js";
+export type {
+  RuntimeRiskAssessment,
+  RuntimeRiskAssessmentRef,
+  RuntimeVerificationPacket,
+  RuntimeVerificationPacketDelivery,
+  RuntimeVerificationPacketDeliveryReceipt,
+  RuntimeVerificationPacketDeliveryRequest,
+  RuntimeVerificationPacketHandoff,
+  RuntimeVerificationPacketPreparationFailure,
+  RuntimeVerificationPacketPreparationResult,
+  RuntimeVerificationPacketRef,
+} from "./runtime-verification-packet.js";
 export {
   validationAttemptOutputSchema,
+  currentValidationPlanSchema,
+  singleValidationAttemptOutputSchema,
   validationCandidateId,
   validationCandidateRefSchema,
   validationCandidateSchema,
@@ -47,8 +76,11 @@ export type {
 } from "./human-review-packet.js";
 export type {
   OpenValidationOptions,
+  CurrentValidationPlan,
+  CurrentValidationRecordRef,
   Validation,
   ValidationAttemptOutput,
+  SingleValidationAttemptOutput,
   ValidationCandidate,
   ValidationCandidateRef,
   ValidationFrontierGap,

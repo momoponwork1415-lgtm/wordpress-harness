@@ -278,6 +278,65 @@ export const validationAttemptOutputSchema = z
     }
   });
 
+export const singleValidationAttemptOutputSchema = z
+  .strictObject({
+    kind: z.literal("validation-attempt-output"),
+    schemaVersion: z.literal(2),
+    candidateId: digestSchema,
+    criteria: z.array(criterionResultSchema).length(5),
+    proposedDisposition: z.enum([
+      "ready-for-runtime",
+      "needs-research",
+      "disproven",
+    ]),
+    proofGap: validationProofGapSchema.optional(),
+  })
+  .superRefine((output, context) => {
+    requireCompleteRubric(output.criteria, context);
+    if (
+      (output.proposedDisposition === "needs-research") !==
+      (output.proofGap !== undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["proofGap"],
+        message: "Only Needs-research requires a concrete proof gap",
+      });
+    }
+    if (
+      output.proposedDisposition === "ready-for-runtime" &&
+      output.criteria.some((criterion) => criterion.status === "fail")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["proposedDisposition"],
+        message: "Ready-for-runtime cannot contain a source contradiction",
+      });
+    }
+    if (
+      output.proposedDisposition === "needs-research" &&
+      (!output.criteria.some((criterion) => criterion.status === "unknown") ||
+        output.criteria.some((criterion) => criterion.status === "fail"))
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["proposedDisposition"],
+        message:
+          "Needs-research requires an unknown and no decisive source contradiction",
+      });
+    }
+    if (
+      output.proposedDisposition === "disproven" &&
+      !output.criteria.some((criterion) => criterion.status === "fail")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["proposedDisposition"],
+        message: "Disproven requires a decisive source contradiction",
+      });
+    }
+  });
+
 const synthesisEvidenceRefSchema = z.strictObject({
   attemptId: identifierSchema,
   criterion: validationCriterionSchema,
@@ -336,69 +395,88 @@ const validatorBudgetSchema = modelBudgetSchema.extend({
   sourceLimitTerminalOutput: z.literal("preserve").optional(),
 });
 
-export const validationPlanSchema = z
-  .strictObject({
-    kind: z.literal("validation-plan"),
+const validationPlanIdentitySchema = z.strictObject({
+  kind: z.literal("validation-plan"),
+  validationId: digestSchema,
+  campaignId: identifierSchema,
+  candidate: validationCandidateSchema,
+  threatContext: validationThreatContextSchema,
+  manifest: z.strictObject({
+    ref: targetFileManifestRefSchema,
+    value: targetFileManifestSchema,
+  }),
+  validationPolicy: immutableRefSchema,
+  promptSet: immutableRefSchema,
+  validatorModelProfile: structuredModelProfileSchema,
+  sourceToolPolicy: sourceToolPolicyRefSchema,
+});
+
+function validatePlanBindings(
+  plan: z.infer<typeof validationPlanIdentitySchema>,
+  context: z.RefinementCtx,
+): void {
+  const manifestDigest = sha256Digest(plan.manifest.value);
+  const candidateAnchors = plan.candidate.causalRoute.flatMap(
+    (step) => step.evidence,
+  );
+  const entries = new Set(
+    plan.manifest.value.entries.map(
+      (entry) => `${entry.path}\u0000${entry.digest}`,
+    ),
+  );
+  if (
+    plan.validationId !== plan.candidate.id ||
+    plan.manifest.ref.digest !== manifestDigest ||
+    plan.manifest.ref.targetSnapshotId !== plan.candidate.target.id ||
+    plan.manifest.ref.targetSnapshotDigest !== plan.candidate.target.digest ||
+    plan.manifest.value.targetSnapshot.id !== plan.candidate.target.id ||
+    plan.manifest.value.targetSnapshot.digest !==
+      plan.candidate.target.digest ||
+    plan.candidate.manifest.digest !== plan.manifest.ref.digest ||
+    plan.threatContext.targetSnapshotDigest !== plan.candidate.target.digest ||
+    plan.threatContext.candidateId !== plan.candidate.id ||
+    plan.threatContext.permittedAttacker !== plan.candidate.attackerPremise
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "Validation Plan contains a foreign identity binding",
+    });
+  }
+  if (
+    candidateAnchors.some(
+      (anchor) => !entries.has(`${anchor.path}\u0000${anchor.fileDigest}`),
+    )
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["candidate", "causalRoute"],
+      message: "Validation Candidate contains a foreign source anchor",
+    });
+  }
+}
+
+export const legacyValidationPlanSchema = validationPlanIdentitySchema
+  .extend({
     schemaVersion: z.literal(1),
-    validationId: digestSchema,
-    campaignId: identifierSchema,
-    candidate: validationCandidateSchema,
-    threatContext: validationThreatContextSchema,
-    manifest: z.strictObject({
-      ref: targetFileManifestRefSchema,
-      value: targetFileManifestSchema,
-    }),
-    validationPolicy: immutableRefSchema,
-    promptSet: immutableRefSchema,
-    validatorModelProfile: structuredModelProfileSchema,
     synthesisModelProfile: structuredModelProfileSchema,
-    sourceToolPolicy: sourceToolPolicyRefSchema,
     budget: z.strictObject({
       validator: validatorBudgetSchema,
       synthesis: modelBudgetSchema,
     }),
   })
-  .superRefine((plan, context) => {
-    const manifestDigest = sha256Digest(plan.manifest.value);
-    const candidateAnchors = plan.candidate.causalRoute.flatMap(
-      (step) => step.evidence,
-    );
-    const entries = new Set(
-      plan.manifest.value.entries.map(
-        (entry) => `${entry.path}\u0000${entry.digest}`,
-      ),
-    );
-    if (
-      plan.validationId !== plan.candidate.id ||
-      plan.manifest.ref.digest !== manifestDigest ||
-      plan.manifest.ref.targetSnapshotId !== plan.candidate.target.id ||
-      plan.manifest.ref.targetSnapshotDigest !== plan.candidate.target.digest ||
-      plan.manifest.value.targetSnapshot.id !== plan.candidate.target.id ||
-      plan.manifest.value.targetSnapshot.digest !==
-        plan.candidate.target.digest ||
-      plan.candidate.manifest.digest !== plan.manifest.ref.digest ||
-      plan.threatContext.targetSnapshotDigest !==
-        plan.candidate.target.digest ||
-      plan.threatContext.candidateId !== plan.candidate.id ||
-      plan.threatContext.permittedAttacker !== plan.candidate.attackerPremise
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Validation Plan contains a foreign identity binding",
-      });
-    }
-    if (
-      candidateAnchors.some(
-        (anchor) => !entries.has(`${anchor.path}\u0000${anchor.fileDigest}`),
-      )
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["candidate", "causalRoute"],
-        message: "Validation Candidate contains a foreign source anchor",
-      });
-    }
-  });
+  .superRefine(validatePlanBindings);
+
+export const currentValidationPlanSchema = validationPlanIdentitySchema
+  .extend({
+    schemaVersion: z.literal(2),
+    budget: z.strictObject({ validator: validatorBudgetSchema }),
+  })
+  .superRefine(validatePlanBindings);
+
+export const validationPlanSchema = z.union([
+  currentValidationPlanSchema,
+  legacyValidationPlanSchema,
+]);
 
 const validatorAttemptRefSchema = attemptExecutionResultV2RefSchema.extend({
   owner: z.literal("validation"),
@@ -467,7 +545,7 @@ const validationRecordBase = {
   validatorAttempts: z.array(validatorAttemptRecordSchema).min(1).max(3),
 } as const;
 
-export const validationRecordSchema = z
+export const legacyValidationRecordSchema = z
   .discriminatedUnion("status", [
     z.strictObject({
       ...validationRecordBase,
@@ -521,13 +599,82 @@ export const validationRecordSchema = z
     }
   });
 
-export const validationRecordRefSchema = z.strictObject({
+const currentCompletedValidatorAttemptRecordSchema = z.strictObject({
+  status: z.literal("completed"),
+  execution: validatorAttemptRefSchema,
+  output: singleValidationAttemptOutputSchema,
+});
+
+const currentFailedValidatorAttemptRecordSchema = z.strictObject({
+  status: z.literal("failed"),
+  execution: validatorAttemptRefSchema,
+  terminalStatus: z.enum([
+    "invalid-output",
+    "policy-denied",
+    "auth-required",
+    "provider-failed",
+    "budget-exhausted",
+    "cancelled",
+    "orphaned",
+  ]),
+  reason: boundedTextSchema,
+});
+
+export const currentValidationRecordSchema = z
+  .discriminatedUnion("status", [
+    z.strictObject({
+      kind: z.literal("validation-record"),
+      schemaVersion: z.literal(2),
+      validationId: digestSchema,
+      candidateId: digestSchema,
+      planDigest: digestSchema,
+      validatorAttempt: currentCompletedValidatorAttemptRecordSchema,
+      status: z.enum(["ready-for-runtime", "needs-research", "disproven"]),
+    }),
+    z.strictObject({
+      kind: z.literal("validation-record"),
+      schemaVersion: z.literal(2),
+      validationId: digestSchema,
+      candidateId: digestSchema,
+      planDigest: digestSchema,
+      validatorAttempt: currentFailedValidatorAttemptRecordSchema,
+      status: z.literal("validation-pending"),
+      reason: z.enum(["validator-attempt-failed", "invalid-validator-output"]),
+    }),
+  ])
+  .superRefine((record, context) => {
+    if (
+      record.status !== "validation-pending" &&
+      record.validatorAttempt.output.proposedDisposition !== record.status
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["status"],
+        message: "Validation status must match its single Validator output",
+      });
+    }
+  });
+
+export const validationRecordSchema = z.union([
+  currentValidationRecordSchema,
+  legacyValidationRecordSchema,
+]);
+
+export const legacyValidationRecordRefSchema = z.strictObject({
   kind: z.literal("validation-record"),
   schemaVersion: z.literal(1),
   validationId: digestSchema,
   candidateId: digestSchema,
   digest: digestSchema,
 });
+
+export const currentValidationRecordRefSchema =
+  legacyValidationRecordRefSchema.extend({ schemaVersion: z.literal(2) });
+
+export const validationRecordRefSchema = z.union([
+  currentValidationRecordRefSchema,
+  legacyValidationRecordRefSchema,
+]);
 
 const validationFrontierGapIdentityFields = {
   kind: z.literal("validation-frontier-gap"),
@@ -586,12 +733,19 @@ export type ValidationThreatContext = z.infer<
 export type ValidationAttemptOutput = z.infer<
   typeof validationAttemptOutputSchema
 >;
+export type SingleValidationAttemptOutput = z.infer<
+  typeof singleValidationAttemptOutputSchema
+>;
 export type ValidationSynthesisOutput = z.infer<
   typeof validationSynthesisOutputSchema
 >;
 export type ValidationPlan = z.infer<typeof validationPlanSchema>;
+export type CurrentValidationPlan = z.infer<typeof currentValidationPlanSchema>;
 export type ValidationRecord = z.infer<typeof validationRecordSchema>;
 export type ValidationRecordRef = z.infer<typeof validationRecordRefSchema>;
+export type CurrentValidationRecordRef = z.infer<
+  typeof currentValidationRecordRefSchema
+>;
 export type ValidationFrontierGap = z.infer<typeof validationFrontierGapSchema>;
 export type ValidationFrontierGapRef = z.infer<
   typeof validationFrontierGapRefSchema
@@ -606,7 +760,7 @@ export type ValidationSynthesisAttemptPlan = Extract<
 >;
 
 export interface Validation {
-  validate(plan: ValidationPlan): Promise<ValidationRecordRef>;
+  validate(plan: CurrentValidationPlan): Promise<CurrentValidationRecordRef>;
 }
 
 export interface OpenValidationOptions {

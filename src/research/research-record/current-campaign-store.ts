@@ -20,17 +20,17 @@ import type {
   CampaignRunRecordViewV3,
 } from "../campaign-control/contracts.js";
 import type {
-  HumanReviewPacket,
-  HumanReviewPacketHandoff,
-  RiskAssessment,
-} from "../validation/human-review-packet.js";
+  RuntimeRiskAssessment,
+  RuntimeVerificationPacket,
+  RuntimeVerificationPacketHandoff,
+} from "../validation/runtime-verification-packet.js";
 import type {
   ValidationCandidate,
-  ValidationRecordRef,
+  CurrentValidationRecordRef,
 } from "../validation/contracts.js";
 import type {
   ApproachFamilyRegistryRecordViewV3,
-  HumanReviewPacketRecordView,
+  RuntimeVerificationPacketRecordView,
   PreparationRecord,
   RecordPreparationResult,
   RecordSemanticCampaignAttemptStartResult,
@@ -134,25 +134,25 @@ export interface CurrentCampaignStore {
   recordValidationCompletion(
     campaignId: string,
     runId: string,
-    validation: ValidationRecordRef,
+    validation: CurrentValidationRecordRef,
   ): Promise<ValidationCompletionRecordView>;
   listValidationFrontierGaps(
     campaignId: string,
     runId: string,
   ): Promise<readonly ValidationFrontierGapRecordView[]>;
-  readHumanReviewPacket(
+  readRuntimeVerificationPacket(
     campaignId: string,
     candidateId: string,
-  ): Promise<HumanReviewPacketRecordView | undefined>;
-  recordHumanReviewPacket(
+  ): Promise<RuntimeVerificationPacketRecordView | undefined>;
+  recordRuntimeVerificationPacket(
     campaignId: string,
     runId: string,
-    riskAssessment: RiskAssessment,
-    packet: HumanReviewPacket,
-  ): Promise<HumanReviewPacketRecordView>;
-  recordHumanReviewPacketHandoff(
+    riskAssessment: RuntimeRiskAssessment,
+    packet: RuntimeVerificationPacket,
+  ): Promise<RuntimeVerificationPacketRecordView>;
+  recordRuntimeVerificationPacketHandoff(
     campaignId: string,
     runId: string,
-    handoff: HumanReviewPacketHandoff,
-  ): Promise<HumanReviewPacketRecordView>;
+    handoff: RuntimeVerificationPacketHandoff,
+  ): Promise<RuntimeVerificationPacketRecordView>;
 }

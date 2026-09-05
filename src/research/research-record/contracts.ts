@@ -73,6 +73,13 @@ import type {
   RiskAssessment,
   RiskAssessmentRef,
 } from "../validation/human-review-packet.js";
+import type {
+  RuntimeRiskAssessment,
+  RuntimeRiskAssessmentRef,
+  RuntimeVerificationPacket,
+  RuntimeVerificationPacketHandoff,
+  RuntimeVerificationPacketRef,
+} from "../validation/runtime-verification-packet.js";
 
 export interface PreparationRecord {
   readonly campaignId: string;
@@ -254,6 +261,21 @@ export interface ResearchRecord {
     runId: string,
     handoff: HumanReviewPacketHandoff,
   ): Promise<HumanReviewPacketRecordView>;
+  recordRuntimeVerificationPacket(
+    campaignId: string,
+    runId: string,
+    riskAssessment: RuntimeRiskAssessment,
+    packet: RuntimeVerificationPacket,
+  ): Promise<RuntimeVerificationPacketRecordView>;
+  readRuntimeVerificationPacket(
+    campaignId: string,
+    candidateId: string,
+  ): Promise<RuntimeVerificationPacketRecordView | undefined>;
+  recordRuntimeVerificationPacketHandoff(
+    campaignId: string,
+    runId: string,
+    handoff: RuntimeVerificationPacketHandoff,
+  ): Promise<RuntimeVerificationPacketRecordView>;
   recordVerificationStart(
     plan: VerificationPlan,
   ): Promise<RecordVerificationStartResult>;
@@ -426,6 +448,7 @@ export interface ValidationCompletion {
   readonly schemaVersion: 1;
   readonly validation: SourceValidationRecordRef;
   readonly disposition:
+    | "ready-for-runtime"
     | "ready-for-human"
     | "needs-research"
     | "disproven"
@@ -445,6 +468,19 @@ export interface HumanReviewPacketRecordView {
     readonly occurredAt: string;
     readonly runId: string;
     readonly handoff: HumanReviewPacketHandoff;
+  }[];
+}
+
+export interface RuntimeVerificationPacketRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly packet: RuntimeVerificationPacketRef;
+  readonly riskAssessment: RuntimeRiskAssessmentRef;
+  readonly handoffs: readonly {
+    readonly ledgerHead: number;
+    readonly occurredAt: string;
+    readonly runId: string;
+    readonly handoff: RuntimeVerificationPacketHandoff;
   }[];
 }
 

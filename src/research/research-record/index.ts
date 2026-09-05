@@ -9,6 +9,7 @@ export type {
   JsonArtifactStore,
   ApproachFamilyRegistryRecordViewV3,
   HumanReviewPacketRecordView,
+  RuntimeVerificationPacketRecordView,
   OpenResearchRecordOptions,
   PreparationRecord,
   RecordPreparationResult,

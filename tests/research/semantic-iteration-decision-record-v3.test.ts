@@ -661,15 +661,37 @@ describe("Research Record Iteration Decision v3", () => {
         await expect(
           reopened.listValidationIntents(input.campaignId, plan.runId),
         ).resolves.toEqual(intended);
-        await expect(
-          reopened.listValidationCompletions(input.campaignId, plan.runId),
-        ).resolves.toEqual(
+        const replayedValidations = await reopened.listValidationCompletions(
+          input.campaignId,
+          plan.runId,
+        );
+        expect(replayedValidations).toEqual(
           [completion, needsResearchCompletion].sort((left, right) =>
             left.completion.validation.validationId.localeCompare(
               right.completion.validation.validationId,
             ),
           ),
         );
+        const replayedLegacyValidation = replayedValidations.find(
+          (entry) =>
+            entry.completion.validation.validationId ===
+            needsResearchCandidate.id,
+        );
+        if (replayedLegacyValidation === undefined) {
+          throw new Error("Legacy Validation completion was not replayed");
+        }
+        await expect(
+          artifactStore.readJson(
+            replayedLegacyValidation.completion.validation.digest,
+          ),
+        ).resolves.toMatchObject({
+          schemaVersion: 1,
+          validatorAttempts: [{ ordinal: 1 }, { ordinal: 2 }],
+          synthesisAttempt: {
+            status: "completed",
+            output: { disposition: "needs-research" },
+          },
+        });
         await expect(
           reopened.listValidationFrontierGaps(input.campaignId, plan.runId),
         ).resolves.toMatchObject([

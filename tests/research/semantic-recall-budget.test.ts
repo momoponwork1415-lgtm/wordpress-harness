@@ -46,7 +46,6 @@ describe("semantic-research-recall-baseline-v6", () => {
           { id: "opus-finder-v5", digest: digest("6") },
           { id: "opus-evaluator-v5", digest: digest("7") },
           { id: "opus-validator-v6", digest: digest("8") },
-          { id: "opus-validation-synthesis-v6", digest: digest("9") },
         ],
         canonicalFileManifest: {
           kind: "canonical-file-manifest" as const,
@@ -177,15 +176,11 @@ describe("semantic-research-recall-baseline-v6", () => {
             digest: digest("d"),
           },
           validationPolicy: {
-            id: "source-validation-v1",
+            id: "source-validation-v2",
             digest: digest("e"),
           },
           promptSet,
           validatorModelProfile: profile("opus-validator-v6", digest("8")),
-          synthesisModelProfile: profile(
-            "opus-validation-synthesis-v6",
-            digest("9"),
-          ),
           sourceToolPolicy,
           publicSurface: [],
           technicalExclusions: [],
@@ -200,14 +195,6 @@ describe("semantic-research-recall-baseline-v6", () => {
               maxSourceScanBytes: 16 * GIBIBYTE,
               maxSourceResponseBytes: 256 * MEBIBYTE,
               sourceLimitTerminalOutput: "preserve",
-              reportedUsageEnforcement: "telemetry-only",
-            },
-            synthesis: {
-              maxWallTimeMs: 1_800_000,
-              maxModelTokens: 100_000,
-              maxModelTurns: 64,
-              maxProviderCostUsd: 7.5,
-              maxOutputBytes: 2 * MEBIBYTE,
               reportedUsageEnforcement: "telemetry-only",
             },
           },
@@ -263,14 +250,13 @@ describe("semantic-research-recall-baseline-v6", () => {
         await expect(
           record.recordSemanticCampaignRunStart({
             ...plan,
-            runId: `${plan.runId}-non-opus-synthesis`,
+            runId: `${plan.runId}-validator-reserve-overflow`,
             validation: {
               ...plan.validation,
-              synthesisModelProfile: {
-                ...plan.validation.synthesisModelProfile,
-                execution: {
-                  ...plan.validation.synthesisModelProfile.execution,
-                  model: "claude-sonnet-5",
+              budget: {
+                validator: {
+                  ...plan.validation.budget.validator,
+                  maxModelTokens: 400_001,
                 },
               },
             },

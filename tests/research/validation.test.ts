@@ -11,9 +11,8 @@ import {
   openValidation,
   validationCandidateId,
   validationRecordSchema,
-  type ValidationAttemptOutput,
-  type ValidationPlan,
-  type ValidationSynthesisOutput,
+  type SingleValidationAttemptOutput,
+  type CurrentValidationPlan,
 } from "../../src/research/validation/index.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
@@ -117,25 +116,24 @@ const validatorBudget = {
   maxSourceScanBytes: 16_000_000,
   maxSourceResponseBytes: 4_000_000,
 };
-const plan: ValidationPlan = {
+const plan: CurrentValidationPlan = {
   kind: "validation-plan",
-  schemaVersion: 1,
+  schemaVersion: 2,
   validationId: candidate.id,
   campaignId: "campaign-1",
   candidate,
   threatContext,
   manifest: { ref: manifestRef, value: manifestValue },
-  validationPolicy: { id: "source-validation-v1", digest: digest("9") },
+  validationPolicy: { id: "source-validation-v2", digest: digest("9") },
   promptSet: { id: "source-validation-prompts-v1", digest: digest("a") },
   validatorModelProfile: modelProfile,
-  synthesisModelProfile: modelProfile,
   sourceToolPolicy: {
     kind: "source-tool-policy",
     schemaVersion: 1,
     id: "validation-source-v1",
     digest: digest("b"),
   },
-  budget: { validator: validatorBudget, synthesis: modelBudget },
+  budget: { validator: validatorBudget },
 };
 
 class MemoryArtifactStore implements JsonArtifactStore {
@@ -157,14 +155,14 @@ class MemoryArtifactStore implements JsonArtifactStore {
 
 function attemptOutput(
   attemptId: string,
-  disposition: ValidationAttemptOutput["proposedDisposition"] = "ready-for-human",
+  disposition: SingleValidationAttemptOutput["proposedDisposition"] = "ready-for-runtime",
   overrides: Partial<
     Record<(typeof criteria)[number], "pass" | "fail" | "unknown">
   > = {},
-): ValidationAttemptOutput {
+): SingleValidationAttemptOutput {
   return {
     kind: "validation-attempt-output",
-    schemaVersion: 1,
+    schemaVersion: 2,
     candidateId: candidate.id,
     criteria: criteria.map((criterion) => ({
       criterion,
@@ -182,42 +180,6 @@ function attemptOutput(
             nextAction: "Trace every registration call in source.",
           },
         }
-      : {}),
-  };
-}
-
-function synthesisOutput(
-  attemptIds: readonly string[],
-  disposition: ValidationSynthesisOutput["disposition"] = "ready-for-human",
-): ValidationSynthesisOutput {
-  return {
-    kind: "validation-synthesis-output",
-    schemaVersion: 1,
-    candidateId: candidate.id,
-    criteria: criteria.map((criterion) => ({
-      criterion,
-      status:
-        disposition === "needs-research" &&
-        criterion === "reachability-and-premise"
-          ? "unknown"
-          : "pass",
-      reason: `The cited attempts resolve ${criterion}.`,
-      evidence: [
-        {
-          attemptId:
-            disposition === "needs-research" &&
-            criterion === "reachability-and-premise"
-              ? attemptIds[1]!
-              : attemptIds[0]!,
-          criterion,
-          evidenceIndexes: [0],
-        },
-      ],
-    })),
-    disposition,
-    reason: "The disposition follows only from cited attempt evidence.",
-    ...(disposition === "needs-research"
-      ? { proofGapAttemptId: attemptIds[1]! }
       : {}),
   };
 }
@@ -302,17 +264,9 @@ async function readRecord(store: MemoryArtifactStore, ref: { digest: string }) {
 }
 
 describe("source-only Validation", () => {
-  it("runs two fresh Validators followed by one tool-free Synthesis", async () => {
+  it("runs one fresh manifest-bound Validator and no Synthesis", async () => {
     const store = new MemoryArtifactStore();
-    const model = modelExecution((attempt, calls) =>
-      attempt.role === "validator"
-        ? attemptOutput(attempt.attemptId)
-        : synthesisOutput(
-            calls
-              .filter((call) => call.role === "validator")
-              .map((call) => call.attemptId),
-          ),
-    );
+    const model = modelExecution((attempt) => attemptOutput(attempt.attemptId));
     const validation = openValidation({
       artifactStore: store,
       modelExecution: model.execution,
@@ -321,52 +275,33 @@ describe("source-only Validation", () => {
     const ref = await validation.validate(plan);
     const record = await readRecord(store, ref);
 
-    expect(model.calls.map((call) => call.role)).toEqual([
-      "validator",
-      "validator",
-      "validation-synthesizer",
-    ]);
-    expect(new Set(model.calls.map((call) => call.attemptId))).toHaveLength(3);
-    expect(model.calls.slice(0, 2)).toSatisfy((calls: AttemptPlanV2[]) =>
-      calls.every((call) => "sourceToolPolicy" in call),
-    );
-    expect(model.calls[2]).not.toHaveProperty("sourceToolPolicy");
-    expect(record.status).toBe("ready-for-human");
-    expect(record.validatorAttempts).toHaveLength(2);
+    expect(model.calls.map((call) => call.role)).toEqual(["validator"]);
+    expect(model.calls[0]).toMatchObject({
+      owner: "validation",
+      role: "validator",
+      assignment: { attemptOrdinal: 1 },
+      sourceToolPolicy: plan.sourceToolPolicy,
+    });
+    expect(record).toMatchObject({
+      schemaVersion: 2,
+      status: "ready-for-runtime",
+      validatorAttempt: { status: "completed" },
+    });
   });
 
-  it("persists every model Attempt result before the next Validation stage starts", async () => {
+  it("persists the Attempt result before the single Validation Record", async () => {
     const store = new MemoryArtifactStore();
-    const validatorAttemptIds: string[] = [];
-    let synthesisResultDigest: string | undefined;
+    let attemptResultDigest: string | undefined;
     const execution: ModelExecution = {
       run: async (planValue) => {
         if (planValue.schemaVersion !== 2) {
           throw new Error("Validation must use AttemptPlanV2");
         }
-        if (planValue.role === "validator") {
-          validatorAttemptIds.push(planValue.attemptId);
-          return completedResult(planValue, attemptOutput(planValue.attemptId));
-        }
-        const validatorDigests = [...store.values.values()]
-          .filter(
-            (value): value is { attemptId: string; role: string } =>
-              typeof value === "object" &&
-              value !== null &&
-              "attemptId" in value &&
-              "role" in value &&
-              typeof value.attemptId === "string" &&
-              typeof value.role === "string",
-          )
-          .filter((value) => value.role === "validator")
-          .map((value) => value.attemptId)
-          .sort();
-        expect(validatorDigests).toEqual([...validatorAttemptIds].sort());
         const result = completedResult(
           planValue,
-          synthesisOutput(validatorAttemptIds),
+          attemptOutput(planValue.attemptId),
         );
-        synthesisResultDigest = result.ref.digest;
+        attemptResultDigest = result.ref.digest;
         return result;
       },
     };
@@ -375,98 +310,49 @@ describe("source-only Validation", () => {
       modelExecution: execution,
     });
 
-    await validation.validate(plan);
+    const ref = await validation.validate(plan);
 
-    expect(synthesisResultDigest).toBeDefined();
-    expect(store.values.has(synthesisResultDigest!)).toBe(true);
+    const storedDigests = [...store.values.keys()];
+    expect(attemptResultDigest).toBeDefined();
+    expect(storedDigests.indexOf(attemptResultDigest!)).toBeLessThan(
+      storedDigests.indexOf(ref.digest),
+    );
   });
 
-  it("runs a third Validator only for a material rubric conflict", async () => {
+  it("preserves a concrete source-decidable proof gap as needs-research", async () => {
     const store = new MemoryArtifactStore();
-    const model = modelExecution((attempt, calls) => {
-      if (attempt.role === "validator") {
-        const ordinal = calls.filter(
-          (call) => call.role === "validator",
-        ).length;
-        return ordinal === 2
-          ? attemptOutput(attempt.attemptId, "needs-research", {
-              "reachability-and-premise": "unknown",
-            })
-          : attemptOutput(attempt.attemptId);
-      }
-      return synthesisOutput(
-        calls
-          .filter((call) => call.role === "validator")
-          .map((call) => call.attemptId),
-        "needs-research",
-      );
-    });
-    const validation = openValidation({
-      artifactStore: store,
-      modelExecution: model.execution,
-    });
-
-    const record = await readRecord(store, await validation.validate(plan));
-
-    expect(model.calls.map((call) => call.role)).toEqual([
-      "validator",
-      "validator",
-      "validator",
-      "validation-synthesizer",
-    ]);
-    expect(record.materialConflictAfterTwo).toBe(true);
-    expect(record.status).toBe("needs-research");
-  });
-
-  it("does not spend a third Attempt on wording differences", async () => {
-    const store = new MemoryArtifactStore();
-    const model = modelExecution((attempt, calls) =>
-      attempt.role === "validator"
-        ? attemptOutput(attempt.attemptId)
-        : synthesisOutput(
-            calls
-              .filter((call) => call.role === "validator")
-              .map((call) => call.attemptId),
-          ),
+    const model = modelExecution((attempt) =>
+      attemptOutput(attempt.attemptId, "needs-research", {
+        "reachability-and-premise": "unknown",
+      }),
     );
     const validation = openValidation({
       artifactStore: store,
       modelExecution: model.execution,
     });
 
-    await validation.validate(plan);
+    const record = await readRecord(store, await validation.validate(plan));
 
-    expect(
-      model.calls.filter((call) => call.role === "validator"),
-    ).toHaveLength(2);
+    expect(model.calls.map((call) => call.role)).toEqual(["validator"]);
+    expect(record).toMatchObject({
+      schemaVersion: 2,
+      status: "needs-research",
+      validatorAttempt: {
+        status: "completed",
+        output: {
+          proofGap: { nextAction: "Trace every registration call in source." },
+        },
+      },
+    });
   });
 
-  it("turns an invalid Synthesis evidence reference into validation-pending", async () => {
+  it("sends a boundary-sensitive unknown to Human OS instead of rejecting it", async () => {
     const store = new MemoryArtifactStore();
-    const model = modelExecution((attempt, calls) => {
-      if (attempt.role === "validator") return attemptOutput(attempt.attemptId);
-      const output = synthesisOutput(
-        calls
-          .filter((call) => call.role === "validator")
-          .map((call) => call.attemptId),
-      );
-      return {
-        ...output,
-        criteria: output.criteria.map((criterion, index) =>
-          index === 0
-            ? {
-                ...criterion,
-                evidence: [
-                  {
-                    ...criterion.evidence[0]!,
-                    attemptId: "foreign-validator-attempt",
-                  },
-                ],
-              }
-            : criterion,
-        ),
-      };
-    });
+    const model = modelExecution((attempt) =>
+      attemptOutput(attempt.attemptId, "ready-for-runtime", {
+        "counterevidence-and-proof-gap": "unknown",
+      }),
+    );
     const validation = openValidation({
       artifactStore: store,
       modelExecution: model.execution,
@@ -474,9 +360,46 @@ describe("source-only Validation", () => {
 
     const record = await readRecord(store, await validation.validate(plan));
 
+    expect(model.calls).toHaveLength(1);
+    expect(record.status).toBe("ready-for-runtime");
+  });
+
+  it("closes only a decisive source contradiction as disproven", async () => {
+    const store = new MemoryArtifactStore();
+    const model = modelExecution((attempt) =>
+      attemptOutput(attempt.attemptId, "disproven", {
+        "broken-control": "fail",
+      }),
+    );
+    const validation = openValidation({
+      artifactStore: store,
+      modelExecution: model.execution,
+    });
+
+    const record = await readRecord(store, await validation.validate(plan));
+
+    expect(model.calls).toHaveLength(1);
+    expect(record.status).toBe("disproven");
+  });
+
+  it("keeps rejected or otherwise invalid output pending", async () => {
+    const store = new MemoryArtifactStore();
+    const model = modelExecution((attempt) => ({
+      ...attemptOutput(attempt.attemptId),
+      proposedDisposition: "rejected",
+    }));
+    const validation = openValidation({
+      artifactStore: store,
+      modelExecution: model.execution,
+    });
+
+    const record = await readRecord(store, await validation.validate(plan));
+
+    expect(model.calls).toHaveLength(1);
     expect(record).toMatchObject({
+      schemaVersion: 2,
       status: "validation-pending",
-      reason: "invalid-synthesis",
+      reason: "invalid-validator-output",
     });
   });
 
@@ -489,10 +412,7 @@ describe("source-only Validation", () => {
           throw new Error("Validation must use AttemptPlanV2");
         }
         calls.push(planValue);
-        return planValue.role === "validator" &&
-          planValue.assignment.attemptOrdinal === 1
-          ? failedResult(planValue)
-          : completedResult(planValue, attemptOutput(planValue.attemptId));
+        return failedResult(planValue);
       },
     };
     const validation = openValidation({
@@ -502,7 +422,7 @@ describe("source-only Validation", () => {
 
     const record = await readRecord(store, await validation.validate(plan));
 
-    expect(calls.map((call) => call.role)).toEqual(["validator", "validator"]);
+    expect(calls.map((call) => call.role)).toEqual(["validator"]);
     expect(record).toMatchObject({
       status: "validation-pending",
       reason: "validator-attempt-failed",

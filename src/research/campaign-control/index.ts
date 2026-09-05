@@ -107,15 +107,15 @@ import {
   type ValidationRecord,
 } from "../validation/index.js";
 import {
-  defineHumanReviewPacketDeliveryRequest,
-  humanReviewPacketDeliveryReceiptSchema,
-  humanReviewPacketHandoffSchema,
-  humanReviewPacketPreparationFailureSchema,
-  humanReviewPacketSchema,
-  prepareHumanReviewPacket,
-  type HumanReviewPacketHandoff,
-  type HumanReviewPacketPreparationFailure,
-} from "../validation/human-review-packet.js";
+  defineRuntimeVerificationPacketDeliveryRequest,
+  prepareRuntimeVerificationPacket,
+  runtimeVerificationPacketDeliveryReceiptSchema,
+  runtimeVerificationPacketHandoffSchema,
+  runtimeVerificationPacketPreparationFailureSchema,
+  runtimeVerificationPacketSchema,
+  type RuntimeVerificationPacketHandoff,
+  type RuntimeVerificationPacketPreparationFailure,
+} from "../validation/runtime-verification-packet.js";
 import {
   CampaignRunConflictError,
   LegacyMapFirstExecutionDisabledError,
@@ -1222,25 +1222,30 @@ async function executeCurrentSemanticDepthRound(
   };
 }
 
-async function prepareCurrentHumanReviewPackets(
+async function prepareCurrentRuntimeVerificationPackets(
   record: CurrentCampaignStore,
   dependencies: CampaignExecutionDependencies,
   plan: DefaultSemanticCampaignRunPlanV3,
   candidates: readonly ValidationCandidate[],
   validations: readonly ValidationRecord[],
 ): Promise<{
-  readonly handoffs: readonly HumanReviewPacketHandoff[];
-  readonly failures: readonly HumanReviewPacketPreparationFailure[];
+  readonly handoffs: readonly RuntimeVerificationPacketHandoff[];
+  readonly failures: readonly RuntimeVerificationPacketPreparationFailure[];
 }> {
   const candidatesById = new Map(
     candidates.map((candidate) => [candidate.id, candidate]),
   );
-  const handoffs: HumanReviewPacketHandoff[] = [];
-  const failures: HumanReviewPacketPreparationFailure[] = [];
+  const handoffs: RuntimeVerificationPacketHandoff[] = [];
+  const failures: RuntimeVerificationPacketPreparationFailure[] = [];
   for (const validation of [...validations].sort((left, right) =>
     compareText(left.candidateId, right.candidateId),
   )) {
-    if (validation.status !== "ready-for-human") continue;
+    if (
+      validation.schemaVersion !== 2 ||
+      validation.status !== "ready-for-runtime"
+    ) {
+      continue;
+    }
     const candidate = candidatesById.get(validation.candidateId);
     if (candidate === undefined) {
       throw new Error("Ready Validation lost its Candidate");
@@ -1253,7 +1258,7 @@ async function prepareCurrentHumanReviewPackets(
       candidateId: validation.candidateId,
       digest: sha256Digest(validation),
     });
-    let packetRecord = await record.readHumanReviewPacket(
+    let packetRecord = await record.readRuntimeVerificationPacket(
       plan.campaignId,
       candidate.id,
     );
@@ -1277,15 +1282,34 @@ async function prepareCurrentHumanReviewPackets(
           break;
         }
       }
+      const threatContextIdentity = {
+        kind: "validation-threat-context" as const,
+        schemaVersion: 1 as const,
+        targetSnapshotDigest: plan.target.digest,
+        candidateId: candidate.id,
+        wordpressBaseline: plan.validation.wordpressBaseline,
+        permittedAttacker: candidate.attackerPremise,
+        publicSurface: plan.validation.publicSurface,
+        technicalExclusions: plan.validation.technicalExclusions,
+      };
+      const threatContext = validationThreatContextSchema.parse({
+        ...threatContextIdentity,
+        id: sha256Digest(threatContextIdentity),
+      });
       const prepared =
         hypothesis === undefined
           ? { kind: "incomplete" as const, reason: "invalid-binding" as const }
-          : prepareHumanReviewPacket({ candidate, validation, hypothesis });
+          : prepareRuntimeVerificationPacket({
+              candidate,
+              validation,
+              hypothesis,
+              threatContext,
+            });
       if (prepared.kind === "incomplete") {
         failures.push(
-          humanReviewPacketPreparationFailureSchema.parse({
-            kind: "human-review-packet-preparation-failure",
-            schemaVersion: 1,
+          runtimeVerificationPacketPreparationFailureSchema.parse({
+            kind: "runtime-verification-packet-preparation-failure",
+            schemaVersion: 2,
             candidate: candidateRef,
             validation: validationRef,
             reason: prepared.reason,
@@ -1294,7 +1318,7 @@ async function prepareCurrentHumanReviewPackets(
         continue;
       }
       packet = prepared.packet;
-      packetRecord = await record.recordHumanReviewPacket(
+      packetRecord = await record.recordRuntimeVerificationPacket(
         plan.campaignId,
         plan.runId,
         prepared.riskAssessment,
@@ -1305,9 +1329,9 @@ async function prepareCurrentHumanReviewPackets(
         packetRecord.packet.digest,
       );
       if (sha256Digest(rawPacket) !== packetRecord.packet.digest) {
-        throw new Error("Human Review Packet CAS mismatch");
+        throw new Error("Runtime Verification Packet CAS mismatch");
       }
-      packet = humanReviewPacketSchema.parse(rawPacket);
+      packet = runtimeVerificationPacketSchema.parse(rawPacket);
     }
     const previousHandoff = packetRecord.handoffs.find(
       (handoff) => handoff.runId === plan.runId,
@@ -1316,21 +1340,23 @@ async function prepareCurrentHumanReviewPackets(
       handoffs.push(previousHandoff.handoff);
       continue;
     }
-    let delivery: HumanReviewPacketHandoff["delivery"];
-    if (dependencies.humanReviewPacketDelivery === undefined) {
+    let delivery: RuntimeVerificationPacketHandoff["delivery"];
+    if (dependencies.runtimeVerificationPacketDelivery === undefined) {
       delivery = {
         status: "delivery-failed",
-        reason: "human-os-admission-unavailable",
+        reason: "human-os-intake-unavailable",
       };
     } else {
       try {
-        const deliveryRequest = defineHumanReviewPacketDeliveryRequest({
+        const deliveryRequest = defineRuntimeVerificationPacketDeliveryRequest({
           campaignId: plan.campaignId,
           runId: plan.runId,
           packet,
         });
-        const receipt = humanReviewPacketDeliveryReceiptSchema.parse(
-          await dependencies.humanReviewPacketDelivery.deliver(deliveryRequest),
+        const receipt = runtimeVerificationPacketDeliveryReceiptSchema.parse(
+          await dependencies.runtimeVerificationPacketDelivery.deliver(
+            deliveryRequest,
+          ),
         );
         delivery =
           receipt.deliveryRequestDigest === deliveryRequest.digest &&
@@ -1341,14 +1367,14 @@ async function prepareCurrentHumanReviewPackets(
         delivery = { status: "delivery-failed", reason: "delivery-failed" };
       }
     }
-    const handoff = humanReviewPacketHandoffSchema.parse({
-      kind: "human-review-packet-handoff",
-      schemaVersion: 1,
+    const handoff = runtimeVerificationPacketHandoffSchema.parse({
+      kind: "runtime-verification-packet-handoff",
+      schemaVersion: 2,
       packet: packetRecord.packet,
       riskAssessment: packetRecord.riskAssessment,
       delivery,
     });
-    await record.recordHumanReviewPacketHandoff(
+    await record.recordRuntimeVerificationPacketHandoff(
       plan.campaignId,
       plan.runId,
       handoff,
@@ -1490,7 +1516,7 @@ async function completeCurrentSemanticIteration(
     });
     const validationRef = await validation.validate({
       kind: "validation-plan",
-      schemaVersion: 1,
+      schemaVersion: 2,
       validationId: candidate.id,
       campaignId: plan.campaignId,
       candidate,
@@ -1502,9 +1528,8 @@ async function completeCurrentSemanticIteration(
         digest: plan.validation.promptSet.digest,
       },
       validatorModelProfile: plan.validation.validatorModelProfile.execution,
-      synthesisModelProfile: plan.validation.synthesisModelProfile.execution,
       sourceToolPolicy: plan.validation.sourceToolPolicy,
-      budget: plan.validation.budget,
+      budget: { validator: plan.validation.budget.validator },
     });
     const rawValidation = await dependencies.artifactStore.readJson(
       validationRef.digest,
@@ -1520,7 +1545,7 @@ async function completeCurrentSemanticIteration(
       validationRef,
     );
   }
-  const reviewPackets = await prepareCurrentHumanReviewPackets(
+  const runtimePackets = await prepareCurrentRuntimeVerificationPackets(
     record,
     dependencies,
     plan,
@@ -1575,12 +1600,12 @@ async function completeCurrentSemanticIteration(
       compareText(left.validationId, right.validationId),
     ),
     validationFrontierGaps: frontierGaps.map((gap) => gap.frontierGap),
-    humanReviewPackets: [...reviewPackets.handoffs],
-    humanReviewPacketFailures: [...reviewPackets.failures],
+    runtimeVerificationPackets: [...runtimePackets.handoffs],
+    runtimeVerificationPacketFailures: [...runtimePackets.failures],
     decision: pendingValidation
       ? { kind: "incomplete", reason: "validation-pending" }
-      : reviewPackets.failures.length > 0
-        ? { kind: "incomplete", reason: "review-packet-pending" }
+      : runtimePackets.failures.length > 0
+        ? { kind: "incomplete", reason: "runtime-packet-pending" }
         : researchWorkRemains
           ? { kind: "incomplete", reason: "research-work-remains" }
           : { kind: "complete" },

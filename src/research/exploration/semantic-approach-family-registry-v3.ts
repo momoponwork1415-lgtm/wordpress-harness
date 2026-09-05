@@ -50,6 +50,7 @@ export const approachFamilyV3Schema = z.strictObject({
         validationId: digestSchema,
         recordDigest: digestSchema,
         disposition: z.enum([
+          "ready-for-runtime",
           "ready-for-human",
           "needs-research",
           "disproven",

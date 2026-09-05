@@ -5,11 +5,6 @@ import { join } from "node:path";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 
-import { openHumanVerification } from "../../src/human-os/index.js";
-import {
-  openFileHumanOsArtifactStore,
-  openSqliteHumanOsRecord,
-} from "../../src/human-os/human-os-record/index.js";
 import {
   campaignDefaultSemanticRunPlanV3Schema,
   openResearch,
@@ -149,14 +144,6 @@ describe("CampaignRunner.run source-only Validation", () => {
     const directory = await mkdtemp(join(tmpdir(), "campaign-validation-"));
     const databasePath = join(directory, "research.sqlite");
     const artifacts = openFileJsonArtifactStore(join(directory, "artifacts"));
-    const humanOsDatabasePath = join(directory, "human-os.sqlite");
-    const humanOsArtifactsDirectory = join(directory, "human-os-artifacts");
-    const humanVerification = openHumanVerification({
-      record: openSqliteHumanOsRecord({
-        databasePath: humanOsDatabasePath,
-        artifactStore: openFileHumanOsArtifactStore(humanOsArtifactsDirectory),
-      }),
-    });
     const input = {
       ...createCampaignInput("campaign-validation-run"),
       schemaVersion: 2 as const,
@@ -165,7 +152,6 @@ describe("CampaignRunner.run source-only Validation", () => {
         { id: "opus-finder-v6", digest: digest("6") },
         { id: "opus-evaluator-v6", digest: digest("7") },
         { id: "opus-validator-v6", digest: digest("8") },
-        { id: "opus-validation-synthesis-v6", digest: digest("9") },
       ],
       canonicalFileManifest: {
         kind: "canonical-file-manifest" as const,
@@ -185,12 +171,11 @@ describe("CampaignRunner.run source-only Validation", () => {
       endLine: 20,
     };
     const observedPlans: ModelAttemptPlan[] = [];
-    const validatorAttemptIds: string[] = [];
     const depthQueuesObservedBeforeValidation: string[] = [];
     const depthQueuesObservedBeforeSynthesis: string[] = [];
     let expectedValidationRunId = "";
-    let validationDisposition: "ready-for-human" | "needs-research" =
-      "ready-for-human";
+    let validationDisposition: "ready-for-runtime" | "needs-research" =
+      "ready-for-runtime";
     let depthFailure: "none" | "budget-exhausted" = "none";
     let packetDelivery: "success" | "failure" = "failure";
     const deliveredPacketDigests: string[] = [];
@@ -467,10 +452,9 @@ describe("CampaignRunner.run source-only Validation", () => {
           } finally {
             durableRecord.close();
           }
-          validatorAttemptIds.push(plan.attemptId);
           return completedResult(plan, {
             kind: "validation-attempt-output",
-            schemaVersion: 1,
+            schemaVersion: 2,
             candidateId: plan.assignment.candidateId,
             criteria: criteria.map((criterion) => ({
               criterion,
@@ -495,38 +479,6 @@ describe("CampaignRunner.run source-only Validation", () => {
                       "Trace every source-bound reader of the persisted state.",
                   },
                 }
-              : {}),
-          });
-        }
-        if (plan.role === "validation-synthesizer") {
-          const firstValidator = validatorAttemptIds[0];
-          if (firstValidator === undefined) {
-            throw new Error("Validation Synthesis ran without a Validator");
-          }
-          return completedResult(plan, {
-            kind: "validation-synthesis-output",
-            schemaVersion: 1,
-            candidateId: plan.assignment.candidateId,
-            criteria: criteria.map((criterion) => ({
-              criterion,
-              status:
-                validationDisposition === "needs-research" &&
-                criterion === "reachability-and-premise"
-                  ? "unknown"
-                  : "pass",
-              reason: `The cited attempts resolve ${criterion}.`,
-              evidence: [
-                {
-                  attemptId: firstValidator,
-                  criterion,
-                  evidenceIndexes: [0],
-                },
-              ],
-            })),
-            disposition: validationDisposition,
-            reason: "The disposition follows only from both source reviews.",
-            ...(validationDisposition === "needs-research"
-              ? { proofGapAttemptId: firstValidator }
               : {}),
           });
         }
@@ -557,14 +509,25 @@ describe("CampaignRunner.run source-only Validation", () => {
             throw new Error("Lab must not run in source-only Validation");
           },
         },
-        humanReviewPacketDelivery: {
+        runtimeVerificationPacketDelivery: {
           deliver: async (request) => {
             const packet = request.packet;
             deliveredPacketDigests.push(sha256Digest(packet));
             if (packetDelivery === "failure") {
               throw new Error("Injected Human OS delivery failure");
             }
-            return humanVerification.deliver(request);
+            const identity = {
+              kind: "runtime-verification-packet-delivery-receipt" as const,
+              schemaVersion: 2 as const,
+              deliveryRequestDigest: request.digest,
+              packetDigest: sha256Digest(packet),
+              intakeId: sha256Digest({
+                kind: "ai-reproduction-intake",
+                packetId: packet.id,
+              }),
+              admission: "accepted-for-ai-reproduction" as const,
+            };
+            return { ...identity, receiptDigest: sha256Digest(identity) };
           },
         },
       },
@@ -681,15 +644,11 @@ describe("CampaignRunner.run source-only Validation", () => {
             digest: digest("d"),
           },
           validationPolicy: {
-            id: "source-validation-v1",
+            id: "source-validation-v2",
             digest: digest("e"),
           },
           promptSet,
           validatorModelProfile: profile("opus-validator-v6", digest("8")),
-          synthesisModelProfile: profile(
-            "opus-validation-synthesis-v6",
-            digest("9"),
-          ),
           sourceToolPolicy,
           publicSurface: ["Public WordPress request handlers"],
           technicalExclusions: [],
@@ -704,14 +663,6 @@ describe("CampaignRunner.run source-only Validation", () => {
               maxSourceScanBytes: 16 * GIBIBYTE,
               maxSourceResponseBytes: 256 * MEBIBYTE,
               sourceLimitTerminalOutput: "preserve",
-              reportedUsageEnforcement: "telemetry-only",
-            },
-            synthesis: {
-              maxWallTimeMs: 1_800_000,
-              maxModelTokens: 100_000,
-              maxModelTurns: 64,
-              maxProviderCostUsd: 7.5,
-              maxOutputBytes: 2 * MEBIBYTE,
               reportedUsageEnforcement: "telemetry-only",
             },
           },
@@ -794,16 +745,16 @@ describe("CampaignRunner.run source-only Validation", () => {
                 },
               ],
             },
-            validations: [{ status: "ready-for-human" }],
-            humanReviewPacketFailures: [],
-            humanReviewPackets: [
+            validations: [{ status: "ready-for-runtime" }],
+            runtimeVerificationPacketFailures: [],
+            runtimeVerificationPackets: [
               {
                 packet: {
-                  schemaVersion: 1,
+                  schemaVersion: 2,
                   candidateId: expect.any(String),
                 },
                 riskAssessment: {
-                  schemaVersion: 1,
+                  schemaVersion: 2,
                   candidateId: expect.any(String),
                 },
                 delivery: {
@@ -827,7 +778,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       });
       expect(
         observedPlans.filter((attempt) => attempt.role === "validator"),
-      ).toHaveLength(2);
+      ).toHaveLength(1);
       expect([...new Set(depthQueuesObservedBeforeSynthesis)]).toHaveLength(1);
       expect([...new Set(depthQueuesObservedBeforeValidation)]).toHaveLength(1);
       const depthPlans = observedPlans.filter(
@@ -858,10 +809,10 @@ describe("CampaignRunner.run source-only Validation", () => {
         new Set(depthPlans.map((attempt) => attempt.attemptId)),
       ).toHaveProperty("size", 6);
       expect(
-        observedPlans.find(
+        observedPlans.filter(
           (attempt) => attempt.role === "validation-synthesizer",
         ),
-      ).not.toHaveProperty("sourceToolPolicy");
+      ).toEqual([]);
       expect({ legacyVerifierCalls, labCalls }).toEqual({
         legacyVerifierCalls: 0,
         labCalls: 0,
@@ -878,7 +829,12 @@ describe("CampaignRunner.run source-only Validation", () => {
         await expect(
           record.listValidationCompletions(input.campaignId, plan.runId),
         ).resolves.toMatchObject([
-          { completion: { disposition: "ready-for-human" } },
+          {
+            completion: {
+              validation: { schemaVersion: 2 },
+              disposition: "ready-for-runtime",
+            },
+          },
         ]);
         await expect(
           record.listValidationFrontierGaps(input.campaignId, plan.runId),
@@ -891,16 +847,18 @@ describe("CampaignRunner.run source-only Validation", () => {
         if (
           inspected.kind !== "run" ||
           inspected.value.schemaVersion !== 3 ||
-          !("humanReviewPackets" in inspected.value)
+          !("runtimeVerificationPackets" in inspected.value)
         ) {
-          throw new Error("Expected a current Human Review Packet handoff");
+          throw new Error(
+            "Expected a current Runtime Verification Packet handoff",
+          );
         }
         const candidateId =
-          inspected.value.humanReviewPackets?.[0]?.packet.candidateId;
+          inspected.value.runtimeVerificationPackets?.[0]?.packet.candidateId;
         if (candidateId === undefined) {
-          throw new Error("Expected a Human Review Packet candidate");
+          throw new Error("Expected a Runtime Verification Packet candidate");
         }
-        const packet = await record.readHumanReviewPacket(
+        const packet = await record.readRuntimeVerificationPacket(
           input.campaignId,
           candidateId,
         );
@@ -917,17 +875,25 @@ describe("CampaignRunner.run source-only Validation", () => {
             },
           ],
         });
-        if (packet === undefined) throw new Error("Expected Review Packet");
+        if (packet === undefined) throw new Error("Expected Runtime Packet");
         await expect(
           artifacts.readJson(packet.packet.digest),
         ).resolves.toMatchObject({
           target: input.targetSnapshot,
           causalIdentity: { brokenSecurityProperty: "state-ownership" },
           attackerPremise: "unauthenticated",
-          reviewBoundary: {
-            validity: "source-validated-not-human-verified",
+          researchBoundary: {
+            sourceOnly: true,
+            exactPayloadIncluded: false,
+            rawRequestIncluded: false,
             findingEligible: false,
           },
+        });
+        await expect(
+          artifacts.readJson(packet.riskAssessment.digest),
+        ).resolves.toMatchObject({
+          validationDisposition: "ready-for-runtime",
+          validation: { schemaVersion: 2 },
         });
       } finally {
         record.close();
@@ -937,7 +903,6 @@ describe("CampaignRunner.run source-only Validation", () => {
       expect(observedPlans).toHaveLength(modelCallsAfterFirstRun);
 
       validationDisposition = "needs-research";
-      validatorAttemptIds.length = 0;
       const needsResearchPlan = campaignDefaultSemanticRunPlanV3Schema.parse({
         ...plan,
         runId: "source-validation-needs-research",
@@ -953,8 +918,8 @@ describe("CampaignRunner.run source-only Validation", () => {
         needsResearchInspected: {
           value: {
             validations: [{ status: "needs-research" }],
-            humanReviewPackets: [],
-            humanReviewPacketFailures: [],
+            runtimeVerificationPackets: [],
+            runtimeVerificationPacketFailures: [],
             validationFrontierGaps: [
               {
                 kind: "validation-frontier-gap",
@@ -1001,10 +966,9 @@ describe("CampaignRunner.run source-only Validation", () => {
         needsResearchRecord.close();
       }
 
-      validationDisposition = "ready-for-human";
+      validationDisposition = "ready-for-runtime";
       depthFailure = "budget-exhausted";
       packetDelivery = "success";
-      validatorAttemptIds.length = 0;
       const failurePlan = campaignDefaultSemanticRunPlanV3Schema.parse({
         ...plan,
         runId: "source-validation-depth-budget-exhausted",
@@ -1040,8 +1004,8 @@ describe("CampaignRunner.run source-only Validation", () => {
               ],
             },
             approachFamilyRegistry: { states: { active: 1 } },
-            humanReviewPacketFailures: [],
-            humanReviewPackets: [
+            runtimeVerificationPacketFailures: [],
+            runtimeVerificationPackets: [
               {
                 delivery: {
                   status: "delivered",
@@ -1066,27 +1030,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       expect(deliveredPacketDigests).toHaveLength(2);
       expect(new Set(deliveredPacketDigests)).toHaveProperty("size", 1);
 
-      const replayedHumanOs = openHumanVerification({
-        record: openSqliteHumanOsRecord({
-          databasePath: humanOsDatabasePath,
-          artifactStore: openFileHumanOsArtifactStore(
-            humanOsArtifactsDirectory,
-          ),
-        }),
-      });
-      await expect(
-        replayedHumanOs.readQueue(input.campaignId),
-      ).resolves.toMatchObject({
-        active: [
-          {
-            reviewCase: {
-              packet: { digest: deliveredPacketDigests.at(-1) },
-              queueStatus: "active",
-            },
-          },
-        ],
-        humanDeferred: [],
-      });
+      expect(deliveredPacketDigests.at(-1)).toEqual(expect.any(String));
     } finally {
       research.close();
       await rm(directory, { force: true, recursive: true });
