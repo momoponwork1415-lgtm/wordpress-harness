@@ -837,6 +837,44 @@ async function verifyHostPrivateArtifact(
   }
 }
 
+async function verifyStoredArtifact(
+  directory: PinnedHostPrivateDirectory,
+  contentDigest: string,
+): Promise<void> {
+  await requirePinnedHostPrivateDirectory(directory);
+  let handle: FileHandle;
+  try {
+    handle = await open(
+      join(
+        `/proc/self/fd/${directory.handle.fd}`,
+        `${contentDigest.slice("sha256:".length)}.json`,
+      ),
+      fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK,
+    );
+  } catch (error) {
+    if (hasErrorCode(error, "ELOOP")) {
+      throw new ArtifactConflictError();
+    }
+    throw error;
+  }
+  try {
+    const metadata = await handle.stat();
+    if (
+      !metadata.isFile() ||
+      !isOwnedByCurrentUser(metadata.uid) ||
+      (metadata.mode & 0o777) !== 0o400
+    ) {
+      throw new ArtifactConflictError();
+    }
+    if (rawDigest(await handle.readFile()) !== contentDigest) {
+      throw new ArtifactConflictError();
+    }
+  } finally {
+    await handle.close();
+  }
+  await requirePinnedHostPrivateDirectory(directory);
+}
+
 async function persistBytes(
   path: string,
   bytes: Uint8Array,
@@ -1651,6 +1689,17 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     return transaction.deferred();
   }
 
+  async requireCurrentProductionArtifact(
+    directory: PinnedHostPrivateDirectory,
+  ): Promise<void> {
+    const reference = this.#currentReference();
+    if (reference === undefined) {
+      return;
+    }
+    const snapshot = this.#readSnapshot(reference);
+    await verifyStoredArtifact(directory, snapshot.source.contentDigest);
+  }
+
   async aggregate(
     requestValue: VulnerabilityHistoryAggregateRequest,
   ): Promise<VulnerabilityHistoryAggregate> {
@@ -2213,14 +2262,27 @@ export function openWordfenceIntelligenceRefresh(
       if (current === undefined) {
         return failure("storage-failure");
       }
-      return usePinnedProductionDirectory(current.artifactDirectory, async () =>
-        wordfenceIntelligenceResultSchema.parse(
-          await current.intelligence.refresh(
-            request,
-            current.artifactDirectory,
-          ),
-        ),
-      );
+      try {
+        return await usePinnedProductionDirectory(
+          current.artifactDirectory,
+          async () => {
+            await current.intelligence.requireCurrentProductionArtifact(
+              current.artifactDirectory,
+            );
+            return wordfenceIntelligenceResultSchema.parse(
+              await current.intelligence.refresh(
+                request,
+                current.artifactDirectory,
+              ),
+            );
+          },
+        );
+      } catch (error) {
+        if (isStorageFailure(error)) {
+          return failure("storage-failure");
+        }
+        throw error;
+      }
     },
     inspect: async (request) => {
       wordfenceIntelligenceInspectionRequestSchema.parse(request);
@@ -2231,10 +2293,18 @@ export function openWordfenceIntelligenceRefresh(
       try {
         return await usePinnedProductionDirectory(
           current.artifactDirectory,
-          async () =>
-            wordfenceIntelligenceResultSchema.parse(
+          async () => {
+            const result = wordfenceIntelligenceResultSchema.parse(
               await current.intelligence.inspectProduction(request),
-            ),
+            );
+            if (result.status === "current" || result.status === "stale") {
+              await verifyStoredArtifact(
+                current.artifactDirectory,
+                result.snapshot.source.contentDigest,
+              );
+            }
+            return result;
+          },
         );
       } catch (error) {
         if (isStorageFailure(error)) {

@@ -9,6 +9,7 @@ import {
   rename,
   rm,
   symlink,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -188,6 +189,328 @@ describe("WordfenceIntelligenceRefresh", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it("rejects a missing current raw artifact before another production fetch", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-missing-current-artifact-"),
+    );
+    const artifactDirectory = join(directory, "artifacts");
+    let resolveCalls = 0;
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Promise.resolve(
+        new Response(await readFile(fixturePath), { status: 200 }),
+      ),
+    );
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath: join(directory, "index", "target-intelligence.sqlite"),
+        artifactDirectory,
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            resolveCalls += 1;
+            return use("synthetic-missing-artifact-credential");
+          },
+        },
+        fetch: fetchMock,
+      });
+      const current = await refresh.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      if (current.status !== "current") {
+        throw new Error("Expected a current snapshot");
+      }
+      await unlink(
+        join(
+          artifactDirectory,
+          "wordfence-intelligence-v3",
+          `${current.snapshot.source.contentDigest.slice(7)}.json`,
+        ),
+      );
+
+      await expect(
+        refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual({
+        kind: "wordfence-intelligence-result",
+        schemaVersion: 1,
+        status: "failed",
+        reason: "storage-failure",
+      });
+      expect(resolveCalls).toBe(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects same-inode current raw artifact tampering before another production fetch", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-tampered-current-artifact-"),
+    );
+    const artifactDirectory = join(directory, "artifacts");
+    let resolveCalls = 0;
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Promise.resolve(
+        new Response(await readFile(fixturePath), { status: 200 }),
+      ),
+    );
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath: join(directory, "index", "target-intelligence.sqlite"),
+        artifactDirectory,
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            resolveCalls += 1;
+            return use("synthetic-tampered-artifact-credential");
+          },
+        },
+        fetch: fetchMock,
+      });
+      const current = await refresh.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      if (current.status !== "current") {
+        throw new Error("Expected a current snapshot");
+      }
+      const artifactPath = join(
+        artifactDirectory,
+        "wordfence-intelligence-v3",
+        `${current.snapshot.source.contentDigest.slice(7)}.json`,
+      );
+      const originalInode = (await lstat(artifactPath)).ino;
+      await chmod(artifactPath, 0o600);
+      await writeFile(artifactPath, Buffer.from('{"tampered":true}'));
+      await chmod(artifactPath, 0o400);
+      expect((await lstat(artifactPath)).ino).toBe(originalInode);
+
+      await expect(
+        refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).rejects.toThrow("Wordfence Intelligence artifact conflict");
+      expect(resolveCalls).toBe(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each(
+    (["same instance", "fresh open"] as const).flatMap((lifecycle) =>
+      (["run", "inspect"] as const).flatMap((operation) =>
+        (
+          [
+            "deletion",
+            "same-inode content tamper",
+            "0644 mode",
+            "symlink",
+            "byte-identical regular replacement",
+          ] as const
+        ).map((mutation) => [lifecycle, operation, mutation] as const),
+      ),
+    ),
+  )(
+    "%s production %s binds the current pointer across raw artifact %s",
+    async (lifecycle, operation, mutation) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "wordfence-current-artifact-binding-"),
+      );
+      const artifactDirectory = join(directory, "artifacts");
+      const bytes = await readFile(fixturePath);
+      let resolveCalls = 0;
+      const fetchMock = vi.fn<typeof fetch>(async () =>
+        Promise.resolve(new Response(bytes, { status: 200 })),
+      );
+      const options = {
+        databasePath: join(directory, "index", "target-intelligence.sqlite"),
+        artifactDirectory,
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            resolveCalls += 1;
+            return use("synthetic-current-artifact-binding-credential");
+          },
+        },
+        fetch: fetchMock,
+      };
+      try {
+        const refresh = openWordfenceIntelligenceRefresh(options);
+        const current = await refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        });
+        if (current.status !== "current") {
+          throw new Error("Expected a current snapshot");
+        }
+        const artifactPath = join(
+          artifactDirectory,
+          "wordfence-intelligence-v3",
+          `${current.snapshot.source.contentDigest.slice(7)}.json`,
+        );
+        const originalInode = (await lstat(artifactPath)).ino;
+        if (mutation === "deletion") {
+          await unlink(artifactPath);
+        } else if (mutation === "same-inode content tamper") {
+          await chmod(artifactPath, 0o600);
+          await writeFile(artifactPath, Buffer.from('{"tampered":true}'));
+          await chmod(artifactPath, 0o400);
+          expect((await lstat(artifactPath)).ino).toBe(originalInode);
+        } else if (mutation === "0644 mode") {
+          await chmod(artifactPath, 0o644);
+        } else if (mutation === "symlink") {
+          const backingPath = join(directory, "artifact-backing.json");
+          await writeFile(backingPath, bytes, { mode: 0o400 });
+          await unlink(artifactPath);
+          await symlink(backingPath, artifactPath, "file");
+        } else {
+          const replacementPath = join(
+            artifactDirectory,
+            "wordfence-intelligence-v3",
+            "byte-identical-replacement.json",
+          );
+          await writeFile(replacementPath, bytes, { mode: 0o400 });
+          await chmod(replacementPath, 0o400);
+          await rename(replacementPath, artifactPath);
+          expect((await lstat(artifactPath)).ino).not.toBe(originalInode);
+        }
+
+        const selected =
+          lifecycle === "same instance"
+            ? refresh
+            : openWordfenceIntelligenceRefresh(options);
+        const result =
+          operation === "run"
+            ? selected.run({
+                kind: "wordfence-intelligence-refresh",
+                schemaVersion: 1,
+              })
+            : selected.inspect({
+                kind: "wordfence-intelligence-inspection",
+                schemaVersion: 1,
+              });
+        if (mutation === "deletion") {
+          await expect(result).resolves.toEqual({
+            kind: "wordfence-intelligence-result",
+            schemaVersion: 1,
+            status: "failed",
+            reason: "storage-failure",
+          });
+        } else if (mutation === "byte-identical regular replacement") {
+          await expect(result).resolves.toMatchObject({ status: "current" });
+        } else {
+          await expect(result).rejects.toThrow(
+            "Wordfence Intelligence artifact conflict",
+          );
+        }
+        const expectedFetches =
+          mutation === "byte-identical regular replacement" &&
+          operation === "run"
+            ? 2
+            : 1;
+        expect(resolveCalls).toBe(expectedFetches);
+        expect(fetchMock).toHaveBeenCalledTimes(expectedFetches);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each(["deletion", "content tamper"] as const)(
+    "does not replay stale state after raw artifact %s",
+    async (mutation) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "wordfence-stale-artifact-binding-"),
+      );
+      const artifactDirectory = join(directory, "artifacts");
+      const bytes = await readFile(fixturePath);
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(new Response(bytes, { status: 200 }))
+        .mockResolvedValueOnce(new Response(undefined, { status: 404 }));
+      const options = {
+        databasePath: join(directory, "index", "target-intelligence.sqlite"),
+        artifactDirectory,
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            return use("synthetic-stale-artifact-binding-credential");
+          },
+        },
+        fetch: fetchMock,
+      };
+      try {
+        const refresh = openWordfenceIntelligenceRefresh(options);
+        const current = await refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        });
+        if (current.status !== "current") {
+          throw new Error("Expected a current snapshot");
+        }
+        await expect(
+          refresh.run({
+            kind: "wordfence-intelligence-refresh",
+            schemaVersion: 1,
+          }),
+        ).resolves.toMatchObject({ status: "failed", reason: "not-found" });
+        await expect(
+          refresh.inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+        ).resolves.toMatchObject({ status: "stale" });
+
+        const artifactPath = join(
+          artifactDirectory,
+          "wordfence-intelligence-v3",
+          `${current.snapshot.source.contentDigest.slice(7)}.json`,
+        );
+        if (mutation === "deletion") {
+          await unlink(artifactPath);
+        } else {
+          await chmod(artifactPath, 0o600);
+          await writeFile(artifactPath, Buffer.from('{"tampered":true}'));
+          await chmod(artifactPath, 0o400);
+        }
+
+        const restarted = openWordfenceIntelligenceRefresh(options);
+        const result = restarted.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        });
+        if (mutation === "deletion") {
+          await expect(result).resolves.toEqual({
+            kind: "wordfence-intelligence-result",
+            schemaVersion: 1,
+            status: "failed",
+            reason: "storage-failure",
+          });
+        } else {
+          await expect(result).rejects.toThrow(
+            "Wordfence Intelligence artifact conflict",
+          );
+        }
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("rejects a permissive raw CAS directory before credential resolution", async () => {
     const directory = await mkdtemp(
