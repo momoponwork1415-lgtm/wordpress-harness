@@ -19,6 +19,10 @@ const routeTermSchema = z
 const httpsUrlSchema = z
   .url()
   .refine((value) => new URL(value).protocol === "https:");
+const immutableRefSchema = z.strictObject({
+  id: identifierSchema,
+  digest: digestSchema,
+});
 
 export const disclosureRouteSourceKindSchema = z.enum([
   "vendor-official",
@@ -132,6 +136,38 @@ export const disclosureRouteObservationRefSchema = z.strictObject({
   routeDigest: digestSchema,
 });
 
+export const programmeAssignmentRouteBindingSchema = z.strictObject({
+  kind: z.literal("programme-assignment-route-binding"),
+  schemaVersion: z.literal(1),
+  programmeAssignmentRef: immutableRefSchema,
+  pluginIdentity: pluginIdentitySchema,
+  routeDigest: digestSchema,
+});
+
+export const programmeAssignmentRouteStalenessRequestSchema = z.strictObject({
+  kind: z.literal("programme-assignment-route-staleness-request"),
+  schemaVersion: z.literal(1),
+  assignmentBinding: programmeAssignmentRouteBindingSchema,
+  currentObservationRef: disclosureRouteObservationRefSchema,
+});
+
+const programmeAssignmentRouteStalenessBodySchema = z.strictObject({
+  kind: z.literal("programme-assignment-route-staleness"),
+  schemaVersion: z.literal(1),
+  programmeAssignmentRef: immutableRefSchema,
+  pluginIdentity: pluginIdentitySchema,
+  status: z.enum(["current", "stale"]),
+  assignedRouteDigest: digestSchema,
+  observedRouteDigest: digestSchema,
+  observationRef: disclosureRouteObservationRefSchema,
+});
+
+export const programmeAssignmentRouteStalenessSchema =
+  programmeAssignmentRouteStalenessBodySchema.extend({
+    id: identifierSchema,
+    digest: digestSchema,
+  });
+
 export type DisclosureRouteSourceKind = z.infer<
   typeof disclosureRouteSourceKindSchema
 >;
@@ -152,6 +188,15 @@ export type DisclosureRouteObservation = z.infer<
 >;
 export type DisclosureRouteObservationRef = z.infer<
   typeof disclosureRouteObservationRefSchema
+>;
+export type ProgrammeAssignmentRouteBinding = z.infer<
+  typeof programmeAssignmentRouteBindingSchema
+>;
+export type ProgrammeAssignmentRouteStalenessRequest = z.infer<
+  typeof programmeAssignmentRouteStalenessRequestSchema
+>;
+export type ProgrammeAssignmentRouteStaleness = z.infer<
+  typeof programmeAssignmentRouteStalenessSchema
 >;
 
 export interface DisclosureRouteSourceAdapter {
@@ -183,6 +228,15 @@ export class DisclosureRouteError extends Error {
   }
 }
 
+export class DisclosureRouteStalenessError extends Error {
+  readonly code = "binding-mismatch" as const;
+
+  constructor() {
+    super("Disclosure Route staleness binding mismatch");
+    this.name = "DisclosureRouteStalenessError";
+  }
+}
+
 export interface DisclosureRoute {
   observe(
     request: DisclosureRouteObserveRequest,
@@ -190,6 +244,9 @@ export interface DisclosureRoute {
   inspect(
     ref: DisclosureRouteObservationRef,
   ): Promise<DisclosureRouteObservation>;
+  projectAssignmentStaleness(
+    request: ProgrammeAssignmentRouteStalenessRequest,
+  ): Promise<ProgrammeAssignmentRouteStaleness>;
 }
 
 export interface OpenDisclosureRouteOptions {

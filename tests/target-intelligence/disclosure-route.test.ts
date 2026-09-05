@@ -295,6 +295,59 @@ describe("DisclosureRoute", () => {
         requiredFor: "submission-staging",
       });
       expect(changedRef.routeDigest).not.toBe(selectionRef.routeDigest);
+
+      const assignmentBinding = {
+        kind: "programme-assignment-route-binding" as const,
+        schemaVersion: 1 as const,
+        programmeAssignmentRef: {
+          id: "programme-assignment:fixture",
+          digest: `sha256:${"a".repeat(64)}`,
+        },
+        pluginIdentity: "wporg:route-refresh-fixture",
+        routeDigest: selectionRef.routeDigest,
+      };
+      await expect(
+        changed.projectAssignmentStaleness({
+          kind: "programme-assignment-route-staleness-request",
+          schemaVersion: 1,
+          assignmentBinding,
+          currentObservationRef: stagingRef,
+        }),
+      ).resolves.toMatchObject({
+        kind: "programme-assignment-route-staleness",
+        schemaVersion: 1,
+        id: expect.stringMatching(/^route-staleness:/),
+        digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+        programmeAssignmentRef: assignmentBinding.programmeAssignmentRef,
+        pluginIdentity: assignmentBinding.pluginIdentity,
+        status: "current",
+        assignedRouteDigest: selectionRef.routeDigest,
+        observedRouteDigest: stagingRef.routeDigest,
+        observationRef: stagingRef,
+      });
+      await expect(
+        changed.projectAssignmentStaleness({
+          kind: "programme-assignment-route-staleness-request",
+          schemaVersion: 1,
+          assignmentBinding,
+          currentObservationRef: changedRef,
+        }),
+      ).resolves.toMatchObject({
+        status: "stale",
+        assignedRouteDigest: selectionRef.routeDigest,
+        observedRouteDigest: changedRef.routeDigest,
+      });
+      await expect(
+        changed.projectAssignmentStaleness({
+          kind: "programme-assignment-route-staleness-request",
+          schemaVersion: 1,
+          assignmentBinding: {
+            ...assignmentBinding,
+            pluginIdentity: "wporg:different-target",
+          },
+          currentObservationRef: changedRef,
+        }),
+      ).rejects.toMatchObject({ code: "binding-mismatch" });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

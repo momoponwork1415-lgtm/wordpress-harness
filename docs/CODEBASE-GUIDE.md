@@ -65,11 +65,11 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 
 ### Disclosure Route Observation
 
-**Interface:** `DisclosureRoute.observe / inspect`
+**Interface:** `DisclosureRoute.observe / inspect / projectAssignmentStaleness`
 
 - **Purpose:** Targetごとの公開脆弱性報告routeを、`first-party-bounty / first-party-vdp / delegated-vdp / security-contact-only / none-found / conflicting`へsource付きで不変化する。
-- **Invariants:** vendor公式、official repository `SECURITY.md`、WordPress.org maintainer記載、programme directory、検索結果の順で根拠を評価する。source URL / owner、validated final URL、retrievedAt、raw digest、parser version、checked scope、submission route、exclusivity / disclosure条件を固定する。`none-found`は確認sourceの範囲だけを意味する。route semantic digestは取得時刻に依存せずTargetへbindし、route変更時だけ既存Programme Assignmentをstaleにできる。Oracle FactまたはResearch eligibility判断を含めない。
-- **Failures:** source取得失敗は`acquisition-failed`、HTTPS origin allowlist外へのredirectは`untrusted-provenance`、strict source document不成立は`parse-failed`。first-partyとlower-precedence sourceの矛盾はfirst-party根拠を保持した`conflicting`として人間確認を要求する。
+- **Invariants:** vendor公式、official repository `SECURITY.md`、WordPress.org maintainer記載、programme directory、検索結果の順で根拠を評価する。source URL / owner、validated final URL、retrievedAt、raw digest、parser version、checked scope、submission route、exclusivity / disclosure条件を固定する。`none-found`は確認sourceの範囲だけを意味する。route semantic digestは取得時刻に依存せずTargetへbindする。versioned Programme Assignment route bindingとcurrent Observationからcontent-addressed staleness projectionだけを作り、Programme Assignmentまたは外部送信を所有しない。Oracle FactまたはResearch eligibility判断を含めない。
+- **Failures:** source取得失敗は`acquisition-failed`、HTTPS origin allowlist外へのredirectは`untrusted-provenance`、strict source document不成立は`parse-failed`。first-partyとlower-precedence sourceの矛盾はfirst-party根拠を保持した`conflicting`として人間確認を要求する。Assignment bindingとObservationのTarget不一致は`binding-mismatch`。
 - **Status:** content-addressed observation、6分類、Ultimate Member型direct reward / GiveWP型delegated VDPのsanitized fixture、conflict / none-found / redirect / Oracle separation、選定・staging再取得、restart replayを実装。
 - **Code / Tests:** [disclosure-route](../src/target-intelligence/disclosure-route) · [Behavior Test](../tests/target-intelligence/disclosure-route.test.ts)
 

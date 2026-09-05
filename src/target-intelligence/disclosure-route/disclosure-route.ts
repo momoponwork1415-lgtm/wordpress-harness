@@ -5,12 +5,15 @@ import { join } from "node:path";
 import { canonicalJson, sha256Digest } from "../acquisition/canonical-json.js";
 import {
   DisclosureRouteError,
+  DisclosureRouteStalenessError,
   disclosureRouteObservationRefSchema,
   disclosureRouteObservationSchema,
   disclosureRouteObserveRequestSchema,
   disclosureRouteSourceDocumentSchema,
   disclosureRouteSourceKindSchema,
   disclosureRouteSourceSnapshotSchema,
+  programmeAssignmentRouteStalenessRequestSchema,
+  programmeAssignmentRouteStalenessSchema,
   type DisclosureRoute,
   type DisclosureRouteObservation,
   type DisclosureRouteObservationRef,
@@ -18,6 +21,8 @@ import {
   type DisclosureRouteSourceAdapter,
   type DisclosureRouteSourceSnapshot,
   type OpenDisclosureRouteOptions,
+  type ProgrammeAssignmentRouteStaleness,
+  type ProgrammeAssignmentRouteStalenessRequest,
 } from "./contracts.js";
 
 const precedence = {
@@ -248,6 +253,39 @@ class FileDisclosureRoute implements DisclosureRoute {
       throw new Error("Disclosure Route Observation integrity mismatch");
     }
     return observation;
+  }
+
+  async projectAssignmentStaleness(
+    requestValue: ProgrammeAssignmentRouteStalenessRequest,
+  ): Promise<ProgrammeAssignmentRouteStaleness> {
+    const request =
+      programmeAssignmentRouteStalenessRequestSchema.parse(requestValue);
+    const observation = await this.inspect(request.currentObservationRef);
+    if (
+      observation.pluginIdentity !== request.assignmentBinding.pluginIdentity
+    ) {
+      throw new DisclosureRouteStalenessError();
+    }
+    const body = {
+      kind: "programme-assignment-route-staleness" as const,
+      schemaVersion: 1 as const,
+      programmeAssignmentRef: request.assignmentBinding.programmeAssignmentRef,
+      pluginIdentity: request.assignmentBinding.pluginIdentity,
+      status:
+        request.assignmentBinding.routeDigest ===
+        request.currentObservationRef.routeDigest
+          ? ("current" as const)
+          : ("stale" as const),
+      assignedRouteDigest: request.assignmentBinding.routeDigest,
+      observedRouteDigest: request.currentObservationRef.routeDigest,
+      observationRef: request.currentObservationRef,
+    };
+    const digest = sha256Digest(body);
+    return programmeAssignmentRouteStalenessSchema.parse({
+      ...body,
+      id: `route-staleness:${digest.slice(7, 31)}`,
+      digest,
+    });
   }
 
   async #persist(
