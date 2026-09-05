@@ -3,6 +3,15 @@ import { z } from "zod";
 
 import { humanOsDigest } from "../canonical-json.js";
 import {
+  aiReproductionAttemptSchema,
+  aiReproductionIntakeSchema,
+  aiReproductionResultSchema,
+  triageReproductionPacketSchema,
+  type AIReproductionAttempt,
+  type AIReproductionIntake,
+  type AIReproductionResult,
+} from "../ai-reproduction-contracts.js";
+import {
   humanVerificationEnvironmentDispositionSchema,
   humanVerificationEnvironmentRequestSchema,
   type HumanVerificationEnvironmentDisposition,
@@ -16,13 +25,21 @@ import {
   type HumanVerificationResult,
 } from "../human-verification-contracts.js";
 import { humanReviewPacketDeliveryRequestSchema } from "../../research/validation/human-review-packet.js";
+import {
+  runtimeVerificationPacketDeliveryRequestSchema,
+  type RuntimeVerificationPacketDeliveryRequest,
+} from "../../research/validation/runtime-verification-packet.js";
 import type {
+  AIReproductionIntakeRecordView,
+  AIReproductionResultRecordView,
   HumanOsRecord,
   HumanReviewAdmissionRecordView,
   HumanVerificationResultRecordView,
   HumanVerificationEnvironmentRecordView,
   OpenHumanOsRecordOptions,
   RecordEnvironmentDispositionResult,
+  RecordAIReproductionIntakeResult,
+  RecordAIReproductionResultResult,
   RecordHumanReviewAdmissionResult,
   RecordHumanVerificationResultResult,
 } from "./contracts.js";
@@ -61,6 +78,29 @@ interface StoredHumanVerificationRow {
   readonly result_artifact_digest: string;
   readonly finding_artifact_digest: string | null;
   readonly evidence_request_artifact_digest: string | null;
+}
+
+interface StoredAIReproductionIntakeRow {
+  readonly global_sequence: number;
+  readonly delivery_request_digest: string;
+  readonly packet_digest: string;
+  readonly intake_id: string;
+  readonly campaign_id: string;
+  readonly run_id: string;
+  readonly occurred_at: string;
+  readonly request_artifact_digest: string;
+  readonly intake_artifact_digest: string;
+}
+
+interface StoredAIReproductionResultRow {
+  readonly global_sequence: number;
+  readonly intake_id: string;
+  readonly attempt_id: string;
+  readonly status: string;
+  readonly occurred_at: string;
+  readonly attempt_artifact_digest: string;
+  readonly result_artifact_digest: string;
+  readonly triage_packet_artifact_digest: string | null;
 }
 
 function assertDispositionMatchesRequest(
@@ -155,7 +195,196 @@ class SqliteHumanOsRecord implements HumanOsRecord {
       ) STRICT;
       CREATE INDEX IF NOT EXISTS human_verification_events_case
         ON human_verification_events (case_id, global_sequence);
+      CREATE TABLE IF NOT EXISTS ai_reproduction_intakes (
+        global_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        delivery_request_digest TEXT NOT NULL UNIQUE,
+        packet_digest TEXT NOT NULL,
+        intake_id TEXT NOT NULL,
+        campaign_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        occurred_at TEXT NOT NULL,
+        request_artifact_digest TEXT NOT NULL,
+        intake_artifact_digest TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS ai_reproduction_intakes_packet
+        ON ai_reproduction_intakes (packet_digest, global_sequence);
+      CREATE TABLE IF NOT EXISTS ai_reproduction_events (
+        global_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        intake_id TEXT NOT NULL,
+        attempt_id TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL,
+        occurred_at TEXT NOT NULL,
+        attempt_artifact_digest TEXT NOT NULL,
+        result_artifact_digest TEXT NOT NULL,
+        triage_packet_artifact_digest TEXT
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS ai_reproduction_events_intake
+        ON ai_reproduction_events (intake_id, global_sequence);
     `);
+  }
+
+  async readAIReproductionIntake(
+    deliveryRequestDigestValue: string,
+  ): Promise<AIReproductionIntakeRecordView | undefined> {
+    const deliveryRequestDigest = digestSchema.parse(
+      deliveryRequestDigestValue,
+    );
+    const row = this.#selectAIIntake(
+      "delivery_request_digest = ?",
+      deliveryRequestDigest,
+    );
+    return row === undefined ? undefined : this.#decodeAIIntake(row);
+  }
+
+  async recordAIReproductionIntake(
+    requestValue: RuntimeVerificationPacketDeliveryRequest,
+    intakeValue: AIReproductionIntake,
+  ): Promise<RecordAIReproductionIntakeResult> {
+    const request =
+      runtimeVerificationPacketDeliveryRequestSchema.parse(requestValue);
+    const intake = aiReproductionIntakeSchema.parse(intakeValue);
+    const packetDigest = humanOsDigest(request.packet);
+    if (
+      intake.deliveryRequestDigest !== request.digest ||
+      intake.packet.digest !== packetDigest ||
+      intake.campaignId !== request.campaignId ||
+      intake.runId !== request.runId
+    ) {
+      throw new Error("AI Reproduction Intake binding mismatch");
+    }
+
+    const requestArtifactDigest = await this.#artifactStore.putJson(request);
+    const intakeArtifactDigest = await this.#artifactStore.putJson(intake);
+    if (
+      requestArtifactDigest !== humanOsDigest(request) ||
+      intakeArtifactDigest !== humanOsDigest(intake)
+    ) {
+      throw new Error("Human OS Artifact Store returned a foreign digest");
+    }
+
+    const transact = this.#database.transaction(() => {
+      const existing = this.#selectAIIntake(
+        "delivery_request_digest = ?",
+        request.digest,
+      );
+      if (existing !== undefined)
+        return { status: "occupied" as const, row: existing };
+      const occurredAt = this.#clock().toISOString();
+      this.#database
+        .prepare(
+          `INSERT INTO ai_reproduction_intakes (
+             delivery_request_digest, packet_digest, intake_id, campaign_id,
+             run_id, occurred_at, request_artifact_digest,
+             intake_artifact_digest
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          request.digest,
+          packetDigest,
+          intake.id,
+          request.campaignId,
+          request.runId,
+          occurredAt,
+          requestArtifactDigest,
+          intakeArtifactDigest,
+        );
+      const row = this.#selectAIIntake(
+        "delivery_request_digest = ?",
+        request.digest,
+      );
+      if (row === undefined)
+        throw new Error("AI Reproduction Intake append failed");
+      return { status: "appended" as const, row };
+    });
+    const recorded = transact();
+    return {
+      status: recorded.status,
+      view: await this.#decodeAIIntake(recorded.row),
+    };
+  }
+
+  async readAIReproductionResult(
+    attemptIdValue: string,
+  ): Promise<AIReproductionResultRecordView | undefined> {
+    const attemptId = digestSchema.parse(attemptIdValue);
+    const row = this.#selectAIResult(attemptId);
+    return row === undefined ? undefined : this.#decodeAIResult(row);
+  }
+
+  async recordAIReproductionResult(
+    intakeValue: AIReproductionIntake,
+    attemptValue: AIReproductionAttempt,
+    resultValue: AIReproductionResult,
+  ): Promise<RecordAIReproductionResultResult> {
+    const intake = aiReproductionIntakeSchema.parse(intakeValue);
+    const attempt = aiReproductionAttemptSchema.parse(attemptValue);
+    const result = aiReproductionResultSchema.parse(resultValue);
+    if (
+      attempt.intakeId !== intake.id ||
+      attempt.packet.digest !== intake.packet.digest ||
+      result.attempt.id !== attempt.id ||
+      result.attempt.digest !== humanOsDigest(attempt) ||
+      result.runtimePacket.digest !== intake.packet.digest
+    ) {
+      throw new Error("AI Reproduction Result binding mismatch");
+    }
+
+    const attemptArtifactDigest = await this.#artifactStore.putJson(attempt);
+    const resultArtifactDigest = await this.#artifactStore.putJson(result);
+    const triagePacketArtifactDigest =
+      result.triagePacket === null
+        ? null
+        : await this.#artifactStore.putJson(result.triagePacket);
+    if (
+      attemptArtifactDigest !== humanOsDigest(attempt) ||
+      resultArtifactDigest !== humanOsDigest(result) ||
+      (result.triagePacket !== null &&
+        triagePacketArtifactDigest !== humanOsDigest(result.triagePacket))
+    ) {
+      throw new Error("Human OS Artifact Store returned a foreign digest");
+    }
+
+    const transact = this.#database.transaction(() => {
+      const existing = this.#selectAIResult(attempt.id);
+      if (existing !== undefined)
+        return { status: "occupied" as const, row: existing };
+      const recordedIntake = this.#selectAIIntake("intake_id = ?", intake.id);
+      if (
+        recordedIntake === undefined ||
+        recordedIntake.packet_digest !== intake.packet.digest
+      ) {
+        throw new Error(
+          "AI Reproduction Result requires a matching persisted Intake",
+        );
+      }
+      const occurredAt = this.#clock().toISOString();
+      this.#database
+        .prepare(
+          `INSERT INTO ai_reproduction_events (
+             intake_id, attempt_id, status, occurred_at,
+             attempt_artifact_digest, result_artifact_digest,
+             triage_packet_artifact_digest
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          intake.id,
+          attempt.id,
+          result.status,
+          occurredAt,
+          attemptArtifactDigest,
+          resultArtifactDigest,
+          triagePacketArtifactDigest,
+        );
+      const row = this.#selectAIResult(attempt.id);
+      if (row === undefined)
+        throw new Error("AI Reproduction Result append failed");
+      return { status: "appended" as const, row };
+    });
+    const recorded = transact();
+    return {
+      status: recorded.status,
+      view: await this.#decodeAIResult(recorded.row),
+    };
   }
 
   async readEnvironmentDisposition(
@@ -486,6 +715,118 @@ class SqliteHumanOsRecord implements HumanOsRecord {
     return {
       status: recorded.status,
       view: await this.#decodeVerification(recorded.row),
+    };
+  }
+
+  #selectAIIntake(
+    predicate: "delivery_request_digest = ?" | "intake_id = ?",
+    value: string,
+  ): StoredAIReproductionIntakeRow | undefined {
+    return this.#database
+      .prepare(
+        `SELECT global_sequence, delivery_request_digest, packet_digest,
+                intake_id, campaign_id, run_id, occurred_at,
+                request_artifact_digest, intake_artifact_digest
+           FROM ai_reproduction_intakes
+          WHERE ${predicate}
+          ORDER BY global_sequence
+          LIMIT 1`,
+      )
+      .get(value) as StoredAIReproductionIntakeRow | undefined;
+  }
+
+  #selectAIResult(
+    attemptId: string,
+  ): StoredAIReproductionResultRow | undefined {
+    return this.#database
+      .prepare(
+        `SELECT global_sequence, intake_id, attempt_id, status, occurred_at,
+                attempt_artifact_digest, result_artifact_digest,
+                triage_packet_artifact_digest
+           FROM ai_reproduction_events
+          WHERE attempt_id = ?`,
+      )
+      .get(attemptId) as StoredAIReproductionResultRow | undefined;
+  }
+
+  async #decodeAIIntake(
+    row: StoredAIReproductionIntakeRow,
+  ): Promise<AIReproductionIntakeRecordView> {
+    const requestValue = await this.#artifactStore.readJson(
+      row.request_artifact_digest,
+    );
+    const intakeValue = await this.#artifactStore.readJson(
+      row.intake_artifact_digest,
+    );
+    const request =
+      runtimeVerificationPacketDeliveryRequestSchema.parse(requestValue);
+    const intake = aiReproductionIntakeSchema.parse(intakeValue);
+    if (
+      humanOsDigest(request) !== row.request_artifact_digest ||
+      humanOsDigest(intake) !== row.intake_artifact_digest ||
+      request.digest !== row.delivery_request_digest ||
+      humanOsDigest(request.packet) !== row.packet_digest ||
+      intake.id !== row.intake_id ||
+      intake.deliveryRequestDigest !== row.delivery_request_digest ||
+      intake.packet.digest !== row.packet_digest ||
+      intake.campaignId !== row.campaign_id ||
+      intake.runId !== row.run_id
+    ) {
+      throw new Error("AI Reproduction Intake artifact integrity mismatch");
+    }
+    return {
+      ledgerHead: row.global_sequence,
+      occurredAt: row.occurred_at,
+      requestArtifactDigest: row.request_artifact_digest,
+      intakeArtifactDigest: row.intake_artifact_digest,
+      request,
+      intake,
+    };
+  }
+
+  async #decodeAIResult(
+    row: StoredAIReproductionResultRow,
+  ): Promise<AIReproductionResultRecordView> {
+    const attemptValue = await this.#artifactStore.readJson(
+      row.attempt_artifact_digest,
+    );
+    const resultValue = await this.#artifactStore.readJson(
+      row.result_artifact_digest,
+    );
+    const attempt = aiReproductionAttemptSchema.parse(attemptValue);
+    const result = aiReproductionResultSchema.parse(resultValue);
+    const triagePacket =
+      row.triage_packet_artifact_digest === null
+        ? null
+        : triageReproductionPacketSchema.parse(
+            await this.#artifactStore.readJson(
+              row.triage_packet_artifact_digest,
+            ),
+          );
+    if (
+      humanOsDigest(attempt) !== row.attempt_artifact_digest ||
+      humanOsDigest(result) !== row.result_artifact_digest ||
+      attempt.id !== row.attempt_id ||
+      attempt.intakeId !== row.intake_id ||
+      result.attempt.id !== row.attempt_id ||
+      result.status !== row.status ||
+      (triagePacket === null) !== (result.triagePacket === null) ||
+      (triagePacket !== null &&
+        (humanOsDigest(triagePacket) !== row.triage_packet_artifact_digest ||
+          humanOsDigest(result.triagePacket) !==
+            row.triage_packet_artifact_digest))
+    ) {
+      throw new Error("AI Reproduction Result artifact integrity mismatch");
+    }
+    return {
+      ledgerHead: row.global_sequence,
+      occurredAt: row.occurred_at,
+      attemptArtifactDigest: row.attempt_artifact_digest,
+      resultArtifactDigest: row.result_artifact_digest,
+      triagePacketArtifactDigest: row.triage_packet_artifact_digest,
+      attempt,
+      result,
+      triagePacket,
     };
   }
 

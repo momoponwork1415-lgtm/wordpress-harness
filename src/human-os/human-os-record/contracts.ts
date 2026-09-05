@@ -3,10 +3,17 @@ import type {
   HumanVerificationEnvironmentRequest,
 } from "../human-verification-environment-contracts.js";
 import type {
+  AIReproductionAttempt,
+  AIReproductionIntake,
+  AIReproductionResult,
+  TriageReproductionPacket,
+} from "../ai-reproduction-contracts.js";
+import type {
   HumanReviewCase,
   HumanReviewPacketDeliveryRequest,
   HumanVerificationResult,
 } from "../human-verification-contracts.js";
+import type { RuntimeVerificationPacketDeliveryRequest } from "../../research/validation/runtime-verification-packet.js";
 
 export interface HumanOsArtifactStore {
   putJson(value: unknown): Promise<string>;
@@ -53,7 +60,55 @@ export interface RecordHumanVerificationResultResult {
   readonly view: HumanVerificationResultRecordView;
 }
 
-export interface HumanOsRecord {
+export interface AIReproductionIntakeRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly requestArtifactDigest: string;
+  readonly intakeArtifactDigest: string;
+  readonly request: RuntimeVerificationPacketDeliveryRequest;
+  readonly intake: AIReproductionIntake;
+}
+
+export interface RecordAIReproductionIntakeResult {
+  readonly status: "appended" | "occupied";
+  readonly view: AIReproductionIntakeRecordView;
+}
+
+export interface AIReproductionResultRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly attemptArtifactDigest: string;
+  readonly resultArtifactDigest: string;
+  readonly triagePacketArtifactDigest: string | null;
+  readonly attempt: AIReproductionAttempt;
+  readonly result: AIReproductionResult;
+  readonly triagePacket: TriageReproductionPacket | null;
+}
+
+export interface RecordAIReproductionResultResult {
+  readonly status: "appended" | "occupied";
+  readonly view: AIReproductionResultRecordView;
+}
+
+export interface AIReproductionRecord {
+  readAIReproductionIntake(
+    deliveryRequestDigest: string,
+  ): Promise<AIReproductionIntakeRecordView | undefined>;
+  recordAIReproductionIntake(
+    request: RuntimeVerificationPacketDeliveryRequest,
+    intake: AIReproductionIntake,
+  ): Promise<RecordAIReproductionIntakeResult>;
+  readAIReproductionResult(
+    attemptId: string,
+  ): Promise<AIReproductionResultRecordView | undefined>;
+  recordAIReproductionResult(
+    intake: AIReproductionIntake,
+    attempt: AIReproductionAttempt,
+    result: AIReproductionResult,
+  ): Promise<RecordAIReproductionResultResult>;
+}
+
+export interface HumanOsRecord extends AIReproductionRecord {
   readEnvironmentDisposition(
     requestDigest: string,
   ): Promise<HumanVerificationEnvironmentRecordView | undefined>;

@@ -11,14 +11,14 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Manual Target Intake | local directoryは実装済み | archive acquisition、selection / ranking |
 | Semantic Research | v6 initial Wave、Decision@3、conditional Depth実行まで実装済み | Missing-link / Closure |
 | Source-only Validation | v6 single fresh Attemptと4 dispositionを実装済み | Frontier Gapの次Wave |
-| Runtime handoff | Runtime Verification Packet v2とCAS-first handoffを実装済み | AI Reproduction intake |
-| AI Reproduction | class固定のlegacy Labは実装済み | generic Recipe、private evidence、Triage Packet |
+| Runtime handoff | Runtime Verification Packet v2とAI Reproduction intakeを実装済み | Human Queue handoff |
+| AI Reproduction | typed attempt、class別・generic Recipe、private evidence、Triage Packetを実装済み | 実Targetでのruntime実測 |
 | Human Verification | Environment、有限queue、human disposition、known-plugin smokeを完走 | mandatory fresh再実行、二車線Queue |
 | Finding | Human Verification gateとknown-pluginでの成立を実測済み | Prospective Campaignでの成立実測 |
 
-現在のproduction sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / single source Validation -> Risk Assessment / Runtime Verification Packet`である。既存Human OSのv1 Human Review Packet flowは#110移行前のcompatibility implementationとして残る。v6 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Packet delivery failureはPacketを保持したままResearch failureと分ける。Missing-link / Closureはlegacy v5に実装済みだがv6へ未接続。
+現在のproduction sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / single source Validation -> Risk Assessment / Runtime Verification Packet -> AI Reproduction / Triage Reproduction Packet`である。既存Human OSのv1 Human Review Packet flowは#110移行前のcompatibility implementationとして残る。v6 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Packet delivery failureはPacketを保持したままResearch failureと分ける。Missing-link / Closureはlegacy v5に実装済みだがv6へ未接続。
 
-採用済みだが未実装のtarget flowは`single source screen -> Runtime Verification Packet -> AI Reproduction -> Triage Reproduction Packet -> mandatory fresh Human reproduction -> Finding`である。完成度をpercentでは表さない。まず実plugin一件を早期に完走し、その実測後にCoverage policy、Development Cohort、三件のProspectiveへ広げる。
+採用済みtarget flowのうち`single source screen -> Runtime Verification Packet -> AI Reproduction -> Triage Reproduction Packet`までを実装済みである。次にmandatory fresh Human reproductionへ接続する。完成度をpercentでは表さない。まず実plugin一件を早期に完走し、その実測後にCoverage policy、Development Cohort、三件のProspectiveへ広げる。
 
 残作業の実行順と完了条件は[Issue #86](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/86)を正本とする。
 
@@ -125,12 +125,13 @@ Internal Module。immutable CAS artifact、append-only Ledger event、checkpoint
 
 ### AI Reproduction
 
-**Accepted Interface:** `AIReproduction.run(RuntimeVerificationPacket) -> runtime-confirmed | runtime-inconclusive`
+**Interface:** `AIReproduction.deliver(RuntimeVerificationPacketDeliveryRequest)`、`AIReproduction.run(Packet + Target source + Runtime Profile + Setup Plan + Policy) -> runtime-confirmed | runtime-inconclusive | setup-blocked | execution-failed`
 
 - **Purpose:** fresh environmentと実Target interfaceでsource routeを試し、人間が再実行できるRecipeとevidenceを作る。
-- **Invariants:** SQLi、XSS等のclassはRecipeのcriterionに使うが、固定Adapter対応をadmission条件にしない。exact payload、request、screenshot、runtime logはPrivate Evidence Bundleへ置く。
+- **Owned artifacts:** shareableなIntake、typed Attempt、sanitized Result、Triage Reproduction PacketはHuman OS RecordへCAS-firstで保存する。exact Reproduction RecipeとPrivate Evidence Bundleは専用private storeへ保存し、shareable artifactにはopaque refだけを残す。
+- **Invariants:** AttemptへTarget/version、Manifest、attacker premise、Security Effect、source route、Runtime Profile、Setup Plan、no-ambient-tool policyをbindする。SQLi、XSS等のclassはRecipeのcriterionに使うが、固定Adapter対応をadmission条件にしない。exact payload、request、screenshot、runtime logはPrivate Evidence Bundleへ置く。AI outputはFinding、Human disposition、programme eligibilityを作らない。
 - **Failures:** unsupported mechanism、setup、provider、budget failureをRejectedへ丸めない。runtime-confirmedだけがTriage Reproduction Packetを作る。
-- **Status:** legacy Verificationに5種類のclass固定Labがある。generic AI Reproduction、Private Evidence Bundle、Triage Reproduction Packetは未実装。[#108](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/108)
+- **Status / Tests:** v2 contract、idempotent intake / execution record、class別・generic Recipe、private file store、Triage gateを実装。Harness seamはfresh gVisor identity、cleanup、harness-mediated browser / HTTP / runtime observation attestationを要求する · [code](../src/human-os/ai-reproduction.ts), [contracts](../src/human-os/ai-reproduction-contracts.ts), [behavior](../tests/human-os/ai-reproduction.test.ts) · [#108](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/108)
 
 ### Human Verification Environment
 

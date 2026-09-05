@@ -1,4 +1,41 @@
 export {
+  aiReproductionAttemptRefSchema,
+  aiReproductionAttemptSchema,
+  aiReproductionClassSchema,
+  aiReproductionHarnessExecutionSchema,
+  aiReproductionIntakeSchema,
+  aiReproductionResultSchema,
+  aiReproductionRuntimeIdentitySchema,
+  aiReproductionToolPolicySchema,
+  humanOsPrivateArtifactRefSchema,
+  privateEvidenceBundleSchema,
+  reproductionRecipeSchema,
+  triageReproductionPacketSchema,
+} from "./ai-reproduction-contracts.js";
+export type {
+  AIReproductionAttempt,
+  AIReproductionAttemptRef,
+  AIReproductionClass,
+  AIReproductionHarnessExecution,
+  AIReproductionIntake,
+  AIReproductionResult,
+  AIReproductionRuntimeIdentity,
+  HumanOsPrivateArtifactRef,
+  PrivateEvidenceBundle,
+  PrivateEvidenceDraft,
+  ReproductionRecipe,
+  ReproductionRecipeDraft,
+  TriageReproductionPacket,
+} from "./ai-reproduction-contracts.js";
+export { openAIReproduction } from "./ai-reproduction.js";
+export type {
+  AIReproduction,
+  AIReproductionHarness,
+  AIReproductionRunRequest,
+  HumanOsPrivateArtifactStore,
+  OpenAIReproductionOptions,
+} from "./ai-reproduction.js";
+export {
   defineExternalDependencyGrant,
   defineHumanVerificationEnvironmentPolicy,
   defineHumanVerificationEnvironmentRequest,
