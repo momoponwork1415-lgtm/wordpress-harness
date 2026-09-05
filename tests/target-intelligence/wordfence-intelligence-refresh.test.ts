@@ -1,10 +1,12 @@
 import {
   chmod,
+  lstat,
   mkdir,
   readdir,
   readFile,
   mkdtemp,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,6 +14,31 @@ import { join } from "node:path";
 
 import Database from "better-sqlite3";
 import { describe, expect, it, vi } from "vitest";
+
+const filesystemFault = vi.hoisted<{
+  directorySyncPath: string | undefined;
+}>(() => ({ directorySyncPath: undefined }));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    open: async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args);
+      if (String(args[0]) === filesystemFault.directorySyncPath) {
+        Object.defineProperty(handle, "sync", {
+          configurable: true,
+          value: async () => {
+            const error = new Error("synthetic directory sync failure");
+            Object.defineProperty(error, "code", { value: "EIO" });
+            throw error;
+          },
+        });
+      }
+      return handle;
+    },
+  };
+});
 
 import {
   openSqliteHostPrivateCredentialBroker,
@@ -74,6 +101,216 @@ function controlledFetch(): {
 }
 
 describe("WordfenceIntelligenceRefresh", () => {
+  it("does not commit a current snapshot before the raw CAS directory is durable", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-cas-durability-"),
+    );
+    const rawDirectory = join(
+      directory,
+      "artifacts",
+      "wordfence-intelligence-v3",
+    );
+    filesystemFault.directorySyncPath = rawDirectory;
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath: join(directory, "index", "target-intelligence.sqlite"),
+        artifactDirectory: join(directory, "artifacts"),
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            return use("synthetic-cas-durability-credential");
+          },
+        },
+        fetch: vi.fn<typeof fetch>(async () =>
+          Promise.resolve(
+            new Response(await readFile(fixturePath), { status: 200 }),
+          ),
+        ),
+      });
+
+      await expect(
+        refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual({
+        kind: "wordfence-intelligence-result",
+        schemaVersion: 1,
+        status: "failed",
+        reason: "storage-failure",
+      });
+      await expect(
+        refresh.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual({
+        kind: "wordfence-intelligence-result",
+        schemaVersion: 1,
+        status: "failed",
+        reason: "storage-failure",
+      });
+
+      filesystemFault.directorySyncPath = undefined;
+      await expect(
+        refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).resolves.toMatchObject({ status: "current" });
+    } finally {
+      filesystemFault.directorySyncPath = undefined;
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("creates the production SQLite index and sidecars as owner-only storage", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "wordfence-private-index-"));
+    const indexDirectory = join(directory, "index");
+    const databasePath = join(indexDirectory, "target-intelligence.sqlite");
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath,
+        artifactDirectory: join(directory, "artifacts"),
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            return use("synthetic-private-index-credential");
+          },
+        },
+        fetch: vi.fn<typeof fetch>(async () =>
+          Promise.resolve(
+            new Response(await readFile(fixturePath), { status: 200 }),
+          ),
+        ),
+      });
+
+      await expect(
+        refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).resolves.toMatchObject({ status: "current" });
+
+      const indexMetadata = await lstat(indexDirectory);
+      expect(indexMetadata.isDirectory()).toBe(true);
+      expect(indexMetadata.mode & 0o777).toBe(0o700);
+      for (const path of [
+        databasePath,
+        `${databasePath}-wal`,
+        `${databasePath}-shm`,
+      ]) {
+        const metadata = await lstat(path);
+        expect(metadata.isFile()).toBe(true);
+        expect(metadata.mode & 0o777).toBe(0o600);
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("secures an existing owner-controlled production SQLite index before use", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-existing-private-index-"),
+    );
+    const indexDirectory = join(directory, "index");
+    const databasePath = join(indexDirectory, "target-intelligence.sqlite");
+    await mkdir(indexDirectory, { mode: 0o755 });
+    await chmod(indexDirectory, 0o755);
+    await writeFile(databasePath, new Uint8Array(), { mode: 0o644 });
+    await chmod(databasePath, 0o644);
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath,
+        artifactDirectory: join(directory, "artifacts"),
+        credentialBroker: {
+          async resolve<T>(): Promise<T> {
+            throw new Error("inspection must not resolve a credential");
+          },
+        },
+      });
+      await expect(
+        refresh.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).resolves.toMatchObject({ status: "failed", reason: "not-refreshed" });
+
+      expect((await lstat(indexDirectory)).mode & 0o777).toBe(0o700);
+      for (const path of [
+        databasePath,
+        `${databasePath}-wal`,
+        `${databasePath}-shm`,
+      ]) {
+        const metadata = await lstat(path);
+        expect(metadata.isFile()).toBe(true);
+        expect(metadata.mode & 0o777).toBe(0o600);
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["ancestor directory", "directory", "database"] as const)(
+    "rejects an existing production SQLite %s symlink before credential resolution",
+    async (target) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "wordfence-private-index-symlink-"),
+      );
+      const realIndexDirectory = join(directory, "real-index");
+      const selectedIndexDirectory = join(directory, "selected-index");
+      const databasePath = join(
+        target === "database" ? realIndexDirectory : selectedIndexDirectory,
+        ...(target === "ancestor directory" ? ["nested"] : []),
+        "target-intelligence.sqlite",
+      );
+      let resolveCalls = 0;
+      await mkdir(realIndexDirectory, { mode: 0o700 });
+      if (target !== "database") {
+        await symlink(realIndexDirectory, selectedIndexDirectory, "dir");
+      } else {
+        const backingPath = join(directory, "backing.sqlite");
+        await writeFile(backingPath, new Uint8Array(), { mode: 0o600 });
+        await symlink(backingPath, databasePath, "file");
+      }
+      try {
+        const refresh = openWordfenceIntelligenceRefresh({
+          databasePath,
+          artifactDirectory: join(directory, "artifacts"),
+          credentialBroker: {
+            async resolve<T>(): Promise<T> {
+              resolveCalls += 1;
+              throw new Error("must not resolve for unsafe storage");
+            },
+          },
+        });
+        await expect(
+          refresh.run({
+            kind: "wordfence-intelligence-refresh",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual({
+          kind: "wordfence-intelligence-result",
+          schemaVersion: 1,
+          status: "failed",
+          reason: "storage-failure",
+        });
+        expect(resolveCalls).toBe(0);
+        if (target === "ancestor directory") {
+          await expect(
+            lstat(join(realIndexDirectory, "nested")),
+          ).rejects.toMatchObject({ code: "ENOENT" });
+        }
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("refreshes through the host-private SQLite credential broker", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordfence-broker-"));
     const applicationDirectory = join(directory, "application");
@@ -451,6 +688,80 @@ describe("WordfenceIntelligenceRefresh", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    { signal: "HTTP 206", status: 206, headers: {} },
+    {
+      signal: "Content-Range",
+      status: 200,
+      headers: { "content-range": "bytes 0-1023/2048" },
+    },
+  ] as const)(
+    "treats $signal as a partial response and preserves the prior current snapshot",
+    async ({ status, headers }) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "wordfence-http-partial-"),
+      );
+      const bytes = await readFile(fixturePath);
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(new Response(bytes, { status: 200 }))
+        .mockResolvedValueOnce(new Response(bytes, { status, headers }));
+      let now = new Date("2030-08-01T00:00:00.000Z");
+      try {
+        const refresh = openWordfenceIntelligenceRefresh({
+          databasePath: join(directory, "index", "target-intelligence.sqlite"),
+          artifactDirectory: join(directory, "artifacts"),
+          credentialBroker: {
+            async resolve<T>(
+              _reference: WordfenceSecretRef,
+              use: (credential: string) => Promise<T>,
+            ): Promise<T> {
+              return use("synthetic-partial-response-credential");
+            },
+          },
+          fetch: fetchMock,
+          clock: () => now,
+        });
+        const current = await refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        });
+        if (current.status !== "current") {
+          throw new Error("Expected an initial current snapshot");
+        }
+
+        now = new Date("2030-08-02T00:00:00.000Z");
+        const partial = await refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        });
+        expect(partial).toEqual({
+          kind: "wordfence-intelligence-result",
+          schemaVersion: 1,
+          status: "failed",
+          reason: "partial-response",
+        });
+        await expect(
+          refresh.inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual({
+          ...current,
+          status: "stale",
+          latestRefresh: {
+            kind: "wordfence-intelligence-refresh-attempt",
+            schemaVersion: 1,
+            attemptedAt: "2030-08-02T00:00:00.000Z",
+            result: partial,
+          },
+        });
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it.each([
     {

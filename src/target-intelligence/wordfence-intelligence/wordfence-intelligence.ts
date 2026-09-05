@@ -1,6 +1,25 @@
 import { createHash, randomUUID } from "node:crypto";
-import { link, mkdir, open, readFile, unlink } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { constants as fsConstants } from "node:fs";
+import {
+  link,
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  realpath,
+  unlink,
+  type FileHandle,
+} from "node:fs/promises";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  parse,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 
 import Database from "better-sqlite3";
 import { z } from "zod";
@@ -226,11 +245,21 @@ class SnapshotConflictError extends Error {
   }
 }
 
+class HostPrivateStorageError extends Error {
+  readonly code = "EACCES";
+
+  constructor() {
+    super("Wordfence Intelligence storage is not host-private");
+    this.name = "HostPrivateStorageError";
+  }
+}
+
 const storageFailureCodes = new Set([
   "EACCES",
   "EBUSY",
   "EDQUOT",
   "EIO",
+  "ELOOP",
   "EEXIST",
   "EMFILE",
   "ENAMETOOLONG",
@@ -415,10 +444,148 @@ function hasErrorCode(error: unknown, code: string): boolean {
   );
 }
 
+function isOwnedByCurrentUser(uid: number): boolean {
+  const currentUid = process.getuid?.();
+  return currentUid === undefined || uid === currentUid;
+}
+
+async function requireRealDirectory(path: string): Promise<void> {
+  const metadata = await lstat(path);
+  if (!metadata.isDirectory()) {
+    throw new HostPrivateStorageError();
+  }
+}
+
+async function createDirectoryPathWithoutSymlinks(path: string): Promise<void> {
+  const absolutePath = resolve(path);
+  const root = parse(absolutePath).root;
+  const remainder = relative(root, absolutePath);
+  if (remainder.length === 0) {
+    throw new HostPrivateStorageError();
+  }
+  let current = root;
+  for (const component of remainder.split(sep)) {
+    current = join(current, component);
+    try {
+      await requireRealDirectory(current);
+      continue;
+    } catch (error) {
+      if (!hasErrorCode(error, "ENOENT")) {
+        throw error;
+      }
+    }
+    try {
+      await mkdir(current, { mode: 0o700 });
+    } catch (error) {
+      if (!hasErrorCode(error, "EEXIST")) {
+        throw error;
+      }
+    }
+    await requireRealDirectory(current);
+  }
+}
+
+async function secureHostPrivateDirectory(path: string): Promise<void> {
+  if (!isAbsolute(path)) {
+    throw new HostPrivateStorageError();
+  }
+  await createDirectoryPathWithoutSymlinks(path);
+  if ((await realpath(path)) !== resolve(path)) {
+    throw new HostPrivateStorageError();
+  }
+  const handle = await open(
+    path,
+    fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW,
+  );
+  try {
+    const metadata = await handle.stat();
+    if (!metadata.isDirectory() || !isOwnedByCurrentUser(metadata.uid)) {
+      throw new HostPrivateStorageError();
+    }
+    await handle.chmod(0o700);
+    const secured = await handle.stat();
+    if (!secured.isDirectory() || (secured.mode & 0o077) !== 0) {
+      throw new HostPrivateStorageError();
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
+async function openHostPrivateRegularFile(path: string, create: boolean) {
+  const existingFlags = fsConstants.O_RDWR | fsConstants.O_NOFOLLOW;
+  try {
+    return await open(path, existingFlags);
+  } catch (error) {
+    if (!create || !hasErrorCode(error, "ENOENT")) {
+      throw error;
+    }
+  }
+  try {
+    return await open(
+      path,
+      existingFlags | fsConstants.O_CREAT | fsConstants.O_EXCL,
+      0o600,
+    );
+  } catch (error) {
+    if (!hasErrorCode(error, "EEXIST")) {
+      throw error;
+    }
+    return open(path, existingFlags);
+  }
+}
+
+async function secureHostPrivateRegularFile(
+  path: string,
+  create: boolean,
+): Promise<void> {
+  let handle: FileHandle;
+  try {
+    handle = await openHostPrivateRegularFile(path, create);
+  } catch (error) {
+    if (!create && hasErrorCode(error, "ENOENT")) {
+      return;
+    }
+    throw error;
+  }
+  try {
+    const metadata = await handle.stat();
+    if (!metadata.isFile() || !isOwnedByCurrentUser(metadata.uid)) {
+      throw new HostPrivateStorageError();
+    }
+    await handle.chmod(0o600);
+    const secured = await handle.stat();
+    if (!secured.isFile() || (secured.mode & 0o077) !== 0) {
+      throw new HostPrivateStorageError();
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
+async function prepareHostPrivateSqliteStorage(path: string): Promise<void> {
+  if (!isAbsolute(path)) {
+    throw new HostPrivateStorageError();
+  }
+  await secureHostPrivateDirectory(dirname(path));
+  await secureHostPrivateRegularFile(path, true);
+}
+
+async function secureHostPrivateSqliteFiles(path: string): Promise<void> {
+  await secureHostPrivateRegularFile(path, false);
+  await secureHostPrivateRegularFile(`${path}-wal`, false);
+  await secureHostPrivateRegularFile(`${path}-shm`, false);
+}
+
 async function persistBytes(path: string, bytes: Uint8Array): Promise<void> {
+  const directory = dirname(path);
   const temporaryPath = join(
-    dirname(path),
+    directory,
     `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`,
+  );
+  const directoryHandle = await open(
+    directory,
+    fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW,
   );
   let ownsTemporaryPath = false;
   try {
@@ -442,14 +609,28 @@ async function persistBytes(path: string, bytes: Uint8Array): Promise<void> {
       throw new ArtifactConflictError();
     }
   } finally {
+    let finalizationError: unknown;
     if (ownsTemporaryPath) {
       try {
         await unlink(temporaryPath);
       } catch (error) {
         if (!hasErrorCode(error, "ENOENT")) {
-          throw error;
+          finalizationError = error;
         }
       }
+    }
+    try {
+      await directoryHandle.sync();
+    } catch (error) {
+      finalizationError ??= error;
+    }
+    try {
+      await directoryHandle.close();
+    } catch (error) {
+      finalizationError ??= error;
+    }
+    if (finalizationError !== undefined) {
+      throw finalizationError;
     }
   }
 }
@@ -905,18 +1086,19 @@ class FetchWordfenceIntelligenceV3Adapter implements WordfenceIntelligenceV3Adap
         authorization: `Bearer ${credential}`,
       },
     });
+    const complete =
+      response.status === 200 && !response.headers.has("content-range");
     return {
       status: response.status,
       sourceUrl: response.url || this.sourceUrl,
-      complete: true,
+      complete,
       redirected: response.status >= 300 && response.status < 400,
       ...(response.status === 429
         ? { backoff: rateLimitBackoff(response.headers, this.#clock()) }
         : {}),
-      bytes:
-        response.status >= 200 && response.status < 300
-          ? await boundedResponseBytes(response, maximumBytes)
-          : new Uint8Array(),
+      bytes: complete
+        ? await boundedResponseBytes(response, maximumBytes)
+        : new Uint8Array(),
     };
   }
 }
@@ -995,6 +1177,10 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       throw error;
     }
     this.#database = database;
+  }
+
+  close(): void {
+    this.#database.close();
   }
 
   async refresh(
@@ -1630,13 +1816,22 @@ export function openWordfenceIntelligenceRefresh(
       return intelligence;
     }
     try {
-      await mkdir(dirname(intelligenceOptions.databasePath), {
-        recursive: true,
-      });
-      intelligence ??= new SqliteWordfenceIntelligence(
+      await prepareHostPrivateSqliteStorage(intelligenceOptions.databasePath);
+      const candidate = new SqliteWordfenceIntelligence(
         intelligenceOptions,
         true,
       );
+      try {
+        await secureHostPrivateSqliteFiles(intelligenceOptions.databasePath);
+      } catch (error) {
+        candidate.close();
+        throw error;
+      }
+      if (intelligence === undefined) {
+        intelligence = candidate;
+      } else {
+        candidate.close();
+      }
       return intelligence;
     } catch (error) {
       if (isStorageFailure(error)) {
