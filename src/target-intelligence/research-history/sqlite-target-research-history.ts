@@ -37,13 +37,15 @@ const storedEventSchema = z.discriminatedUnion("kind", [
 
 type StoredEvent = z.infer<typeof storedEventSchema>;
 
-interface StoredEventRow {
-  readonly global_sequence: number;
-  readonly event_id: string;
-  readonly event_digest: string;
-  readonly occurred_at: string;
-  readonly payload_json: string;
-}
+const storedEventRowSchema = z.strictObject({
+  global_sequence: z.number().int().positive(),
+  event_id: z.string().min(1),
+  event_digest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  occurred_at: z.string().datetime({ offset: true }),
+  payload_json: z.string(),
+});
+
+type StoredEventRow = z.infer<typeof storedEventRowSchema>;
 
 interface Projection {
   readonly campaigns: ReadonlyMap<string, TargetResearchCampaign>;
@@ -352,25 +354,29 @@ class SqliteTargetResearchHistory implements TargetResearchHistory {
   }
 
   #selectEvents(): readonly StoredEventRow[] {
-    return this.#database
-      .prepare(
-        `SELECT global_sequence, event_id, event_digest, occurred_at,
+    return storedEventRowSchema.array().parse(
+      this.#database
+        .prepare(
+          `SELECT global_sequence, event_id, event_digest, occurred_at,
                 payload_json
            FROM target_research_history_events
           ORDER BY global_sequence`,
-      )
-      .all() as StoredEventRow[];
+        )
+        .all(),
+    );
   }
 
   #selectEvent(eventDigest: string): StoredEventRow | undefined {
-    return this.#database
-      .prepare(
-        `SELECT global_sequence, event_id, event_digest, occurred_at,
+    return storedEventRowSchema.optional().parse(
+      this.#database
+        .prepare(
+          `SELECT global_sequence, event_id, event_digest, occurred_at,
                 payload_json
            FROM target_research_history_events
           WHERE event_digest = ?`,
-      )
-      .get(eventDigest) as StoredEventRow | undefined;
+        )
+        .get(eventDigest),
+    );
   }
 }
 

@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 
 import { openTargetResearchHistory } from "../../src/target-intelligence/index.js";
@@ -174,6 +175,35 @@ describe("TargetResearchHistory", () => {
         ...completed,
         status: "replayed",
       });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an invalid stored row before replaying its public projection", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "target-history-row-"));
+    const databasePath = join(directory, "target-intelligence.sqlite");
+    try {
+      const history = openTargetResearchHistory({
+        databasePath,
+        clock: () => new Date("2030-02-01T00:00:00.000Z"),
+      });
+      await admitNew(history, prospectiveAdmission);
+
+      const database = new Database(databasePath);
+      database
+        .prepare(
+          `UPDATE target_research_history_events
+              SET occurred_at = ?
+            WHERE global_sequence = 1`,
+        )
+        .run("not-a-timestamp");
+      database.close();
+
+      const restarted = openTargetResearchHistory({ databasePath });
+      await expect(restarted.admit(prospectiveAdmission)).rejects.toThrow(
+        "occurred_at",
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
