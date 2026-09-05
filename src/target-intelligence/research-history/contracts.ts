@@ -17,6 +17,28 @@ const immutableIdentitySchema = z.strictObject({
   digest: digestSchema,
 });
 
+export const targetResearchPurposeSchema = z.enum([
+  "prospective-security-research",
+  "development-cohort-evaluation",
+  "selection-calibration",
+  "independent-recall-repeat",
+]);
+
+export const targetResearchCampaignReasonSchema = z.enum([
+  "incomplete-source-frontier-follow-up",
+  "development-cohort-evaluation",
+  "selection-calibration",
+  "independent-recall-repeat",
+]);
+
+export const targetResearchIncompleteReasonSchema = z.enum([
+  "source-frontier-remains",
+  "budget-exhausted",
+  "provider-failure",
+  "policy-blocked",
+  "execution-interrupted",
+]);
+
 export const targetResearchIdentitySchema = z.strictObject({
   pluginIdentity: pluginIdentitySchema,
   verifiedVersion: z.string().min(1).max(64),
@@ -34,8 +56,8 @@ export const targetResearchCampaignDefinitionSchema = z
     runOrdinal: z.number().int().positive(),
     policy: immutableIdentitySchema,
     profile: immutableIdentitySchema,
-    purpose: z.string().trim().min(1).max(512),
-    reason: z.string().trim().min(1).max(512).optional(),
+    purpose: targetResearchPurposeSchema,
+    reason: targetResearchCampaignReasonSchema.optional(),
     followUp: z
       .strictObject({
         campaignId: identifierSchema,
@@ -43,11 +65,40 @@ export const targetResearchCampaignDefinitionSchema = z
       .optional(),
   })
   .superRefine((definition, context) => {
+    const expectedPurpose = {
+      prospective: "prospective-security-research",
+      "development-cohort": "development-cohort-evaluation",
+      calibration: "selection-calibration",
+      "independent-repeat": "independent-recall-repeat",
+    }[definition.kind];
+    if (definition.purpose !== expectedPurpose) {
+      context.addIssue({
+        code: "custom",
+        path: ["purpose"],
+        message: "Campaign kind and purpose must agree",
+      });
+    }
+    const expectedReason = {
+      prospective: undefined,
+      "development-cohort": "development-cohort-evaluation",
+      calibration: "selection-calibration",
+      "independent-repeat": "independent-recall-repeat",
+    }[definition.kind];
     if (definition.kind !== "prospective" && definition.reason === undefined) {
       context.addIssue({
         code: "custom",
         path: ["reason"],
         message: "An intentional Campaign requires a reason",
+      });
+    }
+    if (
+      definition.kind !== "prospective" &&
+      definition.reason !== expectedReason
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["reason"],
+        message: "Campaign kind and reason must agree",
       });
     }
     if (
@@ -74,12 +125,24 @@ export const targetResearchCampaignDefinitionSchema = z
     if (
       definition.kind === "prospective" &&
       definition.runOrdinal > 1 &&
-      (definition.reason === undefined || definition.followUp === undefined)
+      (definition.reason !== "incomplete-source-frontier-follow-up" ||
+        definition.followUp === undefined)
     ) {
       context.addIssue({
         code: "custom",
         path: ["reason"],
         message: "A later prospective run requires a reasoned follow-up",
+      });
+    }
+    if (
+      definition.kind === "prospective" &&
+      definition.runOrdinal === 1 &&
+      definition.reason !== undefined
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["reason"],
+        message: "The first prospective run does not accept a reason",
       });
     }
   });
@@ -108,7 +171,7 @@ export const targetResearchHistoryRecordInputSchema = z.strictObject({
     z.strictObject({
       kind: z.literal("campaign-completed"),
       terminalStatus: z.literal("incomplete"),
-      reason: z.string().trim().min(1).max(512),
+      reason: targetResearchIncompleteReasonSchema,
     }),
   ]),
 });

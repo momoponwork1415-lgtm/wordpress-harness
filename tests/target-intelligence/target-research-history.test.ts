@@ -26,9 +26,9 @@ const prospectiveAdmission = {
     runOrdinal: 1,
     policy: { id: "selection-policy-v1", digest: digest("2") },
     profile: { id: "semantic-research-v6", digest: digest("3") },
-    purpose: "Prospective security research",
+    purpose: "prospective-security-research",
   },
-};
+} satisfies TargetResearchAdmissionRequest;
 
 const intentionalCampaignKinds = [
   "development-cohort",
@@ -232,7 +232,7 @@ describe("TargetResearchHistory", () => {
         event: {
           kind: "campaign-completed",
           terminalStatus: "incomplete",
-          reason: "Unresolved source frontier remains",
+          reason: "source-frontier-remains",
         },
       });
 
@@ -246,7 +246,7 @@ describe("TargetResearchHistory", () => {
         campaign: {
           ...prospectiveAdmission.campaign,
           runOrdinal: 2,
-          reason: "Resolve the recorded source frontier",
+          reason: "incomplete-source-frontier-follow-up" as const,
           followUp: { campaignId: admitted.campaign.id },
         },
       };
@@ -359,6 +359,12 @@ describe("TargetResearchHistory", () => {
             ...prospectiveAdmission.campaign,
             kind: campaignKind,
             runOrdinal: 2,
+            purpose:
+              campaignKind === "development-cohort"
+                ? ("development-cohort-evaluation" as const)
+                : campaignKind === "calibration"
+                  ? ("selection-calibration" as const)
+                  : ("independent-recall-repeat" as const),
           },
         };
         await expect(history.admit(withoutReason)).rejects.toThrow("reason");
@@ -367,7 +373,12 @@ describe("TargetResearchHistory", () => {
           ...withoutReason,
           campaign: {
             ...withoutReason.campaign,
-            reason: `Approved ${campaignKind} run`,
+            reason:
+              campaignKind === "development-cohort"
+                ? ("development-cohort-evaluation" as const)
+                : campaignKind === "calibration"
+                  ? ("selection-calibration" as const)
+                  : ("independent-recall-repeat" as const),
           },
         };
         await expect(history.admit(intentional)).resolves.toMatchObject({
@@ -408,9 +419,59 @@ describe("TargetResearchHistory", () => {
       await expect(
         Reflect.apply(history.admit, history, [taintedAdmission]),
       ).rejects.toThrow("oracleFacts");
-      await expect(history.admit(prospectiveAdmission)).resolves.toMatchObject({
-        status: "new",
+
+      await expect(
+        Reflect.apply(history.admit, history, [
+          {
+            ...prospectiveAdmission,
+            campaign: {
+              ...prospectiveAdmission.campaign,
+              purpose: "Investigate CVE-2030-0001 and its known route",
+            },
+          },
+        ]),
+      ).rejects.toThrow("purpose");
+
+      await expect(
+        Reflect.apply(history.admit, history, [
+          {
+            ...prospectiveAdmission,
+            campaign: {
+              ...prospectiveAdmission.campaign,
+              kind: "calibration",
+              runOrdinal: 2,
+              purpose: "selection-calibration",
+              reason: "Compare against a known Finding",
+            },
+          },
+        ]),
+      ).rejects.toThrow("reason");
+
+      const cleanAdmission = await history.admit(prospectiveAdmission);
+      expect(cleanAdmission).toMatchObject({ status: "new" });
+      if (cleanAdmission.status !== "new") {
+        throw new Error("Expected a clean Target Research Campaign");
+      }
+      await history.record({
+        kind: "target-research-history-record",
+        schemaVersion: 1,
+        campaignId: cleanAdmission.campaign.id,
+        event: { kind: "campaign-started" },
       });
+      await expect(
+        Reflect.apply(history.record, history, [
+          {
+            kind: "target-research-history-record",
+            schemaVersion: 1,
+            campaignId: cleanAdmission.campaign.id,
+            event: {
+              kind: "campaign-completed",
+              terminalStatus: "incomplete",
+              reason: "Known advisory contradicts the Hypothesis",
+            },
+          },
+        ]),
+      ).rejects.toThrow("reason");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
