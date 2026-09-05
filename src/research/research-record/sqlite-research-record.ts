@@ -17,6 +17,7 @@ import {
   campaignAttemptCompletionV2Schema,
   campaignAttemptIntentSchema,
   campaignAttemptIntentV2Schema,
+  campaignAttemptResultStoredV2Schema,
   campaignRunCompletionInputSchema,
   campaignRunCompletionInputV2Schema,
   campaignRunCompletionInputV3Schema,
@@ -45,6 +46,7 @@ import {
   type CampaignAttemptCompletionV2,
   type CampaignAttemptIntent,
   type CampaignAttemptIntentV2,
+  type CampaignAttemptResultStoredV2,
   type CampaignAttemptRecordView,
   type CampaignAttemptRecordViewV2,
   type CurrentSemanticDepthResearch,
@@ -439,6 +441,10 @@ const semanticCampaignAttemptStartedPayloadSchema = z.strictObject({
   intent: campaignAttemptIntentV2Schema,
 });
 
+const semanticCampaignAttemptResultStoredPayloadSchema = z.strictObject({
+  result: campaignAttemptResultStoredV2Schema,
+});
+
 const semanticCampaignAttemptCompletedPayloadSchema = z.strictObject({
   completion: campaignAttemptCompletionV2Schema,
 });
@@ -714,6 +720,10 @@ interface LedgerProjection {
     ApproachFamilyRegistryRecordView
   >;
   readonly approachFamilyRegistriesV3: ReadonlyMap<
+    string,
+    ApproachFamilyRegistryRecordViewV3
+  >;
+  readonly semanticDepthIterationRegistriesV3: ReadonlyMap<
     string,
     ApproachFamilyRegistryRecordViewV3
   >;
@@ -1150,6 +1160,25 @@ function semanticAttemptIdentityMatches(
     );
   }
   return false;
+}
+
+function semanticAttemptResultIdentityMatches(
+  intent: CampaignAttemptIntentV2,
+  stored: CampaignAttemptResultStoredV2,
+): boolean {
+  return (
+    intent.role === "validator" &&
+    intent.campaignId === stored.campaignId &&
+    intent.runId === stored.runId &&
+    intent.attemptId === stored.attemptId &&
+    intent.ordinal === stored.ordinal &&
+    intent.candidateId === stored.candidateId &&
+    intent.validationAttemptOrdinal === stored.validationAttemptOrdinal &&
+    intent.attemptPlanDigest === stored.result.planDigest &&
+    stored.result.attemptId === stored.attemptId &&
+    stored.result.owner === "validation" &&
+    stored.result.role === "validator"
+  );
 }
 
 function validRootEvaluatorIdentity(
@@ -2192,9 +2221,22 @@ class SqliteResearchRecord
         }
         const ledger = this.#decodeLedger(intent.campaignId, rows);
         const run = ledger.semanticRuns.get(intent.runId);
+        if (run === undefined || run.completed !== undefined) {
+          throw new CampaignRunConflictError(intent.campaignId, intent.runId);
+        }
+        const existing = ledger.semanticAttempts.get(intent.attemptId);
+        if (existing !== undefined) {
+          if (canonicalJson(existing.intent) !== canonicalJson(intent)) {
+            throw new CampaignRunConflictError(intent.campaignId, intent.runId);
+          }
+          return existing.completion === undefined
+            ? { disposition: "in-progress", attempt: existing }
+            : {
+                disposition: "completed",
+                attempt: { ...existing, completion: existing.completion },
+              };
+        }
         if (
-          run === undefined ||
-          run.completed !== undefined ||
           (intent.role === "root-evaluator" &&
             !validRootEvaluatorIdentity(intent)) ||
           (intent.role === "root-evaluator" &&
@@ -2219,18 +2261,6 @@ class SqliteResearchRecord
         ) {
           throw new CampaignRunConflictError(intent.campaignId, intent.runId);
         }
-        const existing = ledger.semanticAttempts.get(intent.attemptId);
-        if (existing !== undefined) {
-          if (canonicalJson(existing.intent) !== canonicalJson(intent)) {
-            throw new CampaignRunConflictError(intent.campaignId, intent.runId);
-          }
-          return existing.completion === undefined
-            ? { disposition: "in-progress", attempt: existing }
-            : {
-                disposition: "completed",
-                attempt: { ...existing, completion: existing.completion },
-              };
-        }
         if (
           [...ledger.semanticAttempts.values()].some(
             (attempt) =>
@@ -2254,6 +2284,55 @@ class SqliteResearchRecord
         return {
           disposition: "started",
           attempt: { ledgerHead, occurredAt, intent },
+        };
+      },
+    );
+    return transact();
+  }
+
+  async recordSemanticCampaignAttemptResult(
+    value: CampaignAttemptResultStoredV2,
+  ): Promise<CampaignAttemptRecordViewV2> {
+    const result = campaignAttemptResultStoredV2Schema.parse(value);
+    const transact = this.#database.transaction(
+      (): CampaignAttemptRecordViewV2 => {
+        const rows = this.#readRows(result.campaignId);
+        if (rows.length === 0) {
+          throw new Error(`Campaign not found: ${result.campaignId}`);
+        }
+        const ledger = this.#decodeLedger(result.campaignId, rows);
+        const run = ledger.semanticRuns.get(result.runId);
+        const existing = ledger.semanticAttempts.get(result.attemptId);
+        if (
+          run === undefined ||
+          run.completed !== undefined ||
+          existing === undefined ||
+          existing.completion !== undefined ||
+          !semanticAttemptResultIdentityMatches(existing.intent, result)
+        ) {
+          throw new CampaignRunConflictError(result.campaignId, result.runId);
+        }
+        if (existing.storedResult !== undefined) {
+          if (
+            canonicalJson(existing.storedResult.value) !== canonicalJson(result)
+          ) {
+            throw new CampaignRunConflictError(result.campaignId, result.runId);
+          }
+          return existing;
+        }
+        const occurredAt = this.#clock().toISOString();
+        const ledgerHead = rows.length + 1;
+        this.#insertEvent(
+          result.campaignId,
+          ledgerHead,
+          "campaign.attempt-result-stored",
+          occurredAt,
+          { result },
+          2,
+        );
+        return {
+          ...existing,
+          storedResult: { ledgerHead, occurredAt, value: result },
         };
       },
     );
@@ -2294,6 +2373,17 @@ class SqliteResearchRecord
             );
           }
           return existing;
+        }
+        if (
+          completion.role === "validator" &&
+          (existing.storedResult === undefined ||
+            canonicalJson(existing.storedResult.value.result) !==
+              canonicalJson(completion.result))
+        ) {
+          throw new CampaignRunConflictError(
+            completion.campaignId,
+            completion.runId,
+          );
         }
         const occurredAt = this.#clock().toISOString();
         const ledgerHead = rows.length + 1;
@@ -3942,6 +4032,9 @@ class SqliteResearchRecord
         const recordedCritique = ledger.semanticAdversarialCritiquesV2.get(
           `${runId}:${synthesis.id}`,
         );
+        const replayed = ledger.semanticDepthIterationRegistriesV3.get(
+          decisionRef.digest,
+        );
         if (
           run === undefined ||
           run.completed !== undefined ||
@@ -3956,10 +4049,15 @@ class SqliteResearchRecord
             canonicalJson(decision.critique) ||
           canonicalJson(queued.queue) !==
             canonicalJson(referenceSemanticDepthWorkQueueV2(queue)) ||
-          decision.registry.digest !== current.ref.digest ||
           decision.target.digest !== run.plan.target.digest ||
           decision.manifest.digest !== run.plan.manifest.digest
         ) {
+          throw new CampaignRunConflictError(campaignId, runId);
+        }
+        if (replayed !== undefined) {
+          return replayed;
+        }
+        if (decision.registry.digest !== current.ref.digest) {
           throw new CampaignRunConflictError(campaignId, runId);
         }
         if (current.value.depthDecisions.includes(decisionRef.digest)) {
@@ -4446,6 +4544,10 @@ class SqliteResearchRecord
       string,
       ApproachFamilyRegistryRecordViewV3
     >();
+    const semanticDepthIterationRegistriesV3 = new Map<
+      string,
+      ApproachFamilyRegistryRecordViewV3
+    >();
     const validationIntents = new Map<string, ValidationIntentRecordView>();
     const validationCompletions = new Map<
       string,
@@ -4596,6 +4698,40 @@ class SqliteResearchRecord
         });
         continue;
       }
+      if (event.kind === "campaign.attempt-result-stored") {
+        if (event.schema_version !== 2) {
+          throw new UnsupportedLedgerSchemaError(
+            event.kind,
+            event.schema_version,
+          );
+        }
+        const payload = semanticCampaignAttemptResultStoredPayloadSchema.parse(
+          this.#parsePayload(event),
+        );
+        const result = payload.result;
+        const run = semanticRuns.get(result.runId);
+        const existing = semanticAttempts.get(result.attemptId);
+        if (
+          result.campaignId !== campaignId ||
+          run === undefined ||
+          run.completed !== undefined ||
+          existing === undefined ||
+          existing.completion !== undefined ||
+          existing.storedResult !== undefined ||
+          !semanticAttemptResultIdentityMatches(existing.intent, result)
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        semanticAttempts.set(result.attemptId, {
+          ...existing,
+          storedResult: {
+            ledgerHead: event.campaign_sequence,
+            occurredAt: event.occurred_at,
+            value: result,
+          },
+        });
+        continue;
+      }
       if (event.kind === "campaign.attempt-completed") {
         if (event.schema_version === 2) {
           const payload = semanticCampaignAttemptCompletedPayloadSchema.parse(
@@ -4609,7 +4745,10 @@ class SqliteResearchRecord
             existing.completion !== undefined ||
             (completion.role === "root-evaluator" &&
               !validRootEvaluatorIdentity(completion)) ||
-            !semanticAttemptIdentityMatches(existing.intent, completion)
+            !semanticAttemptIdentityMatches(existing.intent, completion) ||
+            (existing.storedResult !== undefined &&
+              canonicalJson(existing.storedResult.value.result) !==
+                canonicalJson(completion.result))
           ) {
             throw new LedgerIntegrityError(campaignId, "invalid-event-order");
           }
@@ -5376,6 +5515,10 @@ class SqliteResearchRecord
           if (canonicalJson(registry.ref) !== canonicalJson(payload.registry)) {
             throw new LedgerIntegrityError(campaignId, "invalid-event-order");
           }
+          semanticDepthIterationRegistriesV3.set(payload.decision.digest, {
+            ref: registry.ref,
+            value: registry.value,
+          });
           approachFamilyRegistriesV3.set(payload.runId, registry);
           continue;
         }
@@ -6138,6 +6281,7 @@ class SqliteResearchRecord
       semanticDepthEvaluationIncompletesV2,
       approachFamilyRegistries,
       approachFamilyRegistriesV3,
+      semanticDepthIterationRegistriesV3,
       validationIntents,
       validationCompletions,
       validationFrontierGaps,
@@ -6177,6 +6321,8 @@ export function openSqliteResearchStores(
       record.recordSemanticCampaignRunCompletionV3.bind(record),
     recordSemanticCampaignAttemptStart:
       record.recordSemanticCampaignAttemptStart.bind(record),
+    recordSemanticCampaignAttemptResult:
+      record.recordSemanticCampaignAttemptResult.bind(record),
     recordSemanticCampaignAttemptCompletion:
       record.recordSemanticCampaignAttemptCompletion.bind(record),
     listSemanticCampaignAttempts:

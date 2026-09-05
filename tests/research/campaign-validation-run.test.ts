@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { copyFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,6 +9,7 @@ import {
   campaignDefaultSemanticRunPlanV3Schema,
   defineCurrentSemanticRootPlanningPolicy,
   openResearch,
+  type CampaignExecutionDependencies,
 } from "../../src/research/index.js";
 import type {
   AttemptExecutionResultV2,
@@ -141,7 +142,7 @@ function failedResult(
 }
 
 describe("CampaignRunner.run source-only Validation", () => {
-  it("records Decision v3 before Validation and binds Depth work to the same active Family", async () => {
+  it("recovers durable Validator results and replays pre-result-event ledgers", async () => {
     const directory = await mkdtemp(join(tmpdir(), "campaign-validation-"));
     const databasePath = join(directory, "research.sqlite");
     const artifacts = openFileJsonArtifactStore(join(directory, "artifacts"));
@@ -180,6 +181,8 @@ describe("CampaignRunner.run source-only Validation", () => {
       "ready-for-runtime";
     let depthFailure: "none" | "budget-exhausted" = "none";
     let packetDelivery: "success" | "failure" = "failure";
+    let candidateIdentitySuffix = "";
+    let injectUnknownValidatorResult = false;
     const deliveredPacketDigests: string[] = [];
     const modelExecution: ModelExecution = {
       run: async (plan) => {
@@ -238,13 +241,13 @@ describe("CampaignRunner.run source-only Validation", () => {
                     kind: "source-bound-hypothesis",
                     schemaVersion: 1,
                     causalIdentity: {
-                      rootCause: "public-state-crosses-actor-boundary",
+                      rootCause: `public-state-crosses-actor-boundary${candidateIdentitySuffix}`,
                       attackerControlledPrimitive:
                         "unauthenticated-option-write",
                       brokenSecurityProperty:
                         validationDisposition === "needs-research"
                           ? "state-consumer-identity"
-                          : "state-ownership",
+                          : `state-ownership${candidateIdentitySuffix}`,
                     },
                     attackerPremise: "unauthenticated",
                     impact: "account-takeover",
@@ -329,7 +332,7 @@ describe("CampaignRunner.run source-only Validation", () => {
                   brokenSecurityProperty:
                     validationDisposition === "needs-research"
                       ? "state-consumer-identity"
-                      : "state-ownership",
+                      : `state-ownership${candidateIdentitySuffix}`,
                   causalRoute: [
                     {
                       ordinal: 1,
@@ -495,7 +498,10 @@ describe("CampaignRunner.run source-only Validation", () => {
           } finally {
             durableRecord.close();
           }
-          return completedResult(plan, {
+          if (injectUnknownValidatorResult) {
+            throw new Error("Injected provider result loss");
+          }
+          const result = completedResult(plan, {
             kind: "validation-attempt-output",
             schemaVersion: 2,
             candidateId: plan.assignment.candidateId,
@@ -524,56 +530,58 @@ describe("CampaignRunner.run source-only Validation", () => {
                 }
               : {}),
           });
+          return result;
         }
         throw new Error("Unexpected Attempt role");
       },
     };
     let legacyVerifierCalls = 0;
     let labCalls = 0;
-    const research = openResearch({
-      databasePath,
-      campaignExecution: {
-        artifactStore: artifacts,
-        attemptPlanMaterializer: {
-          materialize: async () => {
-            throw new Error("Legacy Map materializer must not run");
-          },
-        },
-        modelExecution,
-        independentVerifier: {
-          rederive: async () => {
-            legacyVerifierCalls += 1;
-            throw new Error("Legacy Independent Verification must not run");
-          },
-        },
-        labControl: {
-          execute: async () => {
-            labCalls += 1;
-            throw new Error("Lab must not run in source-only Validation");
-          },
-        },
-        runtimeVerificationPacketDelivery: {
-          deliver: async (request) => {
-            const packet = request.packet;
-            deliveredPacketDigests.push(sha256Digest(packet));
-            if (packetDelivery === "failure") {
-              throw new Error("Injected Human OS delivery failure");
-            }
-            const identity = {
-              kind: "runtime-verification-packet-delivery-receipt" as const,
-              schemaVersion: 2 as const,
-              deliveryRequestDigest: request.digest,
-              packetDigest: sha256Digest(packet),
-              intakeId: sha256Digest({
-                kind: "ai-reproduction-intake",
-                packetId: packet.id,
-              }),
-              admission: "accepted-for-ai-reproduction" as const,
-            };
-            return { ...identity, receiptDigest: sha256Digest(identity) };
-          },
+    const campaignExecution: CampaignExecutionDependencies = {
+      artifactStore: artifacts,
+      attemptPlanMaterializer: {
+        materialize: async () => {
+          throw new Error("Legacy Map materializer must not run");
         },
       },
+      modelExecution,
+      independentVerifier: {
+        rederive: async () => {
+          legacyVerifierCalls += 1;
+          throw new Error("Legacy Independent Verification must not run");
+        },
+      },
+      labControl: {
+        execute: async () => {
+          labCalls += 1;
+          throw new Error("Lab must not run in source-only Validation");
+        },
+      },
+      runtimeVerificationPacketDelivery: {
+        deliver: async (request) => {
+          const packet = request.packet;
+          deliveredPacketDigests.push(sha256Digest(packet));
+          if (packetDelivery === "failure") {
+            throw new Error("Injected Human OS delivery failure");
+          }
+          const identity = {
+            kind: "runtime-verification-packet-delivery-receipt" as const,
+            schemaVersion: 2 as const,
+            deliveryRequestDigest: request.digest,
+            packetDigest: sha256Digest(packet),
+            intakeId: sha256Digest({
+              kind: "ai-reproduction-intake",
+              packetId: packet.id,
+            }),
+            admission: "accepted-for-ai-reproduction" as const,
+          };
+          return { ...identity, receiptDigest: sha256Digest(identity) };
+        },
+      },
+    };
+    const research = openResearch({
+      databasePath,
+      campaignExecution,
     });
 
     try {
@@ -1153,6 +1161,316 @@ describe("CampaignRunner.run source-only Validation", () => {
       expect(new Set(deliveredPacketDigests)).toHaveProperty("size", 1);
 
       expect(deliveredPacketDigests.at(-1)).toEqual(expect.any(String));
+
+      depthFailure = "none";
+      packetDelivery = "success";
+      candidateIdentitySuffix = "-crash-recovery";
+      const crashRecoveryPlan = campaignDefaultSemanticRunPlanV3Schema.parse({
+        ...plan,
+        runId: "source-validation-crash-recovery",
+        validation: {
+          ...plan.validation,
+          validationPolicy: {
+            ...plan.validation.validationPolicy,
+            digest: digest("f"),
+          },
+        },
+      });
+      expectedValidationRunId = crashRecoveryPlan.runId;
+      const crashCallOffset = observedPlans.length;
+      const crashingResearch = openResearch({
+        databasePath,
+        campaignExecution: {
+          ...campaignExecution,
+          validationAttemptFaultBoundary: {
+            afterResultStored: () => {
+              throw new Error(
+                "Injected crash after Validator result persistence",
+              );
+            },
+          },
+        },
+      });
+      try {
+        await expect(
+          crashingResearch.runner.run(crashRecoveryPlan),
+        ).rejects.toThrow("Injected crash after Validator result persistence");
+      } finally {
+        crashingResearch.close();
+      }
+      const callsThroughCrash = observedPlans.slice(crashCallOffset);
+      expect(
+        callsThroughCrash.filter((attempt) => attempt.role === "validator"),
+      ).toHaveLength(1);
+      const progressAfterCrash = await research.reader.inspect(
+        input.campaignId,
+        { kind: "progress" },
+      );
+      expect(progressAfterCrash).toMatchObject({
+        kind: "progress",
+        activeAttempts: [{ role: "validator" }],
+      });
+      if (progressAfterCrash.kind !== "progress") {
+        throw new Error("Expected Campaign progress after injected crash");
+      }
+
+      const recoveringResearch = openResearch({
+        databasePath,
+        campaignExecution,
+      });
+      try {
+        await expect(
+          recoveringResearch.runner.run(crashRecoveryPlan),
+        ).resolves.toMatchObject({ schemaVersion: 3 });
+        await expect(
+          recoveringResearch.reader.inspect(input.campaignId, {
+            kind: "run",
+            runId: crashRecoveryPlan.runId,
+          }),
+        ).resolves.toMatchObject({
+          kind: "run",
+          value: {
+            validations: [{ status: "ready-for-runtime" }],
+          },
+        });
+        const progressAfterRecovery = await recoveringResearch.reader.inspect(
+          input.campaignId,
+          { kind: "progress" },
+        );
+        expect(progressAfterRecovery).toMatchObject({
+          kind: "progress",
+          activeAttempts: [],
+          usage: {
+            modelAttempts: progressAfterCrash.usage.modelAttempts + 1,
+            reportedModelAttempts:
+              progressAfterCrash.usage.reportedModelAttempts + 1,
+            modelTokens: {
+              total: progressAfterCrash.usage.modelTokens.total + 20,
+            },
+            estimatedCostUsd: progressAfterCrash.usage.estimatedCostUsd + 0.25,
+          },
+        });
+      } finally {
+        recoveringResearch.close();
+      }
+      expect(
+        observedPlans
+          .slice(crashCallOffset)
+          .filter((attempt) => attempt.role === "validator"),
+      ).toHaveLength(1);
+
+      candidateIdentitySuffix = "-unknown-provider-result";
+      const unknownResultPlan = campaignDefaultSemanticRunPlanV3Schema.parse({
+        ...plan,
+        runId: "source-validation-unknown-provider-result",
+      });
+      expectedValidationRunId = unknownResultPlan.runId;
+      const unknownCallOffset = observedPlans.length;
+      injectUnknownValidatorResult = true;
+      const unknownResultResearch = openResearch({
+        databasePath,
+        campaignExecution,
+      });
+      try {
+        await expect(
+          unknownResultResearch.runner.run(unknownResultPlan),
+        ).rejects.toThrow("Injected provider result loss");
+      } finally {
+        unknownResultResearch.close();
+        injectUnknownValidatorResult = false;
+      }
+      const progressAfterUnknownResult = await research.reader.inspect(
+        input.campaignId,
+        { kind: "progress" },
+      );
+      expect(progressAfterUnknownResult).toMatchObject({
+        kind: "progress",
+        activeAttempts: [{ role: "validator" }],
+      });
+      if (progressAfterUnknownResult.kind !== "progress") {
+        throw new Error("Expected progress after unknown provider result");
+      }
+
+      const unknownRecoveryResearch = openResearch({
+        databasePath,
+        campaignExecution,
+      });
+      try {
+        await expect(
+          unknownRecoveryResearch.runner.run(unknownResultPlan),
+        ).resolves.toMatchObject({ schemaVersion: 3, decision: "incomplete" });
+        await expect(
+          unknownRecoveryResearch.reader.inspect(input.campaignId, {
+            kind: "run",
+            runId: unknownResultPlan.runId,
+          }),
+        ).resolves.toMatchObject({
+          kind: "run",
+          value: {
+            validations: [
+              {
+                status: "validation-pending",
+                reason: "validator-attempt-failed",
+              },
+            ],
+          },
+        });
+        const progressAfterUnknownRecovery =
+          await unknownRecoveryResearch.reader.inspect(input.campaignId, {
+            kind: "progress",
+          });
+        expect(progressAfterUnknownRecovery).toMatchObject({
+          kind: "progress",
+          activeAttempts: [],
+          usage: {
+            measurement: "partial",
+            modelAttempts: progressAfterUnknownResult.usage.modelAttempts + 1,
+            reportedModelAttempts:
+              progressAfterUnknownResult.usage.reportedModelAttempts,
+            modelTokens: {
+              total: progressAfterUnknownResult.usage.modelTokens.total,
+            },
+            estimatedCostUsd: progressAfterUnknownResult.usage.estimatedCostUsd,
+          },
+        });
+      } finally {
+        unknownRecoveryResearch.close();
+      }
+      expect(
+        observedPlans
+          .slice(unknownCallOffset)
+          .filter((attempt) => attempt.role === "validator"),
+      ).toHaveLength(1);
+
+      candidateIdentitySuffix = "-invalid-stored-result";
+      const invalidStoredResultPlan =
+        campaignDefaultSemanticRunPlanV3Schema.parse({
+          ...plan,
+          runId: "source-validation-invalid-stored-result",
+        });
+      expectedValidationRunId = invalidStoredResultPlan.runId;
+      const invalidResultCallOffset = observedPlans.length;
+      const invalidResultCrashResearch = openResearch({
+        databasePath,
+        campaignExecution: {
+          ...campaignExecution,
+          validationAttemptFaultBoundary: {
+            afterResultStored: () => {
+              throw new Error("Injected crash before invalid result recovery");
+            },
+          },
+        },
+      });
+      try {
+        await expect(
+          invalidResultCrashResearch.runner.run(invalidStoredResultPlan),
+        ).rejects.toThrow("Injected crash before invalid result recovery");
+      } finally {
+        invalidResultCrashResearch.close();
+      }
+      const invalidResultValidatorPlan = observedPlans
+        .slice(invalidResultCallOffset)
+        .find((attempt) => attempt.role === "validator");
+      if (invalidResultValidatorPlan === undefined) {
+        throw new Error("Expected a Validator plan before CAS corruption");
+      }
+      const invalidResultArtifactStore = {
+        putJson: (value: unknown) => artifacts.putJson(value),
+        readJson: async (artifactDigest: string) => {
+          const value = await artifacts.readJson(artifactDigest);
+          if (
+            typeof value === "object" &&
+            value !== null &&
+            "kind" in value &&
+            value.kind === "model-attempt-result" &&
+            "role" in value &&
+            value.role === "validator" &&
+            "attemptId" in value &&
+            value.attemptId === invalidResultValidatorPlan.attemptId
+          ) {
+            return {
+              ...value,
+              attemptId: "validator:identity-mismatch",
+            };
+          }
+          return value;
+        },
+      };
+      const invalidResultRecoveryResearch = openResearch({
+        databasePath,
+        campaignExecution: {
+          ...campaignExecution,
+          artifactStore: invalidResultArtifactStore,
+        },
+      });
+      try {
+        await expect(
+          invalidResultRecoveryResearch.runner.run(invalidStoredResultPlan),
+        ).rejects.toThrow("Validator Attempt result mismatch");
+      } finally {
+        invalidResultRecoveryResearch.close();
+      }
+      await expect(
+        research.reader.inspect(input.campaignId, { kind: "progress" }),
+      ).resolves.toMatchObject({
+        kind: "progress",
+        activeAttempts: [{ role: "validator" }],
+      });
+      expect(
+        observedPlans
+          .slice(invalidResultCallOffset)
+          .filter((attempt) => attempt.role === "validator"),
+      ).toHaveLength(1);
+
+      const validResultRecoveryResearch = openResearch({
+        databasePath,
+        campaignExecution,
+      });
+      try {
+        await expect(
+          validResultRecoveryResearch.runner.run(invalidStoredResultPlan),
+        ).resolves.toMatchObject({ schemaVersion: 3 });
+      } finally {
+        validResultRecoveryResearch.close();
+      }
+      expect(
+        observedPlans
+          .slice(invalidResultCallOffset)
+          .filter((attempt) => attempt.role === "validator"),
+      ).toHaveLength(1);
+    } finally {
+      research.close();
+      await rm(directory, { force: true, recursive: true });
+    }
+  }, 15_000);
+
+  it("replays a pre-result-stored Validator completion", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "campaign-validation-legacy-"),
+    );
+    const databasePath = join(directory, "research.sqlite");
+    await copyFile(
+      new URL(
+        "../fixtures/research/validation-completion-before-result-stored-ca2d862.sqlite",
+        import.meta.url,
+      ),
+      databasePath,
+    );
+    const research = openResearch({ databasePath });
+
+    try {
+      await expect(
+        research.reader.inspect("campaign-validation-run", {
+          kind: "run",
+          runId: "source-validation-run",
+        }),
+      ).resolves.toMatchObject({
+        kind: "run",
+        value: {
+          schemaVersion: 3,
+          validations: [{ status: "ready-for-runtime" }],
+        },
+      });
     } finally {
       research.close();
       await rm(directory, { force: true, recursive: true });

@@ -742,6 +742,22 @@ export const campaignAttemptIntentV2Schema = z.discriminatedUnion("role", [
   }),
 ]);
 
+export const campaignAttemptResultStoredV2Schema = z.strictObject({
+  kind: z.literal("campaign-attempt-result-stored"),
+  schemaVersion: z.literal(2),
+  campaignId: identifierSchema,
+  runId: identifierSchema,
+  attemptId: identifierSchema,
+  ordinal: z.number().int().positive(),
+  role: z.literal("validator"),
+  candidateId: digestSchema,
+  validationAttemptOrdinal: z.number().int().positive().max(3),
+  result: attemptExecutionResultV2RefSchema.extend({
+    owner: z.literal("validation"),
+    role: z.literal("validator"),
+  }),
+});
+
 const semanticCampaignAttemptCompletionFields = {
   kind: z.literal("campaign-attempt-completion"),
   schemaVersion: z.literal(2),
@@ -1431,6 +1447,9 @@ export type CampaignAttemptIntentV2 = z.infer<
 export type CampaignAttemptCompletionV2 = z.infer<
   typeof campaignAttemptCompletionV2Schema
 >;
+export type CampaignAttemptResultStoredV2 = z.infer<
+  typeof campaignAttemptResultStoredV2Schema
+>;
 
 export interface CampaignAttemptRecordView {
   readonly ledgerHead: number;
@@ -1454,6 +1473,11 @@ export interface CampaignAttemptRecordViewV2 {
   readonly ledgerHead: number;
   readonly occurredAt: string;
   readonly intent: CampaignAttemptIntentV2;
+  readonly storedResult?: {
+    readonly ledgerHead: number;
+    readonly occurredAt: string;
+    readonly value: CampaignAttemptResultStoredV2;
+  };
   readonly completion?: {
     readonly ledgerHead: number;
     readonly occurredAt: string;
@@ -1520,6 +1544,11 @@ export interface CampaignExecutionDependencies {
   readonly modelExecution: ModelExecution;
   readonly independentVerifier: IndependentVerifier;
   readonly labControl: LabControl;
+  readonly validationAttemptFaultBoundary?: {
+    afterResultStored(
+      intent: Extract<CampaignAttemptIntentV2, { role: "validator" }>,
+    ): void | Promise<void>;
+  };
   readonly calibrationReview?: CalibrationReview;
   readonly humanReviewPacketDelivery?: HumanReviewPacketDelivery;
   readonly runtimeVerificationPacketDelivery?: RuntimeVerificationPacketDelivery;
