@@ -340,7 +340,10 @@ describe("gVisor Stored XSS Lab Control", () => {
               stderr: "",
             };
           }
-          if (request.args.includes(definition.browserImage)) {
+          if (
+            request.args[0] === "run" &&
+            request.args.includes(definition.browserImage)
+          ) {
             return {
               exitCode: 0,
               stdout: JSON.stringify({
@@ -372,6 +375,79 @@ describe("gVisor Stored XSS Lab Control", () => {
           browserCanaryExecuted: true,
         },
       });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("retries one failed runsc Lab in a distinct fresh namespace", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "gvisor-fresh-retry-"));
+    const artifactStore = openFileJsonArtifactStore(join(directory, "cas"));
+    const plan = browserScriptExecutionPlan();
+    const networks: string[] = [];
+    let browserAttempts = 0;
+
+    try {
+      const definition = await writeLabDefinition(directory, plan);
+      const processRunner: LabProcessRunner = {
+        run: async (request) => {
+          if (request.args[0] === "info") {
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({ runsc: { path: "runsc" } }),
+              stderr: "",
+            };
+          }
+          if (request.args[0] === "network" && request.args[1] === "create") {
+            networks.push(request.args.at(-1) ?? "");
+          }
+          if (request.args[0] === "inspect") {
+            return {
+              exitCode: 0,
+              stdout: request.args.at(-1)?.endsWith("-database")
+                ? "172.30.0.2\n"
+                : "172.30.0.3\n",
+              stderr: "",
+            };
+          }
+          if (
+            request.args[0] === "run" &&
+            request.args.includes(definition.browserImage)
+          ) {
+            browserAttempts += 1;
+            if (browserAttempts === 1) {
+              return { exitCode: 1, stdout: "", stderr: "transient" };
+            }
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({
+                kind: "browser-script-execution-result",
+                schemaVersion: 1,
+                normalFunction: "preserved",
+                attackerSequenceExecuted: true,
+                victimContextEstablished: true,
+                browserCanaryExecuted: true,
+              }),
+              stderr: "",
+            };
+          }
+          return { exitCode: 0, stdout: "", stderr: "" };
+        },
+      };
+      const labControl = openGvisorStoredXssLabControl({
+        artifactStore,
+        processRunner,
+        definitionFile: definition.definitionFile,
+      });
+
+      const ref = await labControl.execute(browserScriptExecutionRequest(plan));
+
+      await expect(artifactStore.readJson(ref.digest)).resolves.toMatchObject({
+        result: { browserCanaryExecuted: true },
+      });
+      expect(browserAttempts).toBe(2);
+      expect(networks).toHaveLength(2);
+      expect(new Set(networks)).toHaveProperty("size", 2);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

@@ -152,7 +152,7 @@ interface LabControl {
 
 `ExperimentExecutionRequestV1`はtyped Experiment Plan、supportedな`SourceRederivation`、そのdigestを一つに閉じる。固定手順を持つLab definitionは、実行できるadapterとrequired source evidenceをversioned source-route protocolとして宣言し、そのprotocol digestをsealed configurationへ含める。再導出のpath、file digest、line rangeがprotocolを満たさなければ、gVisor preflightやworkerを起動する前に`unsupported-experiment`でBlockedにする。
 
-Lab Controlはruntime、database、browser、cleanupを隠すが、Finding判定を行わない。Requestはregistryにあるversioned mechanismだけを使い、任意shell、任意PHP、自由なsetup argv、host実行を許可しない。隔離runtimeが利用不能ならplain DockerへfallbackせずBlockedにする。
+Lab Controlはruntime、database、browser、cleanupを隠すが、Finding判定を行わない。Requestはregistryにあるversioned mechanismだけを使い、任意shell、任意PHP、自由なsetup argv、host実行を許可しない。隔離runtimeが利用不能ならplain DockerへfallbackせずBlockedにする。一つのfresh gVisor LabがObservation作成前に失敗した場合は、そのLabをcleanupしてpartial evidenceを捨て、別nonceのfresh gVisor Labで一度だけ再試行する。二回目も失敗すれば`experiment-failed`とし、同じLab、runc、plain Dockerへfallbackしない。
 
 credential、cookie、raw browser trace、target source、sensitive readbackをLedgerへ保存しない。実験canaryとprincipalはLab専用・使い捨てにする。
 
@@ -191,6 +191,6 @@ sequenceDiagram
 
 Testは`verify(plan)`と返されたResearch read modelだけを観測する。内部phase、helper count、SQL row、Lab command順を固定しない。
 
-最低限、Finding全gate、同じCausal IdentityのDisproved、typed Blocked、checkpointからのWave中intake、duplicate candidateの一つのVerification identityへの収束、Root Evaluation failure後のqueue保持、Manifest-boundなsource再導出、MapなしVerification、Manifest外anchor拒否、source-route protocol不一致時の実行前拒否、Verifier usage欠落・hard budget超過時のLab実行前拒否、owner別usage集計、no-fallback isolation、sibling一致、artifact digest、close/reopen replay、Finding Mechanism Groupの重複統合・別route分離・Blocked除外・決定的再読、unsupported schema rejectionを保護する。新しい脆弱性mechanismは、この同じInterfaceに一つのtyped Experiment vertical sliceとして追加する。
+最低限、Finding全gate、同じCausal IdentityのDisproved、typed Blocked、checkpointからのWave中intake、duplicate candidateの一つのVerification identityへの収束、Root Evaluation failure後のqueue保持、Manifest-boundなsource再導出、MapなしVerification、Manifest外anchor拒否、source-route protocol不一致時の実行前拒否、Verifier usage欠落・hard budget超過時のLab実行前拒否、owner別usage集計、no-fallback isolation、失敗したfresh Labを破棄した一回限りの別namespace再試行、sibling一致、artifact digest、close/reopen replay、Finding Mechanism Groupの重複統合・別route分離・Blocked除外・決定的再読、unsupported schema rejectionを保護する。新しい脆弱性mechanismは、この同じInterfaceに一つのtyped Experiment vertical sliceとして追加する。
 
 実装済みmechanismとTest pathは[Codebase Guide](../CODEBASE-GUIDE.md)、公開CVEでの実測は[実験記録](../experiments/README.md)だけに置く。
