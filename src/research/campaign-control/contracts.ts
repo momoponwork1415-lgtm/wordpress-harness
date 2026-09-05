@@ -12,6 +12,10 @@ import {
   semanticIterationDecisionRefSchema,
 } from "../exploration/semantic-approach-family-registry.js";
 import {
+  approachFamilyRegistryRefV3Schema,
+  semanticIterationDecisionRefV3Schema,
+} from "../exploration/semantic-approach-family-registry-v3.js";
+import {
   explorationPolicyRefSchema,
   type FocusArea,
   type WorkLease,
@@ -19,7 +23,9 @@ import {
 } from "../exploration/contracts.js";
 import {
   evaluationIncompleteDecisionSchema,
+  evaluationIncompleteDecisionV3Schema,
   iterationDecisionV2Schema,
+  iterationDecisionV3Schema,
   oracleFreeTargetMetadataSchema,
   planningIncompleteDecisionSchema,
   semanticRootPlanningPolicySchema,
@@ -57,6 +63,10 @@ import {
   type LabControl,
   type VerificationRecordRef,
 } from "../verification/contracts.js";
+import {
+  validationFrontierGapRefSchema,
+  validationRecordSchema,
+} from "../validation/contracts.js";
 
 const identifierSchema = z
   .string()
@@ -1080,6 +1090,83 @@ export const campaignRunRecordRefV2Schema = z.strictObject({
   decision: z.enum(["finder-wave-completed", "complete", "incomplete"]),
 });
 
+const currentSemanticTerminalDecisionSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("complete") }),
+  z.strictObject({
+    kind: z.literal("incomplete"),
+    reason: z.enum([
+      "planning-incomplete",
+      "evaluation-incomplete",
+      "validation-pending",
+      "research-work-remains",
+    ]),
+  }),
+]);
+
+const campaignDefaultSemanticCompletionInputV3Schema = z.strictObject({
+  kind: z.literal("campaign-run-completion"),
+  schemaVersion: z.literal(3),
+  ...semanticCampaignRunIdentityFields,
+  target: targetSnapshotRefSchema,
+  manifest: targetFileManifestRefSchema,
+  workWave: semanticWorkWaveRefSchema,
+  waveTerminal: semanticWaveTerminalRefSchema,
+  attempts: z.array(attemptExecutionResultV2RefSchema).min(1).max(128),
+  iterationDecision: iterationDecisionV3Schema,
+  iterationDecisionRef: semanticIterationDecisionRefV3Schema,
+  approachFamilyRegistry: approachFamilyRegistryRefV3Schema,
+  validations: z.array(validationRecordSchema).max(64),
+  validationFrontierGaps: z.array(validationFrontierGapRefSchema).max(64),
+  decision: currentSemanticTerminalDecisionSchema,
+});
+
+const campaignDefaultSemanticRecordV3Schema =
+  campaignDefaultSemanticCompletionInputV3Schema.extend({
+    kind: z.literal("campaign-run-record"),
+    completedAt: z.string().datetime(),
+  });
+
+const campaignDefaultSemanticEarlyCompletionInputV3Schema = z.strictObject({
+  kind: z.literal("campaign-run-completion"),
+  schemaVersion: z.literal(3),
+  ...semanticCampaignRunIdentityFields,
+  target: targetSnapshotRefSchema,
+  manifest: targetFileManifestRefSchema,
+  attempts: z.array(attemptExecutionResultV2RefSchema).max(24),
+  stage: z.union([
+    planningIncompleteDecisionSchema,
+    evaluationIncompleteDecisionV3Schema,
+  ]),
+  decision: z.strictObject({
+    kind: z.literal("incomplete"),
+    reason: z.enum(["planning-incomplete", "evaluation-incomplete"]),
+  }),
+});
+
+const campaignDefaultSemanticEarlyRecordV3Schema =
+  campaignDefaultSemanticEarlyCompletionInputV3Schema.extend({
+    kind: z.literal("campaign-run-record"),
+    completedAt: z.string().datetime(),
+  });
+
+export const campaignRunCompletionInputV3Schema = z.union([
+  campaignDefaultSemanticCompletionInputV3Schema,
+  campaignDefaultSemanticEarlyCompletionInputV3Schema,
+]);
+
+export const campaignRunRecordV3Schema = z.union([
+  campaignDefaultSemanticRecordV3Schema,
+  campaignDefaultSemanticEarlyRecordV3Schema,
+]);
+
+export const campaignRunRecordRefV3Schema = z.strictObject({
+  kind: z.literal("campaign-run-record"),
+  schemaVersion: z.literal(3),
+  runId: identifierSchema,
+  digest: digestSchema,
+  decision: z.enum(["complete", "incomplete"]),
+});
+
 export type CampaignRunPlan = z.infer<typeof campaignRunPlanSchema>;
 export type CampaignRunPlanV2 = z.infer<typeof campaignRunPlanV2Schema>;
 export type PreparedWaveCampaignRunPlanV2 = z.infer<
@@ -1103,6 +1190,10 @@ export type CampaignRunCompletionInputV2 = z.infer<
   typeof campaignRunCompletionInputV2Schema
 >;
 export type CampaignRunRecordV2 = z.infer<typeof campaignRunRecordV2Schema>;
+export type CampaignRunCompletionInputV3 = z.infer<
+  typeof campaignRunCompletionInputV3Schema
+>;
+export type CampaignRunRecordV3 = z.infer<typeof campaignRunRecordV3Schema>;
 export type SemanticCampaignUsage = z.infer<typeof semanticCampaignUsageSchema>;
 export type SemanticDepthResearch = z.infer<typeof semanticDepthResearchSchema>;
 export type SemanticCoverageReviewTrace = z.infer<
@@ -1111,9 +1202,13 @@ export type SemanticCoverageReviewTrace = z.infer<
 export type CampaignRunRecordRefV2 = z.infer<
   typeof campaignRunRecordRefV2Schema
 >;
-export type AnyCampaignRunRecord = CampaignRunRecord | CampaignRunRecordV2;
+export type CampaignRunRecordRefV3 = z.infer<
+  typeof campaignRunRecordRefV3Schema
+>;
+export type AnyCampaignRunRecord =
+  CampaignRunRecord | CampaignRunRecordV2 | CampaignRunRecordV3;
 export type AnyCampaignRunRecordRef =
-  CampaignRunRecordRef | CampaignRunRecordRefV2;
+  CampaignRunRecordRef | CampaignRunRecordRefV2 | CampaignRunRecordRefV3;
 export type IterationDecision = z.infer<typeof iterationDecisionSchema>;
 export type BoundaryPairEvidenceRef = z.infer<
   typeof boundaryPairEvidenceRefSchema
@@ -1173,8 +1268,15 @@ export interface CampaignRunRecordViewV2 {
   readonly value: CampaignRunRecordV2;
 }
 
+export interface CampaignRunRecordViewV3 {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly ref: CampaignRunRecordRefV3;
+  readonly value: CampaignRunRecordV3;
+}
+
 export type AnyCampaignRunRecordView =
-  CampaignRunRecordView | CampaignRunRecordViewV2;
+  CampaignRunRecordView | CampaignRunRecordViewV2 | CampaignRunRecordViewV3;
 
 export interface AttemptPlanMaterializationInput {
   readonly run: {

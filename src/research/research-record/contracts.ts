@@ -27,11 +27,13 @@ import type {
   CampaignAttemptRecordViewV2,
   CampaignRunCompletionInput,
   CampaignRunCompletionInputV2,
+  CampaignRunCompletionInputV3,
   CampaignRunPlan,
   CampaignRunPlanV2,
   CampaignRunPlanV3,
   CampaignRunRecordView,
   CampaignRunRecordViewV2,
+  CampaignRunRecordViewV3,
   AnyCampaignRunRecordView,
 } from "../campaign-control/contracts.js";
 import type {
@@ -81,6 +83,9 @@ export interface ResearchRecord {
   recordSemanticCampaignRunCompletion(
     input: CampaignRunCompletionInputV2,
   ): Promise<CampaignRunRecordViewV2>;
+  recordSemanticCampaignRunCompletionV3(
+    input: CampaignRunCompletionInputV3,
+  ): Promise<CampaignRunRecordViewV3>;
   readCampaignRun(
     campaignId: string,
     runId: string,
@@ -242,7 +247,7 @@ export type RecordSemanticCampaignRunStartResult =
   | {
       readonly disposition: "completed";
       readonly planDigest: string;
-      readonly run: CampaignRunRecordViewV2;
+      readonly run: CampaignRunRecordViewV2 | CampaignRunRecordViewV3;
     };
 
 export type RecordVerificationStartResult =

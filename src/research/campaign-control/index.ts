@@ -24,6 +24,7 @@ import {
   referenceDepthIterationDecision,
   referenceSemanticMissingLinkWavePlan,
   referenceSemanticIterationDecision,
+  referenceSemanticIterationDecisionV3,
   semanticAdversarialCritiqueInputSchema,
   semanticChainSynthesisInputSchema,
   semanticDepthEvaluationInputSchema,
@@ -49,7 +50,9 @@ import {
   sourceBoundHypothesisArtifactSchema,
   sourceBoundHypothesisArtifactRefSchema,
   type IterationDecisionV2,
+  type IterationDecisionV3,
   type SemanticFinderCheckpointRef,
+  type SemanticWaveTerminalRef,
   type SemanticWorkWavePlan,
 } from "../exploration/semantic-contracts.js";
 import {
@@ -86,10 +89,17 @@ import {
   projectFindingMechanismGroups,
 } from "../verification/index.js";
 import {
+  openValidation,
+  validationRecordSchema,
+  validationThreatContextSchema,
+  type ValidationRecord,
+} from "../validation/index.js";
+import {
   CampaignRunConflictError,
   LegacyMapFirstExecutionDisabledError,
   campaignRunPlanSchema,
   campaignRunPlanV2Schema,
+  campaignRunPlanV3Schema,
   calibrationReviewResultSchema,
   finderAttemptMaterializationSchema,
   semanticDepthResearchSchema,
@@ -100,9 +110,11 @@ import {
   type CampaignRunPlan,
   type CampaignRunPlanV2,
   type DefaultSemanticCampaignRunPlanV2,
+  type DefaultSemanticCampaignRunPlanV3,
   type PreparedWaveCampaignRunPlanV2,
   type SemanticCoverageReviewTrace,
 } from "./contracts.js";
+import { materializeValidationCandidates } from "./validation-candidate-admission.js";
 import { reviewIteration } from "./iteration-review.js";
 import { materializeDepthVerificationHypotheses } from "./depth-verification-hypothesis-materializer.js";
 import { materializeMissingLinkFinderAttempt } from "./missing-link-finder-attempt-materializer.js";
@@ -193,7 +205,9 @@ async function completeCampaignAttempt(
   });
 }
 
-function semanticRunConflict(plan: CampaignRunPlanV2): never {
+function semanticRunConflict(
+  plan: CampaignRunPlanV2 | DefaultSemanticCampaignRunPlanV3,
+): never {
   throw new CampaignRunConflictError(plan.campaignId, plan.runId);
 }
 
@@ -808,10 +822,186 @@ async function executeSemanticFinderWave(
   });
 }
 
+async function completeCurrentSemanticIteration(
+  record: ResearchRecord,
+  dependencies: CampaignExecutionDependencies,
+  plan: DefaultSemanticCampaignRunPlanV3,
+  planDigest: string,
+  decision: IterationDecisionV3,
+  waveTerminal: SemanticWaveTerminalRef,
+) {
+  const recordedDecision = await record.recordSemanticIterationDecisionV3(
+    plan.campaignId,
+    plan.runId,
+    decision,
+  );
+  const expectedDecisionRef = referenceSemanticIterationDecisionV3(decision);
+  if (
+    canonicalJson(recordedDecision.decision) !==
+    canonicalJson(expectedDecisionRef)
+  ) {
+    throw new Error("Semantic Iteration Decision v3 CAS mismatch");
+  }
+
+  const candidates = await materializeValidationCandidates(
+    dependencies.artifactStore,
+    { campaignId: plan.campaignId, runId: plan.runId, decision },
+  );
+  if (candidates.length > 0) {
+    await record.recordValidationIntents(
+      plan.campaignId,
+      plan.runId,
+      candidates,
+    );
+  }
+
+  const preparation = await record.readPreparation(plan.campaignId);
+  if (
+    preparation === undefined ||
+    !("canonicalFileManifest" in preparation.input)
+  ) {
+    semanticRunConflict(plan);
+  }
+  const manifestValue = {
+    kind: "target-file-manifest" as const,
+    schemaVersion: 1 as const,
+    targetSnapshot: { id: plan.target.id, digest: plan.target.digest },
+    entries: preparation.input.canonicalFileManifest.entries,
+  };
+  const validation = openValidation({
+    modelExecution: dependencies.modelExecution,
+    artifactStore: dependencies.artifactStore,
+    attemptNamespace: `${plan.campaignId}:${plan.runId}`,
+  });
+  const validationRecords: ValidationRecord[] = [];
+  const completedValidations = new Map(
+    (await record.listValidationCompletions(plan.campaignId, plan.runId)).map(
+      (completion) => [
+        completion.completion.validation.validationId,
+        completion.completion.validation,
+      ],
+    ),
+  );
+  for (const candidate of candidates) {
+    const completedValidation = completedValidations.get(candidate.id);
+    if (completedValidation !== undefined) {
+      const rawValidation = await dependencies.artifactStore.readJson(
+        completedValidation.digest,
+      );
+      if (sha256Digest(rawValidation) !== completedValidation.digest) {
+        throw new Error("Validation Record CAS mismatch");
+      }
+      const validationRecord = validationRecordSchema.parse(rawValidation);
+      if (
+        validationRecord.validationId !== candidate.id ||
+        validationRecord.candidateId !== candidate.id
+      ) {
+        throw new Error("Validation Record candidate mismatch");
+      }
+      validationRecords.push(validationRecord);
+      continue;
+    }
+    const threatContextIdentity = {
+      kind: "validation-threat-context" as const,
+      schemaVersion: 1 as const,
+      targetSnapshotDigest: plan.target.digest,
+      candidateId: candidate.id,
+      wordpressBaseline: plan.validation.wordpressBaseline,
+      permittedAttacker: candidate.attackerPremise,
+      publicSurface: plan.validation.publicSurface,
+      technicalExclusions: plan.validation.technicalExclusions,
+    };
+    const threatContext = validationThreatContextSchema.parse({
+      ...threatContextIdentity,
+      id: sha256Digest(threatContextIdentity),
+    });
+    const validationRef = await validation.validate({
+      kind: "validation-plan",
+      schemaVersion: 1,
+      validationId: candidate.id,
+      campaignId: plan.campaignId,
+      candidate,
+      threatContext,
+      manifest: { ref: plan.manifest, value: manifestValue },
+      validationPolicy: plan.validation.validationPolicy,
+      promptSet: {
+        id: plan.validation.promptSet.id,
+        digest: plan.validation.promptSet.digest,
+      },
+      validatorModelProfile: plan.validation.validatorModelProfile.execution,
+      synthesisModelProfile: plan.validation.synthesisModelProfile.execution,
+      sourceToolPolicy: plan.validation.sourceToolPolicy,
+      budget: plan.validation.budget,
+    });
+    const rawValidation = await dependencies.artifactStore.readJson(
+      validationRef.digest,
+    );
+    if (sha256Digest(rawValidation) !== validationRef.digest) {
+      throw new Error("Validation Record CAS mismatch");
+    }
+    const validationRecord = validationRecordSchema.parse(rawValidation);
+    validationRecords.push(validationRecord);
+    await record.recordValidationCompletion(
+      plan.campaignId,
+      plan.runId,
+      validationRef,
+    );
+  }
+
+  const registry = await record.readApproachFamilyRegistryV3(
+    plan.campaignId,
+    plan.runId,
+  );
+  if (registry === undefined) {
+    throw new Error("Approach Family Registry v3 is missing");
+  }
+  const frontierGaps = await record.listValidationFrontierGaps(
+    plan.campaignId,
+    plan.runId,
+  );
+  const attempts = (
+    await record.listSemanticCampaignAttempts(plan.campaignId, plan.runId)
+  ).flatMap((attempt) =>
+    attempt.completion === undefined ? [] : [attempt.completion.value.result],
+  );
+  const pendingValidation = validationRecords.some(
+    (validationRecord) => validationRecord.status === "validation-pending",
+  );
+  const researchWorkRemains =
+    decision.campaignDisposition !== "coverage-closed" ||
+    registry.ref.states.active > 0 ||
+    registry.ref.states.blocked > 0 ||
+    registry.ref.pendingValidations > 0;
+  return record.recordSemanticCampaignRunCompletionV3({
+    kind: "campaign-run-completion",
+    schemaVersion: 3,
+    runId: plan.runId,
+    campaignId: plan.campaignId,
+    planDigest,
+    target: plan.target,
+    manifest: plan.manifest,
+    workWave: decision.wave,
+    waveTerminal,
+    attempts,
+    iterationDecision: decision,
+    iterationDecisionRef: recordedDecision.decision,
+    approachFamilyRegistry: registry.ref,
+    validations: validationRecords.sort((left, right) =>
+      compareText(left.validationId, right.validationId),
+    ),
+    validationFrontierGaps: frontierGaps.map((gap) => gap.frontierGap),
+    decision: pendingValidation
+      ? { kind: "incomplete", reason: "validation-pending" }
+      : researchWorkRemains
+        ? { kind: "incomplete", reason: "research-work-remains" }
+        : { kind: "complete" },
+  });
+}
+
 async function executeDefaultSemanticCampaign(
   record: ResearchRecord,
   dependencies: CampaignExecutionDependencies,
-  plan: DefaultSemanticCampaignRunPlanV2,
+  plan: DefaultSemanticCampaignRunPlanV2 | DefaultSemanticCampaignRunPlanV3,
 ) {
   const campaignStartedAt = performance.now();
   const preparation = await record.readPreparation(plan.campaignId);
@@ -831,16 +1021,15 @@ async function executeDefaultSemanticCampaign(
   const start = await record.recordSemanticCampaignRunStart(plan);
   if (start.disposition === "completed") return start.run;
 
-  const verificationQueue = openSemanticVerificationQueue(
-    record,
-    dependencies,
-    plan,
-  );
+  const verificationQueue =
+    plan.schemaVersion === 2
+      ? openSemanticVerificationQueue(record, dependencies, plan)
+      : undefined;
   for (const checkpoint of await record.listSemanticFinderCheckpoints(
     plan.campaignId,
     plan.runId,
   )) {
-    verificationQueue.enqueue(checkpoint.checkpoint.subject);
+    verificationQueue?.enqueue(checkpoint.checkpoint.subject);
   }
   const initialWave = materializeInitialSemanticWaveFoundation({
     target: plan.target,
@@ -877,7 +1066,7 @@ async function executeDefaultSemanticCampaign(
       leaseId: initialWave.baselineLease.id,
       workWaveDigest: initialWave.ref.digest,
     },
-    (checkpoint) => verificationQueue.enqueue(checkpoint.subject),
+    (checkpoint) => verificationQueue?.enqueue(checkpoint.subject),
   );
 
   let plannerOrdinal = 0;
@@ -935,12 +1124,30 @@ async function executeDefaultSemanticCampaign(
       throw new Error(`Semantic Root Planning returned ${planning.kind}`);
     }
     await baselineResultPromise;
-    await verificationQueue.drain();
-    const verificationState = verificationQueue.snapshot();
+    await verificationQueue?.drain();
+    const verificationState = verificationQueue?.snapshot();
     const attemptRecords = await record.listSemanticCampaignAttempts(
       plan.campaignId,
       plan.runId,
     );
+    if (plan.schemaVersion === 3) {
+      return record.recordSemanticCampaignRunCompletionV3({
+        kind: "campaign-run-completion",
+        schemaVersion: 3,
+        runId: plan.runId,
+        campaignId: plan.campaignId,
+        planDigest: start.planDigest,
+        target: plan.target,
+        manifest: plan.manifest,
+        attempts: attemptRecords.flatMap((attempt) =>
+          attempt.completion === undefined
+            ? []
+            : [attempt.completion.value.result],
+        ),
+        stage: planning,
+        decision: { kind: "incomplete", reason: "planning-incomplete" },
+      });
+    }
     return record.recordSemanticCampaignRunCompletion({
       kind: "campaign-run-completion",
       schemaVersion: 2,
@@ -955,7 +1162,7 @@ async function executeDefaultSemanticCampaign(
           : [attempt.completion.value.result],
       ),
       stage: planning,
-      verifications: [...verificationState.refs],
+      verifications: [...(verificationState?.refs ?? [])],
       decision: { kind: "incomplete", reason: "planning-incomplete" },
     });
   }
@@ -1016,7 +1223,7 @@ async function executeDefaultSemanticCampaign(
                 leaseId: lease.id,
                 workWaveDigest: wave.ref.digest,
               },
-              (checkpoint) => verificationQueue.enqueue(checkpoint.subject),
+              (checkpoint) => verificationQueue?.enqueue(checkpoint.subject),
             );
       if (result.ref.role !== "finder" || result.value.role !== "finder") {
         throw new Error("Semantic Finder returned another Attempt role");
@@ -1148,7 +1355,7 @@ async function executeDefaultSemanticCampaign(
   });
   const evaluated = await semanticExploration.decide({
     kind: "evaluate-semantic-wave",
-    schemaVersion: 2,
+    schemaVersion: plan.schemaVersion,
     target: plan.target,
     manifest: plan.manifest,
     wave,
@@ -1165,20 +1372,40 @@ async function executeDefaultSemanticCampaign(
   });
   if (
     evaluated.kind !== "iteration-decision" ||
-    evaluated.schemaVersion !== 2
+    evaluated.schemaVersion !== plan.schemaVersion
   ) {
     if (
       evaluated.kind !== "evaluation-incomplete" ||
-      evaluated.schemaVersion !== 2
+      evaluated.schemaVersion !== plan.schemaVersion
     ) {
       throw new Error(`Semantic Root Evaluation returned ${evaluated.kind}`);
     }
-    await verificationQueue.drain();
-    const verificationState = verificationQueue.snapshot();
+    await verificationQueue?.drain();
+    const verificationState = verificationQueue?.snapshot();
     const attemptRecords = await record.listSemanticCampaignAttempts(
       plan.campaignId,
       plan.runId,
     );
+    if (plan.schemaVersion === 3) {
+      if (evaluated.schemaVersion !== 3) semanticRunConflict(plan);
+      return record.recordSemanticCampaignRunCompletionV3({
+        kind: "campaign-run-completion",
+        schemaVersion: 3,
+        runId: plan.runId,
+        campaignId: plan.campaignId,
+        planDigest: start.planDigest,
+        target: plan.target,
+        manifest: plan.manifest,
+        attempts: attemptRecords.flatMap((attempt) =>
+          attempt.completion === undefined
+            ? []
+            : [attempt.completion.value.result],
+        ),
+        stage: evaluated,
+        decision: { kind: "incomplete", reason: "evaluation-incomplete" },
+      });
+    }
+    if (evaluated.schemaVersion !== 2) semanticRunConflict(plan);
     return record.recordSemanticCampaignRunCompletion({
       kind: "campaign-run-completion",
       schemaVersion: 2,
@@ -1193,9 +1420,26 @@ async function executeDefaultSemanticCampaign(
           : [attempt.completion.value.result],
       ),
       stage: evaluated,
-      verifications: [...verificationState.refs],
+      verifications: [...(verificationState?.refs ?? [])],
       decision: { kind: "incomplete", reason: "evaluation-incomplete" },
     });
+  }
+  if (plan.schemaVersion === 3 && evaluated.schemaVersion === 3) {
+    return completeCurrentSemanticIteration(
+      record,
+      dependencies,
+      plan,
+      start.planDigest,
+      evaluated,
+      waveTerminalRef,
+    );
+  }
+  if (
+    plan.schemaVersion !== 2 ||
+    evaluated.schemaVersion !== 2 ||
+    verificationQueue === undefined
+  ) {
+    semanticRunConflict(plan);
   }
   const iterationDecision: IterationDecisionV2 = evaluated;
   const iterationDecisionArtifactDigest =
@@ -2671,9 +2915,12 @@ export function openCampaignControl(
           typeof value === "object" &&
           value !== null &&
           "schemaVersion" in value &&
-          value.schemaVersion === 2
+          (value.schemaVersion === 2 || value.schemaVersion === 3)
         ) {
-          const plan = campaignRunPlanV2Schema.parse(value);
+          const plan =
+            value.schemaVersion === 3
+              ? campaignRunPlanV3Schema.parse(value)
+              : campaignRunPlanV2Schema.parse(value);
           if (dependencies === undefined) {
             throw new Error("Campaign execution dependencies are unavailable");
           }
@@ -2683,7 +2930,7 @@ export function openCampaignControl(
           }
           await validatePreparationHandoff(preparation);
           return (
-            await ("workWave" in plan
+            await (plan.schemaVersion === 2 && "workWave" in plan
               ? executeSemanticFinderWave(record, dependencies, plan)
               : executeDefaultSemanticCampaign(record, dependencies, plan))
           ).ref;

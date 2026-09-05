@@ -18,7 +18,9 @@ import {
 } from "../research-record/canonical-json.js";
 import {
   campaignRunPlanV2Schema,
+  campaignRunPlanV3Schema,
   type CampaignRunPlanV2,
+  type CampaignRunPlanV3,
 } from "./contracts.js";
 
 function finderJsonSchema(
@@ -38,7 +40,7 @@ function finderJsonSchema(
 }
 
 function assertBinding(
-  run: CampaignRunPlanV2,
+  run: CampaignRunPlanV2 | CampaignRunPlanV3,
   wave: Pick<SemanticWorkWavePlan, "id" | "ref" | "target" | "manifest">,
   lease: SemanticWorkLease,
   thesis: ResearchThesis,
@@ -62,7 +64,7 @@ function assertBinding(
 }
 
 export interface RawSourceFinderAttemptMaterializationInput {
-  readonly run: CampaignRunPlanV2;
+  readonly run: CampaignRunPlanV2 | CampaignRunPlanV3;
   readonly wave: Pick<
     SemanticWorkWavePlan,
     "id" | "ref" | "purpose" | "target" | "manifest"
@@ -75,7 +77,10 @@ export interface RawSourceFinderAttemptMaterializationInput {
 export function materializeRawSourceFinderAttempt(
   input: RawSourceFinderAttemptMaterializationInput,
 ): Extract<AttemptPlanV2, { role: "finder" }> {
-  const run = campaignRunPlanV2Schema.parse(input.run);
+  const run =
+    input.run.schemaVersion === 3
+      ? campaignRunPlanV3Schema.parse(input.run)
+      : campaignRunPlanV2Schema.parse(input.run);
   const wave = input.wave;
   const lease = semanticWorkLeaseSchema.parse(input.lease);
   const thesis = researchThesisSchema.parse(input.thesis);

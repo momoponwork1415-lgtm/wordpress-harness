@@ -19,14 +19,17 @@ import {
   campaignAttemptIntentV2Schema,
   campaignRunCompletionInputSchema,
   campaignRunCompletionInputV2Schema,
+  campaignRunCompletionInputV3Schema,
   campaignRunPlanSchema,
   campaignRunPlanV2Schema,
   campaignRunPlanV3Schema,
   campaignRunRecordSchema,
   campaignRunRecordV2Schema,
+  campaignRunRecordV3Schema,
   type AnyCampaignRunRecordView,
   type CampaignRunCompletionInput,
   type CampaignRunCompletionInputV2,
+  type CampaignRunCompletionInputV3,
   type CampaignRunPlan,
   type CampaignRunPlanV2,
   type CampaignRunPlanV3,
@@ -34,8 +37,10 @@ import {
   type DefaultSemanticCampaignRunPlanV3,
   type CampaignRunRecordRef,
   type CampaignRunRecordRefV2,
+  type CampaignRunRecordRefV3,
   type CampaignRunRecordView,
   type CampaignRunRecordViewV2,
+  type CampaignRunRecordViewV3,
   type CampaignAttemptCompletion,
   type CampaignAttemptCompletionV2,
   type CampaignAttemptIntent,
@@ -374,6 +379,12 @@ const semanticCampaignRunCompletedPayloadSchema = z.strictObject({
   recordDigest: digestSchema,
 });
 
+const semanticCampaignRunCompletedPayloadV3Schema = z.strictObject({
+  completionInputDigest: digestSchema,
+  record: campaignRunRecordV3Schema,
+  recordDigest: digestSchema,
+});
+
 const semanticCampaignAttemptStartedPayloadSchema = z.strictObject({
   intent: campaignAttemptIntentV2Schema,
 });
@@ -527,7 +538,7 @@ interface StoredSemanticCampaignRun {
   readonly startedAt: string;
   readonly startedLedgerHead: number;
   readonly completionInputDigest?: string;
-  readonly completed?: CampaignRunRecordViewV2;
+  readonly completed?: CampaignRunRecordViewV2 | CampaignRunRecordViewV3;
 }
 
 interface LedgerProjection {
@@ -785,6 +796,32 @@ function semanticCampaignRunRef(
     digest: recordDigest,
     decision,
   };
+}
+
+function currentSemanticCampaignRunRef(
+  runId: string,
+  recordDigest: string,
+  decision: CampaignRunRecordRefV3["decision"],
+): CampaignRunRecordRefV3 {
+  return {
+    kind: "campaign-run-record",
+    schemaVersion: 3,
+    runId,
+    digest: recordDigest,
+    decision,
+  };
+}
+
+function isSemanticCampaignRunViewV2(
+  value: CampaignRunRecordViewV2 | CampaignRunRecordViewV3,
+): value is CampaignRunRecordViewV2 {
+  return value.ref.schemaVersion === 2;
+}
+
+function isSemanticCampaignRunViewV3(
+  value: CampaignRunRecordViewV2 | CampaignRunRecordViewV3,
+): value is CampaignRunRecordViewV3 {
+  return value.ref.schemaVersion === 3;
 }
 
 function semanticAttemptIdentityMatches(
@@ -1328,7 +1365,11 @@ class SqliteResearchRecord implements ResearchRecord {
       }
       const ledger = this.#decodeLedger(input.campaignId, rows);
       const existing = ledger.semanticRuns.get(input.runId);
-      if (existing === undefined || existing.planDigest !== input.planDigest) {
+      if (
+        existing === undefined ||
+        existing.plan.schemaVersion !== 2 ||
+        existing.planDigest !== input.planDigest
+      ) {
         throw new LedgerIntegrityError(
           input.campaignId,
           "campaign-run-plan-digest-mismatch",
@@ -1356,11 +1397,15 @@ class SqliteResearchRecord implements ResearchRecord {
           );
         }
       }
-      if (existing.completed !== undefined) {
+      const completed = existing.completed;
+      if (completed !== undefined) {
         if (existing.completionInputDigest !== completionInputDigest) {
           throw new CampaignRunConflictError(input.campaignId, input.runId);
         }
-        return existing.completed;
+        if (!isSemanticCampaignRunViewV2(completed)) {
+          throw new CampaignRunConflictError(input.campaignId, input.runId);
+        }
+        return completed;
       }
 
       const completedAttemptRefs = [...ledger.semanticAttempts.values()]
@@ -1406,6 +1451,172 @@ class SqliteResearchRecord implements ResearchRecord {
           record.decision.kind,
         ),
         value: record,
+      };
+    });
+    return transact();
+  }
+
+  async recordSemanticCampaignRunCompletionV3(
+    value: CampaignRunCompletionInputV3,
+  ): Promise<CampaignRunRecordViewV3> {
+    const input = campaignRunCompletionInputV3Schema.parse(value);
+    const completionInputDigest = sha256Digest(input);
+    const transact = this.#database.transaction((): CampaignRunRecordViewV3 => {
+      const rows = this.#readRows(input.campaignId);
+      if (rows.length === 0) {
+        throw new Error(`Campaign not found: ${input.campaignId}`);
+      }
+      const ledger = this.#decodeLedger(input.campaignId, rows);
+      const existing = ledger.semanticRuns.get(input.runId);
+      if (
+        existing === undefined ||
+        existing.plan.schemaVersion !== 3 ||
+        existing.planDigest !== input.planDigest
+      ) {
+        throw new LedgerIntegrityError(
+          input.campaignId,
+          "campaign-run-plan-digest-mismatch",
+        );
+      }
+      const completed = existing.completed;
+      if (completed !== undefined) {
+        if (
+          !isSemanticCampaignRunViewV3(completed) ||
+          existing.completionInputDigest !== completionInputDigest
+        ) {
+          throw new CampaignRunConflictError(input.campaignId, input.runId);
+        }
+        return completed;
+      }
+
+      const completedAttemptRefs = [...ledger.semanticAttempts.values()]
+        .filter((attempt) => attempt.intent.runId === input.runId)
+        .flatMap((attempt) =>
+          attempt.completion === undefined
+            ? []
+            : [attempt.completion.value.result],
+        )
+        .sort((left, right) => compareText(left.digest, right.digest));
+      const requestedAttemptRefs = [...input.attempts].sort((left, right) =>
+        compareText(left.digest, right.digest),
+      );
+      if (
+        canonicalJson(completedAttemptRefs) !==
+        canonicalJson(requestedAttemptRefs)
+      ) {
+        throw new LedgerIntegrityError(input.campaignId, "invalid-event-order");
+      }
+
+      if ("iterationDecision" in input) {
+        const expectedDecisionRef = referenceSemanticIterationDecisionV3(
+          input.iterationDecision,
+        );
+        const recordedDecision = ledger.semanticIterationDecisionsV3.get(
+          expectedDecisionRef.digest,
+        );
+        const registry = ledger.approachFamilyRegistriesV3.get(input.runId);
+        if (
+          recordedDecision === undefined ||
+          registry === undefined ||
+          canonicalJson(recordedDecision.decision) !==
+            canonicalJson(input.iterationDecisionRef) ||
+          canonicalJson(registry.ref) !==
+            canonicalJson(input.approachFamilyRegistry)
+        ) {
+          throw new LedgerIntegrityError(
+            input.campaignId,
+            "invalid-event-order",
+          );
+        }
+
+        const runIntentIds = new Set(
+          [...ledger.validationIntents.values()]
+            .filter((record) => record.intent.runId === input.runId)
+            .map((record) => record.intent.validationId),
+        );
+        const recordedCompletions = [...ledger.validationCompletions.values()]
+          .filter((record) =>
+            runIntentIds.has(record.completion.validation.validationId),
+          )
+          .sort((left, right) =>
+            compareText(
+              left.completion.validation.validationId,
+              right.completion.validation.validationId,
+            ),
+          );
+        const requestedValidations = [...input.validations]
+          .map((validation) => ({
+            ref: {
+              kind: validation.kind,
+              schemaVersion: validation.schemaVersion,
+              validationId: validation.validationId,
+              candidateId: validation.candidateId,
+              digest: sha256Digest(validation),
+            },
+            disposition: validation.status,
+          }))
+          .sort((left, right) =>
+            compareText(left.ref.validationId, right.ref.validationId),
+          );
+        if (
+          canonicalJson(
+            recordedCompletions.map((record) => ({
+              ref: record.completion.validation,
+              disposition: record.completion.disposition,
+            })),
+          ) !== canonicalJson(requestedValidations)
+        ) {
+          throw new LedgerIntegrityError(
+            input.campaignId,
+            "invalid-event-order",
+          );
+        }
+        const recordedFrontierGaps = recordedCompletions
+          .flatMap((record) =>
+            record.completion.frontierGap === undefined
+              ? []
+              : [record.completion.frontierGap],
+          )
+          .sort((left, right) => compareText(left.digest, right.digest));
+        const requestedFrontierGaps = [...input.validationFrontierGaps].sort(
+          (left, right) => compareText(left.digest, right.digest),
+        );
+        if (
+          canonicalJson(recordedFrontierGaps) !==
+          canonicalJson(requestedFrontierGaps)
+        ) {
+          throw new LedgerIntegrityError(
+            input.campaignId,
+            "invalid-event-order",
+          );
+        }
+      }
+
+      const completedAt = this.#clock().toISOString();
+      const runRecord = campaignRunRecordV3Schema.parse({
+        ...input,
+        kind: "campaign-run-record",
+        completedAt,
+      });
+      const recordDigest = sha256Digest(runRecord);
+      const ledgerHead = rows.length + 1;
+      this.#insertEvent(
+        input.campaignId,
+        ledgerHead,
+        "campaign.run-completed",
+        completedAt,
+        { completionInputDigest, record: runRecord, recordDigest },
+        3,
+      );
+      return {
+        ledgerHead,
+        occurredAt: completedAt,
+        ref: currentSemanticCampaignRunRef(
+          input.runId,
+          recordDigest,
+          runRecord.decision.kind,
+        ),
+        value: runRecord,
       };
     });
     return transact();
@@ -3655,6 +3866,130 @@ class SqliteResearchRecord implements ResearchRecord {
         continue;
       }
       if (event.kind === "campaign.run-completed") {
+        if (event.schema_version === 3) {
+          const payload = semanticCampaignRunCompletedPayloadV3Schema.parse(
+            this.#parsePayload(event),
+          );
+          const existing = semanticRuns.get(payload.record.runId);
+          if (
+            existing === undefined ||
+            existing.plan.schemaVersion !== 3 ||
+            existing.completed !== undefined ||
+            payload.record.campaignId !== campaignId ||
+            payload.record.planDigest !== existing.planDigest ||
+            payload.record.completedAt !== event.occurred_at ||
+            sha256Digest(payload.record) !== payload.recordDigest
+          ) {
+            throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+          }
+          const completedAttemptRefs = [...semanticAttempts.values()]
+            .filter((attempt) => attempt.intent.runId === payload.record.runId)
+            .flatMap((attempt) =>
+              attempt.completion === undefined
+                ? []
+                : [attempt.completion.value.result],
+            )
+            .sort((left, right) => compareText(left.digest, right.digest));
+          const recordedAttemptRefs = [...payload.record.attempts].sort(
+            (left, right) => compareText(left.digest, right.digest),
+          );
+          if (
+            canonicalJson(completedAttemptRefs) !==
+            canonicalJson(recordedAttemptRefs)
+          ) {
+            throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+          }
+          if ("iterationDecision" in payload.record) {
+            const decision = semanticIterationDecisionsV3.get(
+              payload.record.iterationDecisionRef.digest,
+            );
+            const registry = approachFamilyRegistriesV3.get(
+              payload.record.runId,
+            );
+            if (
+              decision === undefined ||
+              registry === undefined ||
+              canonicalJson(decision.decision) !==
+                canonicalJson(payload.record.iterationDecisionRef) ||
+              canonicalJson(registry.ref) !==
+                canonicalJson(payload.record.approachFamilyRegistry)
+            ) {
+              throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+            }
+            const runIntentIds = new Set(
+              [...validationIntents.values()]
+                .filter(
+                  (record) => record.intent.runId === payload.record.runId,
+                )
+                .map((record) => record.intent.validationId),
+            );
+            const recordedCompletions = [...validationCompletions.values()]
+              .filter((record) =>
+                runIntentIds.has(record.completion.validation.validationId),
+              )
+              .sort((left, right) =>
+                compareText(
+                  left.completion.validation.validationId,
+                  right.completion.validation.validationId,
+                ),
+              );
+            const embeddedValidations = [...payload.record.validations]
+              .map((validation) => ({
+                ref: {
+                  kind: validation.kind,
+                  schemaVersion: validation.schemaVersion,
+                  validationId: validation.validationId,
+                  candidateId: validation.candidateId,
+                  digest: sha256Digest(validation),
+                },
+                disposition: validation.status,
+              }))
+              .sort((left, right) =>
+                compareText(left.ref.validationId, right.ref.validationId),
+              );
+            if (
+              canonicalJson(
+                recordedCompletions.map((record) => ({
+                  ref: record.completion.validation,
+                  disposition: record.completion.disposition,
+                })),
+              ) !== canonicalJson(embeddedValidations)
+            ) {
+              throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+            }
+            const recordedFrontierGaps = recordedCompletions
+              .flatMap((record) =>
+                record.completion.frontierGap === undefined
+                  ? []
+                  : [record.completion.frontierGap],
+              )
+              .sort((left, right) => compareText(left.digest, right.digest));
+            const embeddedFrontierGaps = [
+              ...payload.record.validationFrontierGaps,
+            ].sort((left, right) => compareText(left.digest, right.digest));
+            if (
+              canonicalJson(recordedFrontierGaps) !==
+              canonicalJson(embeddedFrontierGaps)
+            ) {
+              throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+            }
+          }
+          semanticRuns.set(payload.record.runId, {
+            ...existing,
+            completionInputDigest: payload.completionInputDigest,
+            completed: {
+              ledgerHead: event.campaign_sequence,
+              occurredAt: event.occurred_at,
+              ref: currentSemanticCampaignRunRef(
+                payload.record.runId,
+                payload.recordDigest,
+                payload.record.decision.kind,
+              ),
+              value: payload.record,
+            },
+          });
+          continue;
+        }
         if (event.schema_version === 2) {
           const payload = semanticCampaignRunCompletedPayloadSchema.parse(
             this.#parsePayload(event),
