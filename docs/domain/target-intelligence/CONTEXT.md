@@ -92,6 +92,10 @@ _Avoid_: Programme queue、Campaign list、Duplicate Target set
 Candidate Poolから同じSelection Policyで一度に人間へ提示する有限なTarget Candidate集合。Research同時実行数またはProgramme別queueではなく、batch sizeの拡大には先行batchの完走率、Human Verification負荷、外部programme outcomeを使う。
 _Avoid_: Campaign Wave、Submission batch、Leaderboard quota
 
+**Approved Target Batch**:
+一つのSelection AttemptのSelection Receipt集合について、人間が承認、除外、順序変更、operator nominationを一回の判断として記録し、Selection Policy、Opus Model Profile、source freshness、Campaign Policy、Batch Budget、execution windowへbindしたversioned artifact。operator nominationもSelection hard gateを迂回せず、Batchの承認だけではResearchまたは外部行動を開始しない。
+_Avoid_: Candidate Batch、Campaign Queue、Submission approval
+
 **Target Acquisition**:
 選ばれたplugin sourceと配布metadataを、provenanceを失わずResearchへ受け渡せる状態にする行為。
 _Avoid_: Download、Human Verification setup
