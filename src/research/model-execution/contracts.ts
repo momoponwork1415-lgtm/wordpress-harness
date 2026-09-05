@@ -70,11 +70,10 @@ const immutableRefSchema = z.strictObject({
   digest: digestSchema,
 });
 
-const attemptPlanV2Fields = {
+const attemptPlanV2CommonFields = {
   kind: z.literal("attempt-plan"),
   schemaVersion: z.literal(2),
   attemptId: identifierSchema,
-  owner: z.literal("exploration"),
   target: targetSnapshotRefSchema,
   manifest: targetFileManifestRefSchema,
   promptSet: immutableRefSchema,
@@ -115,7 +114,8 @@ const semanticWorkWaveRefSchema = z.strictObject({
 
 export const attemptPlanV2Schema = z.discriminatedUnion("role", [
   z.strictObject({
-    ...attemptPlanV2Fields,
+    ...attemptPlanV2CommonFields,
+    owner: z.literal("exploration"),
     role: z.literal("root-planner"),
     assignment: z.strictObject({
       kind: z.literal("initial-research-planning"),
@@ -140,7 +140,8 @@ export const attemptPlanV2Schema = z.discriminatedUnion("role", [
     }),
   }),
   z.strictObject({
-    ...attemptPlanV2Fields,
+    ...attemptPlanV2CommonFields,
+    owner: z.literal("exploration"),
     role: z.literal("finder"),
     assignment: z.discriminatedUnion("kind", [
       z.strictObject({
@@ -168,7 +169,8 @@ export const attemptPlanV2Schema = z.discriminatedUnion("role", [
     }),
   }),
   z.strictObject({
-    ...attemptPlanV2Fields,
+    ...attemptPlanV2CommonFields,
+    owner: z.literal("exploration"),
     role: z.literal("root-evaluator"),
     assignment: z.discriminatedUnion("kind", [
       z.strictObject({
@@ -190,7 +192,8 @@ export const attemptPlanV2Schema = z.discriminatedUnion("role", [
     budget: modelAttemptBudgetV2Schema,
   }),
   z.strictObject({
-    ...attemptPlanV2Fields,
+    ...attemptPlanV2CommonFields,
+    owner: z.literal("exploration"),
     role: z.literal("root-synthesizer"),
     assignment: z.strictObject({
       kind: z.literal("depth-synthesis"),
@@ -203,7 +206,8 @@ export const attemptPlanV2Schema = z.discriminatedUnion("role", [
     budget: modelAttemptBudgetV2Schema,
   }),
   z.strictObject({
-    ...attemptPlanV2Fields,
+    ...attemptPlanV2CommonFields,
+    owner: z.literal("exploration"),
     role: z.literal("adversarial-critic"),
     assignment: z.strictObject({
       kind: z.literal("chain-critique"),
@@ -218,6 +222,37 @@ export const attemptPlanV2Schema = z.discriminatedUnion("role", [
       maxSourceResponseBytes: z.number().int().positive().optional(),
       sourceLimitTerminalOutput: z.literal("preserve").optional(),
     }),
+  }),
+  z.strictObject({
+    ...attemptPlanV2CommonFields,
+    owner: z.literal("validation"),
+    role: z.literal("validator"),
+    assignment: z.strictObject({
+      kind: z.literal("candidate-validation"),
+      schemaVersion: z.literal(1),
+      candidateId: digestSchema,
+      threatContextId: digestSchema,
+      attemptOrdinal: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+    }),
+    sourceToolPolicy: sourceToolPolicyRefSchema,
+    budget: modelAttemptBudgetV2Schema.extend({
+      maxSourceQueries: z.number().int().positive(),
+      maxSourceScanBytes: z.number().int().positive().optional(),
+      maxSourceResponseBytes: z.number().int().positive().optional(),
+      sourceLimitTerminalOutput: z.literal("preserve").optional(),
+    }),
+  }),
+  z.strictObject({
+    ...attemptPlanV2CommonFields,
+    owner: z.literal("validation"),
+    role: z.literal("validation-synthesizer"),
+    assignment: z.strictObject({
+      kind: z.literal("validation-synthesis"),
+      schemaVersion: z.literal(1),
+      candidateId: digestSchema,
+      validatorAttemptDigests: z.array(digestSchema).min(2).max(3),
+    }),
+    budget: modelAttemptBudgetV2Schema,
   }),
 ]);
 
@@ -250,13 +285,15 @@ export const modelAttemptResultV2Schema = z.discriminatedUnion("status", [
     kind: z.literal("model-attempt-result"),
     schemaVersion: z.literal(2),
     attemptId: identifierSchema,
-    owner: z.literal("exploration"),
+    owner: z.enum(["exploration", "validation"]),
     role: z.enum([
       "root-planner",
       "finder",
       "root-evaluator",
       "root-synthesizer",
       "adversarial-critic",
+      "validator",
+      "validation-synthesizer",
     ]),
     planDigest: digestSchema,
     status: z.literal("completed"),
@@ -271,13 +308,15 @@ export const modelAttemptResultV2Schema = z.discriminatedUnion("status", [
     kind: z.literal("model-attempt-result"),
     schemaVersion: z.literal(2),
     attemptId: identifierSchema,
-    owner: z.literal("exploration"),
+    owner: z.enum(["exploration", "validation"]),
     role: z.enum([
       "root-planner",
       "finder",
       "root-evaluator",
       "root-synthesizer",
       "adversarial-critic",
+      "validator",
+      "validation-synthesizer",
     ]),
     planDigest: digestSchema,
     status: modelAttemptTerminalStatusSchema,
@@ -294,13 +333,15 @@ export const attemptExecutionResultV2RefSchema = z.strictObject({
   kind: z.literal("attempt-execution-result"),
   schemaVersion: z.literal(2),
   attemptId: identifierSchema,
-  owner: z.literal("exploration"),
+  owner: z.enum(["exploration", "validation"]),
   role: z.enum([
     "root-planner",
     "finder",
     "root-evaluator",
     "root-synthesizer",
     "adversarial-critic",
+    "validator",
+    "validation-synthesizer",
   ]),
   planDigest: digestSchema,
   digest: digestSchema,

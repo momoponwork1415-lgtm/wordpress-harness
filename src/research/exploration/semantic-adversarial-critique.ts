@@ -115,6 +115,7 @@ export const adversarialCriticOutputSchema = z.strictObject({
 });
 
 const criticAttemptRefSchema = attemptExecutionResultV2RefSchema.extend({
+  owner: z.literal("exploration"),
   role: z.literal("adversarial-critic"),
 });
 
@@ -479,6 +480,8 @@ function validateAttemptResult(
   if (
     !ref.success ||
     !value.success ||
+    ref.data.owner !== "exploration" ||
+    value.data.owner !== "exploration" ||
     ref.data.role !== "adversarial-critic" ||
     value.data.role !== "adversarial-critic" ||
     ref.data.attemptId !== plan.attemptId ||

@@ -301,9 +301,13 @@ async function readSemanticFinderResult(
   refValue: unknown,
 ): Promise<{
   readonly ref: ReturnType<typeof attemptExecutionResultV2RefSchema.parse> & {
+    readonly owner: "exploration";
     readonly role: "finder";
   };
-  readonly value: ModelAttemptResultV2 & { readonly role: "finder" };
+  readonly value: ModelAttemptResultV2 & {
+    readonly owner: "exploration";
+    readonly role: "finder";
+  };
 }> {
   const ref = attemptExecutionResultV2RefSchema.parse(refValue);
   const artifact = await dependencies.artifactStore.readJson(ref.digest);
@@ -312,6 +316,8 @@ async function readSemanticFinderResult(
   }
   const value = modelAttemptResultV2Schema.parse(artifact);
   if (
+    ref.owner !== "exploration" ||
+    value.owner !== "exploration" ||
     ref.role !== "finder" ||
     value.role !== "finder" ||
     value.attemptId !== ref.attemptId ||
@@ -320,8 +326,8 @@ async function readSemanticFinderResult(
     throw new Error(`Semantic Finder artifact ref mismatch: ${ref.attemptId}`);
   }
   return {
-    ref: { ...ref, role: "finder" },
-    value: { ...value, role: "finder" },
+    ref: { ...ref, owner: "exploration", role: "finder" },
+    value: { ...value, owner: "exploration", role: "finder" },
   };
 }
 
@@ -336,6 +342,8 @@ async function readSemanticAttemptResult(
   }
   const value = modelAttemptResultV2Schema.parse(artifact);
   if (
+    ref.owner !== "exploration" ||
+    value.owner !== "exploration" ||
     value.attemptId !== ref.attemptId ||
     value.planDigest !== ref.planDigest ||
     value.role !== ref.role
@@ -349,6 +357,9 @@ function semanticAttemptCompletion(
   intent: CampaignAttemptIntentV2,
   result: AttemptExecutionResultV2["ref"],
 ): CampaignAttemptCompletionV2 {
+  if (result.owner !== "exploration") {
+    throw new Error("Semantic completion contains another owner");
+  }
   const common = {
     kind: "campaign-attempt-completion" as const,
     schemaVersion: 2 as const,
@@ -365,7 +376,7 @@ function semanticAttemptCompletion(
       ...common,
       role: intent.role,
       preparationDigest: intent.preparationDigest,
-      result: { ...result, role: "root-planner" },
+      result: { ...result, owner: "exploration", role: "root-planner" },
     };
   }
   if (intent.role === "finder") {
@@ -380,7 +391,7 @@ function semanticAttemptCompletion(
       ...(intent.predecessorDecisionDigest === undefined
         ? {}
         : { predecessorDecisionDigest: intent.predecessorDecisionDigest }),
-      result: { ...result, role: "finder" },
+      result: { ...result, owner: "exploration", role: "finder" },
     };
   }
   if (intent.role === "root-evaluator") {
@@ -405,7 +416,7 @@ function semanticAttemptCompletion(
       ...(intent.critiqueDigest === undefined
         ? {}
         : { critiqueDigest: intent.critiqueDigest }),
-      result: { ...result, role: "root-evaluator" },
+      result: { ...result, owner: "exploration", role: "root-evaluator" },
     };
   }
   if (intent.role === "root-synthesizer") {
@@ -417,7 +428,7 @@ function semanticAttemptCompletion(
       role: intent.role,
       queueDigest: intent.queueDigest,
       batchId: intent.batchId,
-      result: { ...result, role: "root-synthesizer" },
+      result: { ...result, owner: "exploration", role: "root-synthesizer" },
     };
   }
   if (result.role !== "adversarial-critic") {
@@ -427,7 +438,7 @@ function semanticAttemptCompletion(
     ...common,
     role: intent.role,
     synthesisDigest: intent.synthesisDigest,
-    result: { ...result, role: "adversarial-critic" },
+    result: { ...result, owner: "exploration", role: "adversarial-critic" },
   };
 }
 
@@ -725,6 +736,8 @@ async function executeSemanticFinderWave(
       if (
         !ref.success ||
         !value.success ||
+        ref.data.owner !== "exploration" ||
+        value.data.owner !== "exploration" ||
         ref.data.role !== "finder" ||
         value.data.role !== "finder" ||
         ref.data.attemptId !== item.plan.attemptId ||
@@ -750,11 +763,19 @@ async function executeSemanticFinderWave(
         leaseId: item.plan.assignment.leaseId,
         ordinal: item.ordinal,
         workWaveDigest: preflight.wave.ref.digest,
-        result: { ...ref.data, role: "finder" },
+        result: { ...ref.data, owner: "exploration", role: "finder" },
       });
       return {
-        ref: { ...ref.data, role: "finder" as const },
-        value: { ...value.data, role: "finder" as const },
+        ref: {
+          ...ref.data,
+          owner: "exploration" as const,
+          role: "finder" as const,
+        },
+        value: {
+          ...value.data,
+          owner: "exploration" as const,
+          role: "finder" as const,
+        },
         expectedLeaseId: item.plan.assignment.leaseId,
         maxCandidates: item.maxCandidates,
       };

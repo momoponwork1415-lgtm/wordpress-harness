@@ -136,6 +136,22 @@ export type {
   FindingMechanismGroups,
 } from "./verification/index.js";
 export {
+  openValidation,
+  validationCandidateId,
+  validationCandidateSchema,
+  validationPlanSchema,
+  validationRecordRefSchema,
+  validationRecordSchema,
+} from "./validation/index.js";
+export type {
+  OpenValidationOptions,
+  Validation,
+  ValidationCandidate,
+  ValidationPlan,
+  ValidationRecord,
+  ValidationRecordRef,
+} from "./validation/index.js";
+export {
   openFinderAttemptMaterializer,
   openToolFreeFinderAttemptMaterializer,
 } from "./campaign-control/finder-attempt-materializer.js";

@@ -101,6 +101,7 @@ export const rootSynthesisOutputSchema = z.strictObject({
 });
 
 const attemptRefSchema = attemptExecutionResultV2RefSchema.extend({
+  owner: z.literal("exploration"),
   role: z.literal("root-synthesizer"),
 });
 
@@ -472,6 +473,8 @@ function validateAttemptResult(
   if (
     !ref.success ||
     !value.success ||
+    ref.data.owner !== "exploration" ||
+    value.data.owner !== "exploration" ||
     ref.data.role !== "root-synthesizer" ||
     value.data.role !== "root-synthesizer" ||
     ref.data.attemptId !== plan.attemptId ||

@@ -265,12 +265,14 @@ export const semanticFinderCheckpointRefSchema =
 export const semanticWaveAttemptOutcomeSchema = z.discriminatedUnion("status", [
   z.strictObject({
     attempt: attemptExecutionResultV2RefSchema.extend({
+      owner: z.literal("exploration"),
       role: z.literal("finder"),
     }),
     status: z.literal("completed"),
   }),
   z.strictObject({
     attempt: attemptExecutionResultV2RefSchema.extend({
+      owner: z.literal("exploration"),
       role: z.literal("finder"),
     }),
     status: z.enum([
@@ -293,7 +295,10 @@ export const semanticWaveTerminalSchema = z.strictObject({
   target: targetSnapshotRefSchema,
   manifest: targetFileManifestRefSchema,
   attempts: z.array(
-    attemptExecutionResultV2RefSchema.extend({ role: z.literal("finder") }),
+    attemptExecutionResultV2RefSchema.extend({
+      owner: z.literal("exploration"),
+      role: z.literal("finder"),
+    }),
   ),
   attemptOutcomes: z.array(semanticWaveAttemptOutcomeSchema),
   hypotheses: z.array(sourceBoundHypothesisArtifactRefSchema),
@@ -385,6 +390,7 @@ export const semanticWorkWavePlanSchema = z.strictObject({
   manifest: targetFileManifestRefSchema,
   policy: semanticPolicyRefSchema,
   plannerAttempt: attemptExecutionResultV2RefSchema.extend({
+    owner: z.literal("exploration"),
     role: z.literal("root-planner"),
   }),
   theses: z.array(researchThesisSchema).min(1).max(4),
@@ -546,12 +552,16 @@ export const iterationDecisionV2Schema = z.strictObject({
     terminalDigest: digestSchema,
     workLeases: z.array(semanticWorkLeaseRefSchema).min(1).max(4),
     attemptResults: z.array(
-      attemptExecutionResultV2RefSchema.extend({ role: z.literal("finder") }),
+      attemptExecutionResultV2RefSchema.extend({
+        owner: z.literal("exploration"),
+        role: z.literal("finder"),
+      }),
     ),
     toolReceipts: z.array(sourceEvidenceReceiptRefV2Schema),
     rootEvaluatorAttempts: z
       .array(
         attemptExecutionResultV2RefSchema.extend({
+          owner: z.literal("exploration"),
           role: z.literal("root-evaluator"),
         }),
       )
@@ -630,6 +640,7 @@ export const evaluationIncompleteDecisionSchema = z.strictObject({
   attempts: z
     .array(
       attemptExecutionResultV2RefSchema.extend({
+        owner: z.literal("exploration"),
         role: z.literal("root-evaluator"),
       }),
     )

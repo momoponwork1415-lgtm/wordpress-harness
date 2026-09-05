@@ -702,6 +702,8 @@ function validateEvaluatorResult(
   if (
     !ref.success ||
     !value.success ||
+    ref.data.owner !== "exploration" ||
+    value.data.owner !== "exploration" ||
     ref.data.role !== "root-evaluator" ||
     value.data.role !== "root-evaluator" ||
     ref.data.attemptId !== plan.attemptId ||

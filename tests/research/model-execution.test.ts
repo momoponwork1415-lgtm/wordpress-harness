@@ -241,6 +241,47 @@ function adversarialCriticAttemptPlan(): Extract<
   };
 }
 
+function validatorAttemptPlan(): Extract<AttemptPlanV2, { role: "validator" }> {
+  const original = rootPlannerAttemptPlan();
+  return {
+    ...original,
+    attemptId: "validator-attempt-1",
+    owner: "validation",
+    role: "validator",
+    assignment: {
+      kind: "candidate-validation",
+      schemaVersion: 1,
+      candidateId: `sha256:${"6".repeat(64)}`,
+      threatContextId: `sha256:${"7".repeat(64)}`,
+      attemptOrdinal: 1,
+    },
+    prompt: "Validate the candidate against fresh source.",
+  };
+}
+
+function validationSynthesisAttemptPlan(): Extract<
+  AttemptPlanV2,
+  { role: "validation-synthesizer" }
+> {
+  const original = rootEvaluatorAttemptPlan();
+  return {
+    ...original,
+    attemptId: "validation-synthesizer-attempt-1",
+    owner: "validation",
+    role: "validation-synthesizer",
+    assignment: {
+      kind: "validation-synthesis",
+      schemaVersion: 1,
+      candidateId: `sha256:${"6".repeat(64)}`,
+      validatorAttemptDigests: [
+        `sha256:${"7".repeat(64)}`,
+        `sha256:${"8".repeat(64)}`,
+      ],
+    },
+    prompt: "Synthesize only the supplied Validation Attempts.",
+  };
+}
+
 function providerEnvelope(
   structuredOutput: unknown,
   webSearchRequests = 0,
@@ -814,6 +855,96 @@ describe("ModelExecution.run", () => {
           role: "adversarial-critic",
           status: "invalid-output",
           reason: "critic-source-read-required",
+        },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rejects a Validator result that did not read manifest-bound source", async () => {
+    const fixture = await openSourceEvidenceFixture({
+      files: { "synthetic-plugin.php": "<?php\nregister_rest_route();\n" },
+      maxReadBytes: 4096,
+    });
+    const original = validatorAttemptPlan();
+    const plan = {
+      ...original,
+      target: {
+        ...fixture.manifest.targetSnapshot,
+        pluginSlug: "synthetic-plugin",
+        version: "1.0.0",
+      },
+      manifest: {
+        kind: "target-file-manifest" as const,
+        schemaVersion: 1 as const,
+        targetSnapshotId: fixture.manifest.targetSnapshot.id,
+        targetSnapshotDigest: fixture.manifest.targetSnapshot.digest,
+        digest: sha256Digest(fixture.manifest),
+      },
+      sourceToolPolicy: fixture.gateway.policy,
+    };
+    const execution = openModelExecution({
+      artifactDirectory: fixture.attemptArtifactDirectory,
+      sourceEvidenceGateway: fixture.gateway,
+      process: {
+        execute: async (request) => {
+          expect(request.sourceEvidence).toBeDefined();
+          return {
+            kind: "exited",
+            exitCode: 0,
+            stdout: JSON.stringify(providerEnvelope({ result: "unused" })),
+            stderr: "",
+          };
+        },
+      },
+    });
+
+    try {
+      await expect(execution.run(plan)).resolves.toMatchObject({
+        status: "invalid-output",
+        value: {
+          owner: "validation",
+          role: "validator",
+          status: "invalid-output",
+          reason: "validator-source-read-required",
+        },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("does not expose source tools to Validation Synthesis", async () => {
+    const fixture = await openSourceEvidenceFixture({
+      files: { "synthetic-plugin.php": "<?php\nregister_rest_route();\n" },
+      maxReadBytes: 4096,
+    });
+    const plan = validationSynthesisAttemptPlan();
+    const output = { result: "tool-free-synthesis" };
+    const execution = openModelExecution({
+      artifactDirectory: fixture.attemptArtifactDirectory,
+      sourceEvidenceGateway: fixture.gateway,
+      process: {
+        execute: async (request) => {
+          expect(request.sourceEvidence).toBeUndefined();
+          return {
+            kind: "exited",
+            exitCode: 0,
+            stdout: JSON.stringify(providerEnvelope(output)),
+            stderr: "",
+          };
+        },
+      },
+    });
+
+    try {
+      await expect(execution.run(plan)).resolves.toMatchObject({
+        status: "completed",
+        value: {
+          owner: "validation",
+          role: "validation-synthesizer",
+          output,
         },
       });
     } finally {

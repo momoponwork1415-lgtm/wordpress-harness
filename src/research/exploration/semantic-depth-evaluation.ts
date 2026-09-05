@@ -107,7 +107,7 @@ const depthIterationActionSchema = z.discriminatedUnion("kind", [
 ]);
 
 const depthEvaluatorAttemptRefSchema = attemptExecutionResultV2RefSchema.extend(
-  { role: z.literal("root-evaluator") },
+  { owner: z.literal("exploration"), role: z.literal("root-evaluator") },
 );
 
 export const depthIterationDecisionSchema = z.strictObject({

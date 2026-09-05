@@ -278,11 +278,20 @@ const criticSourceEvidenceAssignmentSchema = z.strictObject({
   proposalIds: z.array(digestSchema).min(1).max(32),
 });
 
+const validationSourceEvidenceAssignmentSchema = z.strictObject({
+  kind: z.literal("candidate-validation"),
+  schemaVersion: z.literal(1),
+  candidateId: digestSchema,
+  threatContextId: digestSchema,
+  attemptOrdinal: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+});
+
 export const sourceEvidenceAssignmentSchema = z.discriminatedUnion("kind", [
   finderSourceEvidenceAssignmentSchema,
   missingLinkSourceEvidenceAssignmentSchema,
   reconSourceEvidenceAssignmentSchema,
   criticSourceEvidenceAssignmentSchema,
+  validationSourceEvidenceAssignmentSchema,
 ]);
 
 const sourceEvidenceQueryV2Fields = {

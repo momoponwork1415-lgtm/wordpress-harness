@@ -282,7 +282,8 @@ class FirstFinderModelExecution implements ModelExecution {
     const sourceEnabledRole =
       plan.role === "finder" ||
       plan.role === "root-planner" ||
-      plan.role === "adversarial-critic";
+      plan.role === "adversarial-critic" ||
+      plan.role === "validator";
     if (
       sourceEnabledRole &&
       (this.#sourceEvidenceGateway === undefined ||
@@ -506,7 +507,9 @@ class FirstFinderModelExecution implements ModelExecution {
       );
     }
     if (
-      (plan.role === "root-planner" || plan.role === "adversarial-critic") &&
+      (plan.role === "root-planner" ||
+        plan.role === "adversarial-critic" ||
+        plan.role === "validator") &&
       sourceReadCount === 0
     ) {
       return this.#terminalV2(
@@ -515,7 +518,9 @@ class FirstFinderModelExecution implements ModelExecution {
         "invalid-output",
         plan.role === "root-planner"
           ? "recon-source-read-required"
-          : "critic-source-read-required",
+          : plan.role === "adversarial-critic"
+            ? "critic-source-read-required"
+            : "validator-source-read-required",
         sourceEvidenceReceipts,
         sourceTerminalEnvelope.kind === "accepted"
           ? normalizeClaudeModelAttemptUsage(

@@ -583,6 +583,7 @@ export const campaignAttemptCompletionV2Schema = z.discriminatedUnion("role", [
     role: z.literal("root-planner"),
     preparationDigest: digestSchema,
     result: attemptExecutionResultV2RefSchema.extend({
+      owner: z.literal("exploration"),
       role: z.literal("root-planner"),
     }),
   }),
@@ -593,6 +594,7 @@ export const campaignAttemptCompletionV2Schema = z.discriminatedUnion("role", [
     workWaveDigest: digestSchema,
     predecessorDecisionDigest: digestSchema.optional(),
     result: attemptExecutionResultV2RefSchema.extend({
+      owner: z.literal("exploration"),
       role: z.literal("finder"),
     }),
   }),
@@ -605,6 +607,7 @@ export const campaignAttemptCompletionV2Schema = z.discriminatedUnion("role", [
     synthesisDigest: digestSchema.optional(),
     critiqueDigest: digestSchema.optional(),
     result: attemptExecutionResultV2RefSchema.extend({
+      owner: z.literal("exploration"),
       role: z.literal("root-evaluator"),
     }),
   }),
@@ -614,6 +617,7 @@ export const campaignAttemptCompletionV2Schema = z.discriminatedUnion("role", [
     queueDigest: digestSchema,
     batchId: digestSchema,
     result: attemptExecutionResultV2RefSchema.extend({
+      owner: z.literal("exploration"),
       role: z.literal("root-synthesizer"),
     }),
   }),
@@ -622,6 +626,7 @@ export const campaignAttemptCompletionV2Schema = z.discriminatedUnion("role", [
     role: z.literal("adversarial-critic"),
     synthesisDigest: digestSchema,
     result: attemptExecutionResultV2RefSchema.extend({
+      owner: z.literal("exploration"),
       role: z.literal("adversarial-critic"),
     }),
   }),
@@ -657,7 +662,10 @@ const campaignPreparedWaveCompletionInputV2Schema = z.strictObject({
   waveTerminal: semanticWaveTerminalRefSchema,
   attempts: z
     .array(
-      attemptExecutionResultV2RefSchema.extend({ role: z.literal("finder") }),
+      attemptExecutionResultV2RefSchema.extend({
+        owner: z.literal("exploration"),
+        role: z.literal("finder"),
+      }),
     )
     .min(1)
     .max(4),
@@ -674,7 +682,10 @@ const campaignPreparedWaveRecordV2Schema = z.strictObject({
   waveTerminal: semanticWaveTerminalRefSchema,
   attempts: z
     .array(
-      attemptExecutionResultV2RefSchema.extend({ role: z.literal("finder") }),
+      attemptExecutionResultV2RefSchema.extend({
+        owner: z.literal("exploration"),
+        role: z.literal("finder"),
+      }),
     )
     .min(1)
     .max(4),
