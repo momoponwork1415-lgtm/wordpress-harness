@@ -1163,8 +1163,14 @@ async function executeDefaultSemanticCampaign(
       knownSubjectIds: [],
     },
   });
-  if (evaluated.kind !== "iteration-decision") {
-    if (evaluated.kind !== "evaluation-incomplete") {
+  if (
+    evaluated.kind !== "iteration-decision" ||
+    evaluated.schemaVersion !== 2
+  ) {
+    if (
+      evaluated.kind !== "evaluation-incomplete" ||
+      evaluated.schemaVersion !== 2
+    ) {
       throw new Error(`Semantic Root Evaluation returned ${evaluated.kind}`);
     }
     await verificationQueue.drain();

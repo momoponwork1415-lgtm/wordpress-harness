@@ -216,7 +216,7 @@ export async function executeSemanticCoverageReview(
       knownSubjectIds: [...input.knownSubjectIds].sort(compareText),
     },
   });
-  if (decision.kind !== "iteration-decision") {
+  if (decision.kind !== "iteration-decision" || decision.schemaVersion !== 2) {
     return { kind: "incomplete", trace: traceBase, registry: input.registry };
   }
   const decisionDigest = await input.artifactStore.putJson(decision);

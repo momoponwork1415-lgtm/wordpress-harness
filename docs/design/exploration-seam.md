@@ -165,7 +165,7 @@ Depth Admissionには、少なくとも一つのsource-boundなstrong capability
 
 ## Conditional depth loop
 
-Iteration DecisionがCASと単一Ledger eventへdurableになった時点で、modelが選んだ`admit-depth` action groupingから初期のactive Approach Familyを開き、Research RecordがCampaign-localなRegistry viewを再構築する。その後、`admit-depth`と`schedule-work`はversioned `Depth Work Queue`へ決定的に投影してCASとCampaign recordへ固定する。各itemは元Decision digest、Target、Manifest、Wave、全subject ref、Family refとdirectiveを保持する。stable orderで最大4件ずつbatch化し、5件目以降を黙示的に捨てない。
+現行policyのRoot Evaluation outputは、ValidationまたはDepthへ送るmechanismごとに`Approach Family Admission`を宣言し、各`admit-validation` / `admit-depth` actionがそのdigest-bound refを必ず持つ。同じmechanismを両方へ送る場合は同じFamily keyを参照する。HarnessはFamily keyの一意性、subject包含、全Familyの利用、Target / Manifest / Wave bindingだけを検査し、semantic groupingを推測しない。Iteration DecisionがCASと単一Ledger eventへdurableになった時点でFamily Admissionから初期のactive Approach Familyを開き、Research RecordがCampaign-localなRegistry viewを再構築する。その後、`admit-depth`と`schedule-work`はversioned `Depth Work Queue`へ決定的に投影してCASとCampaign recordへ固定する。各itemは元Decision digest、Target、Manifest、Wave、全subject ref、Family refとdirectiveを保持する。stable orderで最大4件ずつbatch化し、5件目以降を黙示的に捨てない。
 
 全batchのtool-freeなfresh Root Synthesis、Synthesis CAS後のsource-enabled fresh Critic、Critique CAS後のfresh Depth Root Evaluation、具体的Critic Gapへbindしたfresh Missing-link Finder Waveを順に行う。Depth Evaluationは全Proposalを`admit-validation / schedule-missing-link / retain-route / close-route / block-route`の一つへ置き、Critic verdictと矛盾する処遇を拒否する。`admit-validation`ではcausal identity、Critic後に確定したtyped attacker premise、impact、unknowns、falsifier、次のsource investigationまたはruntime uncertaintyを必須にし、HarnessがProposalのsource evidenceを重複排除してManifest-bound routeを作る。
 

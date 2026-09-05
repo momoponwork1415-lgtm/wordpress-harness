@@ -17,12 +17,17 @@ import {
   type SourceEvidenceReceiptValueV2,
 } from "../source-mapping/source-evidence-contracts.js";
 import {
+  approachFamilyAdmissionRefSchema,
+  approachFamilyAdmissionSchema,
   explorationSubjectRefSchema,
   frontierGapArtifactRefSchema,
   iterationActionV2Schema,
+  iterationActionV3Schema,
   iterationDecisionV2Schema,
+  iterationDecisionV3Schema,
   researchThesisRefSchema,
-  rootEvaluatorOutputSchema,
+  rootEvaluatorOutputV1Schema,
+  rootEvaluatorOutputV2Schema,
   routeFragmentArtifactRefSchema,
   semanticExplorationDecisionSchema,
   semanticWaveEvaluationInputSchema,
@@ -30,8 +35,10 @@ import {
   sourceBoundHypothesisArtifactRefSchema,
   type ExplorationSubjectRef,
   type IterationActionV2,
+  type IterationActionV3,
   type OpenSemanticExplorationOptions,
   type RootEvaluatorOutput,
+  type RootEvaluatorOutputV2,
   type SemanticExplorationDecision,
   type SemanticWaveEvaluationInput,
 } from "./semantic-contracts.js";
@@ -411,8 +418,14 @@ function validateEvaluationInput(
   };
 }
 
-function rootEvaluatorJsonSchema(): Record<string, unknown> {
-  const schema = z.toJSONSchema(rootEvaluatorOutputSchema);
+function rootEvaluatorJsonSchema(
+  schemaVersion: SemanticWaveEvaluationInput["schemaVersion"],
+): Record<string, unknown> {
+  const schema = z.toJSONSchema(
+    schemaVersion === 3
+      ? rootEvaluatorOutputV2Schema
+      : rootEvaluatorOutputV1Schema,
+  );
   delete schema.$schema;
   return schema;
 }
@@ -429,6 +442,7 @@ function rootEvaluatorAttempt(
     manifest: input.manifest,
     wave: input.wave.ref,
     terminalDigest: input.terminal.ref.digest,
+    evaluationSchemaVersion: input.schemaVersion,
     ordinal,
     ...(attemptNamespace === undefined ? {} : { namespace: attemptNamespace }),
   }).slice("sha256:".length)}`;
@@ -451,13 +465,15 @@ function rootEvaluatorAttempt(
     modelProfile: evaluator.modelProfile,
     prompt: [
       "Evaluate every semantic research subject and assign each at least one explicit action.",
-      "Verification, Depth Admission, next work, and retain are nonexclusive.",
+      input.schemaVersion === 3
+        ? "Validation admission, Depth Admission, next work, and retain are nonexclusive. Declare every Validation or Depth admission under one explicit Approach Family; reuse its key when both actions pursue the same mechanism."
+        : "Verification, Depth Admission, next work, and retain are nonexclusive.",
       "Do not use support count, confidence, arrival order, vulnerability class, or sink names as acceptance filters.",
       "Do not produce a Finding or Disproved verdict.",
       "Use coverage-closed only for an explicit Coverage Closure evaluation when this complete Wave has no unresolved subject; the Harness still requires two consecutive no-material-delta observations and a fresh Wildcard review.",
       `Wave evaluation context: ${canonicalJson(context.promptContext)}`,
     ].join("\n"),
-    outputJsonSchema: rootEvaluatorJsonSchema(),
+    outputJsonSchema: rootEvaluatorJsonSchema(input.schemaVersion),
     budget: evaluator.budget,
   });
   if (plan.role !== "root-evaluator") {
@@ -486,6 +502,285 @@ function resolveSubjects(
   return { kind: "resolved", subjects };
 }
 
+function referenceApproachFamilyAdmission(
+  value: ReturnType<typeof approachFamilyAdmissionSchema.parse>,
+) {
+  return approachFamilyAdmissionRefSchema.parse({
+    kind: value.kind,
+    schemaVersion: value.schemaVersion,
+    id: value.id,
+    digest: sha256Digest(value),
+    key: value.key,
+    targetSnapshotDigest: value.target.digest,
+    manifestDigest: value.manifest.digest,
+    workWaveDigest: value.wave.digest,
+  });
+}
+
+function resolveCurrentEvaluatorOutput(
+  input: SemanticWaveEvaluationInput & { readonly schemaVersion: 3 },
+  context: ValidatedEvaluationContext,
+  output: RootEvaluatorOutputV2,
+  evaluatorAttempts: readonly (AttemptExecutionResultV2["ref"] & {
+    readonly role: "root-evaluator";
+  })[],
+):
+  | {
+      readonly kind: "completed";
+      readonly decision: SemanticExplorationDecision;
+    }
+  | { readonly kind: "failed"; readonly reason: EvaluationFailureReason } {
+  if (
+    output.campaignDisposition === "coverage-closed" &&
+    (output.approachFamilies.length > 0 ||
+      output.actions.some((action) => action.kind !== "close") ||
+      input.closureReview === undefined ||
+      input.terminal.value.issues.length > 0 ||
+      input.attemptResults.length !== input.wave.leases.length ||
+      input.attemptResults.some((attempt) => attempt.status !== "completed") ||
+      input.toolReceipts.some(
+        (receipt) => receipt.result.status === "budget-exhausted",
+      ))
+  ) {
+    return { kind: "failed", reason: "unsafe-closure" };
+  }
+
+  const subjectsByDigest = new Map(
+    context.subjects.map((subject) => [subject.digest, subject]),
+  );
+  const common = {
+    target: input.target,
+    manifest: input.manifest,
+    wave: input.wave.ref,
+  };
+  const familyKeys = output.approachFamilies.map((family) => family.key);
+  if (new Set(familyKeys).size !== familyKeys.length) {
+    return { kind: "failed", reason: "invalid-action-binding" };
+  }
+
+  const approachFamilies = [];
+  const familiesByKey = new Map<
+    string,
+    {
+      readonly value: ReturnType<typeof approachFamilyAdmissionSchema.parse>;
+      readonly ref: ReturnType<typeof approachFamilyAdmissionRefSchema.parse>;
+    }
+  >();
+  for (const proposal of [...output.approachFamilies].sort((left, right) =>
+    compareText(left.key, right.key),
+  )) {
+    const resolved = resolveSubjects(proposal.subjectDigests, subjectsByDigest);
+    if (resolved.kind === "failed") return resolved;
+    const familySubjects = sortSubjects(resolved.subjects);
+    const identity = {
+      kind: "approach-family-admission" as const,
+      schemaVersion: 1 as const,
+      key: proposal.key,
+      ...common,
+      subjects: familySubjects,
+      thesis: proposal.thesis,
+      mechanism: proposal.mechanism,
+      falsifier: proposal.falsifier,
+      nextAction: proposal.nextAction,
+    };
+    const value = approachFamilyAdmissionSchema.parse({
+      ...identity,
+      id: sha256Digest(identity),
+    });
+    const ref = referenceApproachFamilyAdmission(value);
+    approachFamilies.push(value);
+    familiesByKey.set(proposal.key, { value, ref });
+  }
+
+  const covered = new Set<string>();
+  const referencedFamilies = new Set<string>();
+  const actions: IterationActionV3[] = [];
+  for (const proposal of output.actions) {
+    const resolved = resolveSubjects(proposal.subjectDigests, subjectsByDigest);
+    if (resolved.kind === "failed") return resolved;
+    for (const subject of resolved.subjects) covered.add(subject.digest);
+
+    if (
+      proposal.kind === "admit-validation" ||
+      proposal.kind === "admit-depth"
+    ) {
+      const family = familiesByKey.get(proposal.approachFamilyKey);
+      const familySubjectDigests = new Set(
+        family?.value.subjects.map((subject) => subject.digest) ?? [],
+      );
+      if (
+        family === undefined ||
+        resolved.subjects.some(
+          (subject) => !familySubjectDigests.has(subject.digest),
+        )
+      ) {
+        return { kind: "failed", reason: "invalid-action-binding" };
+      }
+      referencedFamilies.add(family.value.key);
+
+      if (proposal.kind === "admit-validation") {
+        const hypothesis = subjectsByDigest.get(
+          proposal.admission.hypothesisDigest,
+        );
+        if (
+          hypothesis?.kind !== "source-bound-hypothesis" ||
+          !proposal.subjectDigests.includes(hypothesis.digest)
+        ) {
+          return { kind: "failed", reason: "invalid-action-binding" };
+        }
+        const identity = {
+          kind: "validation-admission" as const,
+          ...common,
+          approachFamily: family.ref,
+          hypothesis,
+          reason: proposal.admission.reason,
+        };
+        actions.push(
+          iterationActionV3Schema.parse({
+            kind: proposal.kind,
+            approachFamily: family.ref,
+            subjects: resolved.subjects,
+            admission: {
+              kind: "validation-admission",
+              schemaVersion: 1,
+              id: sha256Digest(identity),
+              ...common,
+              hypothesis,
+              reason: proposal.admission.reason,
+            },
+          }),
+        );
+        continue;
+      }
+
+      actions.push(
+        iterationActionV3Schema.parse({
+          kind: proposal.kind,
+          approachFamily: family.ref,
+          subjects: resolved.subjects,
+          admission: {
+            kind: "depth-admission",
+            schemaVersion: 2,
+            id: sha256Digest({
+              kind: "depth-admission",
+              ...common,
+              approachFamily: family.ref,
+              ...proposal.admission,
+            }),
+            ...common,
+            ...proposal.admission,
+          },
+        }),
+      );
+      continue;
+    }
+
+    if (proposal.kind === "schedule-work") {
+      actions.push(
+        iterationActionV3Schema.parse({
+          kind: proposal.kind,
+          subjects: resolved.subjects,
+          work: {
+            kind: "next-work-request",
+            schemaVersion: 1,
+            id: sha256Digest({
+              kind: "next-work-request",
+              ...common,
+              ...proposal.work,
+            }),
+            ...common,
+            ...proposal.work,
+          },
+        }),
+      );
+      continue;
+    }
+    if (proposal.kind === "retain") {
+      actions.push(
+        iterationActionV3Schema.parse({
+          kind: proposal.kind,
+          subjects: resolved.subjects,
+          reason: proposal.reason,
+        }),
+      );
+      continue;
+    }
+    if (proposal.kind === "close") {
+      actions.push(
+        iterationActionV3Schema.parse({
+          kind: proposal.kind,
+          subjects: resolved.subjects,
+          record: {
+            kind: "closure-record",
+            schemaVersion: 1,
+            id: sha256Digest({
+              kind: "closure-record",
+              ...common,
+              ...proposal.record,
+            }),
+            ...common,
+            ...proposal.record,
+          },
+        }),
+      );
+      continue;
+    }
+    actions.push(
+      iterationActionV3Schema.parse({
+        kind: proposal.kind,
+        subjects: resolved.subjects,
+        blocker: {
+          kind: "exploration-blocker",
+          schemaVersion: 1,
+          id: sha256Digest({
+            kind: "exploration-blocker",
+            ...common,
+            ...proposal.blocker,
+          }),
+          ...common,
+          ...proposal.blocker,
+        },
+      }),
+    );
+  }
+
+  if (
+    covered.size !== context.subjects.length ||
+    referencedFamilies.size !== approachFamilies.length
+  ) {
+    return {
+      kind: "failed",
+      reason:
+        covered.size !== context.subjects.length
+          ? "subject-omission"
+          : "invalid-action-binding",
+    };
+  }
+
+  return {
+    kind: "completed",
+    decision: iterationDecisionV3Schema.parse({
+      kind: "iteration-decision",
+      schemaVersion: 3,
+      target: input.target,
+      manifest: input.manifest,
+      wave: input.wave.ref,
+      evaluationSubjects: context.subjects,
+      context: {
+        kind: "wave-evaluation",
+        terminalDigest: input.terminal.ref.digest,
+        workLeases: context.workLeases,
+        attemptResults: context.attemptResults,
+        toolReceipts: context.toolReceipts,
+        rootEvaluatorAttempts: evaluatorAttempts,
+      },
+      approachFamilies,
+      actions,
+      campaignDisposition: output.campaignDisposition,
+    }),
+  };
+}
+
 function resolveEvaluatorOutput(
   input: SemanticWaveEvaluationInput,
   context: ValidatedEvaluationContext,
@@ -499,6 +794,20 @@ function resolveEvaluatorOutput(
       readonly decision: SemanticExplorationDecision;
     }
   | { readonly kind: "failed"; readonly reason: EvaluationFailureReason } {
+  if (input.schemaVersion === 3) {
+    if (output.schemaVersion !== 2) {
+      return { kind: "failed", reason: "invalid-root-evaluator-output" };
+    }
+    return resolveCurrentEvaluatorOutput(
+      input,
+      context,
+      output,
+      evaluatorAttempts,
+    );
+  }
+  if (output.schemaVersion !== 1) {
+    return { kind: "failed", reason: "invalid-root-evaluator-output" };
+  }
   if (
     output.campaignDisposition === "coverage-closed" &&
     (input.closureReview === undefined ||
@@ -719,7 +1028,11 @@ function validateEvaluatorResult(
   if (value.data.status !== "completed") {
     return { kind: "failed", reason: "evaluator-failed", ref: evaluatorRef };
   }
-  const output = rootEvaluatorOutputSchema.safeParse(value.data.output);
+  const output = (
+    input.schemaVersion === 3
+      ? rootEvaluatorOutputV2Schema
+      : rootEvaluatorOutputV1Schema
+  ).safeParse(value.data.output);
   if (!output.success) {
     return {
       kind: "failed",
@@ -770,7 +1083,7 @@ export async function evaluateSemanticWave(
   }
   return semanticExplorationDecisionSchema.parse({
     kind: "evaluation-incomplete",
-    schemaVersion: 2,
+    schemaVersion: input.schemaVersion,
     target: input.target,
     manifest: input.manifest,
     wave: input.wave.ref,

@@ -406,7 +406,7 @@ export const explorationSubjectRefSchema = z.discriminatedUnion("kind", [
 
 const subjectDigestListSchema = z.array(digestSchema).min(1).max(64);
 
-export const rootEvaluatorOutputSchema = z.strictObject({
+export const rootEvaluatorOutputV1Schema = z.strictObject({
   kind: z.literal("root-evaluator-output"),
   schemaVersion: z.literal(1),
   actions: z
@@ -467,6 +467,84 @@ export const rootEvaluatorOutputSchema = z.strictObject({
   campaignDisposition: z.enum(["continue", "coverage-closed", "incomplete"]),
 });
 
+const approachFamilyProposalSchema = z.strictObject({
+  key: identifierSchema,
+  subjectDigests: subjectDigestListSchema,
+  thesis: boundedTextSchema,
+  mechanism: boundedTextSchema,
+  falsifier: boundedTextSchema,
+  nextAction: boundedTextSchema,
+});
+
+export const rootEvaluatorOutputV2Schema = z.strictObject({
+  kind: z.literal("root-evaluator-output"),
+  schemaVersion: z.literal(2),
+  approachFamilies: z.array(approachFamilyProposalSchema).max(64),
+  actions: z
+    .array(
+      z.discriminatedUnion("kind", [
+        z.strictObject({
+          kind: z.literal("admit-validation"),
+          approachFamilyKey: identifierSchema,
+          subjectDigests: subjectDigestListSchema,
+          admission: z.strictObject({
+            hypothesisDigest: digestSchema,
+            reason: boundedTextSchema,
+          }),
+        }),
+        z.strictObject({
+          kind: z.literal("admit-depth"),
+          approachFamilyKey: identifierSchema,
+          subjectDigests: subjectDigestListSchema,
+          admission: z.strictObject({
+            highImpactPotential: boundedTextSchema,
+            composition: boundedTextSchema,
+            falsifier: boundedTextSchema,
+            nextAction: boundedTextSchema,
+          }),
+        }),
+        z.strictObject({
+          kind: z.literal("schedule-work"),
+          subjectDigests: subjectDigestListSchema,
+          work: z.strictObject({
+            requiredFact: boundedTextSchema,
+            falsifier: boundedTextSchema,
+            nextAction: boundedTextSchema,
+          }),
+        }),
+        z.strictObject({
+          kind: z.literal("retain"),
+          subjectDigests: subjectDigestListSchema,
+          reason: boundedTextSchema,
+        }),
+        z.strictObject({
+          kind: z.literal("close"),
+          subjectDigests: subjectDigestListSchema,
+          record: z.strictObject({
+            basis: boundedTextSchema,
+            reopenWhen: boundedTextSchema,
+          }),
+        }),
+        z.strictObject({
+          kind: z.literal("block"),
+          subjectDigests: subjectDigestListSchema,
+          blocker: z.strictObject({
+            reason: boundedTextSchema,
+            reopenWhen: boundedTextSchema,
+          }),
+        }),
+      ]),
+    )
+    .min(1)
+    .max(64),
+  campaignDisposition: z.enum(["continue", "coverage-closed", "incomplete"]),
+});
+
+export const rootEvaluatorOutputSchema = z.union([
+  rootEvaluatorOutputV2Schema,
+  rootEvaluatorOutputV1Schema,
+]);
+
 const actionProvenanceFields = {
   id: digestSchema,
   target: targetSnapshotRefSchema,
@@ -492,6 +570,97 @@ export const iterationActionV2Schema = z.discriminatedUnion("kind", [
     admission: z.strictObject({
       kind: z.literal("depth-admission"),
       schemaVersion: z.literal(1),
+      ...actionProvenanceFields,
+      highImpactPotential: boundedTextSchema,
+      composition: boundedTextSchema,
+      falsifier: boundedTextSchema,
+      nextAction: boundedTextSchema,
+    }),
+  }),
+  z.strictObject({
+    kind: z.literal("schedule-work"),
+    subjects: z.array(explorationSubjectRefSchema).min(1),
+    work: z.strictObject({
+      kind: z.literal("next-work-request"),
+      schemaVersion: z.literal(1),
+      ...actionProvenanceFields,
+      requiredFact: boundedTextSchema,
+      falsifier: boundedTextSchema,
+      nextAction: boundedTextSchema,
+    }),
+  }),
+  z.strictObject({
+    kind: z.literal("retain"),
+    subjects: z.array(explorationSubjectRefSchema).min(1),
+    reason: boundedTextSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("close"),
+    subjects: z.array(explorationSubjectRefSchema).min(1),
+    record: z.strictObject({
+      kind: z.literal("closure-record"),
+      schemaVersion: z.literal(1),
+      ...actionProvenanceFields,
+      basis: boundedTextSchema,
+      reopenWhen: boundedTextSchema,
+    }),
+  }),
+  z.strictObject({
+    kind: z.literal("block"),
+    subjects: z.array(explorationSubjectRefSchema).min(1),
+    blocker: z.strictObject({
+      kind: z.literal("exploration-blocker"),
+      schemaVersion: z.literal(1),
+      ...actionProvenanceFields,
+      reason: boundedTextSchema,
+      reopenWhen: boundedTextSchema,
+    }),
+  }),
+]);
+
+export const approachFamilyAdmissionSchema = z.strictObject({
+  kind: z.literal("approach-family-admission"),
+  schemaVersion: z.literal(1),
+  key: identifierSchema,
+  ...actionProvenanceFields,
+  subjects: z.array(explorationSubjectRefSchema).min(1).max(64),
+  thesis: boundedTextSchema,
+  mechanism: boundedTextSchema,
+  falsifier: boundedTextSchema,
+  nextAction: boundedTextSchema,
+});
+
+export const approachFamilyAdmissionRefSchema = z.strictObject({
+  kind: z.literal("approach-family-admission"),
+  schemaVersion: z.literal(1),
+  id: digestSchema,
+  digest: digestSchema,
+  key: identifierSchema,
+  targetSnapshotDigest: digestSchema,
+  manifestDigest: digestSchema,
+  workWaveDigest: digestSchema,
+});
+
+export const iterationActionV3Schema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("admit-validation"),
+    approachFamily: approachFamilyAdmissionRefSchema,
+    subjects: z.array(explorationSubjectRefSchema).min(1),
+    admission: z.strictObject({
+      kind: z.literal("validation-admission"),
+      schemaVersion: z.literal(1),
+      ...actionProvenanceFields,
+      hypothesis: sourceBoundHypothesisArtifactRefSchema,
+      reason: boundedTextSchema,
+    }),
+  }),
+  z.strictObject({
+    kind: z.literal("admit-depth"),
+    approachFamily: approachFamilyAdmissionRefSchema,
+    subjects: z.array(explorationSubjectRefSchema).min(1),
+    admission: z.strictObject({
+      kind: z.literal("depth-admission"),
+      schemaVersion: z.literal(2),
       ...actionProvenanceFields,
       highImpactPotential: boundedTextSchema,
       composition: boundedTextSchema,
@@ -572,6 +741,19 @@ export const iterationDecisionV2Schema = z.strictObject({
   campaignDisposition: z.enum(["continue", "coverage-closed", "incomplete"]),
 });
 
+export const iterationDecisionV3Schema = z.strictObject({
+  kind: z.literal("iteration-decision"),
+  schemaVersion: z.literal(3),
+  target: targetSnapshotRefSchema,
+  manifest: targetFileManifestRefSchema,
+  wave: semanticWorkWaveRefSchema,
+  evaluationSubjects: z.array(explorationSubjectRefSchema).min(1),
+  context: iterationDecisionV2Schema.shape.context,
+  approachFamilies: z.array(approachFamilyAdmissionSchema).max(64),
+  actions: z.array(iterationActionV3Schema).min(1).max(64),
+  campaignDisposition: z.enum(["continue", "coverage-closed", "incomplete"]),
+});
+
 const startSemanticResearchInputSchema = z.strictObject({
   kind: z.literal("start-semantic-research"),
   schemaVersion: z.literal(2),
@@ -579,9 +761,8 @@ const startSemanticResearchInputSchema = z.strictObject({
   manifest: targetFileManifestRefSchema,
 });
 
-export const semanticWaveEvaluationInputSchema = z.strictObject({
+const semanticWaveEvaluationInputFields = {
   kind: z.literal("evaluate-semantic-wave"),
-  schemaVersion: z.literal(2),
   target: targetSnapshotRefSchema,
   manifest: targetFileManifestRefSchema,
   wave: semanticWorkWavePlanSchema,
@@ -608,12 +789,28 @@ export const semanticWaveEvaluationInputSchema = z.strictObject({
       knownSubjectIds: z.array(digestSchema).max(192),
     })
     .optional(),
+} as const;
+
+export const semanticWaveEvaluationInputV2Schema = z.strictObject({
+  ...semanticWaveEvaluationInputFields,
+  schemaVersion: z.literal(2),
 });
 
-export const semanticExplorationDecisionInputSchema = z.discriminatedUnion(
-  "kind",
-  [startSemanticResearchInputSchema, semanticWaveEvaluationInputSchema],
-);
+export const semanticWaveEvaluationInputV3Schema = z.strictObject({
+  ...semanticWaveEvaluationInputFields,
+  schemaVersion: z.literal(3),
+});
+
+export const semanticWaveEvaluationInputSchema = z.union([
+  semanticWaveEvaluationInputV3Schema,
+  semanticWaveEvaluationInputV2Schema,
+]);
+
+export const semanticExplorationDecisionInputSchema = z.union([
+  startSemanticResearchInputSchema,
+  semanticWaveEvaluationInputV3Schema,
+  semanticWaveEvaluationInputV2Schema,
+]);
 
 export const planningIncompleteDecisionSchema = z.strictObject({
   kind: z.literal("planning-incomplete"),
@@ -656,13 +853,18 @@ export const evaluationIncompleteDecisionSchema = z.strictObject({
   ]),
 });
 
-export const semanticExplorationDecisionSchema = z.discriminatedUnion("kind", [
+export const evaluationIncompleteDecisionV3Schema =
+  evaluationIncompleteDecisionSchema.extend({ schemaVersion: z.literal(3) });
+
+export const semanticExplorationDecisionSchema = z.union([
   z.strictObject({
     kind: z.literal("run-wave"),
     plan: semanticWorkWavePlanSchema,
   }),
   planningIncompleteDecisionSchema,
+  iterationDecisionV3Schema,
   iterationDecisionV2Schema,
+  evaluationIncompleteDecisionV3Schema,
   evaluationIncompleteDecisionSchema,
 ]);
 
@@ -689,8 +891,18 @@ export type SemanticFinderCheckpointRef = z.infer<
 >;
 export type ExplorationSubjectRef = z.infer<typeof explorationSubjectRefSchema>;
 export type RootEvaluatorOutput = z.infer<typeof rootEvaluatorOutputSchema>;
+export type RootEvaluatorOutputV1 = z.infer<typeof rootEvaluatorOutputV1Schema>;
+export type RootEvaluatorOutputV2 = z.infer<typeof rootEvaluatorOutputV2Schema>;
 export type IterationActionV2 = z.infer<typeof iterationActionV2Schema>;
+export type IterationActionV3 = z.infer<typeof iterationActionV3Schema>;
+export type ApproachFamilyAdmission = z.infer<
+  typeof approachFamilyAdmissionSchema
+>;
+export type ApproachFamilyAdmissionRef = z.infer<
+  typeof approachFamilyAdmissionRefSchema
+>;
 export type IterationDecisionV2 = z.infer<typeof iterationDecisionV2Schema>;
+export type IterationDecisionV3 = z.infer<typeof iterationDecisionV3Schema>;
 export type SemanticWaveTerminal = z.infer<typeof semanticWaveTerminalSchema>;
 export type SemanticWaveAttemptOutcome = z.infer<
   typeof semanticWaveAttemptOutcomeSchema
@@ -709,6 +921,12 @@ export type SemanticExplorationDecisionInput = z.infer<
 >;
 export type SemanticWaveEvaluationInput = z.infer<
   typeof semanticWaveEvaluationInputSchema
+>;
+export type SemanticWaveEvaluationInputV2 = z.infer<
+  typeof semanticWaveEvaluationInputV2Schema
+>;
+export type SemanticWaveEvaluationInputV3 = z.infer<
+  typeof semanticWaveEvaluationInputV3Schema
 >;
 export type SemanticExplorationDecision = z.infer<
   typeof semanticExplorationDecisionSchema

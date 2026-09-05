@@ -420,6 +420,115 @@ function evaluationInput(
 }
 
 describe("Exploration fresh Root Evaluation", () => {
+  it("admits Validation only from a complete Wave evaluation and binds it to an explicit shared Approach Family", async () => {
+    const modelExecution: ModelExecution = {
+      run: async (plan) =>
+        completedResult(plan, {
+          kind: "root-evaluator-output",
+          schemaVersion: 2,
+          approachFamilies: [
+            {
+              key: "cross-actor-state",
+              subjectDigests: [hypothesisRef.digest, fragmentRef.digest],
+              thesis:
+                "A public state writer may cross an actor authority boundary.",
+              mechanism:
+                "Attacker-controlled persistent state is consumed by a more privileged actor.",
+              falsifier:
+                "Every consumer independently binds the state to its originating actor.",
+              nextAction: "Trace and challenge each privileged state consumer.",
+            },
+          ],
+          actions: [
+            {
+              kind: "admit-validation",
+              approachFamilyKey: "cross-actor-state",
+              subjectDigests: [hypothesisRef.digest],
+              admission: {
+                hypothesisDigest: hypothesisRef.digest,
+                reason:
+                  "The source-bound route is ready for independent source review.",
+              },
+            },
+            {
+              kind: "admit-depth",
+              approachFamilyKey: "cross-actor-state",
+              subjectDigests: [fragmentRef.digest],
+              admission: {
+                highImpactPotential:
+                  "The same state mechanism may reach additional privileged consumers.",
+                composition:
+                  "Connect the public writer to every cross-actor reader.",
+                falsifier:
+                  "No privileged reader consumes the attacker-controlled state.",
+                nextAction: "Run a bounded missing-link reader trace.",
+              },
+            },
+            {
+              kind: "retain",
+              subjectDigests: [sha256Digest(thesis)],
+              reason:
+                "Keep the independent thesis active while the candidate is validated.",
+            },
+          ],
+          campaignDisposition: "continue",
+        }),
+    };
+
+    const decision = await semanticExploration(modelExecution).decide({
+      ...evaluationInput(),
+      schemaVersion: 3 as const,
+    });
+
+    expect(decision).toMatchObject({
+      kind: "iteration-decision",
+      schemaVersion: 3,
+      approachFamilies: [
+        {
+          kind: "approach-family-admission",
+          schemaVersion: 1,
+          key: "cross-actor-state",
+          subjects: [{ id: hypothesisRef.id }, { id: fragmentRef.id }],
+        },
+      ],
+      actions: [
+        {
+          kind: "admit-validation",
+          subjects: [{ id: hypothesisRef.id }],
+          admission: {
+            kind: "validation-admission",
+            schemaVersion: 1,
+            hypothesis: hypothesisRef,
+          },
+        },
+        {
+          kind: "admit-depth",
+          subjects: [{ id: fragmentRef.id }],
+        },
+        { kind: "retain", subjects: [{ id: thesis.id }] },
+      ],
+    });
+    if (
+      decision.kind !== "iteration-decision" ||
+      decision.schemaVersion !== 3
+    ) {
+      throw new Error("Expected a current Root Evaluation decision");
+    }
+    const validationAction = decision.actions[0];
+    const depthAction = decision.actions[1];
+    const family = decision.approachFamilies[0];
+    if (
+      validationAction?.kind !== "admit-validation" ||
+      depthAction?.kind !== "admit-depth" ||
+      family === undefined
+    ) {
+      throw new Error("Expected Validation and Depth to share one Family");
+    }
+    expect(validationAction.approachFamily.id).toBe(family.id);
+    expect(validationAction.approachFamily.digest).toBe(sha256Digest(family));
+    expect(depthAction.approachFamily).toEqual(validationAction.approachFamily);
+  });
+
   it("sends a Hypothesis to Verification and a Fragment to Depth in one complete decision", async () => {
     const observedPlans: ModelAttemptPlan[] = [];
     const modelExecution: ModelExecution = {
