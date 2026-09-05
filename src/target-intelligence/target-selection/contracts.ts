@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { canonicalJson } from "../acquisition/canonical-json.js";
+
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const identifierSchema = z
   .string()
@@ -393,6 +395,26 @@ export const targetSelectionAttemptSchema =
         message:
           "Selected Attempt receipts must exactly cover input Candidate IDs",
       });
+    }
+    const inputCandidatesById = new Map(
+      attempt.input.candidates.map((candidate) => [
+        candidate.candidateId,
+        candidate,
+      ]),
+    );
+    for (const [index, receipt] of attempt.receipts.entries()) {
+      const inputCandidate = inputCandidatesById.get(receipt.candidateId);
+      if (
+        inputCandidate !== undefined &&
+        canonicalJson(receipt.candidate) !== canonicalJson(inputCandidate)
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["receipts", index, "candidate"],
+          message:
+            "Selected Attempt receipt Candidate must match input Candidate",
+        });
+      }
     }
   });
 

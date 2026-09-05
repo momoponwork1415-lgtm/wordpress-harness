@@ -12,6 +12,7 @@ import {
   type TargetSelectionModel,
   type TargetSelectionRequest,
 } from "../../src/target-intelligence/index.js";
+import { sha256Digest } from "../../src/target-intelligence/acquisition/canonical-json.js";
 import { createLegacyTargetSelectionFixture } from "../fixtures/target-intelligence/legacy-target-selection.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
@@ -361,6 +362,106 @@ describe("TargetSelection", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    {
+      fact: "verified version",
+      substitute: (value: TargetSelectionCandidate) => ({
+        ...value,
+        target: { ...value.target, verifiedVersion: "9.9.9" },
+      }),
+    },
+    {
+      fact: "source manifest digest",
+      substitute: (value: TargetSelectionCandidate) => ({
+        ...value,
+        target: {
+          ...value.target,
+          canonicalFileManifestDigest: digest("9"),
+        },
+      }),
+    },
+    {
+      fact: "nested provenance fact",
+      substitute: (value: TargetSelectionCandidate) => ({
+        ...value,
+        targetObservation: {
+          ...value.targetObservation,
+          provenance: "conflicting" as const,
+        },
+      }),
+    },
+  ])(
+    "rejects a content-addressed Receipt that substitutes the Candidate $fact under the same ID",
+    async ({ substitute }) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "target-selection-candidate-binding-"),
+      );
+      try {
+        const { input, path, stored } = await selectedAttemptFixture(
+          directory,
+          [candidate("candidate-one")],
+        );
+        const originalReceipt = stored.receipts[0];
+        if (originalReceipt === undefined) {
+          throw new Error("Expected a receipt fixture");
+        }
+        const { id: _id, digest: _digest, ...receiptBody } = originalReceipt;
+        const substitutedReceiptBody = {
+          ...receiptBody,
+          candidate: substitute(originalReceipt.candidate),
+        };
+        const substitutedReceiptDigest = sha256Digest(substitutedReceiptBody);
+        const substitutedReceipt = {
+          ...substitutedReceiptBody,
+          id: `selection-receipt:${substitutedReceiptDigest.slice(7, 31)}`,
+          digest: substitutedReceiptDigest,
+        };
+        const substitutedAttempt = {
+          ...stored,
+          receipts: [substitutedReceipt],
+        };
+        const substitutedAttemptDigest = sha256Digest(substitutedAttempt);
+        const substitutedAttemptRef = {
+          kind: "target-selection-attempt-ref" as const,
+          schemaVersion: 2 as const,
+          id: `selection-attempt:${substitutedAttemptDigest.slice(7, 31)}`,
+          digest: substitutedAttemptDigest,
+        };
+        await writeFile(path, JSON.stringify(substitutedAttempt));
+
+        const restarted = openTargetSelection({
+          storageDirectory: directory,
+          model: {
+            rank: () => Promise.reject(new Error("must not rank on restart")),
+          },
+        });
+        await expect(restarted.select(input)).rejects.toThrow(
+          "Selected Attempt receipt Candidate must match input Candidate",
+        );
+        await expect(
+          restarted.resolveForApproval({
+            kind: "target-selection-approval-verification-request",
+            schemaVersion: 1,
+            attempt: {
+              ref: substitutedAttemptRef,
+              selectionKey: input.selectionKey,
+              revision: input.revision,
+            },
+            selectionPolicy: input.policy,
+            modelProfile: input.modelProfile,
+            operatorIdentity: "human:fixture-operator",
+            nominations: [],
+            verifiedAt: "2030-09-01T00:01:00.000Z",
+          }),
+        ).rejects.toThrow(
+          "Selected Attempt receipt Candidate must match input Candidate",
+        );
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("rejects a durable nomination-only Attempt with a model result", async () => {
     const directory = await mkdtemp(
