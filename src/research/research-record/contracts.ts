@@ -41,6 +41,7 @@ import type {
   CampaignAttemptRecordView,
   CampaignAttemptCompletionV2,
   CampaignAttemptIntentV2,
+  CampaignAttemptResultStoredV2,
   CampaignAttemptRecordViewV2,
   CampaignRunCompletionInput,
   CampaignRunCompletionInputV2,
@@ -134,6 +135,9 @@ export interface ResearchRecord {
   recordSemanticCampaignAttemptStart(
     intent: CampaignAttemptIntentV2,
   ): Promise<RecordSemanticCampaignAttemptStartResult>;
+  recordSemanticCampaignAttemptResult(
+    result: CampaignAttemptResultStoredV2,
+  ): Promise<CampaignAttemptRecordViewV2>;
   recordSemanticCampaignAttemptCompletion(
     completion: CampaignAttemptCompletionV2,
   ): Promise<CampaignAttemptRecordViewV2>;

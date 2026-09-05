@@ -157,9 +157,9 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 - **Invariants:** PlanへTarget、Manifest、policy、profile、tool、budgetを固定する。artifactをCASへ置き、Ledger eventを記録してから次stageへ進む。
 - **Normal Wave policy:** current defaultは3 Finder、target-specific thesisは最大2、whole-target wildcard thesisは最低1。`maxConcurrentFinders = 4`はhard ceilingと明示的overrideとして維持し、`maxFinderAttempts`とCampaign全体budgetは増やさない。legacy 4-Finder Plan / Ledgerはread-only replayする。
 - **Attacker scope:** current Campaignは未認証、Subscriber、subscriber-equivalent custom role（`customer`を含む）だけを許可する。Contributor以上と`unresolved`はcheckpoint、Root Evaluation、Validation admission、Runtime handoffでfail closedにする。legacy enumとLedgerはreplay互換を維持する。
-- **Attempt observability:** ValidatorもCampaign Attempt Ledgerへstart / completionを記録する。active progressとreported token / costはFinder、Root role、Critic、Validatorを同じAttempt projectionから集計する。
-- **Failures:** integrity不正は起動前に拒否する。provider / policy / budget failureをnegativeやno-new-evidenceへ丸めない。
-- **Status:** v6 initial Wave、single Validation、conditional Depth、Runtime Verification Packet v2 handoff、Human OS intake、terminal replay、progressを実装。Missing-link / Closureは未接続。
+- **Attempt observability:** ValidatorもCampaign Attempt Ledgerへstart / result-stored / completionを記録する。terminal resultはCAS保存後にresult-storedを追記し、completion前の再起動ではidentityとCASを検証して同じresultを再利用する。active progressとreported token / costはFinder、Root role、Critic、Validatorを同じAttempt projectionから一回だけ集計する。
+- **Failures:** integrity不正は起動前に拒否する。provider送信後にresultを確認できないValidator Attemptは再送せず`validation-pending`へ保ち、exactly-once executionは主張しない。保存resultのCASまたはidentity不一致は再利用しない。provider / policy / budget failureをnegativeやno-new-evidenceへ丸めない。
+- **Status:** v6 initial Wave、single Validation、conditional Depth、Validator crash recovery、Runtime Verification Packet v2 handoff、Human OS intake、terminal replay、progressを実装。Missing-link / Closureは未接続。
 - **Code / Tests:** [campaign-control](../src/research/campaign-control), [open-research](../src/research/open-research.ts) · [v6 run](../tests/research/campaign-validation-run.test.ts), [semantic E2E](../tests/research/campaign-semantic-e2e.test.ts), [replay](../tests/research/campaign-run.test.ts)
 
 ### Source Understanding
@@ -204,7 +204,7 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 - **Runtime handoff:** `ready-for-runtime`からsingle Validation、bind済みCandidate、Risk、source route / control / counterevidence、runtime sketchを自己完結のRuntime Verification Packet v2へ投影する。明白なsource contradictionだけを止め、Researchは`rejected`を作らない。[#107](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/107)
 - **Boundary:** Findingやruntime reproductionを所有しない。`needs-research`は具体的Gapとして同じFamilyへ戻す。
 - **Risk / Packet:** Riskはsingle Validationとbind済みCandidateから追加model judgeなしで投影する。exact payloadとraw requestをResearchへ保存せず、delivery failureでもPacketを失わない。
-- **Status:** single fresh Attempt、Disposition、Risk / Runtime Packetをv6へ接続。multi-Attempt / Synthesis / Human Review Packet v1は元の意味でlegacy replayする。
+- **Status:** single fresh Attempt、durable intent / result recovery、Disposition、Risk / Runtime Packetをv6へ接続。multi-Attempt / Synthesis / Human Review Packet v1は元の意味でlegacy replayする。
 - **Code / Tests:** [attacker scope](../src/research/current-research-attacker-scope.ts), [validation](../src/research/validation), [candidate admission](../src/research/campaign-control/validation-candidate-admission.ts) · [scope](../tests/research/current-research-attacker-scope.test.ts), [Validation](../tests/research/validation.test.ts), [Runtime Packet](../tests/research/runtime-verification-packet.test.ts), [legacy Packet](../tests/research/human-review-packet.test.ts), [v6 handoff / usage](../tests/research/campaign-validation-run.test.ts)
 
 ### Model Execution
