@@ -19,8 +19,11 @@ import {
   wordfenceKnownRecordInspectionRequestSchema,
   wordfenceKnownRecordProjectionSchema,
   wordfenceKnownRecordSchema,
+  wordfenceRateLimitBackoffSchema,
   wordfenceSecretRefSchema,
   wordfenceStoredPluginRecordSchema,
+  type HostPrivateCredentialBroker,
+  type OpenWordfenceIntelligenceRefreshOptions,
   type OpenWordfenceIntelligenceOptions,
   type KnownRecordAccessAuthorization,
   type KnownRecordAccessAuthorizationRef,
@@ -31,6 +34,7 @@ import {
   type WordfenceIntelligenceInspectionRequest,
   type WordfenceIntelligenceRefreshRequest,
   type WordfenceIntelligenceResult,
+  type WordfenceIntelligenceRefresh,
   type WordfenceIntelligenceSnapshot,
   type WordfenceIntelligenceSnapshotRef,
   type WordfenceIntelligenceSourceResponse,
@@ -57,7 +61,11 @@ const rawVersionIntervalSchema = z.object({
 const rawSoftwareSchema = z.object({
   type: z.enum(["core", "plugin", "theme"]),
   name: z.string().min(1),
-  slug: z.string().min(1),
+  slug: z
+    .string()
+    .min(1)
+    .max(192)
+    .regex(/^[^\u0000-\u001f\u007f]+$/u),
   affected_versions: z.record(z.string(), rawVersionIntervalSchema),
   patched: z.boolean(),
   patched_versions: z.array(z.string().min(1).max(64)),
@@ -134,6 +142,20 @@ class ResponseTooLargeError extends Error {
   }
 }
 
+class PartialResponseError extends Error {
+  constructor() {
+    super("Wordfence Intelligence response was incomplete");
+    this.name = "PartialResponseError";
+  }
+}
+
+class CredentialUnavailableError extends Error {
+  constructor() {
+    super("Wordfence Intelligence credential is unavailable");
+    this.name = "CredentialUnavailableError";
+  }
+}
+
 function rawDigest(bytes: Uint8Array): string {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }
@@ -167,13 +189,19 @@ async function persistBytes(path: string, bytes: Uint8Array): Promise<void> {
 
 function failure(
   reason: WordfenceIntelligenceFailure["reason"],
+  backoff?: WordfenceIntelligenceFailure["backoff"],
 ): WordfenceIntelligenceFailure {
-  return { status: "failed", reason };
+  return {
+    status: "failed",
+    reason,
+    ...(backoff === undefined ? {} : { backoff }),
+  };
 }
 
 function responseFailure(
-  status: number,
+  response: WordfenceIntelligenceSourceResponse,
 ): WordfenceIntelligenceFailure | undefined {
+  const { status } = response;
   if (status === 401 || status === 403) {
     return failure("authentication-failed");
   }
@@ -181,7 +209,7 @@ function responseFailure(
     return failure("not-found");
   }
   if (status === 429) {
-    return failure("rate-limited");
+    return failure("rate-limited", response.backoff);
   }
   if (status < 200 || status >= 300) {
     return failure("network-failure");
@@ -241,8 +269,7 @@ function normalizeFeed(bytes: Uint8Array): {
   if (entries.length === 0) {
     throw new Error("Wordfence Intelligence feed is empty");
   }
-  const records: WordfenceStoredPluginRecord[] = [];
-  const identities = new Set<string>();
+  const recordsByIdentity = new Map<string, WordfenceStoredPluginRecord>();
   for (const [key, value] of entries) {
     const record = rawRecordSchema.parse(value);
     if (record.id !== key) {
@@ -257,10 +284,6 @@ function normalizeFeed(bytes: Uint8Array): {
         continue;
       }
       const identity = `${record.id}\0${software.slug}`;
-      if (identities.has(identity)) {
-        throw new Error("Duplicate Wordfence plugin record");
-      }
-      identities.add(identity);
       const affectedVersionIntervals = Object.values(
         software.affected_versions,
       ).map((interval) => ({
@@ -271,24 +294,54 @@ function normalizeFeed(bytes: Uint8Array): {
       }));
       const publishedAt = normalizeDate(record.published);
       const updatedAt = normalizeDate(record.updated);
-      records.push(
+      const normalized = wordfenceStoredPluginRecordSchema.parse({
+        pluginSlug: software.slug,
+        record: {
+          recordId: record.id,
+          affectedVersionIntervals,
+          patchedVersions: [...software.patched_versions].sort(),
+          ...(record.cwe === null ? {} : { cwe: record.cwe }),
+          ...(record.cvss === null ? {} : { cvss: record.cvss }),
+          ...(record.cve === null ? {} : { cve: record.cve }),
+          ...(publishedAt === undefined ? {} : { publishedAt }),
+          ...(updatedAt === undefined ? {} : { updatedAt }),
+          attribution,
+        },
+      });
+      const existing = recordsByIdentity.get(identity);
+      if (existing === undefined) {
+        recordsByIdentity.set(identity, normalized);
+        continue;
+      }
+      const intervals = new Map(
+        [
+          ...existing.record.affectedVersionIntervals,
+          ...normalized.record.affectedVersionIntervals,
+        ].map((interval) => [canonicalJson(interval), interval]),
+      );
+      recordsByIdentity.set(
+        identity,
         wordfenceStoredPluginRecordSchema.parse({
-          pluginSlug: software.slug,
+          ...existing,
           record: {
-            recordId: record.id,
-            affectedVersionIntervals,
-            patchedVersions: [...software.patched_versions].sort(),
-            ...(record.cwe === null ? {} : { cwe: record.cwe }),
-            ...(record.cvss === null ? {} : { cvss: record.cvss }),
-            ...(record.cve === null ? {} : { cve: record.cve }),
-            ...(publishedAt === undefined ? {} : { publishedAt }),
-            ...(updatedAt === undefined ? {} : { updatedAt }),
-            attribution,
+            ...existing.record,
+            affectedVersionIntervals: [...intervals.entries()]
+              .sort(([left], [right]) =>
+                left < right ? -1 : left > right ? 1 : 0,
+              )
+              .map(([, interval]) => interval),
+            patchedVersions: [
+              ...new Set([
+                ...existing.record.patchedVersions,
+                ...normalized.record.patchedVersions,
+              ]),
+            ].sort(),
           },
         }),
       );
     }
   }
+  const records = [...recordsByIdentity.values()];
   records.sort((left, right) => {
     if (left.pluginSlug !== right.pluginSlug) {
       return left.pluginSlug < right.pluginSlug ? -1 : 1;
@@ -382,6 +435,13 @@ async function boundedResponseBytes(
   maximumBytes: number,
 ): Promise<Uint8Array> {
   const declaredLength = response.headers.get("content-length");
+  const contentEncoding = response.headers.get("content-encoding");
+  const expectedLength =
+    declaredLength !== null &&
+    (contentEncoding === null || contentEncoding === "identity") &&
+    Number.isSafeInteger(Number(declaredLength))
+      ? Number(declaredLength)
+      : undefined;
   if (
     declaredLength !== null &&
     Number.isFinite(Number(declaredLength)) &&
@@ -393,6 +453,9 @@ async function boundedResponseBytes(
     const bytes = new Uint8Array(await response.arrayBuffer());
     if (bytes.byteLength > maximumBytes) {
       throw new ResponseTooLargeError();
+    }
+    if (expectedLength !== undefined && bytes.byteLength !== expectedLength) {
+      throw new PartialResponseError();
     }
     return bytes;
   }
@@ -421,33 +484,109 @@ async function boundedResponseBytes(
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
+  if (expectedLength !== undefined && bytes.byteLength !== expectedLength) {
+    throw new PartialResponseError();
+  }
   return bytes;
+}
+
+function rateLimitBackoff(headers: Headers) {
+  const value = headers.get("retry-after");
+  let retryAfter:
+    | { readonly kind: "unspecified" }
+    | {
+        readonly kind: "delay-seconds";
+        readonly seconds: number;
+      }
+    | {
+        readonly kind: "absolute-time";
+        readonly at: string;
+      } = { kind: "unspecified" };
+  if (value !== null && /^\d+$/u.test(value)) {
+    const seconds = Number(value);
+    if (Number.isSafeInteger(seconds)) {
+      retryAfter = { kind: "delay-seconds", seconds };
+    }
+  } else if (value !== null) {
+    const timestamp = Date.parse(value);
+    if (!Number.isNaN(timestamp)) {
+      retryAfter = {
+        kind: "absolute-time",
+        at: new Date(timestamp).toISOString(),
+      };
+    }
+  }
+  return wordfenceRateLimitBackoffSchema.parse({
+    kind: "wordfence-rate-limit-backoff",
+    schemaVersion: 1,
+    automaticRetries: 0,
+    retryAfter,
+  });
 }
 
 class FetchWordfenceIntelligenceV3Adapter implements WordfenceIntelligenceV3Adapter {
   readonly sourceUrl: string;
-  readonly #credentialResolver: (
-    reference: WordfenceSecretRef,
-  ) => Promise<string> | string;
+  readonly #credentialResolver:
+    ((reference: WordfenceSecretRef) => Promise<string> | string) | undefined;
+  readonly #credentialBroker: HostPrivateCredentialBroker | undefined;
   readonly #fetch: typeof fetch;
 
   constructor(options: WordfenceIntelligenceV3FetchAdapterOptions) {
     this.sourceUrl = options.sourceUrl ?? DEFAULT_SOURCE_URL;
     this.#credentialResolver = options.credentialResolver;
+    this.#credentialBroker = options.credentialBroker;
     this.#fetch = options.fetch ?? globalThis.fetch;
+    if (
+      (this.#credentialResolver === undefined) ===
+      (this.#credentialBroker === undefined)
+    ) {
+      throw new Error(
+        "Wordfence Intelligence requires exactly one credential source",
+      );
+    }
   }
 
   async retrieveProductionFeed(request: {
     readonly credential: WordfenceSecretRef;
     readonly maximumBytes: number;
   }): Promise<WordfenceIntelligenceSourceResponse> {
-    const credential = await this.#credentialResolver(request.credential);
+    if (this.#credentialBroker !== undefined) {
+      let credentialWasProvided = false;
+      try {
+        return await this.#credentialBroker.resolve(
+          request.credential,
+          async (credential) => {
+            credentialWasProvided = true;
+            return this.#retrieveWithCredential(
+              credential,
+              request.maximumBytes,
+            );
+          },
+        );
+      } catch (error) {
+        if (!credentialWasProvided) {
+          throw new CredentialUnavailableError();
+        }
+        throw error;
+      }
+    }
+    const credential = await this.#credentialResolver?.(request.credential);
+    if (credential === undefined) {
+      throw new CredentialUnavailableError();
+    }
+    return this.#retrieveWithCredential(credential, request.maximumBytes);
+  }
+
+  async #retrieveWithCredential(
+    credential: string,
+    maximumBytes: number,
+  ): Promise<WordfenceIntelligenceSourceResponse> {
     if (credential.length === 0) {
-      throw new Error("Wordfence Intelligence credential is unavailable");
+      throw new CredentialUnavailableError();
     }
     const response = await this.#fetch(this.sourceUrl, {
       method: "GET",
-      redirect: "follow",
+      redirect: "manual",
       headers: {
         accept: "application/json",
         authorization: `Bearer ${credential}`,
@@ -457,7 +596,14 @@ class FetchWordfenceIntelligenceV3Adapter implements WordfenceIntelligenceV3Adap
       status: response.status,
       sourceUrl: response.url || this.sourceUrl,
       complete: true,
-      bytes: await boundedResponseBytes(response, request.maximumBytes),
+      redirected: response.status >= 300 && response.status < 400,
+      ...(response.status === 429
+        ? { backoff: rateLimitBackoff(response.headers) }
+        : {}),
+      bytes:
+        response.status >= 200 && response.status < 300
+          ? await boundedResponseBytes(response, maximumBytes)
+          : new Uint8Array(),
     };
   }
 }
@@ -529,9 +675,12 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       });
     } catch (error) {
       return failure(
-        error instanceof ResponseTooLargeError
+        error instanceof ResponseTooLargeError ||
+          error instanceof PartialResponseError
           ? "partial-response"
-          : "network-failure",
+          : error instanceof CredentialUnavailableError
+            ? "credential-unavailable"
+            : "network-failure",
       );
     }
     const parsedResponse =
@@ -540,7 +689,13 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       return failure("schema-drift");
     }
     const response = parsedResponse.data;
-    const responseFailureResult = responseFailure(response.status);
+    if (
+      response.redirected === true ||
+      response.sourceUrl !== this.#adapter.sourceUrl
+    ) {
+      return failure("source-mismatch");
+    }
+    const responseFailureResult = responseFailure(response);
     if (responseFailureResult !== undefined) {
       return responseFailureResult;
     }
@@ -550,21 +705,6 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     ) {
       return failure("partial-response");
     }
-    if (response.sourceUrl !== this.#adapter.sourceUrl) {
-      return failure("schema-drift");
-    }
-
-    const contentDigest = rawDigest(response.bytes);
-    const artifactDirectory = join(
-      this.#artifactDirectory,
-      "wordfence-intelligence-v3",
-    );
-    await mkdir(artifactDirectory, { recursive: true });
-    await persistBytes(
-      join(artifactDirectory, `${contentDigest.slice(7)}.json`),
-      response.bytes,
-    );
-
     let normalized: ReturnType<typeof normalizeFeed>;
     try {
       normalized = normalizeFeed(response.bytes);
@@ -574,6 +714,20 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
           ? "attribution-missing"
           : "schema-drift",
       );
+    }
+    const contentDigest = rawDigest(response.bytes);
+    const artifactDirectory = join(
+      this.#artifactDirectory,
+      "wordfence-intelligence-v3",
+    );
+    try {
+      await mkdir(artifactDirectory, { recursive: true });
+      await persistBytes(
+        join(artifactDirectory, `${contentDigest.slice(7)}.json`),
+        response.bytes,
+      );
+    } catch {
+      return failure("storage-failure");
     }
     const snapshot = wordfenceIntelligenceSnapshotSchema.parse({
       kind: "wordfence-intelligence-snapshot",
@@ -588,7 +742,11 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       },
     });
     const snapshotRef = snapshotReference(snapshot);
-    this.#storeSnapshot(snapshot, snapshotRef, normalized.records);
+    try {
+      this.#storeSnapshot(snapshot, snapshotRef, normalized.records);
+    } catch {
+      return failure("storage-failure");
+    }
     return { status: "current", snapshot, snapshotRef };
   }
 
@@ -842,4 +1000,32 @@ export function openWordfenceIntelligence(
   options: OpenWordfenceIntelligenceOptions,
 ): WordfenceIntelligence {
   return new SqliteWordfenceIntelligence(options);
+}
+
+export function openWordfenceIntelligenceRefresh(
+  options: OpenWordfenceIntelligenceRefreshOptions,
+): WordfenceIntelligenceRefresh {
+  const intelligence = openWordfenceIntelligence({
+    databasePath: options.databasePath,
+    artifactDirectory: options.artifactDirectory,
+    adapter: createWordfenceIntelligenceV3FetchAdapter({
+      credentialBroker: options.credentialBroker,
+      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    }),
+    credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+    ...(options.maximumFeedBytes === undefined
+      ? {}
+      : { maximumFeedBytes: options.maximumFeedBytes }),
+    ...(options.knownRecordAuthorizationProvider === undefined
+      ? {}
+      : {
+          knownRecordAuthorizationProvider:
+            options.knownRecordAuthorizationProvider,
+        }),
+    ...(options.clock === undefined ? {} : { clock: options.clock }),
+  });
+  return {
+    run: (request) => intelligence.refresh(request),
+    inspect: (request) => intelligence.inspect(request),
+  };
 }

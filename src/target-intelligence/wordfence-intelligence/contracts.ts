@@ -8,6 +8,11 @@ const identifierSchema = z
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
 const pluginIdentitySchema = z.string().regex(/^wporg:[a-z0-9][a-z0-9-]*$/);
 const versionSchema = z.string().min(1).max(64);
+const softwareIdentifierSchema = z
+  .string()
+  .min(1)
+  .max(192)
+  .regex(/^[^\u0000-\u001f\u007f]+$/u);
 
 export const wordfenceSecretRefSchema = z.strictObject({
   kind: z.literal("secret-ref"),
@@ -152,8 +157,27 @@ export const wordfenceKnownRecordSchema = z.strictObject({
 });
 
 export const wordfenceStoredPluginRecordSchema = z.strictObject({
-  pluginSlug: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
+  pluginSlug: softwareIdentifierSchema,
   record: wordfenceKnownRecordSchema,
+});
+
+const wordfenceRateLimitRetryAfterSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("delay-seconds"),
+    seconds: z.number().int().nonnegative(),
+  }),
+  z.strictObject({
+    kind: z.literal("absolute-time"),
+    at: z.string().datetime({ offset: true }),
+  }),
+  z.strictObject({ kind: z.literal("unspecified") }),
+]);
+
+export const wordfenceRateLimitBackoffSchema = z.strictObject({
+  kind: z.literal("wordfence-rate-limit-backoff"),
+  schemaVersion: z.literal(1),
+  automaticRetries: z.literal(0),
+  retryAfter: wordfenceRateLimitRetryAfterSchema,
 });
 
 export const wordfenceKnownRecordProjectionSchema = z.strictObject({
@@ -173,6 +197,8 @@ export const wordfenceIntelligenceSourceResponseSchema = z.strictObject({
   status: z.number().int().min(100).max(599),
   sourceUrl: z.url(),
   complete: z.boolean(),
+  redirected: z.boolean().optional(),
+  backoff: wordfenceRateLimitBackoffSchema.optional(),
   bytes: z.custom<Uint8Array<ArrayBufferLike>>(
     (value) => value instanceof Uint8Array,
   ),
@@ -216,6 +242,9 @@ export type WordfenceKnownRecordProjection = z.infer<
 export type WordfenceIntelligenceSourceResponse = z.infer<
   typeof wordfenceIntelligenceSourceResponseSchema
 >;
+export type WordfenceRateLimitBackoff = z.infer<
+  typeof wordfenceRateLimitBackoffSchema
+>;
 
 export interface WordfenceIntelligenceSourceRequest {
   readonly credential: WordfenceSecretRef;
@@ -258,12 +287,16 @@ export type WordfenceIntelligenceFailureReason =
   | "rate-limited"
   | "network-failure"
   | "partial-response"
+  | "source-mismatch"
   | "schema-drift"
-  | "attribution-missing";
+  | "attribution-missing"
+  | "credential-unavailable"
+  | "storage-failure";
 
 export interface WordfenceIntelligenceFailure {
   readonly status: "failed";
   readonly reason: WordfenceIntelligenceFailureReason;
+  readonly backoff?: WordfenceRateLimitBackoff;
 }
 
 export interface CurrentWordfenceIntelligenceSnapshot {
@@ -301,9 +334,36 @@ export interface OpenWordfenceIntelligenceOptions {
 }
 
 export interface WordfenceIntelligenceV3FetchAdapterOptions {
-  readonly credentialResolver: (
+  readonly credentialResolver?: (
     reference: WordfenceSecretRef,
   ) => Promise<string> | string;
+  readonly credentialBroker?: HostPrivateCredentialBroker;
   readonly fetch?: typeof fetch;
   readonly sourceUrl?: string;
+}
+
+export interface HostPrivateCredentialBroker {
+  resolve<T>(
+    reference: WordfenceSecretRef,
+    use: (credential: string) => Promise<T>,
+  ): Promise<T>;
+}
+
+export interface WordfenceIntelligenceRefresh {
+  run(
+    request: WordfenceIntelligenceRefreshRequest,
+  ): Promise<WordfenceIntelligenceResult>;
+  inspect(
+    request: WordfenceIntelligenceInspectionRequest,
+  ): Promise<WordfenceIntelligenceResult>;
+}
+
+export interface OpenWordfenceIntelligenceRefreshOptions {
+  readonly databasePath: string;
+  readonly artifactDirectory: string;
+  readonly credentialBroker: HostPrivateCredentialBroker;
+  readonly maximumFeedBytes?: number;
+  readonly fetch?: typeof fetch;
+  readonly knownRecordAuthorizationProvider?: KnownRecordAccessAuthorizationProvider;
+  readonly clock?: () => Date;
 }

@@ -300,14 +300,58 @@ describe("WordfenceIntelligence", () => {
   });
 
   it.each([
-    { status: 401, complete: true, reason: "authentication-failed" },
-    { status: 404, complete: true, reason: "not-found" },
-    { status: 429, complete: true, reason: "rate-limited" },
-    { status: 503, complete: true, reason: "network-failure" },
-    { status: 200, complete: false, reason: "partial-response" },
+    {
+      status: 401,
+      complete: true,
+      reason: "authentication-failed",
+      source: "expected",
+    },
+    {
+      status: 403,
+      complete: true,
+      reason: "authentication-failed",
+      source: "expected",
+    },
+    {
+      status: 404,
+      complete: true,
+      reason: "not-found",
+      source: "expected",
+    },
+    {
+      status: 429,
+      complete: true,
+      reason: "rate-limited",
+      source: "expected",
+    },
+    {
+      status: 503,
+      complete: true,
+      reason: "network-failure",
+      source: "expected",
+    },
+    {
+      status: 200,
+      complete: false,
+      reason: "partial-response",
+      source: "expected",
+    },
+    {
+      status: 200,
+      complete: true,
+      reason: "partial-response",
+      source: "expected",
+      maximumFeedBytes: 1,
+    },
+    {
+      status: 200,
+      complete: true,
+      reason: "source-mismatch",
+      source: "mismatch",
+    },
   ] as const)(
     "returns $reason without publishing an invalid current snapshot",
-    async ({ status, complete, reason }) => {
+    async ({ status, complete, reason, source, ...configuration }) => {
       const directory = await mkdtemp(join(tmpdir(), "wordfence-failure-"));
       try {
         const base = fixtureAdapter();
@@ -318,12 +362,16 @@ describe("WordfenceIntelligence", () => {
             ...base,
             retrieveProductionFeed: async () => ({
               status,
-              sourceUrl: base.sourceUrl,
+              sourceUrl:
+                source === "expected"
+                  ? base.sourceUrl
+                  : "https://example.invalid/untrusted-redirect",
               complete,
               bytes: await readFile(fixturePath),
             }),
           },
           credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+          ...configuration,
         });
         await expect(
           intelligence.refresh({

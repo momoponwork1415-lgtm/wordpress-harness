@@ -18,6 +18,38 @@
         "patched": true,
         "patched_versions": ["1.4.1"],
         "remediation": "Sanitized remediation"
+      },
+      {
+        "type": "plugin",
+        "name": "Sanitized Commercial Extension",
+        "slug": "Commercial_Extension",
+        "affected_versions": {
+          "range-1": {
+            "from_version": "*",
+            "from_inclusive": true,
+            "to_version": "3.0.0",
+            "to_inclusive": true
+          }
+        },
+        "patched": true,
+        "patched_versions": ["3.0.1"],
+        "remediation": "Sanitized remediation"
+      },
+      {
+        "type": "plugin",
+        "name": "Sanitized Commercial Extension",
+        "slug": "Commercial_Extension",
+        "affected_versions": {
+          "range-2": {
+            "from_version": "4.0.0",
+            "from_inclusive": true,
+            "to_version": "4.2.0",
+            "to_inclusive": false
+          }
+        },
+        "patched": true,
+        "patched_versions": ["4.2.0"],
+        "remediation": "Sanitized remediation"
       }
     ],
     "informational": false,
