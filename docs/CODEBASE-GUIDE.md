@@ -12,10 +12,10 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Semantic Research | v6 initial Wave、Decision@3、conditional Depth実行まで実装済み | Missing-link / Closure |
 | Source-only Validation | v6、tool-free Risk Assessmentへ接続済み | Frontier Gapの次Wave |
 | Human Review Packet | versioned PacketとCAS-first handoffを実装済み | Human OS queue admission |
-| Human Verification | 未実装 | environment、queue、human disposition |
+| Human Verification | Packet-bound Environment Builderを実装済み | queue、human disposition |
 | Finding | legacy automated Findingのみ | Human Verification gate |
 
-現在のproduction sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / source-only Validation -> Risk Assessment / Human Review Packet -> durable handoff`である。v6 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Packet delivery failureはPacketを保持したままResearch failureと分ける。Missing-link / Closureはlegacy v5に実装済みだがv6へ未接続。
+現在のproduction sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / source-only Validation -> Risk Assessment / Human Review Packet -> durable handoff`である。Human OSはPacket-bound requestをfresh disposable environmentへ構築し、Dispositionを独立したCAS / Recordへ保存できる。v6 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Packet delivery failureはPacketを保持したままResearch failureと分ける。Missing-link / Closureはlegacy v5に実装済みだがv6へ未接続。
 
 完成度をpercentでは表さない。v0.1にはv6 Depth / Closure、Review Packet、Human Verification、Development Cohort再基準化、異なる3件のoracle-free Prospective Campaignが必要である。
 
@@ -124,10 +124,10 @@ Internal Module。immutable CAS artifact、append-only Ledger event、checkpoint
 
 **Interface:** `HumanVerificationEnvironmentBuilder.establish -> ready | setup-blocked`
 
-- Packetと一致するTargetをfresh disposable environmentへ構築する。
-- target codeをhost上で実行せず、privileged container、host network、engine socket、ambient credential、許可外egressを使わない。
-- setup failureをValidation negativeへ丸めず、plain Docker等へsilent fallbackしない。
-- **Status:** 未実装。
+- **Purpose:** Packetと一致するTargetをfresh disposable environmentへ構築する。
+- **Invariants:** requestへPacket、Target、Runtime Profile、declarative Setup Plan、Policy、grantをdigest固定する。target codeをhost上で実行せず、privileged container、host network、engine socket、ambient credential、許可外egressを使わない。Setup Receipt、gate observation、effective config、Target/runtime identityをCAS-firstで保存した後だけ`ready`を公開する。
+- **Failure semantics:** isolation不足、setup、activation、health failureは`setup-blocked`として保持する。partial environmentはcleanupし、plain Dockerまたはhost executionへfallbackしない。同じrequest digestは保存済みDispositionをreplayする。
+- **Status / Tests:** Builder、versioned contract、Human OS Recordを実装 · [code](../src/human-os), [tests](../tests/human-os/human-verification-environment.test.ts)
 
 ### Human Verification
 
