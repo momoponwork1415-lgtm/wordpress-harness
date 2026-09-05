@@ -1,12 +1,15 @@
 export {
   normalizedProgrammePolicySchema,
+  policyTermSchema,
   programmeEligibilityFreshnessPolicySchema,
   programmeEligibilityInspectionRequestSchema,
   programmeEligibilitySnapshotRefSchema,
   programmeEligibilitySnapshotSchema,
   programmeIntelligenceRefreshRequestSchema,
+  programmePolicyConflictSignalSchema,
   programmePolicySourceDescriptorSchema,
   programmePolicySourceSnapshotSchema,
+  programmeRewardRouteSchema,
 } from "./contracts.js";
 export type {
   CurrentProgrammeEligibilitySnapshot,
@@ -24,6 +27,7 @@ export type {
   ProgrammeIntelligence,
   ProgrammeIntelligenceRefreshRequest,
   ProgrammePolicySourceAdapter,
+  ProgrammePolicySourceContent,
   ProgrammePolicySourceDescriptor,
   ProgrammePolicySourceSnapshot,
 } from "./contracts.js";

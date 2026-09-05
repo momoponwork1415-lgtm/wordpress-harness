@@ -36,6 +36,10 @@ _Avoid_: Current policy、Finding verdict、Target Intake Packet
 Programme Eligibility Snapshotのうち、成立済みFindingについて外部行動を検討する時だけreward estimateへ使えるcurrencyとpolicy factor。Finding前のProgramme Opportunity BandまたはSelection Factとして使わない。
 _Avoid_: Programme Opportunity Band、Expected Finding value、Selection score
 
+**Programme Reward Route**:
+一つのProgramme Eligibility Snapshot内でMonthly Competition、Zeroday、base payout、期間限定promotion等を区別する、source-boundなFinding-only policy経路。currency、factor、下限・上限・pool等のpolicy termを保持するが、具体的Findingの報奨額またはTarget選定scoreを予測しない。
+_Avoid_: Programme Opportunity Band、Guaranteed payout、Selection incentive
+
 **Oracle Fact**:
 既知の脆弱version、patch、CVE、advisory narrative等、prospective Researchへ渡すと発見能力の評価を汚染する情報。
 _Avoid_: Selection Fact、Sensitive metadata

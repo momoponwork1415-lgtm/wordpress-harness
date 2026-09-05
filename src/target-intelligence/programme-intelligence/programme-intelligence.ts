@@ -10,6 +10,7 @@ import {
   programmeEligibilitySnapshotRefSchema,
   programmeEligibilitySnapshotSchema,
   programmeIntelligenceRefreshRequestSchema,
+  programmePolicyConflictSignalSchema,
   programmePolicySourceDescriptorSchema,
   programmePolicySourceSnapshotSchema,
   type NormalizedProgrammePolicy,
@@ -115,6 +116,12 @@ class FileProgrammeIntelligence implements ProgrammeIntelligence {
       };
     }
     const retrieved: RetrievedPolicy[] = [];
+    const parseContext = sourceContents.map(({ adapter, bytes }) => ({
+      sourceId: adapter.sourceId,
+      sourceUrl: adapter.sourceUrl,
+      parserVersion: adapter.parserVersion,
+      bytes,
+    }));
     for (const { adapter, bytes } of sourceContents) {
       const source = programmePolicySourceSnapshotSchema.parse({
         sourceId: adapter.sourceId,
@@ -125,9 +132,24 @@ class FileProgrammeIntelligence implements ProgrammeIntelligence {
       });
       let policy: NormalizedProgrammePolicy;
       try {
-        policy = normalizedProgrammePolicySchema.parse(
-          await adapter.parse(bytes),
-        );
+        const parsed = await adapter.parse(bytes, parseContext);
+        if (programmePolicyConflictSignalSchema.safeParse(parsed).success) {
+          return {
+            status: "policy-conflict",
+            programmeIdentity: request.programmeIdentity,
+            sources: sourceContents.map(
+              ({ adapter: sourceAdapter, bytes: sourceBytes }) =>
+                programmePolicySourceSnapshotSchema.parse({
+                  sourceId: sourceAdapter.sourceId,
+                  sourceUrl: sourceAdapter.sourceUrl,
+                  retrievedAt,
+                  contentDigest: rawDigest(sourceBytes),
+                  parserVersion: sourceAdapter.parserVersion,
+                }),
+            ),
+          };
+        }
+        policy = normalizedProgrammePolicySchema.parse(parsed);
       } catch {
         return {
           status: "parse-failed",

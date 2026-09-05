@@ -9,7 +9,7 @@ const identifierSchema = z
 const programmeIdentitySchema = z
   .string()
   .regex(/^programme:[a-z0-9][a-z0-9-]*$/);
-const policyTermSchema = z
+export const policyTermSchema = z
   .string()
   .min(1)
   .max(128)
@@ -26,7 +26,7 @@ export const programmeEligibilityFreshnessPolicySchema = z.strictObject({
   }),
 });
 
-const programmeEligibilitySchema = z.strictObject({
+export const programmeEligibilitySchema = z.strictObject({
   assets: z
     .array(
       z.strictObject({
@@ -46,6 +46,20 @@ const programmeEligibilitySchema = z.strictObject({
   ]),
   researcherTiers: z.array(policyTermSchema).min(1),
   exclusions: z.array(policyTermSchema),
+  conditions: z.array(policyTermSchema).optional(),
+});
+
+const programmeRewardRouteTermSchema = z.strictObject({
+  key: policyTermSchema,
+  value: z.union([z.string().min(1).max(512), z.number(), z.boolean()]),
+});
+
+export const programmeRewardRouteSchema = z.strictObject({
+  id: policyTermSchema,
+  kind: policyTermSchema,
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  factors: z.array(policyTermSchema).min(1),
+  terms: z.array(programmeRewardRouteTermSchema),
 });
 
 export const normalizedProgrammePolicySchema = z.strictObject({
@@ -60,7 +74,13 @@ export const normalizedProgrammePolicySchema = z.strictObject({
     kind: z.literal("finding-only-reward-estimate-input"),
     currency: z.string().regex(/^[A-Z]{3}$/),
     factors: z.array(policyTermSchema).min(1),
+    routes: z.array(programmeRewardRouteSchema).optional(),
   }),
+});
+
+export const programmePolicyConflictSignalSchema = z.strictObject({
+  kind: z.literal("programme-policy-conflict"),
+  schemaVersion: z.literal(1),
 });
 
 export const programmePolicySourceSnapshotSchema = z.strictObject({
@@ -132,13 +152,23 @@ export type ProgrammeEligibilityInspectionRequest = z.infer<
   typeof programmeEligibilityInspectionRequestSchema
 >;
 
+export interface ProgrammePolicySourceContent {
+  readonly sourceId: string;
+  readonly sourceUrl: string;
+  readonly parserVersion: string;
+  readonly bytes: Uint8Array;
+}
+
 export interface ProgrammePolicySourceAdapter {
   readonly sourceId: string;
   readonly programmeIdentity: string;
   readonly sourceUrl: string;
   readonly parserVersion: string;
   retrieve(): Promise<Uint8Array>;
-  parse(bytes: Uint8Array): Promise<unknown> | unknown;
+  parse(
+    bytes: Uint8Array,
+    sources?: readonly ProgrammePolicySourceContent[],
+  ): Promise<unknown> | unknown;
 }
 
 export interface CurrentProgrammeEligibilitySnapshot {

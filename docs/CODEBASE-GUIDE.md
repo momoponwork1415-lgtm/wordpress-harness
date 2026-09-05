@@ -40,8 +40,18 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 - **Purpose:** 外部programmeのscope、eligibility、reward policy、competition ruleを、Programme Identityとrequired source provenanceへ結び付けたProgramme Eligibility Snapshotにする。
 - **Invariants:** source URL、retrievedAt、raw content digest、parser version、freshness policyを固定する。Programme Opportunity BandとFinding後専用のreward estimate inputを分離し、programme ruleでFindingのtechnical validityを変更しない。Oracle FactをResearchまたはTarget Intake Packetへ渡さない。
 - **Failures:** required source間の不一致は`policy-conflict`、必須fieldまたはnormalized contract不成立は`parse-failed`、refresh失敗と期限切れsnapshotは`stale`。Target選定batchとSubmission Stagingはそれぞれcurrent freshnessを要求する。
-- **Status:** versioned core contract、content-addressed snapshot、sanitized fixture Adapterの共通Behavior Testを実装。Patchstack / Wordfence固有の取得・parse Adapterは#99 / #100で扱う。
+- **Status:** versioned core contract、content-addressed snapshot、sanitized fixture Adapterの共通Behavior Testを実装。Patchstack固有Adapterは実装済み。Wordfence programme固有Adapterは#100で扱う。
 - **Code / Tests:** [programme-intelligence](../src/target-intelligence/programme-intelligence) · [Behavior Test](../tests/target-intelligence/programme-intelligence.test.ts)
+
+### Patchstack Programme Adapter
+
+**Interface:** `createPatchstackProgrammeAdapters -> ProgrammePolicySourceAdapter[]`
+
+- **Purpose:** Rules / Terms、report form、leaderboard、marketing pageの4 sourceを優先順付きで取得・parseし、programme-neutralなProgramme Eligibility Snapshotへ統合する。
+- **Invariants:** Rulesをeligibilityの正本とし、lower-precedence sourceで上書きしない。latest stable、3年以内更新、active-install threshold、attacker role、mVDP例外をeligibilityへ固定する。Monthly CompetitionとZerodayを別のFinding-only reward routeにし、XP factor、contribution share、rejection-rate reduction、monthly poolをsource digestへbindする。named plugin、CVE、affected version、researcher detailsをnormalized policyへ含めない。
+- **Failures:** required source取得失敗は`stale`、必須ruleまたはstrict page contract不成立は`parse-failed`、source間の実質的矛盾は`policy-conflict`。marketing表示だけでRulesを置き換えない。
+- **Status:** 4-source group parse、source provenance、reward-route分離、conflict / stale / driftのsanitized fixture Behavior Testを実装。
+- **Code / Tests:** [patchstack-programme](../src/target-intelligence/patchstack-programme) · [Behavior Test](../tests/target-intelligence/patchstack-programme-adapter.test.ts)
 
 ### Target Research History
 
