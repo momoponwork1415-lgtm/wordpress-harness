@@ -1066,7 +1066,9 @@ function normalizeFeed(bytes: Uint8Array): {
   readonly recordCount: number;
   readonly records: readonly WordfenceStoredPluginRecord[];
 } {
-  const decoded = JSON.parse(Buffer.from(bytes).toString("utf8")) as unknown;
+  const decoded = JSON.parse(
+    new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+  ) as unknown;
   const feed = rawFeedSchema.parse(decoded);
   const entries = Object.entries(feed).sort(([left], [right]) =>
     left < right ? -1 : left > right ? 1 : 0,
@@ -1235,9 +1237,12 @@ async function boundedResponseBytes(
 ): Promise<Uint8Array> {
   const declaredLength = response.headers.get("content-length");
   const contentEncoding = response.headers.get("content-encoding");
+  const hasIdentityEncoding =
+    contentEncoding === null ||
+    contentEncoding.trim().toLowerCase() === "identity";
   const expectedLength =
     declaredLength !== null &&
-    (contentEncoding === null || contentEncoding === "identity") &&
+    hasIdentityEncoding &&
     Number.isSafeInteger(Number(declaredLength))
       ? Number(declaredLength)
       : undefined;
@@ -1261,6 +1266,7 @@ async function boundedResponseBytes(
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
+  let bodyFailure: unknown;
   try {
     while (true) {
       const next = await reader.read();
@@ -1278,8 +1284,27 @@ async function boundedResponseBytes(
       }
       chunks.push(next.value);
     }
-  } finally {
+  } catch (error) {
+    if (error instanceof ResponseTooLargeError) {
+      bodyFailure = error;
+    } else {
+      try {
+        await reader.cancel();
+      } catch {
+        // The incomplete-body failure is primary; cancellation is cleanup.
+      }
+      bodyFailure = new PartialResponseError();
+    }
+  }
+  try {
     reader.releaseLock();
+  } catch (error) {
+    if (bodyFailure === undefined) {
+      throw error;
+    }
+  }
+  if (bodyFailure !== undefined) {
+    throw bodyFailure;
   }
   const bytes = new Uint8Array(total);
   let offset = 0;

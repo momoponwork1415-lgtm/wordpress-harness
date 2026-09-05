@@ -1859,6 +1859,292 @@ describe("WordfenceIntelligenceRefresh", () => {
     },
   );
 
+  it.each(["Identity", "\t IDENTITY \t"])(
+    "treats Content-Encoding %j as identity when enforcing response length",
+    async (contentEncoding) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "wordfence-identity-length-"),
+      );
+      const bytes = await readFile(fixturePath);
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(new Response(bytes, { status: 200 }))
+        .mockResolvedValueOnce(
+          new Response(bytes, {
+            status: 200,
+            headers: {
+              "content-encoding": contentEncoding,
+              "content-length": String(bytes.byteLength + 1),
+            },
+          }),
+        );
+      try {
+        const refresh = openWordfenceIntelligenceRefresh({
+          databasePath: join(directory, "index", "target-intelligence.sqlite"),
+          artifactDirectory: join(directory, "artifacts"),
+          credentialBroker: {
+            async resolve<T>(
+              _reference: WordfenceSecretRef,
+              use: (credential: string) => Promise<T>,
+            ): Promise<T> {
+              return use("synthetic-identity-length-credential");
+            },
+          },
+          fetch: fetchMock,
+        });
+        const current = await refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        });
+        if (current.status !== "current") {
+          throw new Error("Expected an initial current snapshot");
+        }
+
+        await expect(
+          refresh.run({
+            kind: "wordfence-intelligence-refresh",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual({
+          kind: "wordfence-intelligence-result",
+          schemaVersion: 1,
+          status: "failed",
+          reason: "partial-response",
+        });
+        await expect(
+          refresh.inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+        ).resolves.toMatchObject({
+          status: "stale",
+          snapshot: current.snapshot,
+          snapshotRef: current.snapshotRef,
+        });
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("treats a body-stream failure after prefix bytes as a partial response", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-stream-partial-"),
+    );
+    const bytes = await readFile(fixturePath);
+    let pullCount = 0;
+    let cancellationAttempted = false;
+    const partialResponse = new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pullCount += 1;
+          if (pullCount === 1) {
+            controller.enqueue(bytes.subarray(0, 64));
+            return;
+          }
+          throw new Error("synthetic body stream failure");
+        },
+      }),
+      {
+        status: 200,
+        headers: { "content-length": String(bytes.byteLength) },
+      },
+    );
+    const responseBody = partialResponse.body;
+    if (responseBody === null) {
+      throw new Error("Expected a response body");
+    }
+    const getReader = responseBody.getReader.bind(responseBody);
+    Object.defineProperty(responseBody, "getReader", {
+      configurable: true,
+      value: () => {
+        const reader = getReader();
+        Object.defineProperty(reader, "cancel", {
+          configurable: true,
+          value: async () => {
+            cancellationAttempted = true;
+            throw new Error("synthetic cancellation cleanup failure");
+          },
+        });
+        return reader;
+      },
+    });
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(bytes, { status: 200 }))
+      .mockResolvedValueOnce(partialResponse);
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath: join(directory, "index", "target-intelligence.sqlite"),
+        artifactDirectory: join(directory, "artifacts"),
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            return use("synthetic-stream-partial-credential");
+          },
+        },
+        fetch: fetchMock,
+      });
+      const current = await refresh.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      if (current.status !== "current") {
+        throw new Error("Expected an initial current snapshot");
+      }
+
+      await expect(
+        refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual({
+        kind: "wordfence-intelligence-result",
+        schemaVersion: 1,
+        status: "failed",
+        reason: "partial-response",
+      });
+      expect(cancellationAttempted).toBe(true);
+      await expect(
+        refresh.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).resolves.toMatchObject({
+        status: "stale",
+        snapshot: current.snapshot,
+        snapshotRef: current.snapshotRef,
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a pre-response connectivity failure distinct from a partial body", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-connectivity-failure-"),
+    );
+    const bytes = await readFile(fixturePath);
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(bytes, { status: 200 }))
+      .mockRejectedValueOnce(new Error("synthetic connection failure"));
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath: join(directory, "index", "target-intelligence.sqlite"),
+        artifactDirectory: join(directory, "artifacts"),
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            return use("synthetic-connectivity-failure-credential");
+          },
+        },
+        fetch: fetchMock,
+      });
+      const current = await refresh.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      if (current.status !== "current") {
+        throw new Error("Expected an initial current snapshot");
+      }
+
+      await expect(
+        refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual({
+        kind: "wordfence-intelligence-result",
+        schemaVersion: 1,
+        status: "failed",
+        reason: "network-failure",
+      });
+      await expect(
+        refresh.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).resolves.toMatchObject({
+        status: "stale",
+        snapshot: current.snapshot,
+        snapshotRef: current.snapshotRef,
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects malformed UTF-8 without publishing or replacing the current snapshot", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "wordfence-fatal-utf8-"));
+    const bytes = await readFile(fixturePath);
+    const malformed = Buffer.from(bytes);
+    const slugOffset = malformed.indexOf("fixture-plugin");
+    if (slugOffset < 0) {
+      throw new Error("Expected the sanitized fixture slug");
+    }
+    malformed[slugOffset] = 0xff;
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(bytes, { status: 200 }))
+      .mockResolvedValueOnce(new Response(malformed, { status: 200 }));
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath: join(directory, "index", "target-intelligence.sqlite"),
+        artifactDirectory: join(directory, "artifacts"),
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            return use("synthetic-fatal-utf8-credential");
+          },
+        },
+        fetch: fetchMock,
+      });
+      const current = await refresh.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      if (current.status !== "current") {
+        throw new Error("Expected an initial current snapshot");
+      }
+
+      await expect(
+        refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual({
+        kind: "wordfence-intelligence-result",
+        schemaVersion: 1,
+        status: "failed",
+        reason: "schema-drift",
+      });
+      await expect(
+        refresh.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).resolves.toMatchObject({
+        status: "stale",
+        snapshot: current.snapshot,
+        snapshotRef: current.snapshotRef,
+      });
+      expect(
+        await readdir(
+          join(directory, "artifacts", "wordfence-intelligence-v3"),
+        ),
+      ).toHaveLength(1);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     {
       status: 429,
