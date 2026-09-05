@@ -13,6 +13,7 @@ import {
   type TargetSelectionPolicy,
   type TargetSelectionReceipt,
 } from "../../src/target-intelligence/index.js";
+import { createLegacyApprovedTargetBatchFixture } from "../fixtures/target-intelligence/legacy-target-selection.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 const selectionPolicy: TargetSelectionPolicy = {
@@ -100,11 +101,13 @@ async function selectionReceipts(
 ): Promise<{
   readonly attemptRef: {
     readonly kind: "target-selection-attempt-ref";
-    readonly schemaVersion: 1;
+    readonly schemaVersion: 2;
     readonly id: string;
     readonly digest: string;
   };
   readonly receipts: readonly TargetSelectionReceipt[];
+  readonly resolver: ReturnType<typeof openTargetSelection>;
+  readonly selectionKey: string;
 }> {
   const selection = openTargetSelection({
     storageDirectory,
@@ -125,10 +128,11 @@ async function selectionReceipts(
     },
     clock: () => new Date("2030-09-01T00:00:00.000Z"),
   });
+  const selectionKey = options.selectionKey ?? "approval-fixture-selection";
   const selected = await selection.select({
     kind: "target-selection-request",
-    schemaVersion: 1,
-    selectionKey: options.selectionKey ?? "approval-fixture-selection",
+    schemaVersion: 2,
+    selectionKey,
     revision: 1,
     policy: selectionPolicy,
     modelProfile,
@@ -143,11 +147,56 @@ async function selectionReceipts(
   if (selected.status !== "selected") {
     throw new Error("Expected Selection Receipts for approval fixture");
   }
-  return selected;
+  return { ...selected, resolver: selection, selectionKey };
 }
 
 describe("TargetBatchApproval", () => {
-  it("rejects Selection Receipts that are not bound to a durable Attempt", async () => {
+  it("inspects a legacy v1 Batch through a read-only reason-code projection", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "target-batch-legacy-"));
+    try {
+      const fixture = await createLegacyApprovedTargetBatchFixture(directory);
+      const approval = openTargetBatchApproval({
+        storageDirectory: directory,
+        selectionResolver: {
+          resolveForApproval: async () => {
+            throw new Error("legacy Batch inspection must not resolve");
+          },
+        },
+      });
+
+      const projected = await approval.inspect(fixture.ref);
+      expect(projected).toMatchObject({
+        kind: "approved-target-batch-legacy-projection",
+        schemaVersion: 1,
+        sourceArtifact: {
+          id: fixture.ref.id,
+          digest: fixture.ref.digest,
+        },
+        approvedTargets: [
+          {
+            candidateId: "legacy-candidate",
+            reason: "accept-autonomous-selection",
+          },
+        ],
+        orderReason: "single-target-batch",
+      });
+      expect(JSON.stringify(projected)).not.toMatch(/CVE|advisory|Finding/);
+
+      const restarted = openTargetBatchApproval({
+        storageDirectory: directory,
+        selectionResolver: {
+          resolveForApproval: async () => {
+            throw new Error("legacy Batch inspection must not resolve");
+          },
+        },
+      });
+      await expect(restarted.inspect(fixture.ref)).resolves.toEqual(projected);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a caller-supplied Attempt ref that does not bind the durable Attempt", async () => {
     const selectionDirectory = await mkdtemp(
       join(tmpdir(), "target-batch-unbound-selection-"),
     );
@@ -161,17 +210,22 @@ describe("TargetBatchApproval", () => {
       });
       const approval = openTargetBatchApproval({
         storageDirectory: approvalDirectory,
+        selectionResolver: selection.resolver,
         clock: () => new Date("2030-09-01T12:00:00.000Z"),
       });
 
       await expect(
         approval.approve({
           kind: "target-batch-approval-request",
-          schemaVersion: 1,
+          schemaVersion: 2,
           batchKey: "unbound-batch",
           revision: 1,
-          selectionAttemptRef: selection.attemptRef,
-          selectionReceipts: [...selection.receipts],
+          selectionAttempt: {
+            ref: { ...selection.attemptRef, digest: digest("9") },
+            selectionKey: selection.selectionKey,
+            revision: 1,
+          },
+          operatorNominations: [],
           selectionPolicy,
           modelProfile,
           campaignPolicy: { id: "campaign-policy-v1", digest: digest("2") },
@@ -213,28 +267,33 @@ describe("TargetBatchApproval", () => {
     let currentTime = "2030-09-01T12:00:00.000Z";
     try {
       const selection = await selectionReceipts(directory, {
-        candidates: [
-          candidate("candidate-one"),
-          candidate("candidate-two"),
-          candidate("candidate-three", {
-            kind: "operator-nomination",
-            nominatedBy: "human:fixture-operator",
-            nominatedAt: "2030-08-31T23:55:00.000Z",
-            reason: "coverage-balance",
-          }),
-        ],
+        candidates: [candidate("candidate-one"), candidate("candidate-two")],
       });
+      const { origin: _origin, ...nominatedCandidate } =
+        candidate("candidate-three");
       const approval = openTargetBatchApproval({
         storageDirectory: directory,
+        selectionResolver: selection.resolver,
         clock: () => new Date(currentTime),
       });
       const input: TargetBatchApprovalRequest = {
         kind: "target-batch-approval-request",
-        schemaVersion: 1,
+        schemaVersion: 2,
         batchKey: "september-batch",
         revision: 1,
-        selectionAttemptRef: selection.attemptRef,
-        selectionReceipts: [...selection.receipts],
+        selectionAttempt: {
+          ref: selection.attemptRef,
+          selectionKey: selection.selectionKey,
+          revision: 1,
+        },
+        operatorNominations: [
+          {
+            candidate: nominatedCandidate,
+            nominatedBy: "human:fixture-operator",
+            nominatedAt: "2030-08-31T23:55:00.000Z",
+            reason: "coverage-balance",
+          },
+        ],
         selectionPolicy,
         modelProfile,
         campaignPolicy: { id: "campaign-policy-v1", digest: digest("2") },
@@ -277,6 +336,9 @@ describe("TargetBatchApproval", () => {
       const ref = await approval.approve(input);
 
       const approvedBatch = await approval.inspect(ref);
+      if (approvedBatch.kind !== "approved-target-batch") {
+        throw new Error("Expected a current Approved Target Batch");
+      }
       expect(
         approvedBatch.selectionReceipts.find(
           (receipt) => receipt.candidateId === "candidate-three",
@@ -293,7 +355,7 @@ describe("TargetBatchApproval", () => {
       });
       expect(approvedBatch).toMatchObject({
         kind: "approved-target-batch",
-        schemaVersion: 1,
+        schemaVersion: 2,
         batchKey: "september-batch",
         revision: 1,
         approvedTargets: [
@@ -329,6 +391,7 @@ describe("TargetBatchApproval", () => {
 
       const restarted = openTargetBatchApproval({
         storageDirectory: directory,
+        selectionResolver: selection.resolver,
         clock: () => new Date(currentTime),
       });
       await expect(restarted.inspect(ref)).resolves.toEqual(
@@ -404,37 +467,43 @@ describe("TargetBatchApproval", () => {
 
   it("does not let an operator nomination bypass a failed Selection hard gate", async () => {
     const directory = await mkdtemp(join(tmpdir(), "target-batch-gate-"));
-    const covered = candidate("candidate-covered", {
-      kind: "operator-nomination",
-      nominatedBy: "human:fixture-operator",
-      nominatedAt: "2030-08-31T23:55:00.000Z",
-      reason: "coverage-balance",
-    });
+    const covered = candidate("candidate-covered");
     try {
       const selection = await selectionReceipts(directory, {
         selectionKey: "covered-selection",
-        candidates: [
-          {
-            ...covered,
-            researchHistory: {
-              status: "coverage-closed",
-              campaignId: "campaign-covered",
-            },
-          },
-        ],
+        candidates: [candidate("candidate-one")],
       });
+      const { origin: _origin, ...coveredNomination } = {
+        ...covered,
+        researchHistory: {
+          status: "coverage-closed" as const,
+          campaignId: "campaign-covered",
+        },
+      };
       const approval = openTargetBatchApproval({
         storageDirectory: directory,
+        selectionResolver: selection.resolver,
         clock: () => new Date("2030-09-01T12:00:00.000Z"),
       });
       await expect(
         approval.approve({
           kind: "target-batch-approval-request",
-          schemaVersion: 1,
+          schemaVersion: 2,
           batchKey: "covered-batch",
           revision: 1,
-          selectionAttemptRef: selection.attemptRef,
-          selectionReceipts: [...selection.receipts],
+          selectionAttempt: {
+            ref: selection.attemptRef,
+            selectionKey: selection.selectionKey,
+            revision: 1,
+          },
+          operatorNominations: [
+            {
+              candidate: coveredNomination,
+              nominatedBy: "human:fixture-operator",
+              nominatedAt: "2030-08-31T23:55:00.000Z",
+              reason: "coverage-balance",
+            },
+          ],
           selectionPolicy,
           modelProfile,
           campaignPolicy: { id: "campaign-policy-v1", digest: digest("2") },
@@ -455,6 +524,11 @@ describe("TargetBatchApproval", () => {
             decidedAt: "2030-09-01T11:55:00.000Z",
           },
           decisions: [
+            {
+              candidateId: "candidate-one",
+              decision: "exclude",
+              reason: "exclude-from-current-batch",
+            },
             {
               candidateId: "candidate-covered",
               decision: "approve",

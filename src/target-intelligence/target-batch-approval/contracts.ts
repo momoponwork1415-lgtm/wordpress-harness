@@ -1,10 +1,15 @@
 import { z } from "zod";
 
 import {
-  targetSelectionAttemptRefSchema,
+  legacyTargetSelectionAttemptRefSchema,
+  legacyTargetSelectionReceiptSchema,
+  targetSelectionApprovalNominationSchema,
+  targetSelectionApprovalVerificationRefSchema,
   targetSelectionModelProfileSchema,
   targetSelectionPolicySchema,
+  targetSelectionReadableAttemptRefSchema,
   targetSelectionReceiptSchema,
+  type TargetSelectionApprovalResolver,
 } from "../target-selection/contracts.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
@@ -20,10 +25,22 @@ const immutableRefSchema = z.strictObject({
 
 export const approvedTargetBatchRefSchema = z.strictObject({
   kind: z.literal("approved-target-batch-ref"),
+  schemaVersion: z.literal(2),
+  id: identifierSchema,
+  digest: digestSchema,
+});
+
+export const legacyApprovedTargetBatchRefSchema = z.strictObject({
+  kind: z.literal("approved-target-batch-ref"),
   schemaVersion: z.literal(1),
   id: identifierSchema,
   digest: digestSchema,
 });
+
+export const readableApprovedTargetBatchRefSchema = z.union([
+  approvedTargetBatchRefSchema,
+  legacyApprovedTargetBatchRefSchema,
+]);
 
 export const targetBatchBudgetSchema = z
   .strictObject({
@@ -68,11 +85,15 @@ export const targetBatchOrderReasonSchema = z.enum([
 
 export const targetBatchApprovalRequestSchema = z.strictObject({
   kind: z.literal("target-batch-approval-request"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   batchKey: identifierSchema,
   revision: z.number().int().positive(),
-  selectionAttemptRef: targetSelectionAttemptRefSchema,
-  selectionReceipts: z.array(targetSelectionReceiptSchema).min(1),
+  selectionAttempt: z.strictObject({
+    ref: targetSelectionReadableAttemptRefSchema,
+    selectionKey: identifierSchema,
+    revision: z.number().int().positive(),
+  }),
+  operatorNominations: z.array(targetSelectionApprovalNominationSchema),
   selectionPolicy: targetSelectionPolicySchema,
   modelProfile: targetSelectionModelProfileSchema,
   campaignPolicy: immutableRefSchema,
@@ -103,13 +124,14 @@ const excludedTargetSchema = z.strictObject({
 
 export const approvedTargetBatchSchema = z.strictObject({
   kind: z.literal("approved-target-batch"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   id: identifierSchema,
   digest: digestSchema,
   approvalInputDigest: digestSchema,
   batchKey: identifierSchema,
   revision: z.number().int().positive(),
-  selectionAttemptRef: targetSelectionAttemptRefSchema,
+  selectionAttemptRef: targetSelectionReadableAttemptRefSchema,
+  selectionVerificationRef: targetSelectionApprovalVerificationRefSchema,
   selectionReceipts: z.array(targetSelectionReceiptSchema).min(1),
   selectionPolicy: targetSelectionPolicySchema,
   modelProfile: targetSelectionModelProfileSchema,
@@ -128,6 +150,75 @@ export const approvedTargetBatchSchema = z.strictObject({
   approvedAt: z.string().datetime({ offset: true }),
 });
 
+const legacyOperatorDecisionSchema = z.strictObject({
+  candidateId: identifierSchema,
+  decision: z.enum(["approve", "exclude"]),
+  source: z.enum(["autonomous-selection", "operator-nominated"]),
+  reason: z.string().trim().min(1).max(512),
+});
+
+const legacyApprovedTargetSchema = z.strictObject({
+  candidateId: identifierSchema,
+  source: z.enum(["autonomous-selection", "operator-nominated"]),
+  reason: z.string().trim().min(1).max(512),
+  selectionReceiptRef: immutableRefSchema,
+});
+
+const legacyExcludedTargetSchema = z.strictObject({
+  candidateId: identifierSchema,
+  reason: z.string().trim().min(1).max(512),
+  selectionReceiptRef: immutableRefSchema,
+});
+
+export const legacyApprovedTargetBatchSchema = z.strictObject({
+  kind: z.literal("approved-target-batch"),
+  schemaVersion: z.literal(1),
+  id: identifierSchema,
+  digest: digestSchema,
+  approvalInputDigest: digestSchema,
+  batchKey: identifierSchema,
+  revision: z.number().int().positive(),
+  selectionAttemptRef: legacyTargetSelectionAttemptRefSchema,
+  selectionReceipts: z.array(legacyTargetSelectionReceiptSchema).min(1),
+  selectionPolicy: targetSelectionPolicySchema,
+  modelProfile: targetSelectionModelProfileSchema,
+  campaignPolicy: immutableRefSchema,
+  batchBudget: targetBatchBudgetSchema,
+  executionWindow: targetBatchExecutionWindowSchema,
+  operator: z.strictObject({
+    identity: identifierSchema,
+    decidedAt: z.string().datetime({ offset: true }),
+  }),
+  decisions: z.array(legacyOperatorDecisionSchema).min(1),
+  approvedTargets: z.array(legacyApprovedTargetSchema).min(1),
+  excludedTargets: z.array(legacyExcludedTargetSchema),
+  orderReason: z.string().trim().min(1).max(512),
+  supersedes: legacyApprovedTargetBatchRefSchema.optional(),
+  approvedAt: z.string().datetime({ offset: true }),
+});
+
+export const legacyApprovedTargetBatchProjectionSchema = z.strictObject({
+  kind: z.literal("approved-target-batch-legacy-projection"),
+  schemaVersion: z.literal(1),
+  sourceArtifact: immutableRefSchema,
+  batchKey: identifierSchema,
+  revision: z.number().int().positive(),
+  selectionAttemptRef: legacyTargetSelectionAttemptRefSchema,
+  selectionPolicy: targetSelectionPolicySchema,
+  modelProfile: targetSelectionModelProfileSchema,
+  campaignPolicy: immutableRefSchema,
+  batchBudget: targetBatchBudgetSchema,
+  executionWindow: targetBatchExecutionWindowSchema,
+  operator: z.strictObject({
+    identity: identifierSchema,
+    decidedAt: z.string().datetime({ offset: true }),
+  }),
+  approvedTargets: z.array(approvedTargetSchema).min(1),
+  excludedTargets: z.array(excludedTargetSchema),
+  orderReason: targetBatchOrderReasonSchema,
+  approvedAt: z.string().datetime({ offset: true }),
+});
+
 export type TargetBatchBudget = z.infer<typeof targetBatchBudgetSchema>;
 export type TargetBatchExecutionWindow = z.infer<
   typeof targetBatchExecutionWindowSchema
@@ -139,8 +230,17 @@ export type TargetBatchApprovalRequest = z.infer<
   typeof targetBatchApprovalRequestSchema
 >;
 export type ApprovedTargetBatch = z.infer<typeof approvedTargetBatchSchema>;
+export type LegacyApprovedTargetBatch = z.infer<
+  typeof legacyApprovedTargetBatchSchema
+>;
+export type LegacyApprovedTargetBatchProjection = z.infer<
+  typeof legacyApprovedTargetBatchProjectionSchema
+>;
 export type ApprovedTargetBatchRef = z.infer<
   typeof approvedTargetBatchRefSchema
+>;
+export type ReadableApprovedTargetBatchRef = z.infer<
+  typeof readableApprovedTargetBatchRefSchema
 >;
 
 export type TargetBatchApprovalErrorCode =
@@ -148,7 +248,6 @@ export type TargetBatchApprovalErrorCode =
   | "binding-mismatch"
   | "budget-exceeded"
   | "hard-gate-failed"
-  | "receipt-integrity-failed"
   | "selection-attempt-unverified"
   | "revision-conflict"
   | "supersede-invalid"
@@ -166,10 +265,13 @@ export class TargetBatchApprovalError extends Error {
 
 export interface TargetBatchApproval {
   approve(request: TargetBatchApprovalRequest): Promise<ApprovedTargetBatchRef>;
-  inspect(ref: ApprovedTargetBatchRef): Promise<ApprovedTargetBatch>;
+  inspect(
+    ref: ReadableApprovedTargetBatchRef,
+  ): Promise<ApprovedTargetBatch | LegacyApprovedTargetBatchProjection>;
 }
 
 export interface OpenTargetBatchApprovalOptions {
   readonly storageDirectory: string;
+  readonly selectionResolver: TargetSelectionApprovalResolver;
   readonly clock?: () => Date;
 }

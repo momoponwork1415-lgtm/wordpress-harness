@@ -4,20 +4,27 @@ import { join } from "node:path";
 import { canonicalJson, sha256Digest } from "../acquisition/canonical-json.js";
 import {
   TargetSelectionModelError,
+  targetSelectionApprovalVerificationRequestSchema,
+  targetSelectionApprovalVerificationSchema,
   targetSelectionAttemptRefSchema,
   targetSelectionAttemptSchema,
+  targetSelectionReadableAttemptSchema,
   targetSelectionModelInputSchema,
   targetSelectionModelResultSchema,
   targetSelectionReceiptSchema,
   targetSelectionRequestSchema,
   type OpenTargetSelectionOptions,
+  type LegacyTargetSelectionCandidate,
   type TargetSelection,
+  type TargetSelectionApprovalVerification,
+  type TargetSelectionApprovalVerificationRequest,
   type TargetSelectionAttempt,
   type TargetSelectionAttemptRef,
   type TargetSelectionCandidate,
   type TargetSelectionModelInput,
   type TargetSelectionPendingReason,
   type TargetSelectionReceipt,
+  type TargetSelectionReadableAttempt,
   type TargetSelectionRequest,
   type TargetSelectionResult,
 } from "./contracts.js";
@@ -79,7 +86,7 @@ function attemptRef(
   const digest = sha256Digest(attempt);
   return targetSelectionAttemptRefSchema.parse({
     kind: "target-selection-attempt-ref",
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: `selection-attempt:${digest.slice(7, 31)}`,
     digest,
   });
@@ -268,12 +275,20 @@ function receipt(
   candidate: TargetSelectionCandidate,
   values: Omit<
     TargetSelectionReceipt,
-    "id" | "digest" | "kind" | "schemaVersion" | "candidateId" | "candidate"
+    | "id"
+    | "digest"
+    | "kind"
+    | "schemaVersion"
+    | "receiptSource"
+    | "candidateId"
+    | "candidate"
   >,
+  receiptSource: TargetSelectionReceipt["receiptSource"] = "selection-attempt",
 ): TargetSelectionReceipt {
   const body = {
     kind: "selection-receipt" as const,
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
+    receiptSource,
     candidateId: candidate.candidateId,
     candidate,
     ...values,
@@ -284,6 +299,40 @@ function receipt(
     id: `selection-receipt:${digest.slice(7, 31)}`,
     digest,
   });
+}
+
+function verifyStoredReceipt(storedReceipt: {
+  readonly id: string;
+  readonly digest: string;
+}): boolean {
+  const { id, digest, ...body } = storedReceipt;
+  return (
+    sha256Digest(body) === digest &&
+    id === `selection-receipt:${digest.slice(7, 31)}`
+  );
+}
+
+function targetSelectionCandidateForLegacyReceipt(
+  candidate: LegacyTargetSelectionCandidate,
+): TargetSelectionCandidate {
+  const history = candidate.researchHistory;
+  const researchHistory =
+    history.status === "incomplete"
+      ? {
+          status: history.status,
+          campaignId: history.campaignId,
+          ...(history.followUpReason === undefined
+            ? {}
+            : {
+                followUpReason: "incomplete-source-frontier-follow-up" as const,
+              }),
+        }
+      : history;
+  return {
+    ...candidate,
+    origin: { kind: "autonomous-observation" },
+    researchHistory,
+  };
 }
 
 class FileTargetSelection implements TargetSelection {
@@ -305,6 +354,11 @@ class FileTargetSelection implements TargetSelection {
     const path = this.#attemptPath(request);
     const existing = await this.#read(path);
     if (existing !== undefined) {
+      if (existing.schemaVersion !== 2) {
+        throw new Error(
+          "Legacy Target Selection Attempt is read-only; v1 and v2 writers cannot mix",
+        );
+      }
       if (existing.requestDigest !== requestDigest) {
         throw new Error("Target Selection revision input conflict");
       }
@@ -314,7 +368,7 @@ class FileTargetSelection implements TargetSelection {
     const createdAt = this.#clock().toISOString();
     const runningValue = targetSelectionAttemptSchema.parse({
       kind: "target-selection-attempt",
-      schemaVersion: 1,
+      schemaVersion: 2,
       status: "running",
       requestDigest,
       input: request,
@@ -329,6 +383,11 @@ class FileTargetSelection implements TargetSelection {
       const raced = await this.#read(path);
       if (raced === undefined) {
         throw new Error("Target Selection attempt disappeared");
+      }
+      if (raced.schemaVersion !== 2) {
+        throw new Error(
+          "Legacy Target Selection Attempt is read-only; v1 and v2 writers cannot mix",
+        );
       }
       if (raced.requestDigest !== requestDigest) {
         throw new Error("Target Selection revision input conflict");
@@ -516,6 +575,144 @@ class FileTargetSelection implements TargetSelection {
     return resultFromAttempt(completed);
   }
 
+  async resolveForApproval(
+    requestValue: TargetSelectionApprovalVerificationRequest,
+  ): Promise<TargetSelectionApprovalVerification> {
+    const request =
+      targetSelectionApprovalVerificationRequestSchema.parse(requestValue);
+    const attempt = await this.#read(
+      this.#attemptPath({
+        selectionKey: request.attempt.selectionKey,
+        revision: request.attempt.revision,
+      }),
+    );
+    if (attempt === undefined || attempt.status !== "selected") {
+      throw new Error("Target Selection Attempt is not durably selected");
+    }
+    const actualAttemptDigest = sha256Digest(attempt);
+    if (
+      request.attempt.ref.digest !== actualAttemptDigest ||
+      request.attempt.ref.id !==
+        `selection-attempt:${actualAttemptDigest.slice(7, 31)}` ||
+      request.attempt.ref.schemaVersion !== attempt.schemaVersion ||
+      attempt.requestDigest !== sha256Digest(attempt.input) ||
+      canonicalJson(attempt.input.policy) !==
+        canonicalJson(request.selectionPolicy) ||
+      canonicalJson(attempt.input.modelProfile) !==
+        canonicalJson(request.modelProfile)
+    ) {
+      throw new Error("Target Selection Attempt binding mismatch");
+    }
+
+    const receipts = attempt.receipts.map((storedReceipt) => {
+      if (!verifyStoredReceipt(storedReceipt)) {
+        throw new Error("Target Selection Receipt integrity mismatch");
+      }
+      if (storedReceipt.schemaVersion === 2) {
+        return storedReceipt;
+      }
+      const candidate = targetSelectionCandidateForLegacyReceipt(
+        storedReceipt.candidate,
+      );
+      return receipt(candidate, {
+        decision: storedReceipt.decision,
+        candidateKind: storedReceipt.candidateKind,
+        researchTreatment: storedReceipt.researchTreatment,
+        hardGate: storedReceipt.hardGate,
+        ...(storedReceipt.modelAssessment === undefined
+          ? {}
+          : { modelAssessment: storedReceipt.modelAssessment }),
+        ...(storedReceipt.selectedRank === undefined
+          ? {}
+          : { selectedRank: storedReceipt.selectedRank }),
+        reasonCodes: storedReceipt.reasonCodes,
+        selectedAt: storedReceipt.selectedAt,
+        attempt: storedReceipt.attempt,
+      });
+    });
+
+    const usedCandidateIds = new Set(
+      receipts.map((value) => value.candidateId),
+    );
+    const verifiedAt = Date.parse(request.verifiedAt);
+    for (const nomination of request.nominations) {
+      if (
+        nomination.nominatedBy !== request.operatorIdentity ||
+        Date.parse(nomination.nominatedAt) > verifiedAt ||
+        usedCandidateIds.has(nomination.candidate.candidateId)
+      ) {
+        throw new Error("Target Selection nomination binding mismatch");
+      }
+      const candidate: TargetSelectionCandidate = {
+        ...nomination.candidate,
+        origin: {
+          kind: "operator-nomination",
+          nominatedBy: nomination.nominatedBy,
+          nominatedAt: nomination.nominatedAt,
+          reason: nomination.reason,
+        },
+      };
+      const gateReasons = hardGateReasons(candidate, verifiedAt);
+      receipts.push(
+        receipt(
+          candidate,
+          {
+            decision: "selected",
+            candidateKind: candidateKind(candidate),
+            researchTreatment: researchTreatment(candidate),
+            hardGate: {
+              status: gateReasons.length === 0 ? "passed" : "failed",
+              reasons: gateReasons,
+            },
+            reasonCodes:
+              gateReasons.length === 0
+                ? ["within-batch-capacity"]
+                : ["hard-gate-failed"],
+            selectedAt: request.verifiedAt,
+            attempt: {
+              selectionKey: attempt.input.selectionKey,
+              revision: attempt.input.revision,
+              requestDigest: attempt.requestDigest,
+              policy: {
+                id: attempt.input.policy.id,
+                digest: attempt.input.policy.digest,
+              },
+              modelProfile: {
+                id: attempt.input.modelProfile.id,
+                digest: attempt.input.modelProfile.digest,
+              },
+            },
+          },
+          "approval-nomination",
+        ),
+      );
+      usedCandidateIds.add(candidate.candidateId);
+    }
+    receipts.sort((left, right) =>
+      left.candidateId.localeCompare(right.candidateId),
+    );
+
+    const inputDigest = sha256Digest(request);
+    const body = {
+      kind: "target-selection-approval-verification" as const,
+      schemaVersion: 1 as const,
+      inputDigest,
+      attemptRef: request.attempt.ref,
+      selectionPolicy: request.selectionPolicy,
+      modelProfile: request.modelProfile,
+      receipts,
+      verifiedAt: request.verifiedAt,
+    };
+    const digest = sha256Digest(body);
+    const verification = targetSelectionApprovalVerificationSchema.parse({
+      ...body,
+      id: `selection-approval:${digest.slice(7, 31)}`,
+      digest,
+    });
+    await this.#persistApprovalVerification(verification);
+    return verification;
+  }
+
   async #finishPending(
     path: string,
     running: Extract<TargetSelectionAttempt, { status: "running" }>,
@@ -533,7 +730,10 @@ class FileTargetSelection implements TargetSelection {
     return resultFromAttempt(pending);
   }
 
-  #attemptPath(request: TargetSelectionRequest): string {
+  #attemptPath(request: {
+    readonly selectionKey: string;
+    readonly revision: number;
+  }): string {
     return join(
       this.#storageDirectory,
       "target-selection-attempts",
@@ -541,9 +741,11 @@ class FileTargetSelection implements TargetSelection {
     );
   }
 
-  async #read(path: string): Promise<TargetSelectionAttempt | undefined> {
+  async #read(
+    path: string,
+  ): Promise<TargetSelectionReadableAttempt | undefined> {
     try {
-      return targetSelectionAttemptSchema.parse(
+      return targetSelectionReadableAttemptSchema.parse(
         JSON.parse((await readFile(path)).toString("utf8")),
       );
     } catch (error) {
@@ -551,6 +753,26 @@ class FileTargetSelection implements TargetSelection {
         return undefined;
       }
       throw error;
+    }
+  }
+
+  async #persistApprovalVerification(
+    verification: TargetSelectionApprovalVerification,
+  ): Promise<void> {
+    const directory = join(
+      this.#storageDirectory,
+      "target-selection-approval-verifications",
+    );
+    await mkdir(directory, { recursive: true });
+    const path = join(directory, `${verification.digest.slice(7)}.json`);
+    const bytes = Buffer.from(canonicalJson(verification), "utf8");
+    try {
+      await writeFile(path, bytes, { flag: "wx" });
+    } catch (error) {
+      if (!hasErrorCode(error, "EEXIST")) throw error;
+      if (!(await readFile(path)).equals(bytes)) {
+        throw new Error("Target Selection approval verification conflict");
+      }
     }
   }
 

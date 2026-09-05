@@ -129,7 +129,9 @@ export const targetSelectionResearchHistorySchema = z.discriminatedUnion(
     z.strictObject({
       status: z.literal("incomplete"),
       campaignId: identifierSchema,
-      followUpReason: z.string().trim().min(1).max(512).optional(),
+      followUpReason: z
+        .literal("incomplete-source-frontier-follow-up")
+        .optional(),
     }),
   ],
 );
@@ -160,7 +162,7 @@ export const targetSelectionCandidateSchema = z.strictObject({
 export const targetSelectionRequestSchema = z
   .strictObject({
     kind: z.literal("target-selection-request"),
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     selectionKey: identifierSchema,
     revision: z.number().int().positive(),
     policy: targetSelectionPolicySchema,
@@ -171,6 +173,13 @@ export const targetSelectionRequestSchema = z
     const candidateIds = new Set<string>();
     const targetIdentities = new Set<string>();
     for (const [index, candidate] of request.candidates.entries()) {
+      if (candidate.origin.kind !== "autonomous-observation") {
+        context.addIssue({
+          code: "custom",
+          path: ["candidates", index, "origin"],
+          message: "Operator nominations belong to Approval verification",
+        });
+      }
       if (candidateIds.has(candidate.candidateId)) {
         context.addIssue({
           code: "custom",
@@ -277,7 +286,8 @@ const targetSelectionAttemptBindingSchema = z.strictObject({
 
 const targetSelectionReceiptBodySchema = z.strictObject({
   kind: z.literal("selection-receipt"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
+  receiptSource: z.enum(["selection-attempt", "approval-nomination"]),
   candidateId: identifierSchema,
   candidate: targetSelectionCandidateSchema,
   decision: z.enum(["selected", "not-selected"]),
@@ -308,7 +318,7 @@ export const targetSelectionReceiptSchema =
 
 export const targetSelectionAttemptRefSchema = z.strictObject({
   kind: z.literal("target-selection-attempt-ref"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   id: identifierSchema,
   digest: digestSchema,
 });
@@ -323,7 +333,7 @@ const targetSelectionPendingReasonSchema = z.enum([
 export const targetSelectionAttemptSchema = z.discriminatedUnion("status", [
   z.strictObject({
     kind: z.literal("target-selection-attempt"),
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     status: z.literal("running"),
     requestDigest: digestSchema,
     input: targetSelectionRequestSchema,
@@ -331,7 +341,7 @@ export const targetSelectionAttemptSchema = z.discriminatedUnion("status", [
   }),
   z.strictObject({
     kind: z.literal("target-selection-attempt"),
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     status: z.literal("selected"),
     requestDigest: digestSchema,
     input: targetSelectionRequestSchema,
@@ -342,7 +352,7 @@ export const targetSelectionAttemptSchema = z.discriminatedUnion("status", [
   }),
   z.strictObject({
     kind: z.literal("target-selection-attempt"),
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     status: z.literal("selection-pending"),
     requestDigest: digestSchema,
     input: targetSelectionRequestSchema,
@@ -352,6 +362,175 @@ export const targetSelectionAttemptSchema = z.discriminatedUnion("status", [
     pendingCandidateIds: z.array(identifierSchema).min(1),
   }),
 ]);
+
+const legacyTargetSelectionResearchHistorySchema = z.discriminatedUnion(
+  "status",
+  [
+    z.strictObject({ status: z.literal("new") }),
+    z.strictObject({
+      status: z.literal("active"),
+      campaignId: identifierSchema,
+    }),
+    z.strictObject({
+      status: z.literal("coverage-closed"),
+      campaignId: identifierSchema,
+    }),
+    z.strictObject({
+      status: z.literal("incomplete"),
+      campaignId: identifierSchema,
+      followUpReason: z.string().trim().min(1).max(512).optional(),
+    }),
+  ],
+);
+
+export const legacyTargetSelectionCandidateSchema = z.strictObject({
+  candidateId: identifierSchema,
+  target: targetIdentitySchema,
+  targetObservation: targetObservationProjectionSchema,
+  selectionFacts: targetSelectionFactsSchema,
+  programmes: z.array(programmeEligibilityProjectionSchema).min(1),
+  disclosureRoute: disclosureRouteProjectionSchema,
+  vulnerabilityHistoryAggregate:
+    vulnerabilityHistoryAggregateProjectionSchema.optional(),
+  researchHistory: legacyTargetSelectionResearchHistorySchema,
+  diversity: targetDiversitySchema,
+});
+
+export const legacyTargetSelectionRequestSchema = z.strictObject({
+  kind: z.literal("target-selection-request"),
+  schemaVersion: z.literal(1),
+  selectionKey: identifierSchema,
+  revision: z.number().int().positive(),
+  policy: targetSelectionPolicySchema,
+  modelProfile: targetSelectionModelProfileSchema,
+  candidates: z.array(legacyTargetSelectionCandidateSchema).min(1),
+});
+
+export const legacyTargetSelectionReceiptSchema = z.strictObject({
+  kind: z.literal("selection-receipt"),
+  schemaVersion: z.literal(1),
+  candidateId: identifierSchema,
+  candidate: legacyTargetSelectionCandidateSchema,
+  decision: z.enum(["selected", "not-selected"]),
+  candidateKind: z.enum(["programme-eligible", "research-only"]),
+  researchTreatment: z.enum([
+    "new",
+    "resume",
+    "already-covered",
+    "follow-up",
+    "follow-up-required",
+  ]),
+  hardGate: z.strictObject({
+    status: z.enum(["passed", "failed"]),
+    reasons: z.array(targetSelectionHardGateReasonSchema),
+  }),
+  modelAssessment: targetSelectionModelAssessmentSchema.optional(),
+  selectedRank: z.number().int().positive().optional(),
+  reasonCodes: z.array(targetSelectionReceiptReasonSchema).min(1),
+  selectedAt: z.string().datetime({ offset: true }),
+  attempt: targetSelectionAttemptBindingSchema,
+  id: identifierSchema,
+  digest: digestSchema,
+});
+
+export const legacyTargetSelectionAttemptRefSchema = z.strictObject({
+  kind: z.literal("target-selection-attempt-ref"),
+  schemaVersion: z.literal(1),
+  id: identifierSchema,
+  digest: digestSchema,
+});
+
+export const targetSelectionReadableAttemptRefSchema = z.union([
+  targetSelectionAttemptRefSchema,
+  legacyTargetSelectionAttemptRefSchema,
+]);
+
+export const legacyTargetSelectionAttemptSchema = z.discriminatedUnion(
+  "status",
+  [
+    z.strictObject({
+      kind: z.literal("target-selection-attempt"),
+      schemaVersion: z.literal(1),
+      status: z.literal("running"),
+      requestDigest: digestSchema,
+      input: legacyTargetSelectionRequestSchema,
+      createdAt: z.string().datetime({ offset: true }),
+    }),
+    z.strictObject({
+      kind: z.literal("target-selection-attempt"),
+      schemaVersion: z.literal(1),
+      status: z.literal("selected"),
+      requestDigest: digestSchema,
+      input: legacyTargetSelectionRequestSchema,
+      createdAt: z.string().datetime({ offset: true }),
+      completedAt: z.string().datetime({ offset: true }),
+      modelResult: targetSelectionModelResultSchema.optional(),
+      receipts: z.array(legacyTargetSelectionReceiptSchema).min(1),
+    }),
+    z.strictObject({
+      kind: z.literal("target-selection-attempt"),
+      schemaVersion: z.literal(1),
+      status: z.literal("selection-pending"),
+      requestDigest: digestSchema,
+      input: legacyTargetSelectionRequestSchema,
+      createdAt: z.string().datetime({ offset: true }),
+      completedAt: z.string().datetime({ offset: true }),
+      reason: targetSelectionPendingReasonSchema,
+      pendingCandidateIds: z.array(identifierSchema).min(1),
+    }),
+  ],
+);
+
+export const targetSelectionReadableAttemptSchema = z.union([
+  targetSelectionAttemptSchema,
+  legacyTargetSelectionAttemptSchema,
+]);
+
+export const targetSelectionApprovalNominationSchema = z.strictObject({
+  candidate: targetSelectionCandidateSchema.omit({ origin: true }),
+  nominatedBy: identifierSchema,
+  nominatedAt: z.string().datetime({ offset: true }),
+  reason: z.enum([
+    "coverage-balance",
+    "source-availability",
+    "operator-priority",
+  ]),
+});
+
+export const targetSelectionApprovalVerificationRequestSchema = z.strictObject({
+  kind: z.literal("target-selection-approval-verification-request"),
+  schemaVersion: z.literal(1),
+  attempt: z.strictObject({
+    ref: targetSelectionReadableAttemptRefSchema,
+    selectionKey: identifierSchema,
+    revision: z.number().int().positive(),
+  }),
+  selectionPolicy: targetSelectionPolicySchema,
+  modelProfile: targetSelectionModelProfileSchema,
+  operatorIdentity: identifierSchema,
+  nominations: z.array(targetSelectionApprovalNominationSchema),
+  verifiedAt: z.string().datetime({ offset: true }),
+});
+
+export const targetSelectionApprovalVerificationRefSchema = z.strictObject({
+  kind: z.literal("target-selection-approval-verification-ref"),
+  schemaVersion: z.literal(1),
+  id: identifierSchema,
+  digest: digestSchema,
+});
+
+export const targetSelectionApprovalVerificationSchema = z.strictObject({
+  kind: z.literal("target-selection-approval-verification"),
+  schemaVersion: z.literal(1),
+  id: identifierSchema,
+  digest: digestSchema,
+  inputDigest: digestSchema,
+  attemptRef: targetSelectionReadableAttemptRefSchema,
+  selectionPolicy: targetSelectionPolicySchema,
+  modelProfile: targetSelectionModelProfileSchema,
+  receipts: z.array(targetSelectionReceiptSchema).min(1),
+  verifiedAt: z.string().datetime({ offset: true }),
+});
 
 export type TargetSelectionPolicy = z.infer<typeof targetSelectionPolicySchema>;
 export type TargetSelectionModelProfile = z.infer<
@@ -381,6 +560,24 @@ export type TargetSelectionAttempt = z.infer<
 >;
 export type TargetSelectionAttemptRef = z.infer<
   typeof targetSelectionAttemptRefSchema
+>;
+export type TargetSelectionReadableAttemptRef = z.infer<
+  typeof targetSelectionReadableAttemptRefSchema
+>;
+export type TargetSelectionReadableAttempt = z.infer<
+  typeof targetSelectionReadableAttemptSchema
+>;
+export type LegacyTargetSelectionCandidate = z.infer<
+  typeof legacyTargetSelectionCandidateSchema
+>;
+export type TargetSelectionApprovalNomination = z.infer<
+  typeof targetSelectionApprovalNominationSchema
+>;
+export type TargetSelectionApprovalVerificationRequest = z.infer<
+  typeof targetSelectionApprovalVerificationRequestSchema
+>;
+export type TargetSelectionApprovalVerification = z.infer<
+  typeof targetSelectionApprovalVerificationSchema
 >;
 export type TargetSelectionPendingReason = z.infer<
   typeof targetSelectionPendingReasonSchema
@@ -420,6 +617,15 @@ export type TargetSelectionResult = SelectedTargets | TargetSelectionPending;
 
 export interface TargetSelection {
   select(request: TargetSelectionRequest): Promise<TargetSelectionResult>;
+  resolveForApproval(
+    request: TargetSelectionApprovalVerificationRequest,
+  ): Promise<TargetSelectionApprovalVerification>;
+}
+
+export interface TargetSelectionApprovalResolver {
+  resolveForApproval(
+    request: TargetSelectionApprovalVerificationRequest,
+  ): Promise<TargetSelectionApprovalVerification>;
 }
 
 export interface OpenTargetSelectionOptions {

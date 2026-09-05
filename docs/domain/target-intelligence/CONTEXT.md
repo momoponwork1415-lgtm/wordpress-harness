@@ -73,7 +73,7 @@ _Avoid_: Directory name、Plugin title、Bare slug
 _Avoid_: Out-of-scope Target、False positive、Rejected Candidate
 
 **Selection Receipt**:
-Target Candidateを採用、保留、拒否した結論を、使用したSelection Fact、policy version、理由に結び付けた記録。採用結論はCampaign開始命令ではなく、人間がTarget AcquisitionとResearch開始を承認するための入力である。Researchへ渡す場合は採用結論、policy version、oracle-freeな理由だけを公開する。
+Target Candidateを採用、保留、拒否した結論を、使用したSelection Fact、policy version、理由に結び付けた記録。Approval時のoperator nominationはTarget Selectionが同じhard gateを再評価し、Selection AttemptとApproval verificationへbindしたdurable Receiptにする。採用結論はCampaign開始命令ではなく、人間がTarget AcquisitionとResearch開始を承認するための入力である。Researchへ渡す場合は採用結論、policy version、oracle-freeな理由だけを公開する。
 _Avoid_: Score、Approval
 
 **Selection Attempt**:
@@ -93,7 +93,7 @@ Candidate Poolから同じSelection Policyで一度に人間へ提示する有�
 _Avoid_: Campaign Wave、Submission batch、Leaderboard quota
 
 **Approved Target Batch**:
-一つのSelection AttemptのSelection Receipt集合について、人間が承認、除外、順序変更、operator nominationを一回の判断として記録し、Selection Policy、Opus Model Profile、source freshness、Campaign Policy、Batch Budget、execution windowへbindしたversioned artifact。operator nominationもSelection hard gateを迂回せず、Batchの承認だけではResearchまたは外部行動を開始しない。
+一つのSelection Attemptについて、人間が承認、除外、順序変更、operator nominationを一回のApproval requestとして記録し、Target Selectionが検証したAttemptとdurable Receipt、Selection Policy、Opus Model Profile、source freshness、Campaign Policy、Batch Budget、execution windowへbindしたversioned artifact。operator nominationもSelection hard gateを迂回せず、caller生成Receiptや自己申告Attempt refをauthorityにせず、Batchの承認だけではResearchまたは外部行動を開始しない。
 _Avoid_: Candidate Batch、Campaign Queue、Submission approval
 
 **Target Acquisition**:

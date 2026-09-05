@@ -11,6 +11,7 @@ import {
   type TargetSelectionModel,
   type TargetSelectionRequest,
 } from "../../src/target-intelligence/index.js";
+import { createLegacyTargetSelectionFixture } from "../fixtures/target-intelligence/legacy-target-selection.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 
@@ -120,7 +121,7 @@ function request(
 ): TargetSelectionRequest {
   return {
     kind: "target-selection-request",
-    schemaVersion: 1,
+    schemaVersion: 2,
     selectionKey: "september-selection",
     revision: 1,
     policy,
@@ -165,7 +166,7 @@ describe("TargetSelection", () => {
         status: "selected",
         attemptRef: {
           kind: "target-selection-attempt-ref",
-          schemaVersion: 1,
+          schemaVersion: 2,
           digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
         },
         receipts: [
@@ -212,6 +213,101 @@ describe("TargetSelection", () => {
     }
   });
 
+  it("resolves a legacy v1 Attempt through an Oracle-free read-only approval projection", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "target-selection-legacy-"));
+    try {
+      const fixture = await createLegacyTargetSelectionFixture(directory);
+      const selection = openTargetSelection({
+        storageDirectory: directory,
+        model: {
+          rank: () => Promise.reject(new Error("legacy replay must not rank")),
+        },
+      });
+      const verificationRequest = {
+        kind: "target-selection-approval-verification-request" as const,
+        schemaVersion: 1 as const,
+        attempt: {
+          ref: fixture.attemptRef,
+          selectionKey: fixture.selectionKey,
+          revision: fixture.revision,
+        },
+        selectionPolicy: fixture.policy,
+        modelProfile: fixture.modelProfile,
+        operatorIdentity: "human:fixture-operator",
+        nominations: [],
+        verifiedAt: "2030-09-01T00:00:00.000Z",
+      };
+
+      const verification =
+        await selection.resolveForApproval(verificationRequest);
+      expect(verification).toMatchObject({
+        attemptRef: fixture.attemptRef,
+        receipts: [
+          {
+            schemaVersion: 2,
+            receiptSource: "selection-attempt",
+            candidate: {
+              origin: { kind: "autonomous-observation" },
+              researchHistory: {
+                followUpReason: "incomplete-source-frontier-follow-up",
+              },
+            },
+          },
+        ],
+      });
+      expect(JSON.stringify(verification)).not.toMatch(/CVE|advisory|Finding/);
+
+      const restarted = openTargetSelection({
+        storageDirectory: directory,
+        model: {
+          rank: () => Promise.reject(new Error("legacy replay must not rank")),
+        },
+      });
+      await expect(
+        restarted.resolveForApproval(verificationRequest),
+      ).resolves.toEqual(verification);
+      await expect(
+        restarted.select({
+          ...request([candidate("legacy-writer")]),
+          selectionKey: fixture.selectionKey,
+          revision: fixture.revision,
+        }),
+      ).rejects.toThrow("v1 and v2 writers cannot mix");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts operator nominations only at the approval verification seam", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "target-selection-nomination-"),
+    );
+    try {
+      const selection = openTargetSelection({
+        storageDirectory: directory,
+        model: {
+          rank: () => Promise.reject(new Error("must reject before ranking")),
+        },
+      });
+      await expect(
+        selection.select(
+          request([
+            candidate("candidate-nominated", {
+              origin: {
+                kind: "operator-nomination",
+                nominatedBy: "human:fixture-operator",
+                nominatedAt: "2030-08-31T23:55:00.000Z",
+                reason: "coverage-balance",
+              },
+            }),
+          ]),
+        ),
+      ).rejects.toThrow("origin");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("applies history, research-only, freshness, and diversity without programme queues", async () => {
     const directory = await mkdtemp(join(tmpdir(), "target-selection-policy-"));
     let capturedInput: unknown;
@@ -245,7 +341,7 @@ describe("TargetSelection", () => {
         researchHistory: {
           status: "incomplete",
           campaignId: "campaign-incomplete",
-          followUpReason: "close the recorded coverage gap",
+          followUpReason: "incomplete-source-frontier-follow-up",
         },
         diversity: {
           vendor: "different-vendor",
