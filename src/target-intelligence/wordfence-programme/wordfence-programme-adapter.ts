@@ -20,6 +20,7 @@ const sourceOrder: readonly WordfenceProgrammeSourceKind[] = [
   "terms",
   "report-form",
   "payout",
+  "promotion",
   "monthly-report",
 ];
 
@@ -178,6 +179,22 @@ async function normalizePages(
     throw new Error("Wordfence payout must remain an estimate");
   }
 
+  const promotion = documents.find(
+    (document) => document.sourceKind === "promotion",
+  );
+  const promotionRoutes = promotion?.assertions.rewardRoutes;
+  if (
+    promotionRoutes === undefined ||
+    !promotionRoutes.some(
+      (route) =>
+        route.kind === "time-limited-promotion" &&
+        route.terms.some((term) => term.key === "promotion-start") &&
+        route.terms.some((term) => term.key === "promotion-end"),
+    )
+  ) {
+    throw new Error("Wordfence promotion source is incomplete");
+  }
+
   const monthlyReport = documents.find(
     (document) => document.sourceKind === "monthly-report",
   );
@@ -222,7 +239,7 @@ export function createWordfenceProgrammeAdapters(
       (kind) => pages.filter((page) => page.sourceKind === kind).length !== 1,
     )
   ) {
-    throw new Error("Wordfence Programme requires exactly five source pages");
+    throw new Error("Wordfence Programme requires exactly six source pages");
   }
   return sourceOrder.map((kind) => {
     const page = pages.find((candidate) => candidate.sourceKind === kind);

@@ -55,13 +55,13 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 
 ### Wordfence Programme Adapter
 
-**Interface:** `createWordfenceProgrammeAdapters -> ProgrammePolicySourceAdapter[]`
-
-- **Purpose:** current programme、Terms、report form、payout page、monthly reportの5 sourceを取得・parseし、programme-neutralなProgramme Eligibility Snapshotへ統合する。
+- **Purpose:** current programme、Terms、report form、payout page、promotion page、monthly reportの6 Intelligence Sourceを取得・parseし、programme-neutralなProgramme Eligibility Snapshotへ統合する。
+- **Interface:** `createWordfenceProgrammeAdapters -> ProgrammePolicySourceAdapter[]`
 - **Invariants:** asset、vulnerability class、attacker role、active-install threshold、researcher tier、pending cap、out-of-scope条件をeligibilityへ固定する。base / range、bonus、minimum、promotion期間はFinding-only reward routeに置き、保証額にしない。monthly reportはCWE category、authentication level、install帯、submission disposition、rewardのaggregateだけを保持し、named plugin、CVE、affected version、known route、researcher identityを含めない。
-- **Failures:** required source取得失敗は`stale`、必須rule、monthly aggregateまたはstrict page contract不成立は`parse-failed`、source間のscope / payout矛盾は`policy-conflict`。old defaultへfallbackしない。
-- **Status:** 5-source group parse、source provenance、Finding-only payout input、oracle-free monthly aggregate、conflict / stale / drift、restart replayのsanitized fixture Behavior Testを実装。
-- **Code / Tests:** [wordfence-programme](../src/target-intelligence/wordfence-programme) · [Behavior Test](../tests/target-intelligence/wordfence-programme-adapter.test.ts)
+- **Failure semantics:** required Intelligence Source取得失敗は`stale`、必須rule、promotion、monthly aggregateまたはstrict page contract不成立は`parse-failed`、source間のscope / payout矛盾は`policy-conflict`。old defaultへfallbackしない。
+- **Behavior Test:** [Wordfence Programme Adapter](../tests/target-intelligence/wordfence-programme-adapter.test.ts)
+- **Status:** 6-source group parse、source provenance、Finding-only payout / promotion input、oracle-free monthly aggregate、conflict / stale / drift、restart replayのsanitized fixture Behavior Testを実装。
+- **Code:** [wordfence-programme](../src/target-intelligence/wordfence-programme)
 
 ### Disclosure Route Observation
 

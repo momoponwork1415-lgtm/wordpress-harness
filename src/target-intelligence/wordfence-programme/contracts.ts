@@ -12,6 +12,7 @@ export const wordfenceProgrammeSourceKindSchema = z.enum([
   "terms",
   "report-form",
   "payout",
+  "promotion",
   "monthly-report",
 ]);
 

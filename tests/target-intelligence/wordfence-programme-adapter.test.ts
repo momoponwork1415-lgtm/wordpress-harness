@@ -43,6 +43,12 @@ const sources = [
     fixture: "payout.json",
   },
   {
+    sourceKind: "promotion",
+    sourceUrl:
+      "https://www.wordfence.com/threat-intel/bug-bounty-program/promotions/july-2030/",
+    fixture: "promotion.json",
+  },
+  {
     sourceKind: "monthly-report",
     sourceUrl:
       "https://www.wordfence.com/blog/2030/08/wordfence-bug-bounty-program-monthly-report-july-2030/",
@@ -112,18 +118,33 @@ describe("Wordfence Programme Adapter", () => {
             rewardEstimateInput: {
               kind: "finding-only-reward-estimate-input",
               currency: "USD",
-              routes: [
+              routes: expect.arrayContaining([
                 expect.objectContaining({
                   id: "standard-bounty",
                   terms: expect.arrayContaining([
                     { key: "base-reward", value: 100 },
                     { key: "minimum-reward", value: 50 },
                     { key: "range-maximum", value: 10000 },
-                    { key: "bonus-maximum-percent", value: 25 },
                     { key: "payout-guaranteed", value: false },
                   ]),
                 }),
-              ],
+                expect.objectContaining({
+                  id: "july-2030-promotion",
+                  kind: "time-limited-promotion",
+                  terms: expect.arrayContaining([
+                    { key: "bonus-maximum-percent", value: 25 },
+                    {
+                      key: "promotion-start",
+                      value: "2030-07-01T00:00:00Z",
+                    },
+                    {
+                      key: "promotion-end",
+                      value: "2030-07-31T23:59:59Z",
+                    },
+                    { key: "payout-guaranteed", value: false },
+                  ]),
+                }),
+              ]),
             },
             monthlyAggregates: [
               expect.objectContaining({
@@ -247,7 +268,7 @@ describe("Wordfence Programme Adapter", () => {
   it("returns stale when any required Wordfence source cannot be refreshed", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordfence-stale-"));
     const pages = fixturePageAdapters().map((page) =>
-      page.sourceKind === "monthly-report"
+      page.sourceKind === "promotion"
         ? {
             ...page,
             retrieve: () => Promise.reject(new Error("fixture unavailable")),
