@@ -38,6 +38,7 @@ import {
   semanticDepthWorkQueueRefV2Schema,
 } from "../exploration/semantic-depth-work-queue.js";
 import { depthIterationDecisionRefSchema } from "../exploration/semantic-depth-evaluation.js";
+import { currentDepthIterationDecisionRefSchema } from "../exploration/semantic-depth-evaluation-v2.js";
 import { semanticMissingLinkWavePlanRefSchema } from "../exploration/semantic-missing-link-wave.js";
 import {
   coverageObservationSchema,
@@ -963,6 +964,96 @@ export const semanticDepthResearchSchema = z.union([
   semanticDepthResearchV2Schema,
 ]);
 
+const currentDepthSynthesisArtifactSchema = z.strictObject({
+  ref: chainSynthesisRefSchema,
+  artifactDigest: digestSchema,
+});
+
+const currentDepthCritiqueArtifactSchema = z.strictObject({
+  ref: adversarialCritiqueRefSchema,
+  artifactDigest: digestSchema,
+});
+
+const currentSemanticDepthBatchResultSchema = z
+  .strictObject({
+    kind: z.literal("semantic-depth-batch-result"),
+    schemaVersion: z.literal(2),
+    batchId: digestSchema,
+    synthesis: currentDepthSynthesisArtifactSchema,
+    critique: currentDepthCritiqueArtifactSchema.optional(),
+    evaluation: z
+      .strictObject({
+        ref: currentDepthIterationDecisionRefSchema,
+        artifactDigest: digestSchema,
+      })
+      .optional(),
+    registry: approachFamilyRegistryRefV3Schema.optional(),
+  })
+  .superRefine((batch, context) => {
+    const evaluated = batch.evaluation !== undefined;
+    if (
+      (batch.critique !== undefined) !== evaluated ||
+      (batch.registry !== undefined) !== evaluated
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Completed Depth artifacts must advance together",
+      });
+    }
+  });
+
+const currentSemanticDepthBatchIncompleteSchema = z
+  .strictObject({
+    kind: z.literal("semantic-depth-batch-incomplete"),
+    schemaVersion: z.literal(2),
+    batchId: digestSchema,
+    stage: z.enum([
+      "root-synthesis",
+      "adversarial-critique",
+      "depth-root-evaluation",
+    ]),
+    synthesis: currentDepthSynthesisArtifactSchema.optional(),
+    critique: currentDepthCritiqueArtifactSchema.optional(),
+    artifactDigest: digestSchema,
+    reason: z.string().min(1).max(1_000),
+  })
+  .superRefine((batch, context) => {
+    if (
+      (batch.stage === "root-synthesis" &&
+        (batch.synthesis !== undefined || batch.critique !== undefined)) ||
+      (batch.stage === "adversarial-critique" &&
+        (batch.synthesis === undefined || batch.critique !== undefined)) ||
+      (batch.stage === "depth-root-evaluation" &&
+        (batch.synthesis === undefined || batch.critique === undefined))
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Incomplete Depth stage has an invalid artifact chain",
+      });
+    }
+  });
+
+const currentSemanticDepthRoundSchema = z.strictObject({
+  kind: z.literal("semantic-depth-round"),
+  schemaVersion: z.literal(3),
+  ordinal: z.number().int().positive().max(12),
+  queue: semanticDepthWorkQueueRefV2Schema,
+  batches: z
+    .array(
+      z.discriminatedUnion("kind", [
+        currentSemanticDepthBatchResultSchema,
+        currentSemanticDepthBatchIncompleteSchema,
+      ]),
+    )
+    .min(1),
+});
+
+export const currentSemanticDepthResearchSchema = z.strictObject({
+  kind: z.literal("semantic-depth-research"),
+  schemaVersion: z.literal(4),
+  rounds: z.array(currentSemanticDepthRoundSchema).min(1).max(12),
+});
+
 export const semanticCoverageReviewTraceSchema = z
   .strictObject({
     kind: z.literal("semantic-coverage-review-trace"),
@@ -1119,6 +1210,7 @@ const campaignDefaultSemanticCompletionInputV3Schema = z.strictObject({
   iterationDecisionRef: semanticIterationDecisionRefV3Schema,
   approachFamilyRegistry: approachFamilyRegistryRefV3Schema,
   depthWorkQueue: semanticDepthWorkQueueRefV2Schema.optional(),
+  depthResearch: currentSemanticDepthResearchSchema.optional(),
   validations: z.array(validationRecordSchema).max(64),
   validationFrontierGaps: z.array(validationFrontierGapRefSchema).max(64),
   decision: currentSemanticTerminalDecisionSchema,
@@ -1200,6 +1292,9 @@ export type CampaignRunCompletionInputV3 = z.infer<
 export type CampaignRunRecordV3 = z.infer<typeof campaignRunRecordV3Schema>;
 export type SemanticCampaignUsage = z.infer<typeof semanticCampaignUsageSchema>;
 export type SemanticDepthResearch = z.infer<typeof semanticDepthResearchSchema>;
+export type CurrentSemanticDepthResearch = z.infer<
+  typeof currentSemanticDepthResearchSchema
+>;
 export type SemanticCoverageReviewTrace = z.infer<
   typeof semanticCoverageReviewTraceSchema
 >;

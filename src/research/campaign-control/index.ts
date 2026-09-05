@@ -10,6 +10,7 @@ import {
 import {
   openSemanticAdversarialCritique,
   openSemanticChainSynthesis,
+  openCurrentSemanticDepthEvaluation,
   openSemanticDepthEvaluation,
   openExploration,
   closeSemanticCoverage,
@@ -22,18 +23,22 @@ import {
   materializeMissingLinkWaves,
   referenceAdversarialCritique,
   referenceChainSynthesis,
+  referenceCurrentDepthIterationDecision,
   referenceDepthIterationDecision,
   referenceSemanticMissingLinkWavePlan,
   referenceSemanticIterationDecision,
   referenceSemanticIterationDecisionV3,
   semanticAdversarialCritiqueInputSchema,
   semanticChainSynthesisInputSchema,
+  currentSemanticDepthEvaluationInputSchema,
   semanticDepthEvaluationInputSchema,
   type AttemptExecutionResultRef,
   type CoverageObservation,
   type SemanticCoverageClosure,
   type SemanticCoverageClosureRef,
   type FinderAttemptResult,
+  type SemanticDepthWorkQueueRefV2,
+  type SemanticDepthWorkQueueV2,
   type SourceBoundHypothesis,
 } from "../exploration/index.js";
 import { materializeInitialSemanticWaveFoundation } from "../exploration/initial-semantic-wave.js";
@@ -70,6 +75,7 @@ import {
   type ModelAttemptPlan,
   type ModelAttemptResultV2,
   type ModelAttemptObserver,
+  type ModelExecution,
 } from "../model-execution/contracts.js";
 import type { ModelAttemptUsageV2 } from "../model-attempt-usage-contracts.js";
 import {
@@ -104,6 +110,7 @@ import {
   calibrationReviewResultSchema,
   finderAttemptMaterializationSchema,
   semanticDepthResearchSchema,
+  currentSemanticDepthResearchSchema,
   type CampaignAttemptIntent,
   type CampaignAttemptCompletionV2,
   type CampaignAttemptIntentV2,
@@ -112,6 +119,7 @@ import {
   type CampaignRunPlanV2,
   type DefaultSemanticCampaignRunPlanV2,
   type DefaultSemanticCampaignRunPlanV3,
+  type CurrentSemanticDepthResearch,
   type PreparedWaveCampaignRunPlanV2,
   type SemanticCoverageReviewTrace,
 } from "./contracts.js";
@@ -823,6 +831,372 @@ async function executeSemanticFinderWave(
   });
 }
 
+type CurrentDepthSubjectArtifact = ReturnType<
+  typeof semanticChainSynthesisInputSchema.parse
+>["subjects"][number];
+
+interface CurrentDepthExecutionInput {
+  readonly queue: {
+    readonly ref: SemanticDepthWorkQueueRefV2;
+    readonly value: SemanticDepthWorkQueueV2;
+  };
+  readonly registry: NonNullable<
+    Awaited<ReturnType<ResearchRecord["readApproachFamilyRegistryV3"]>>
+  >;
+  readonly manifestValue: ReturnType<
+    typeof semanticChainSynthesisInputSchema.parse
+  >["manifest"]["value"];
+  readonly wave: SemanticWorkWavePlan;
+  readonly hypotheses: readonly ReturnType<
+    typeof sourceBoundHypothesisArtifactSchema.parse
+  >[];
+  readonly routeFragments: readonly ReturnType<
+    typeof routeFragmentArtifactSchema.parse
+  >[];
+  readonly frontierGaps: readonly ReturnType<
+    typeof frontierGapArtifactSchema.parse
+  >[];
+  readonly waveTerminal: SemanticWaveTerminalRef;
+  readonly evaluatorExecution: ModelExecution;
+}
+
+async function executeCurrentSemanticDepthRound(
+  record: ResearchRecord,
+  dependencies: CampaignExecutionDependencies,
+  plan: DefaultSemanticCampaignRunPlanV3,
+  input: CurrentDepthExecutionInput,
+): Promise<{
+  readonly depthResearch: CurrentSemanticDepthResearch;
+  readonly incomplete: boolean;
+}> {
+  const subjectArtifacts = new Map<string, CurrentDepthSubjectArtifact>();
+  for (const thesis of input.wave.theses) {
+    const ref = researchThesisRefSchema.parse({
+      kind: "research-thesis",
+      schemaVersion: 1,
+      id: thesis.id,
+      digest: sha256Digest(thesis),
+      targetSnapshotDigest: plan.target.digest,
+      manifestDigest: plan.manifest.digest,
+    });
+    subjectArtifacts.set(ref.digest, { ref, value: thesis });
+  }
+  for (const [index, artifact] of input.hypotheses.entries()) {
+    const ref = sourceBoundHypothesisArtifactRefSchema.parse(
+      input.waveTerminal.hypotheses[index],
+    );
+    subjectArtifacts.set(ref.digest, { ref, value: artifact });
+  }
+  for (const [index, artifact] of input.routeFragments.entries()) {
+    const ref = routeFragmentArtifactRefSchema.parse(
+      input.waveTerminal.routeFragments[index],
+    );
+    subjectArtifacts.set(ref.digest, { ref, value: artifact });
+  }
+  for (const [index, artifact] of input.frontierGaps.entries()) {
+    const ref = frontierGapArtifactRefSchema.parse(
+      input.waveTerminal.frontierGaps[index],
+    );
+    subjectArtifacts.set(ref.digest, { ref, value: artifact });
+  }
+
+  let synthesisOrdinal = 0;
+  const synthesisExecution: ModelExecution = {
+    run: async (attemptPlan) => {
+      if (
+        attemptPlan.schemaVersion !== 2 ||
+        attemptPlan.role !== "root-synthesizer"
+      ) {
+        throw new Error(
+          "Current Semantic Depth requested another Synthesis role",
+        );
+      }
+      synthesisOrdinal += 1;
+      return executeRecordedSemanticAttempt(record, dependencies, attemptPlan, {
+        kind: "campaign-attempt-intent",
+        schemaVersion: 2,
+        campaignId: plan.campaignId,
+        runId: plan.runId,
+        attemptId: attemptPlan.attemptId,
+        ordinal: synthesisOrdinal,
+        mode: "execute",
+        attemptPlanDigest: sha256Digest(attemptPlan),
+        role: "root-synthesizer",
+        queueDigest: attemptPlan.assignment.queueDigest,
+        batchId: attemptPlan.assignment.batchId,
+      });
+    },
+  };
+  let criticOrdinal = 0;
+  const criticExecution: ModelExecution = {
+    run: async (attemptPlan) => {
+      if (
+        attemptPlan.schemaVersion !== 2 ||
+        attemptPlan.role !== "adversarial-critic"
+      ) {
+        throw new Error("Current Semantic Depth requested another Critic role");
+      }
+      criticOrdinal += 1;
+      return executeRecordedSemanticAttempt(record, dependencies, attemptPlan, {
+        kind: "campaign-attempt-intent",
+        schemaVersion: 2,
+        campaignId: plan.campaignId,
+        runId: plan.runId,
+        attemptId: attemptPlan.attemptId,
+        ordinal: criticOrdinal,
+        mode: "execute",
+        attemptPlanDigest: sha256Digest(attemptPlan),
+        role: "adversarial-critic",
+        synthesisDigest: attemptPlan.assignment.synthesisDigest,
+      });
+    },
+  };
+  const synthesizer = openSemanticChainSynthesis({
+    modelExecution: synthesisExecution,
+    promptSet: {
+      id: "semantic-depth-synthesis-v2",
+      digest: sha256Digest({
+        kind: "semantic-depth-synthesis-prompt-set",
+        schemaVersion: 2,
+        base: plan.evaluator.promptSet,
+      }),
+    },
+    modelProfile: plan.evaluator.modelProfile.execution,
+    budget: plan.evaluator.budget,
+    attemptNamespace: `${plan.campaignId}:${plan.runId}`,
+  });
+  const critic = openSemanticAdversarialCritique({
+    modelExecution: criticExecution,
+    promptSet: {
+      id: "semantic-adversarial-critic-v2",
+      digest: sha256Digest({
+        kind: "semantic-adversarial-critic-prompt-set",
+        schemaVersion: 2,
+        base: plan.evaluator.promptSet,
+      }),
+    },
+    modelProfile: plan.evaluator.modelProfile.execution,
+    sourceToolPolicy: plan.finder.sourceToolPolicy,
+    budget: {
+      ...plan.evaluator.budget,
+      maxSourceQueries: plan.semanticPolicy.plannerBudget.maxSourceQueries,
+      ...(plan.semanticPolicy.plannerBudget.maxSourceScanBytes === undefined
+        ? {}
+        : {
+            maxSourceScanBytes:
+              plan.semanticPolicy.plannerBudget.maxSourceScanBytes,
+          }),
+      ...(plan.semanticPolicy.plannerBudget.maxSourceResponseBytes === undefined
+        ? {}
+        : {
+            maxSourceResponseBytes:
+              plan.semanticPolicy.plannerBudget.maxSourceResponseBytes,
+          }),
+      ...(plan.semanticPolicy.plannerBudget.sourceLimitTerminalOutput ===
+      undefined
+        ? {}
+        : {
+            sourceLimitTerminalOutput:
+              plan.semanticPolicy.plannerBudget.sourceLimitTerminalOutput,
+          }),
+    },
+    attemptNamespace: `${plan.campaignId}:${plan.runId}`,
+  });
+  const evaluator = openCurrentSemanticDepthEvaluation({
+    modelExecution: input.evaluatorExecution,
+    promptSet: {
+      id: "semantic-depth-evaluation-v2",
+      digest: sha256Digest({
+        kind: "semantic-depth-evaluation-prompt-set",
+        schemaVersion: 2,
+        base: plan.evaluator.promptSet,
+      }),
+    },
+    modelProfile: plan.evaluator.modelProfile.execution,
+    budget: plan.evaluator.budget,
+    attemptNamespace: `${plan.campaignId}:${plan.runId}`,
+  });
+
+  let currentRegistry = input.registry;
+  let incomplete = false;
+  const batches: CurrentSemanticDepthResearch["rounds"][number]["batches"] = [];
+  for (const batch of [...input.queue.value.batches].sort(
+    (left, right) => left.ordinal - right.ordinal,
+  )) {
+    const items = input.queue.value.items.filter((item) =>
+      batch.itemIds.includes(item.id),
+    );
+    const subjectDigests = [
+      ...new Set(
+        items.flatMap((item) => item.subjects.map((subject) => subject.digest)),
+      ),
+    ];
+    const subjects = subjectDigests.map((digest) => {
+      const subject = subjectArtifacts.get(digest);
+      if (subject === undefined) {
+        throw new Error(`Current Semantic Depth subject is missing: ${digest}`);
+      }
+      return subject;
+    });
+    const synthesis = await synthesizer.synthesize(
+      semanticChainSynthesisInputSchema.parse({
+        kind: "synthesize-depth-work",
+        schemaVersion: 1,
+        queue: input.queue,
+        batchId: batch.id,
+        manifest: { ref: plan.manifest, value: input.manifestValue },
+        subjects,
+      }),
+    );
+    const recordedSynthesis = await record.recordSemanticChainSynthesisV2(
+      plan.campaignId,
+      plan.runId,
+      input.queue.value,
+      synthesis,
+    );
+    const synthesisArtifactDigest = sha256Digest(synthesis);
+    if (recordedSynthesis.artifactDigest !== synthesisArtifactDigest) {
+      throw new Error("Current Semantic Chain Synthesis CAS mismatch");
+    }
+    if (synthesis.kind === "chain-synthesis-incomplete") {
+      batches.push({
+        kind: "semantic-depth-batch-incomplete",
+        schemaVersion: 2,
+        batchId: batch.id,
+        stage: "root-synthesis",
+        artifactDigest: synthesisArtifactDigest,
+        reason: synthesis.reason,
+      });
+      incomplete = true;
+      continue;
+    }
+    const synthesisRecord = {
+      ref: referenceChainSynthesis(synthesis),
+      artifactDigest: synthesisArtifactDigest,
+    };
+    if (synthesis.proposals.length === 0) {
+      batches.push({
+        kind: "semantic-depth-batch-result",
+        schemaVersion: 2,
+        batchId: batch.id,
+        synthesis: synthesisRecord,
+      });
+      continue;
+    }
+    const critique = await critic.critique(
+      semanticAdversarialCritiqueInputSchema.parse({
+        kind: "critique-chain-synthesis",
+        schemaVersion: 1,
+        synthesis,
+        manifest: { ref: plan.manifest, value: input.manifestValue },
+      }),
+    );
+    const recordedCritique = await record.recordSemanticAdversarialCritiqueV2(
+      plan.campaignId,
+      plan.runId,
+      synthesis,
+      critique,
+    );
+    const critiqueArtifactDigest = sha256Digest(critique);
+    if (recordedCritique.artifactDigest !== critiqueArtifactDigest) {
+      throw new Error("Current Semantic Adversarial Critique CAS mismatch");
+    }
+    if (critique.kind === "adversarial-critique-incomplete") {
+      batches.push({
+        kind: "semantic-depth-batch-incomplete",
+        schemaVersion: 2,
+        batchId: batch.id,
+        stage: "adversarial-critique",
+        synthesis: synthesisRecord,
+        artifactDigest: critiqueArtifactDigest,
+        reason: critique.reason,
+      });
+      incomplete = true;
+      continue;
+    }
+    const evaluation = await evaluator.evaluate(
+      currentSemanticDepthEvaluationInputSchema.parse({
+        kind: "evaluate-depth-research",
+        schemaVersion: 2,
+        registry: currentRegistry,
+        synthesis,
+        critique,
+      }),
+    );
+    if (evaluation.kind === "depth-evaluation-incomplete") {
+      const recordedEvaluation =
+        await record.recordSemanticDepthEvaluationIncompleteV2(
+          plan.campaignId,
+          plan.runId,
+          evaluation,
+        );
+      batches.push({
+        kind: "semantic-depth-batch-incomplete",
+        schemaVersion: 2,
+        batchId: batch.id,
+        stage: "depth-root-evaluation",
+        synthesis: synthesisRecord,
+        critique: {
+          ref: referenceAdversarialCritique(critique),
+          artifactDigest: critiqueArtifactDigest,
+        },
+        artifactDigest: recordedEvaluation.artifactDigest,
+        reason: evaluation.reason,
+      });
+      incomplete = true;
+      continue;
+    }
+    const evaluationArtifactDigest =
+      await dependencies.artifactStore.putJson(evaluation);
+    const evaluationRef = referenceCurrentDepthIterationDecision(evaluation);
+    if (evaluationArtifactDigest !== evaluationRef.digest) {
+      throw new Error("Current Semantic Depth Decision CAS mismatch");
+    }
+    currentRegistry = await record.recordSemanticDepthIterationV3(
+      plan.campaignId,
+      plan.runId,
+      { queue: input.queue.value, synthesis, decision: evaluation },
+    );
+    const registryDigest = await dependencies.artifactStore.putJson(
+      currentRegistry.value,
+    );
+    if (registryDigest !== currentRegistry.ref.digest) {
+      throw new Error("Approach Family Registry v3 CAS mismatch");
+    }
+    batches.push({
+      kind: "semantic-depth-batch-result",
+      schemaVersion: 2,
+      batchId: batch.id,
+      synthesis: synthesisRecord,
+      critique: {
+        ref: referenceAdversarialCritique(critique),
+        artifactDigest: critiqueArtifactDigest,
+      },
+      evaluation: {
+        ref: evaluationRef,
+        artifactDigest: evaluationArtifactDigest,
+      },
+      registry: currentRegistry.ref,
+    });
+  }
+  return {
+    depthResearch: currentSemanticDepthResearchSchema.parse({
+      kind: "semantic-depth-research",
+      schemaVersion: 4,
+      rounds: [
+        {
+          kind: "semantic-depth-round",
+          schemaVersion: 3,
+          ordinal: 1,
+          queue: input.queue.ref,
+          batches,
+        },
+      ],
+    }),
+    incomplete,
+  };
+}
+
 async function completeCurrentSemanticIteration(
   record: ResearchRecord,
   dependencies: CampaignExecutionDependencies,
@@ -830,6 +1204,10 @@ async function completeCurrentSemanticIteration(
   planDigest: string,
   decision: IterationDecisionV3,
   waveTerminal: SemanticWaveTerminalRef,
+  depthInput: Omit<
+    CurrentDepthExecutionInput,
+    "queue" | "registry" | "manifestValue"
+  >,
 ) {
   const recordedDecision = await record.recordSemanticIterationDecisionV3(
     plan.campaignId,
@@ -865,18 +1243,6 @@ async function completeCurrentSemanticIteration(
           projectedDepthWorkQueue.value,
         );
 
-  const candidates = await materializeValidationCandidates(
-    dependencies.artifactStore,
-    { campaignId: plan.campaignId, runId: plan.runId, decision },
-  );
-  if (candidates.length > 0) {
-    await record.recordValidationIntents(
-      plan.campaignId,
-      plan.runId,
-      candidates,
-    );
-  }
-
   const preparation = await record.readPreparation(plan.campaignId);
   if (
     preparation === undefined ||
@@ -890,6 +1256,30 @@ async function completeCurrentSemanticIteration(
     targetSnapshot: { id: plan.target.id, digest: plan.target.digest },
     entries: preparation.input.canonicalFileManifest.entries,
   };
+  const depth =
+    depthWorkQueue === undefined
+      ? undefined
+      : await executeCurrentSemanticDepthRound(record, dependencies, plan, {
+          ...depthInput,
+          queue: {
+            ref: depthWorkQueue.queue,
+            value: projectedDepthWorkQueue.value,
+          },
+          registry: openingRegistry,
+          manifestValue,
+        });
+
+  const candidates = await materializeValidationCandidates(
+    dependencies.artifactStore,
+    { campaignId: plan.campaignId, runId: plan.runId, decision },
+  );
+  if (candidates.length > 0) {
+    await record.recordValidationIntents(
+      plan.campaignId,
+      plan.runId,
+      candidates,
+    );
+  }
   const validation = openValidation({
     modelExecution: dependencies.modelExecution,
     artifactStore: dependencies.artifactStore,
@@ -990,6 +1380,7 @@ async function completeCurrentSemanticIteration(
     (validationRecord) => validationRecord.status === "validation-pending",
   );
   const researchWorkRemains =
+    depth?.incomplete === true ||
     decision.campaignDisposition !== "coverage-closed" ||
     registry.ref.states.active > 0 ||
     registry.ref.states.blocked > 0 ||
@@ -1011,6 +1402,7 @@ async function completeCurrentSemanticIteration(
     ...(depthWorkQueue === undefined
       ? {}
       : { depthWorkQueue: depthWorkQueue.queue }),
+    ...(depth === undefined ? {} : { depthResearch: depth.depthResearch }),
     validations: validationRecords.sort((left, right) =>
       compareText(left.validationId, right.validationId),
     ),
@@ -1457,6 +1849,14 @@ async function executeDefaultSemanticCampaign(
       start.planDigest,
       evaluated,
       waveTerminalRef,
+      {
+        wave,
+        hypotheses,
+        routeFragments,
+        frontierGaps,
+        waveTerminal: waveTerminalRef,
+        evaluatorExecution,
+      },
     );
   }
   if (

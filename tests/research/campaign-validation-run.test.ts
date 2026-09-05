@@ -74,7 +74,9 @@ function completedResult(
       },
       structuredOutputBytes: 1_000,
       source:
-        plan.role === "finder" || plan.role === "validator"
+        plan.role === "finder" ||
+        plan.role === "validator" ||
+        plan.role === "adversarial-critic"
           ? { queries: 1, scanBytes: 100, responseBytes: 50 }
           : { queries: 0, scanBytes: 0, responseBytes: 0 },
       models: [
@@ -94,6 +96,36 @@ function completedResult(
   };
   return {
     status: "completed",
+    ref: {
+      kind: "attempt-execution-result",
+      schemaVersion: 2,
+      attemptId: plan.attemptId,
+      owner: plan.owner,
+      role: plan.role,
+      planDigest,
+      digest: sha256Digest(value),
+    },
+    value,
+  };
+}
+
+function failedResult(
+  plan: Exclude<ModelAttemptPlan, { schemaVersion: 1 }>,
+  status: "budget-exhausted" | "provider-failed" | "policy-denied",
+): AttemptExecutionResultV2 {
+  const planDigest = sha256Digest(plan);
+  const value = {
+    kind: "model-attempt-result" as const,
+    schemaVersion: 2 as const,
+    attemptId: plan.attemptId,
+    owner: plan.owner,
+    role: plan.role,
+    planDigest,
+    status,
+    reason: `Injected ${status} failure.`,
+  };
+  return {
+    status,
     ref: {
       kind: "attempt-execution-result",
       schemaVersion: 2,
@@ -142,9 +174,11 @@ describe("CampaignRunner.run source-only Validation", () => {
     const observedPlans: ModelAttemptPlan[] = [];
     const validatorAttemptIds: string[] = [];
     const depthQueuesObservedBeforeValidation: string[] = [];
+    const depthQueuesObservedBeforeSynthesis: string[] = [];
     let expectedValidationRunId = "";
     let validationDisposition: "ready-for-human" | "needs-research" =
       "ready-for-human";
+    let depthFailure: "none" | "budget-exhausted" = "none";
     const modelExecution: ModelExecution = {
       run: async (plan) => {
         if (plan.schemaVersion !== 2) {
@@ -193,6 +227,21 @@ describe("CampaignRunner.run source-only Validation", () => {
             frontierGaps: [],
           });
         }
+        if (
+          plan.role === "root-evaluator" &&
+          plan.assignment.kind === "depth-evaluation"
+        ) {
+          return completedResult(plan, {
+            kind: "depth-root-evaluator-output",
+            schemaVersion: 1,
+            dispositions: plan.assignment.proposalIds.map((proposalId) => ({
+              proposalId,
+              action: "retain-route",
+              reason:
+                "Keep the source-bound route active for later missing-link work.",
+            })),
+          });
+        }
         if (plan.role === "root-evaluator") {
           const prefix = "Wave evaluation context: ";
           const line = plan.prompt
@@ -221,7 +270,10 @@ describe("CampaignRunner.run source-only Validation", () => {
             approachFamilies: [
               {
                 key: "cross-actor-state",
-                subjectDigests: [hypothesis.ref.digest],
+                subjectDigests: [
+                  hypothesis.ref.digest,
+                  ...theses.map((thesis) => thesis.ref.digest),
+                ],
                 thesis: "Public state may cross an actor authority boundary.",
                 mechanism:
                   "Attacker-controlled state reaches a privileged consumer.",
@@ -254,7 +306,10 @@ describe("CampaignRunner.run source-only Validation", () => {
               {
                 kind: "admit-depth",
                 approachFamilyKey: "cross-actor-state",
-                subjectDigests: [hypothesis.ref.digest],
+                subjectDigests: [
+                  hypothesis.ref.digest,
+                  ...theses.map((thesis) => thesis.ref.digest),
+                ],
                 admission: {
                   highImpactPotential:
                     "The same cross-actor state may reach additional privileged consumers.",
@@ -266,6 +321,18 @@ describe("CampaignRunner.run source-only Validation", () => {
                     "Synthesize the source-bound state transition with adjacent consumers.",
                 },
               },
+              ...Array.from({ length: 4 }, (_, index) => ({
+                kind: "schedule-work" as const,
+                subjectDigests: [
+                  hypothesis.ref.digest,
+                  ...theses.map((thesis) => thesis.ref.digest),
+                ],
+                work: {
+                  requiredFact: `Resolve adjacent privileged consumer ${index + 1}.`,
+                  falsifier: `Consumer ${index + 1} does not read the shared state.`,
+                  nextAction: `Trace source-bound consumer ${index + 1}.`,
+                },
+              })),
               {
                 kind: "retain",
                 subjectDigests: theses.map((thesis) => thesis.ref.digest),
@@ -274,6 +341,96 @@ describe("CampaignRunner.run source-only Validation", () => {
               },
             ],
             campaignDisposition: "continue",
+          });
+        }
+        if (plan.role === "root-synthesizer") {
+          const durableRecord = openSqliteResearchRecord({
+            databasePath,
+            artifactStore: artifacts,
+          });
+          try {
+            const queued = await durableRecord.readSemanticDepthWorkQueueV2(
+              input.campaignId,
+              expectedValidationRunId,
+            );
+            if (queued === undefined) {
+              throw new Error(
+                "Root Synthesis started before the Depth Work Queue was durable",
+              );
+            }
+            depthQueuesObservedBeforeSynthesis.push(queued.queue.digest);
+          } finally {
+            durableRecord.close();
+          }
+          if (depthFailure !== "none") {
+            return failedResult(plan, depthFailure);
+          }
+          return completedResult(plan, {
+            kind: "root-synthesis-output",
+            schemaVersion: 1,
+            itemDispositions: plan.assignment.itemIds.map((itemId) => ({
+              itemId,
+              disposition: "used",
+              reason: "The item contributes a source-bound route subject.",
+            })),
+            proposals: [
+              {
+                itemIds: plan.assignment.itemIds,
+                subjectDigests: plan.assignment.subjectDigests,
+                attackerPremise: "unauthenticated",
+                securityProperty: "Cross-actor state ownership.",
+                steps: [
+                  {
+                    ordinal: 1,
+                    relation: "observed",
+                    actor: "unauthenticated-attacker",
+                    request: "Write public state.",
+                    stateIdentity: "shared-option",
+                    consumedValues: ["public-input"],
+                    producedValues: ["persisted-state"],
+                    evidence: [anchor],
+                  },
+                  {
+                    ordinal: 2,
+                    relation: "proposed-connection",
+                    actor: "privileged-consumer",
+                    request: "Read the persisted state.",
+                    stateIdentity: "shared-option",
+                    consumedValues: ["persisted-state"],
+                    producedValues: ["privileged-effect"],
+                    evidence: [anchor],
+                  },
+                ],
+                unknowns: [
+                  {
+                    claim: "The privileged consumer reads the same state.",
+                    requiredEvidence:
+                      "Trace the exact persisted state identity.",
+                  },
+                ],
+                falsifier: "The producer and consumer use distinct state.",
+                nextAction: "Challenge the state identity in fresh source.",
+              },
+            ],
+          });
+        }
+        if (plan.role === "adversarial-critic") {
+          return completedResult(plan, {
+            kind: "adversarial-critic-output",
+            schemaVersion: 1,
+            dispositions: plan.assignment.proposalIds.map((proposalId) => ({
+              proposalId,
+              verdict: "survives",
+              challenges: [
+                {
+                  category: "state-identity",
+                  claim: "Both steps refer to the same persisted state.",
+                  evidence: [anchor],
+                  reason: "The cited source leaves the route plausible.",
+                  falsifier: "The state keys differ.",
+                },
+              ],
+            })),
           });
         }
         if (plan.role === "validator") {
@@ -358,7 +515,7 @@ describe("CampaignRunner.run source-only Validation", () => {
               : {}),
           });
         }
-        throw new Error(`Unexpected Attempt role: ${plan.role}`);
+        throw new Error("Unexpected Attempt role");
       },
     };
     let legacyVerifierCalls = 0;
@@ -577,14 +734,40 @@ describe("CampaignRunner.run source-only Validation", () => {
               actions: [
                 { kind: "admit-validation" },
                 { kind: "admit-depth" },
+                { kind: "schedule-work" },
+                { kind: "schedule-work" },
+                { kind: "schedule-work" },
+                { kind: "schedule-work" },
                 { kind: "retain" },
               ],
             },
             depthWorkQueue: {
               schemaVersion: 2,
-              items: 1,
-              batches: 1,
-              familyBindings: 1,
+              items: 5,
+              batches: 2,
+              familyBindings: 5,
+            },
+            depthResearch: {
+              schemaVersion: 4,
+              rounds: [
+                {
+                  schemaVersion: 3,
+                  batches: [
+                    {
+                      schemaVersion: 2,
+                      synthesis: { ref: { proposals: 1 } },
+                      critique: { ref: { dispositions: 1 } },
+                      evaluation: { ref: { schemaVersion: 2, actions: 1 } },
+                    },
+                    {
+                      schemaVersion: 2,
+                      synthesis: { ref: { proposals: 1 } },
+                      critique: { ref: { dispositions: 1 } },
+                      evaluation: { ref: { schemaVersion: 2, actions: 1 } },
+                    },
+                  ],
+                },
+              ],
             },
             validations: [{ status: "ready-for-human" }],
             approachFamilyRegistry: {
@@ -603,7 +786,35 @@ describe("CampaignRunner.run source-only Validation", () => {
       expect(
         observedPlans.filter((attempt) => attempt.role === "validator"),
       ).toHaveLength(2);
+      expect([...new Set(depthQueuesObservedBeforeSynthesis)]).toHaveLength(1);
       expect([...new Set(depthQueuesObservedBeforeValidation)]).toHaveLength(1);
+      const depthPlans = observedPlans.filter(
+        (attempt) =>
+          attempt.role === "root-synthesizer" ||
+          attempt.role === "adversarial-critic" ||
+          (attempt.role === "root-evaluator" &&
+            attempt.assignment.kind === "depth-evaluation"),
+      );
+      expect(depthPlans.map((attempt) => attempt.role)).toEqual([
+        "root-synthesizer",
+        "adversarial-critic",
+        "root-evaluator",
+        "root-synthesizer",
+        "adversarial-critic",
+        "root-evaluator",
+      ]);
+      expect(
+        depthPlans.filter((attempt) => attempt.role === "root-synthesizer"),
+      ).not.toContainEqual(expect.objectContaining({ sourceToolPolicy }));
+      expect(
+        depthPlans.filter((attempt) => attempt.role === "adversarial-critic"),
+      ).toEqual([
+        expect.objectContaining({ sourceToolPolicy }),
+        expect.objectContaining({ sourceToolPolicy }),
+      ]);
+      expect(
+        new Set(depthPlans.map((attempt) => attempt.attemptId)),
+      ).toHaveProperty("size", 6);
       expect(
         observedPlans.find(
           (attempt) => attempt.role === "validation-synthesizer",
@@ -630,6 +841,11 @@ describe("CampaignRunner.run source-only Validation", () => {
         await expect(
           record.listValidationFrontierGaps(input.campaignId, plan.runId),
         ).resolves.toEqual([]);
+        await expect(
+          record.readApproachFamilyRegistryV3(input.campaignId, plan.runId),
+        ).resolves.toMatchObject({
+          value: { depthDecisions: [expect.any(String), expect.any(String)] },
+        });
       } finally {
         record.close();
       }
@@ -699,6 +915,59 @@ describe("CampaignRunner.run source-only Validation", () => {
       } finally {
         needsResearchRecord.close();
       }
+
+      validationDisposition = "ready-for-human";
+      depthFailure = "budget-exhausted";
+      validatorAttemptIds.length = 0;
+      const failurePlan = campaignDefaultSemanticRunPlanV3Schema.parse({
+        ...plan,
+        runId: "source-validation-depth-budget-exhausted",
+      });
+      expectedValidationRunId = failurePlan.runId;
+      const failureCallOffset = observedPlans.length;
+      const failureRef = await research.runner.run(failurePlan);
+      const failureInspected = await research.reader.inspect(input.campaignId, {
+        kind: "run",
+        runId: failurePlan.runId,
+      });
+      expect({ failureRef, failureInspected }).toMatchObject({
+        failureRef: { schemaVersion: 3, decision: "incomplete" },
+        failureInspected: {
+          value: {
+            depthResearch: {
+              schemaVersion: 4,
+              rounds: [
+                {
+                  batches: [
+                    {
+                      kind: "semantic-depth-batch-incomplete",
+                      stage: "root-synthesis",
+                      reason: "synthesizer-failed",
+                    },
+                    {
+                      kind: "semantic-depth-batch-incomplete",
+                      stage: "root-synthesis",
+                      reason: "synthesizer-failed",
+                    },
+                  ],
+                },
+              ],
+            },
+            approachFamilyRegistry: { states: { active: 1 } },
+            decision: {
+              kind: "incomplete",
+              reason: "research-work-remains",
+            },
+          },
+        },
+      });
+      const failureCalls = observedPlans.slice(failureCallOffset);
+      expect(
+        failureCalls.filter((attempt) => attempt.role === "root-synthesizer"),
+      ).toHaveLength(2);
+      expect(
+        failureCalls.filter((attempt) => attempt.role === "adversarial-critic"),
+      ).toEqual([]);
     } finally {
       research.close();
       await rm(directory, { force: true, recursive: true });

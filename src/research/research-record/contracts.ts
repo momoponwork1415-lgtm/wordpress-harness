@@ -14,8 +14,21 @@ import type {
   IterationDecisionV2,
   IterationDecisionV3,
 } from "../exploration/semantic-contracts.js";
-import type { ChainSynthesis } from "../exploration/semantic-chain-synthesis.js";
+import type {
+  ChainSynthesis,
+  ChainSynthesisIncomplete,
+} from "../exploration/semantic-chain-synthesis.js";
+import type {
+  AdversarialCritique,
+  AdversarialCritiqueIncomplete,
+  AdversarialCritiqueRef,
+  ChainSynthesisRef,
+} from "../exploration/semantic-adversarial-critique.js";
 import type { DepthIterationDecision } from "../exploration/semantic-depth-evaluation.js";
+import type {
+  CurrentDepthEvaluationIncomplete,
+  CurrentDepthIterationDecision,
+} from "../exploration/semantic-depth-evaluation-v2.js";
 import type {
   SemanticDepthWorkQueue,
   SemanticDepthWorkQueueRefV2,
@@ -140,6 +153,23 @@ export interface ResearchRecord {
     campaignId: string,
     runId: string,
   ): Promise<SemanticDepthWorkQueueRecordViewV2 | undefined>;
+  recordSemanticChainSynthesisV2(
+    campaignId: string,
+    runId: string,
+    queue: SemanticDepthWorkQueueV2,
+    synthesis: ChainSynthesis | ChainSynthesisIncomplete,
+  ): Promise<SemanticChainSynthesisRecordViewV2>;
+  recordSemanticAdversarialCritiqueV2(
+    campaignId: string,
+    runId: string,
+    synthesis: ChainSynthesis,
+    critique: AdversarialCritique | AdversarialCritiqueIncomplete,
+  ): Promise<SemanticAdversarialCritiqueRecordViewV2>;
+  recordSemanticDepthEvaluationIncompleteV2(
+    campaignId: string,
+    runId: string,
+    evaluation: CurrentDepthEvaluationIncomplete,
+  ): Promise<SemanticDepthEvaluationIncompleteRecordViewV2>;
   recordSemanticDepthIteration(
     campaignId: string,
     runId: string,
@@ -149,6 +179,15 @@ export interface ResearchRecord {
       readonly decision: DepthIterationDecision;
     },
   ): Promise<ApproachFamilyRegistryRecordView>;
+  recordSemanticDepthIterationV3(
+    campaignId: string,
+    runId: string,
+    input: {
+      readonly queue: SemanticDepthWorkQueueV2;
+      readonly synthesis: ChainSynthesis;
+      readonly decision: CurrentDepthIterationDecision;
+    },
+  ): Promise<ApproachFamilyRegistryRecordViewV3>;
   recordSemanticMissingLinkEvidence(
     campaignId: string,
     runId: string,
@@ -305,6 +344,35 @@ export interface SemanticDepthWorkQueueRecordViewV2 {
   readonly ledgerHead: number;
   readonly occurredAt: string;
   readonly queue: SemanticDepthWorkQueueRefV2;
+}
+
+export interface SemanticChainSynthesisRecordViewV2 {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly runId: string;
+  readonly batchId: string;
+  readonly artifactDigest: string;
+  readonly outcome: "completed" | "incomplete";
+  readonly synthesis?: ChainSynthesisRef;
+}
+
+export interface SemanticAdversarialCritiqueRecordViewV2 {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly runId: string;
+  readonly synthesisId: string;
+  readonly artifactDigest: string;
+  readonly outcome: "completed" | "incomplete";
+  readonly critique?: AdversarialCritiqueRef;
+}
+
+export interface SemanticDepthEvaluationIncompleteRecordViewV2 {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly runId: string;
+  readonly synthesisId: string;
+  readonly artifactDigest: string;
+  readonly evaluation: CurrentDepthEvaluationIncomplete;
 }
 
 export interface ApproachFamilyRegistryRecordViewV3 {

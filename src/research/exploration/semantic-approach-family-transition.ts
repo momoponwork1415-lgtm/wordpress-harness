@@ -8,12 +8,25 @@ import {
   projectApproachFamilyRegistry,
   referenceApproachFamily,
 } from "./semantic-approach-family-registry.js";
+import {
+  approachFamilyRefV3Schema,
+  approachFamilyRegistryV3Schema,
+  projectApproachFamilyRegistryV3,
+  referenceApproachFamilyV3,
+} from "./semantic-approach-family-registry-v3.js";
 import { chainSynthesisSchema } from "./semantic-chain-synthesis.js";
 import {
   depthIterationDecisionSchema,
   referenceDepthIterationDecision,
 } from "./semantic-depth-evaluation.js";
-import { semanticDepthWorkQueueSchema } from "./semantic-depth-work-queue.js";
+import {
+  currentDepthIterationDecisionSchema,
+  referenceCurrentDepthIterationDecision,
+} from "./semantic-depth-evaluation-v2.js";
+import {
+  semanticDepthWorkQueueSchema,
+  semanticDepthWorkQueueV2Schema,
+} from "./semantic-depth-work-queue.js";
 import { verificationRecordRefSchema } from "../verification/contracts.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
@@ -41,6 +54,31 @@ export const approachFamilyTransitionSchema = z.strictObject({
 
 export type ApproachFamilyTransition = z.infer<
   typeof approachFamilyTransitionSchema
+>;
+
+export const approachFamilyTransitionV3Schema = z.strictObject({
+  kind: z.literal("approach-family-transition"),
+  schemaVersion: z.literal(3),
+  familyId: digestSchema,
+  before: approachFamilyRefV3Schema,
+  after: approachFamilyRefV3Schema,
+  actions: z
+    .array(
+      z.enum([
+        "admit-validation",
+        "schedule-missing-link",
+        "retain-route",
+        "close-route",
+        "block-route",
+      ]),
+    )
+    .min(1)
+    .max(32),
+  evidenceAdded: z.number().int().nonnegative().max(64),
+});
+
+export type ApproachFamilyTransitionV3 = z.infer<
+  typeof approachFamilyTransitionV3Schema
 >;
 
 export const approachFamilyEvidenceAttachmentSchema = z.strictObject({
@@ -252,6 +290,112 @@ export function advanceApproachFamilyRegistry(input: {
   return {
     ...projected,
     openedFamilies,
+    transitions: transitions.sort((left, right) =>
+      compareText(left.familyId, right.familyId),
+    ),
+  };
+}
+
+export function advanceApproachFamilyRegistryV3(input: {
+  readonly registry: z.infer<typeof approachFamilyRegistryV3Schema>;
+  readonly queue: z.infer<typeof semanticDepthWorkQueueV2Schema>;
+  readonly synthesis: z.infer<typeof chainSynthesisSchema>;
+  readonly decision: z.infer<typeof currentDepthIterationDecisionSchema>;
+}): ReturnType<typeof projectApproachFamilyRegistryV3> & {
+  readonly transitions: readonly ApproachFamilyTransitionV3[];
+} {
+  const registry = approachFamilyRegistryV3Schema.parse(input.registry);
+  const queue = semanticDepthWorkQueueV2Schema.parse(input.queue);
+  const synthesis = chainSynthesisSchema.parse(input.synthesis);
+  const decision = currentDepthIterationDecisionSchema.parse(input.decision);
+  const decisionRef = referenceCurrentDepthIterationDecision(decision);
+  if (
+    queue.campaignId !== registry.campaignId ||
+    queue.runId !== registry.runId ||
+    synthesis.queue.schemaVersion !== 2 ||
+    decision.registry.digest !== sha256Digest(registry) ||
+    synthesis.queue.digest !== sha256Digest(queue) ||
+    decision.synthesis.id !== synthesis.id
+  ) {
+    throw new Error("Approach Family transition v3 binding mismatch");
+  }
+  const items = new Map(queue.items.map((item) => [item.id, item]));
+  const proposals = new Map(
+    synthesis.proposals.map((proposal) => [proposal.id, proposal]),
+  );
+  const actionKinds = new Map<
+    string,
+    Set<(typeof decision.actions)[number]["kind"]>
+  >();
+  const reasons = new Map<string, string>();
+  for (const action of decision.actions) {
+    const proposal = proposals.get(action.proposal.id);
+    if (proposal === undefined) {
+      throw new Error("Approach Family transition v3 lost its Chain Proposal");
+    }
+    const familyIds = new Set(
+      proposal.itemIds.flatMap(
+        (itemId) =>
+          items.get(itemId)?.families.map((family) => family.id) ?? [],
+      ),
+    );
+    if (familyIds.size === 0) {
+      throw new Error("Depth action v2 lost its Approach Family");
+    }
+    for (const familyId of familyIds) {
+      if (!registry.families.some((family) => family.id === familyId)) {
+        throw new Error("Depth action v2 references a foreign Family");
+      }
+      const kinds = actionKinds.get(familyId) ?? new Set();
+      kinds.add(action.kind);
+      actionKinds.set(familyId, kinds);
+      reasons.set(familyId, action.reason);
+    }
+  }
+
+  const transitions: ApproachFamilyTransitionV3[] = [];
+  const families = registry.families.map((family) => {
+    const kinds = actionKinds.get(family.id);
+    if (kinds === undefined) return family;
+    const state =
+      kinds.has("schedule-missing-link") ||
+      kinds.has("retain-route") ||
+      kinds.has("admit-validation")
+        ? "active"
+        : kinds.has("block-route")
+          ? "blocked"
+          : "exhausted";
+    const updated = approachFamilyRegistryV3Schema.shape.families.element.parse(
+      {
+        ...family,
+        state,
+        nextAction: reasons.get(family.id) ?? family.nextAction,
+      },
+    );
+    transitions.push(
+      approachFamilyTransitionV3Schema.parse({
+        kind: "approach-family-transition",
+        schemaVersion: 3,
+        familyId: family.id,
+        before: referenceApproachFamilyV3(family),
+        after: referenceApproachFamilyV3(updated),
+        actions: [...kinds].sort(compareText),
+        evidenceAdded: 0,
+      }),
+    );
+    return updated;
+  });
+  const projected = projectApproachFamilyRegistryV3({
+    campaignId: registry.campaignId,
+    runId: registry.runId,
+    target: registry.target,
+    manifest: registry.manifest,
+    decisions: registry.decisions,
+    depthDecisions: [...registry.depthDecisions, decisionRef.digest],
+    families,
+  });
+  return {
+    ...projected,
     transitions: transitions.sort((left, right) =>
       compareText(left.familyId, right.familyId),
     ),

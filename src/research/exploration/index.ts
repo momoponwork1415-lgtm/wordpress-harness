@@ -21,6 +21,14 @@ export {
   referenceDepthIterationDecision,
 } from "./semantic-depth-evaluation.js";
 export {
+  currentDepthEvaluationIncompleteSchema,
+  currentDepthIterationDecisionRefSchema,
+  currentDepthIterationDecisionSchema,
+  currentSemanticDepthEvaluationInputSchema,
+  openCurrentSemanticDepthEvaluation,
+  referenceCurrentDepthIterationDecision,
+} from "./semantic-depth-evaluation-v2.js";
+export {
   projectSemanticDepthWorkQueue,
   projectSemanticDepthWorkQueueV2,
   referenceSemanticDepthWorkQueueV2,
@@ -28,8 +36,10 @@ export {
 export { projectMissingLinkDepthWorkQueue } from "./semantic-missing-link-depth-queue.js";
 export {
   advanceApproachFamilyRegistry,
+  advanceApproachFamilyRegistryV3,
   approachFamilyEvidenceAttachmentSchema,
   approachFamilyTransitionSchema,
+  approachFamilyTransitionV3Schema,
   approachFamilyVerificationResolutionSchema,
   attachApproachFamilyEvidence,
   resolveApproachFamilyVerifications,
@@ -128,6 +138,15 @@ export type {
   SemanticDepthEvaluationResult,
 } from "./semantic-depth-evaluation.js";
 export type {
+  CurrentDepthEvaluationIncomplete,
+  CurrentDepthIterationDecision,
+  CurrentDepthIterationDecisionRef,
+  CurrentSemanticDepthEvaluation,
+  CurrentSemanticDepthEvaluationInput,
+  CurrentSemanticDepthEvaluationResult,
+  OpenCurrentSemanticDepthEvaluationOptions,
+} from "./semantic-depth-evaluation-v2.js";
+export type {
   SemanticDepthWorkItem,
   SemanticDepthWorkItemV2,
   SemanticDepthWorkQueue,
@@ -144,6 +163,7 @@ export type { MissingLinkDepthQueueProjection } from "./semantic-missing-link-de
 export type {
   ApproachFamilyEvidenceAttachment,
   ApproachFamilyTransition,
+  ApproachFamilyTransitionV3,
   ApproachFamilyVerificationResolution,
 } from "./semantic-approach-family-transition.js";
 

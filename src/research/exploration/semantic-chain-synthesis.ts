@@ -32,10 +32,15 @@ import {
 } from "./semantic-contracts.js";
 import {
   semanticDepthWorkQueueRefSchema,
+  semanticDepthWorkQueueRefV2Schema,
   semanticDepthWorkQueueSchema,
+  semanticDepthWorkQueueV2Schema,
   type SemanticDepthWorkItem,
+  type SemanticDepthWorkItemV2,
   type SemanticDepthWorkQueue,
+  type SemanticDepthWorkQueueV2,
   type SemanticDepthWorkQueueRef,
+  type SemanticDepthWorkQueueRefV2,
 } from "./semantic-depth-work-queue.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
@@ -111,7 +116,10 @@ export const chainProposalSchema = z.strictObject({
   id: digestSchema,
   target: semanticDepthWorkQueueSchema.shape.target,
   manifest: targetFileManifestRefSchema,
-  queue: semanticDepthWorkQueueRefSchema,
+  queue: z.union([
+    semanticDepthWorkQueueRefV2Schema,
+    semanticDepthWorkQueueRefSchema,
+  ]),
   batchId: digestSchema,
   attempt: attemptRefSchema,
   itemIds: z.array(digestSchema).min(1).max(4),
@@ -130,7 +138,10 @@ export const chainSynthesisSchema = z.strictObject({
   id: digestSchema,
   target: semanticDepthWorkQueueSchema.shape.target,
   manifest: targetFileManifestRefSchema,
-  queue: semanticDepthWorkQueueRefSchema,
+  queue: z.union([
+    semanticDepthWorkQueueRefV2Schema,
+    semanticDepthWorkQueueRefSchema,
+  ]),
   batchId: digestSchema,
   attempt: attemptRefSchema,
   itemDispositions: z.array(itemDispositionSchema).min(1).max(4),
@@ -142,7 +153,10 @@ export const chainSynthesisIncompleteSchema = z.strictObject({
   schemaVersion: z.literal(1),
   target: semanticDepthWorkQueueSchema.shape.target,
   manifest: targetFileManifestRefSchema,
-  queue: semanticDepthWorkQueueRefSchema,
+  queue: z.union([
+    semanticDepthWorkQueueRefV2Schema,
+    semanticDepthWorkQueueRefSchema,
+  ]),
   batchId: digestSchema,
   attempts: z.array(attemptRefSchema).max(1),
   reason: z.enum([
@@ -180,10 +194,16 @@ const subjectArtifactSchema = z.union([
 export const semanticChainSynthesisInputSchema = z.strictObject({
   kind: z.literal("synthesize-depth-work"),
   schemaVersion: z.literal(1),
-  queue: z.strictObject({
-    ref: semanticDepthWorkQueueRefSchema,
-    value: semanticDepthWorkQueueSchema,
-  }),
+  queue: z.union([
+    z.strictObject({
+      ref: semanticDepthWorkQueueRefV2Schema,
+      value: semanticDepthWorkQueueV2Schema,
+    }),
+    z.strictObject({
+      ref: semanticDepthWorkQueueRefSchema,
+      value: semanticDepthWorkQueueSchema,
+    }),
+  ]),
   batchId: digestSchema,
   manifest: z.strictObject({
     ref: targetFileManifestRefSchema,
@@ -225,10 +245,12 @@ type SubjectArtifact = SemanticChainSynthesisInput["subjects"][number];
 type FailureReason = ChainSynthesisIncomplete["reason"];
 
 interface ValidatedContext {
-  readonly queue: SemanticDepthWorkQueue;
-  readonly queueRef: SemanticDepthWorkQueueRef;
-  readonly batch: SemanticDepthWorkQueue["batches"][number];
-  readonly items: readonly SemanticDepthWorkItem[];
+  readonly queue: SemanticDepthWorkQueue | SemanticDepthWorkQueueV2;
+  readonly queueRef: SemanticDepthWorkQueueRef | SemanticDepthWorkQueueRefV2;
+  readonly batch:
+    | SemanticDepthWorkQueue["batches"][number]
+    | SemanticDepthWorkQueueV2["batches"][number];
+  readonly items: readonly (SemanticDepthWorkItem | SemanticDepthWorkItemV2)[];
   readonly subjects: readonly SubjectArtifact[];
 }
 
@@ -301,6 +323,7 @@ function validateContext(
   | { readonly kind: "invalid"; readonly reason: FailureReason } {
   const { queue, manifest } = input;
   if (
+    queue.ref.schemaVersion !== queue.value.schemaVersion ||
     queue.ref.digest !== sha256Digest(queue.value) ||
     queue.ref.predecessorDecisionDigest !==
       queue.value.predecessorDecisionDigest ||
@@ -308,6 +331,15 @@ function validateContext(
     queue.ref.manifestDigest !== queue.value.manifest.digest ||
     queue.ref.items !== queue.value.items.length ||
     queue.ref.batches !== queue.value.batches.length ||
+    (queue.ref.schemaVersion === 2 &&
+      (queue.value.schemaVersion !== 2 ||
+        queue.ref.campaignId !== queue.value.campaignId ||
+        queue.ref.runId !== queue.value.runId ||
+        queue.ref.familyBindings !==
+          queue.value.items.reduce(
+            (total, item) => total + item.families.length,
+            0,
+          ))) ||
     manifest.ref.digest !== sha256Digest(manifest.value) ||
     manifest.ref.targetSnapshotId !== manifest.value.targetSnapshot.id ||
     manifest.ref.targetSnapshotDigest !==
@@ -323,7 +355,7 @@ function validateContext(
     return { kind: "invalid", reason: "foreign-ref" };
   }
   const itemsById = new Map(queue.value.items.map((item) => [item.id, item]));
-  const items: SemanticDepthWorkItem[] = [];
+  const items: (SemanticDepthWorkItem | SemanticDepthWorkItemV2)[] = [];
   for (const itemId of batch.itemIds) {
     const item = itemsById.get(itemId);
     if (

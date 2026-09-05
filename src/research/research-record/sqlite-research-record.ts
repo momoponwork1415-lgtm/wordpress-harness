@@ -47,6 +47,7 @@ import {
   type CampaignAttemptIntentV2,
   type CampaignAttemptRecordView,
   type CampaignAttemptRecordViewV2,
+  type CurrentSemanticDepthResearch,
 } from "../campaign-control/contracts.js";
 import {
   semanticFinderCheckpointRefSchema,
@@ -80,18 +81,37 @@ import {
 } from "../exploration/semantic-approach-family-validation-v3.js";
 import {
   advanceApproachFamilyRegistry,
+  advanceApproachFamilyRegistryV3,
   approachFamilyEvidenceAttachmentSchema,
   approachFamilyTransitionSchema,
+  approachFamilyTransitionV3Schema,
   approachFamilyVerificationResolutionSchema,
   attachApproachFamilyEvidence,
   resolveApproachFamilyVerifications,
 } from "../exploration/semantic-approach-family-transition.js";
-import { chainSynthesisSchema } from "../exploration/semantic-chain-synthesis.js";
+import {
+  chainSynthesisIncompleteSchema,
+  chainSynthesisSchema,
+} from "../exploration/semantic-chain-synthesis.js";
+import {
+  adversarialCritiqueIncompleteSchema,
+  adversarialCritiqueRefSchema,
+  adversarialCritiqueSchema,
+  chainSynthesisRefSchema,
+  referenceAdversarialCritique,
+  referenceChainSynthesis,
+} from "../exploration/semantic-adversarial-critique.js";
 import {
   depthIterationDecisionRefSchema,
   depthIterationDecisionSchema,
   referenceDepthIterationDecision,
 } from "../exploration/semantic-depth-evaluation.js";
+import {
+  currentDepthEvaluationIncompleteSchema,
+  currentDepthIterationDecisionRefSchema,
+  currentDepthIterationDecisionSchema,
+  referenceCurrentDepthIterationDecision,
+} from "../exploration/semantic-depth-evaluation-v2.js";
 import {
   referenceSemanticDepthWorkQueueV2,
   semanticDepthWorkQueueRefV2Schema,
@@ -151,6 +171,9 @@ import type {
   SemanticIterationDecisionRecordView,
   SemanticIterationDecisionRecordViewV3,
   SemanticDepthWorkQueueRecordViewV2,
+  SemanticChainSynthesisRecordViewV2,
+  SemanticAdversarialCritiqueRecordViewV2,
+  SemanticDepthEvaluationIncompleteRecordViewV2,
   ValidationCompletion,
   ValidationCompletionRecordView,
   ValidationFrontierGapRecordView,
@@ -426,6 +449,52 @@ const semanticDepthWorkQueuedPayloadV2Schema = z.strictObject({
   queue: semanticDepthWorkQueueRefV2Schema,
 });
 
+const semanticChainSynthesizedPayloadV2Schema = z.discriminatedUnion(
+  "outcome",
+  [
+    z.strictObject({
+      runId: z.string().min(1).max(128),
+      queue: semanticDepthWorkQueueRefV2Schema,
+      batchId: digestSchema,
+      artifactDigest: digestSchema,
+      outcome: z.literal("completed"),
+      synthesis: chainSynthesisRefSchema,
+    }),
+    z.strictObject({
+      runId: z.string().min(1).max(128),
+      queue: semanticDepthWorkQueueRefV2Schema,
+      batchId: digestSchema,
+      artifactDigest: digestSchema,
+      outcome: z.literal("incomplete"),
+    }),
+  ],
+);
+
+const semanticAdversarialCritiquedPayloadV2Schema = z.discriminatedUnion(
+  "outcome",
+  [
+    z.strictObject({
+      runId: z.string().min(1).max(128),
+      synthesis: chainSynthesisRefSchema,
+      artifactDigest: digestSchema,
+      outcome: z.literal("completed"),
+      critique: adversarialCritiqueRefSchema,
+    }),
+    z.strictObject({
+      runId: z.string().min(1).max(128),
+      synthesis: chainSynthesisRefSchema,
+      artifactDigest: digestSchema,
+      outcome: z.literal("incomplete"),
+    }),
+  ],
+);
+
+const semanticDepthEvaluationIncompletePayloadV2Schema = z.strictObject({
+  runId: z.string().min(1).max(128),
+  artifactDigest: digestSchema,
+  evaluation: currentDepthEvaluationIncompleteSchema,
+});
+
 const validationIntentSchema = z.strictObject({
   kind: z.literal("validation-intent"),
   schemaVersion: z.literal(1),
@@ -497,6 +566,15 @@ const semanticDepthIterationDecidedPayloadV2Schema = z.strictObject({
   openedFamilies: z.array(approachFamilySchema).max(64),
   updatedFamilies: z.array(approachFamilySchema).max(64),
   registry: approachFamilyRegistryRefSchema,
+});
+
+const semanticDepthIterationDecidedPayloadV3Schema = z.strictObject({
+  runId: z.string().min(1).max(128),
+  predecessorRegistryDigest: digestSchema,
+  decision: currentDepthIterationDecisionRefSchema,
+  transitions: z.array(approachFamilyTransitionV3Schema).min(1).max(64),
+  updatedFamilies: z.array(approachFamilyV3Schema).min(1).max(64),
+  registry: approachFamilyRegistryRefV3Schema,
 });
 
 const semanticFamilyEvidenceAttachedPayloadSchema = z.strictObject({
@@ -578,6 +656,18 @@ interface LedgerProjection {
     string,
     SemanticDepthWorkQueueRecordViewV2
   >;
+  readonly semanticChainSynthesesV2: ReadonlyMap<
+    string,
+    SemanticChainSynthesisRecordViewV2
+  >;
+  readonly semanticAdversarialCritiquesV2: ReadonlyMap<
+    string,
+    SemanticAdversarialCritiqueRecordViewV2
+  >;
+  readonly semanticDepthEvaluationIncompletesV2: ReadonlyMap<
+    string,
+    SemanticDepthEvaluationIncompleteRecordViewV2
+  >;
   readonly approachFamilyRegistries: ReadonlyMap<
     string,
     ApproachFamilyRegistryRecordView
@@ -596,6 +686,118 @@ interface LedgerProjection {
     ValidationFrontierGapRecordView
   >;
   readonly verifications: ReadonlyMap<string, StoredVerification>;
+}
+
+function currentDepthResearchMatchesLedger(
+  runId: string,
+  queue: z.infer<typeof semanticDepthWorkQueueRefV2Schema> | undefined,
+  research: CurrentSemanticDepthResearch | undefined,
+  registry: ApproachFamilyRegistryRecordViewV3 | undefined,
+  syntheses: ReadonlyMap<string, SemanticChainSynthesisRecordViewV2>,
+  critiques: ReadonlyMap<string, SemanticAdversarialCritiqueRecordViewV2>,
+  incompleteEvaluations: ReadonlyMap<
+    string,
+    SemanticDepthEvaluationIncompleteRecordViewV2
+  >,
+): boolean {
+  if (research === undefined) {
+    return (
+      ![...syntheses.values()].some((value) => value.runId === runId) &&
+      ![...critiques.values()].some((value) => value.runId === runId) &&
+      ![...incompleteEvaluations.values()].some(
+        (value) => value.runId === runId,
+      )
+    );
+  }
+  if (queue === undefined || registry === undefined) return false;
+  const representedSyntheses = new Set<string>();
+  const representedCritiques = new Set<string>();
+  const representedIncompleteEvaluations = new Set<string>();
+  for (const round of research.rounds) {
+    if (canonicalJson(round.queue) !== canonicalJson(queue)) return false;
+    for (const batch of round.batches) {
+      const synthesis = syntheses.get(`${runId}:${batch.batchId}`);
+      representedSyntheses.add(`${runId}:${batch.batchId}`);
+      if (batch.kind === "semantic-depth-batch-incomplete") {
+        if (batch.stage === "root-synthesis") {
+          if (
+            synthesis?.outcome !== "incomplete" ||
+            synthesis.artifactDigest !== batch.artifactDigest
+          ) {
+            return false;
+          }
+          continue;
+        }
+        if (
+          batch.synthesis === undefined ||
+          synthesis?.outcome !== "completed" ||
+          synthesis.artifactDigest !== batch.synthesis.artifactDigest ||
+          canonicalJson(synthesis.synthesis) !==
+            canonicalJson(batch.synthesis.ref)
+        ) {
+          return false;
+        }
+        const critiqueKey = `${runId}:${batch.synthesis.ref.id}`;
+        const critique = critiques.get(critiqueKey);
+        representedCritiques.add(critiqueKey);
+        if (batch.stage === "adversarial-critique") {
+          if (
+            critique?.outcome !== "incomplete" ||
+            critique.artifactDigest !== batch.artifactDigest
+          ) {
+            return false;
+          }
+          continue;
+        }
+        if (
+          batch.critique === undefined ||
+          critique?.outcome !== "completed" ||
+          critique.artifactDigest !== batch.critique.artifactDigest ||
+          canonicalJson(critique.critique) !== canonicalJson(batch.critique.ref)
+        ) {
+          return false;
+        }
+        const evaluation = incompleteEvaluations.get(critiqueKey);
+        representedIncompleteEvaluations.add(critiqueKey);
+        if (evaluation?.artifactDigest !== batch.artifactDigest) return false;
+        continue;
+      }
+      if (
+        synthesis?.outcome !== "completed" ||
+        synthesis.artifactDigest !== batch.synthesis.artifactDigest ||
+        canonicalJson(synthesis.synthesis) !==
+          canonicalJson(batch.synthesis.ref)
+      ) {
+        return false;
+      }
+      if (batch.critique === undefined) continue;
+      const critiqueKey = `${runId}:${batch.synthesis.ref.id}`;
+      const critique = critiques.get(critiqueKey);
+      representedCritiques.add(critiqueKey);
+      if (
+        critique?.outcome !== "completed" ||
+        critique.artifactDigest !== batch.critique.artifactDigest ||
+        canonicalJson(critique.critique) !==
+          canonicalJson(batch.critique.ref) ||
+        batch.evaluation === undefined ||
+        batch.evaluation.artifactDigest !== batch.evaluation.ref.digest ||
+        !registry.value.depthDecisions.includes(batch.evaluation.ref.digest)
+      ) {
+        return false;
+      }
+    }
+  }
+  return (
+    [...syntheses.entries()]
+      .filter(([, value]) => value.runId === runId)
+      .every(([key]) => representedSyntheses.has(key)) &&
+    [...critiques.entries()]
+      .filter(([, value]) => value.runId === runId)
+      .every(([key]) => representedCritiques.has(key)) &&
+    [...incompleteEvaluations.entries()]
+      .filter(([, value]) => value.runId === runId)
+      .every(([key]) => representedIncompleteEvaluations.has(key))
+  );
 }
 
 function aggregateProgressUsage(
@@ -1547,6 +1749,22 @@ class SqliteResearchRecord implements ResearchRecord {
             "invalid-event-order",
           );
         }
+        if (
+          !currentDepthResearchMatchesLedger(
+            input.runId,
+            input.depthWorkQueue,
+            input.depthResearch,
+            registry,
+            ledger.semanticChainSynthesesV2,
+            ledger.semanticAdversarialCritiquesV2,
+            ledger.semanticDepthEvaluationIncompletesV2,
+          )
+        ) {
+          throw new LedgerIntegrityError(
+            input.campaignId,
+            "invalid-event-order",
+          );
+        }
 
         const runIntentIds = new Set(
           [...ledger.validationIntents.values()]
@@ -1800,6 +2018,8 @@ class SqliteResearchRecord implements ResearchRecord {
           (intent.role === "root-evaluator" &&
             intent.registryDigest !== undefined &&
             ledger.approachFamilyRegistries.get(intent.runId)?.ref.digest !==
+              intent.registryDigest &&
+            ledger.approachFamilyRegistriesV3.get(intent.runId)?.ref.digest !==
               intent.registryDigest) ||
           (intent.role === "finder" &&
             intent.predecessorDecisionDigest !== undefined &&
@@ -1812,7 +2032,8 @@ class SqliteResearchRecord implements ResearchRecord {
             )) ||
           ((intent.role === "root-synthesizer" ||
             intent.role === "adversarial-critic") &&
-            !ledger.approachFamilyRegistries.has(intent.runId))
+            !ledger.approachFamilyRegistries.has(intent.runId) &&
+            !ledger.approachFamilyRegistriesV3.has(intent.runId))
         ) {
           throw new CampaignRunConflictError(intent.campaignId, intent.runId);
         }
@@ -2311,6 +2532,281 @@ class SqliteResearchRecord implements ResearchRecord {
     return this.#decodeLedger(campaignId, rows).semanticDepthWorkQueuesV2.get(
       runId,
     );
+  }
+
+  async recordSemanticChainSynthesisV2(
+    campaignId: string,
+    runId: string,
+    queueValue: z.infer<typeof semanticDepthWorkQueueV2Schema>,
+    synthesisValue:
+      | z.infer<typeof chainSynthesisSchema>
+      | z.infer<typeof chainSynthesisIncompleteSchema>,
+  ): Promise<SemanticChainSynthesisRecordViewV2> {
+    const queue = semanticDepthWorkQueueV2Schema.parse(queueValue);
+    const synthesis = z
+      .union([chainSynthesisSchema, chainSynthesisIncompleteSchema])
+      .parse(synthesisValue);
+    const queueRef = referenceSemanticDepthWorkQueueV2(queue);
+    if (
+      synthesis.queue.schemaVersion !== 2 ||
+      canonicalJson(synthesis.queue) !== canonicalJson(queueRef) ||
+      !queue.batches.some((batch) => batch.id === synthesis.batchId)
+    ) {
+      throw new CampaignRunConflictError(campaignId, runId);
+    }
+    if (this.#artifactStore === undefined) {
+      throw new Error("Chain Synthesis v2 requires an Artifact Store");
+    }
+    const artifactDigest = await this.#artifactStore.putJson(synthesis);
+    const payload = semanticChainSynthesizedPayloadV2Schema.parse({
+      runId,
+      queue: queueRef,
+      batchId: synthesis.batchId,
+      artifactDigest,
+      outcome:
+        synthesis.kind === "chain-synthesis" ? "completed" : "incomplete",
+      ...(synthesis.kind === "chain-synthesis"
+        ? { synthesis: referenceChainSynthesis(synthesis) }
+        : {}),
+    });
+    const key = `${runId}:${synthesis.batchId}`;
+    const transact = this.#database.transaction(
+      (): SemanticChainSynthesisRecordViewV2 => {
+        const rows = this.#readRows(campaignId);
+        if (rows.length === 0) {
+          throw new Error(`Campaign not found: ${campaignId}`);
+        }
+        const ledger = this.#decodeLedger(campaignId, rows);
+        const existing = ledger.semanticChainSynthesesV2.get(key);
+        if (existing !== undefined) {
+          if (
+            existing.runId !== runId ||
+            existing.batchId !== synthesis.batchId ||
+            existing.artifactDigest !== artifactDigest ||
+            existing.outcome !== payload.outcome ||
+            canonicalJson(existing.synthesis) !==
+              canonicalJson(
+                payload.outcome === "completed" ? payload.synthesis : undefined,
+              )
+          ) {
+            throw new CampaignRunConflictError(campaignId, runId);
+          }
+          return existing;
+        }
+        const run = ledger.semanticRuns.get(runId);
+        const queued = ledger.semanticDepthWorkQueuesV2.get(runId);
+        if (
+          run === undefined ||
+          run.completed !== undefined ||
+          run.plan.schemaVersion !== 3 ||
+          queued === undefined ||
+          canonicalJson(queued.queue) !== canonicalJson(queueRef)
+        ) {
+          throw new CampaignRunConflictError(campaignId, runId);
+        }
+        const occurredAt = this.#clock().toISOString();
+        const ledgerHead = rows.length + 1;
+        this.#insertEvent(
+          campaignId,
+          ledgerHead,
+          "exploration.chain-synthesized",
+          occurredAt,
+          payload,
+          2,
+        );
+        return {
+          ledgerHead,
+          occurredAt,
+          runId,
+          batchId: synthesis.batchId,
+          artifactDigest,
+          outcome: payload.outcome,
+          ...(payload.outcome === "completed"
+            ? { synthesis: payload.synthesis }
+            : {}),
+        };
+      },
+    );
+    return transact();
+  }
+
+  async recordSemanticAdversarialCritiqueV2(
+    campaignId: string,
+    runId: string,
+    synthesisValue: z.infer<typeof chainSynthesisSchema>,
+    critiqueValue:
+      | z.infer<typeof adversarialCritiqueSchema>
+      | z.infer<typeof adversarialCritiqueIncompleteSchema>,
+  ): Promise<SemanticAdversarialCritiqueRecordViewV2> {
+    const synthesis = chainSynthesisSchema.parse(synthesisValue);
+    const critique = z
+      .union([adversarialCritiqueSchema, adversarialCritiqueIncompleteSchema])
+      .parse(critiqueValue);
+    const synthesisRef = referenceChainSynthesis(synthesis);
+    if (
+      (critique.kind === "adversarial-critique" &&
+        canonicalJson(critique.synthesis) !== canonicalJson(synthesisRef)) ||
+      (critique.kind === "adversarial-critique-incomplete" &&
+        critique.synthesisId !== synthesis.id)
+    ) {
+      throw new CampaignRunConflictError(campaignId, runId);
+    }
+    if (this.#artifactStore === undefined) {
+      throw new Error("Adversarial Critique v2 requires an Artifact Store");
+    }
+    const artifactDigest = await this.#artifactStore.putJson(critique);
+    const payload = semanticAdversarialCritiquedPayloadV2Schema.parse({
+      runId,
+      synthesis: synthesisRef,
+      artifactDigest,
+      outcome:
+        critique.kind === "adversarial-critique" ? "completed" : "incomplete",
+      ...(critique.kind === "adversarial-critique"
+        ? { critique: referenceAdversarialCritique(critique) }
+        : {}),
+    });
+    const key = `${runId}:${synthesis.id}`;
+    const transact = this.#database.transaction(
+      (): SemanticAdversarialCritiqueRecordViewV2 => {
+        const rows = this.#readRows(campaignId);
+        if (rows.length === 0) {
+          throw new Error(`Campaign not found: ${campaignId}`);
+        }
+        const ledger = this.#decodeLedger(campaignId, rows);
+        const existing = ledger.semanticAdversarialCritiquesV2.get(key);
+        if (existing !== undefined) {
+          if (
+            existing.runId !== runId ||
+            existing.synthesisId !== synthesis.id ||
+            existing.artifactDigest !== artifactDigest ||
+            existing.outcome !== payload.outcome ||
+            canonicalJson(existing.critique) !==
+              canonicalJson(
+                payload.outcome === "completed" ? payload.critique : undefined,
+              )
+          ) {
+            throw new CampaignRunConflictError(campaignId, runId);
+          }
+          return existing;
+        }
+        const run = ledger.semanticRuns.get(runId);
+        const synthesisRecord = ledger.semanticChainSynthesesV2.get(
+          `${runId}:${synthesis.batchId}`,
+        );
+        if (
+          run === undefined ||
+          run.completed !== undefined ||
+          run.plan.schemaVersion !== 3 ||
+          synthesisRecord?.outcome !== "completed" ||
+          synthesisRecord.artifactDigest !== sha256Digest(synthesis) ||
+          canonicalJson(synthesisRecord.synthesis) !==
+            canonicalJson(synthesisRef)
+        ) {
+          throw new CampaignRunConflictError(campaignId, runId);
+        }
+        const occurredAt = this.#clock().toISOString();
+        const ledgerHead = rows.length + 1;
+        this.#insertEvent(
+          campaignId,
+          ledgerHead,
+          "exploration.chain-critiqued",
+          occurredAt,
+          payload,
+          2,
+        );
+        return {
+          ledgerHead,
+          occurredAt,
+          runId,
+          synthesisId: synthesis.id,
+          artifactDigest,
+          outcome: payload.outcome,
+          ...(payload.outcome === "completed"
+            ? { critique: payload.critique }
+            : {}),
+        };
+      },
+    );
+    return transact();
+  }
+
+  async recordSemanticDepthEvaluationIncompleteV2(
+    campaignId: string,
+    runId: string,
+    evaluationValue: z.infer<typeof currentDepthEvaluationIncompleteSchema>,
+  ): Promise<SemanticDepthEvaluationIncompleteRecordViewV2> {
+    const evaluation =
+      currentDepthEvaluationIncompleteSchema.parse(evaluationValue);
+    if (this.#artifactStore === undefined) {
+      throw new Error("Depth Evaluation v2 requires an Artifact Store");
+    }
+    const artifactDigest = await this.#artifactStore.putJson(evaluation);
+    const payload = semanticDepthEvaluationIncompletePayloadV2Schema.parse({
+      runId,
+      artifactDigest,
+      evaluation,
+    });
+    const key = `${runId}:${evaluation.synthesis.id}`;
+    const transact = this.#database.transaction(
+      (): SemanticDepthEvaluationIncompleteRecordViewV2 => {
+        const rows = this.#readRows(campaignId);
+        if (rows.length === 0) {
+          throw new Error(`Campaign not found: ${campaignId}`);
+        }
+        const ledger = this.#decodeLedger(campaignId, rows);
+        const existing = ledger.semanticDepthEvaluationIncompletesV2.get(key);
+        if (existing !== undefined) {
+          if (
+            existing.artifactDigest !== artifactDigest ||
+            canonicalJson(existing.evaluation) !== canonicalJson(evaluation)
+          ) {
+            throw new CampaignRunConflictError(campaignId, runId);
+          }
+          return existing;
+        }
+        const run = ledger.semanticRuns.get(runId);
+        const registry = ledger.approachFamilyRegistriesV3.get(runId);
+        const synthesis = [...ledger.semanticChainSynthesesV2.values()].find(
+          (record) =>
+            record.runId === runId &&
+            record.outcome === "completed" &&
+            record.synthesis?.id === evaluation.synthesis.id,
+        );
+        const critique = ledger.semanticAdversarialCritiquesV2.get(key);
+        if (
+          run === undefined ||
+          run.completed !== undefined ||
+          run.plan.schemaVersion !== 3 ||
+          registry === undefined ||
+          synthesis === undefined ||
+          critique?.outcome !== "completed" ||
+          canonicalJson(critique.critique) !==
+            canonicalJson(evaluation.critique) ||
+          evaluation.registry.digest !== registry.ref.digest
+        ) {
+          throw new CampaignRunConflictError(campaignId, runId);
+        }
+        const occurredAt = this.#clock().toISOString();
+        const ledgerHead = rows.length + 1;
+        this.#insertEvent(
+          campaignId,
+          ledgerHead,
+          "exploration.depth-evaluation-incomplete",
+          occurredAt,
+          payload,
+          2,
+        );
+        return {
+          ledgerHead,
+          occurredAt,
+          runId,
+          synthesisId: evaluation.synthesis.id,
+          artifactDigest,
+          evaluation,
+        };
+      },
+    );
+    return transact();
   }
 
   async readApproachFamilyRegistry(
@@ -2825,6 +3321,103 @@ class SqliteResearchRecord implements ResearchRecord {
     return transact();
   }
 
+  async recordSemanticDepthIterationV3(
+    campaignId: string,
+    runId: string,
+    input: {
+      readonly queue: z.infer<typeof semanticDepthWorkQueueV2Schema>;
+      readonly synthesis: z.infer<typeof chainSynthesisSchema>;
+      readonly decision: z.infer<typeof currentDepthIterationDecisionSchema>;
+    },
+  ): Promise<ApproachFamilyRegistryRecordViewV3> {
+    const queue = semanticDepthWorkQueueV2Schema.parse(input.queue);
+    const synthesis = chainSynthesisSchema.parse(input.synthesis);
+    const decision = currentDepthIterationDecisionSchema.parse(input.decision);
+    const decisionRef = referenceCurrentDepthIterationDecision(decision);
+    const transact = this.#database.transaction(
+      (): ApproachFamilyRegistryRecordViewV3 => {
+        const rows = this.#readRows(campaignId);
+        if (rows.length === 0) {
+          throw new Error(`Campaign not found: ${campaignId}`);
+        }
+        const ledger = this.#decodeLedger(campaignId, rows);
+        const run = ledger.semanticRuns.get(runId);
+        const current = ledger.approachFamilyRegistriesV3.get(runId);
+        const queued = ledger.semanticDepthWorkQueuesV2.get(runId);
+        const recordedSynthesis = ledger.semanticChainSynthesesV2.get(
+          `${runId}:${synthesis.batchId}`,
+        );
+        const recordedCritique = ledger.semanticAdversarialCritiquesV2.get(
+          `${runId}:${synthesis.id}`,
+        );
+        if (
+          run === undefined ||
+          run.completed !== undefined ||
+          run.plan.schemaVersion !== 3 ||
+          current === undefined ||
+          queued === undefined ||
+          recordedSynthesis?.outcome !== "completed" ||
+          canonicalJson(recordedSynthesis.synthesis) !==
+            canonicalJson(decision.synthesis) ||
+          recordedCritique?.outcome !== "completed" ||
+          canonicalJson(recordedCritique.critique) !==
+            canonicalJson(decision.critique) ||
+          canonicalJson(queued.queue) !==
+            canonicalJson(referenceSemanticDepthWorkQueueV2(queue)) ||
+          decision.registry.digest !== current.ref.digest ||
+          decision.target.digest !== run.plan.target.digest ||
+          decision.manifest.digest !== run.plan.manifest.digest
+        ) {
+          throw new CampaignRunConflictError(campaignId, runId);
+        }
+        if (current.value.depthDecisions.includes(decisionRef.digest)) {
+          return current;
+        }
+        const evaluator = ledger.semanticAttempts.get(
+          decision.attempt.attemptId,
+        );
+        if (
+          evaluator?.completion === undefined ||
+          evaluator.intent.role !== "root-evaluator" ||
+          evaluator.completion.value.result.digest !== decision.attempt.digest
+        ) {
+          throw new CampaignRunConflictError(campaignId, runId);
+        }
+        const advanced = advanceApproachFamilyRegistryV3({
+          registry: current.value,
+          queue,
+          synthesis,
+          decision,
+        });
+        const updatedIds = new Set(
+          advanced.transitions.map((transition) => transition.familyId),
+        );
+        const updatedFamilies = advanced.value.families.filter((family) =>
+          updatedIds.has(family.id),
+        );
+        const occurredAt = this.#clock().toISOString();
+        const ledgerHead = rows.length + 1;
+        this.#insertEvent(
+          campaignId,
+          ledgerHead,
+          "exploration.depth-iteration-decided",
+          occurredAt,
+          {
+            runId,
+            predecessorRegistryDigest: current.ref.digest,
+            decision: decisionRef,
+            transitions: advanced.transitions,
+            updatedFamilies,
+            registry: advanced.ref,
+          },
+          3,
+        );
+        return { ref: advanced.ref, value: advanced.value };
+      },
+    );
+    return transact();
+  }
+
   async recordSemanticMissingLinkEvidence(
     campaignId: string,
     runId: string,
@@ -3241,6 +3834,18 @@ class SqliteResearchRecord implements ResearchRecord {
       string,
       SemanticDepthWorkQueueRecordViewV2
     >();
+    const semanticChainSynthesesV2 = new Map<
+      string,
+      SemanticChainSynthesisRecordViewV2
+    >();
+    const semanticAdversarialCritiquesV2 = new Map<
+      string,
+      SemanticAdversarialCritiqueRecordViewV2
+    >();
+    const semanticDepthEvaluationIncompletesV2 = new Map<
+      string,
+      SemanticDepthEvaluationIncompleteRecordViewV2
+    >();
     const approachFamilyRegistries = new Map<
       string,
       ApproachFamilyRegistryRecordView
@@ -3330,6 +3935,8 @@ class SqliteResearchRecord implements ResearchRecord {
             (intent.role === "root-evaluator" &&
               intent.registryDigest !== undefined &&
               approachFamilyRegistries.get(intent.runId)?.ref.digest !==
+                intent.registryDigest &&
+              approachFamilyRegistriesV3.get(intent.runId)?.ref.digest !==
                 intent.registryDigest) ||
             (intent.role === "finder" &&
               intent.predecessorDecisionDigest !== undefined &&
@@ -3342,7 +3949,8 @@ class SqliteResearchRecord implements ResearchRecord {
               )) ||
             ((intent.role === "root-synthesizer" ||
               intent.role === "adversarial-critic") &&
-              !approachFamilyRegistries.has(intent.runId)) ||
+              !approachFamilyRegistries.has(intent.runId) &&
+              !approachFamilyRegistriesV3.has(intent.runId)) ||
             [...semanticAttempts.values()].some(
               (attempt) =>
                 attempt.intent.runId === intent.runId &&
@@ -3623,6 +4231,149 @@ class SqliteResearchRecord implements ResearchRecord {
         });
         continue;
       }
+      if (event.kind === "exploration.chain-synthesized") {
+        if (event.schema_version !== 2) {
+          throw new UnsupportedLedgerSchemaError(
+            event.kind,
+            event.schema_version,
+          );
+        }
+        const payload = semanticChainSynthesizedPayloadV2Schema.parse(
+          this.#parsePayload(event),
+        );
+        const run = semanticRuns.get(payload.runId);
+        const queued = semanticDepthWorkQueuesV2.get(payload.runId);
+        const key = `${payload.runId}:${payload.batchId}`;
+        const attempt = [...semanticAttempts.values()].find(
+          (candidate) =>
+            candidate.intent.runId === payload.runId &&
+            candidate.intent.role === "root-synthesizer" &&
+            candidate.intent.queueDigest === payload.queue.digest &&
+            candidate.intent.batchId === payload.batchId &&
+            candidate.completion !== undefined,
+        );
+        if (
+          run === undefined ||
+          run.completed !== undefined ||
+          run.plan.schemaVersion !== 3 ||
+          queued === undefined ||
+          canonicalJson(queued.queue) !== canonicalJson(payload.queue) ||
+          attempt === undefined ||
+          semanticChainSynthesesV2.has(key) ||
+          (payload.outcome === "completed" &&
+            (payload.synthesis.queueDigest !== payload.queue.digest ||
+              payload.synthesis.batchId !== payload.batchId))
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        semanticChainSynthesesV2.set(key, {
+          ledgerHead: event.campaign_sequence,
+          occurredAt: event.occurred_at,
+          runId: payload.runId,
+          batchId: payload.batchId,
+          artifactDigest: payload.artifactDigest,
+          outcome: payload.outcome,
+          ...(payload.outcome === "completed"
+            ? { synthesis: payload.synthesis }
+            : {}),
+        });
+        continue;
+      }
+      if (event.kind === "exploration.chain-critiqued") {
+        if (event.schema_version !== 2) {
+          throw new UnsupportedLedgerSchemaError(
+            event.kind,
+            event.schema_version,
+          );
+        }
+        const payload = semanticAdversarialCritiquedPayloadV2Schema.parse(
+          this.#parsePayload(event),
+        );
+        const run = semanticRuns.get(payload.runId);
+        const synthesis = semanticChainSynthesesV2.get(
+          `${payload.runId}:${payload.synthesis.batchId}`,
+        );
+        const key = `${payload.runId}:${payload.synthesis.id}`;
+        const attempt = [...semanticAttempts.values()].find(
+          (candidate) =>
+            candidate.intent.runId === payload.runId &&
+            candidate.intent.role === "adversarial-critic" &&
+            candidate.intent.synthesisDigest === payload.synthesis.id &&
+            candidate.completion !== undefined,
+        );
+        if (
+          run === undefined ||
+          run.completed !== undefined ||
+          run.plan.schemaVersion !== 3 ||
+          synthesis?.outcome !== "completed" ||
+          canonicalJson(synthesis.synthesis) !==
+            canonicalJson(payload.synthesis) ||
+          attempt === undefined ||
+          semanticAdversarialCritiquesV2.has(key) ||
+          (payload.outcome === "completed" &&
+            payload.critique.synthesisId !== payload.synthesis.id)
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        semanticAdversarialCritiquesV2.set(key, {
+          ledgerHead: event.campaign_sequence,
+          occurredAt: event.occurred_at,
+          runId: payload.runId,
+          synthesisId: payload.synthesis.id,
+          artifactDigest: payload.artifactDigest,
+          outcome: payload.outcome,
+          ...(payload.outcome === "completed"
+            ? { critique: payload.critique }
+            : {}),
+        });
+        continue;
+      }
+      if (event.kind === "exploration.depth-evaluation-incomplete") {
+        if (event.schema_version !== 2) {
+          throw new UnsupportedLedgerSchemaError(
+            event.kind,
+            event.schema_version,
+          );
+        }
+        const payload = semanticDepthEvaluationIncompletePayloadV2Schema.parse(
+          this.#parsePayload(event),
+        );
+        const { evaluation } = payload;
+        const run = semanticRuns.get(payload.runId);
+        const registry = approachFamilyRegistriesV3.get(payload.runId);
+        const synthesis = [...semanticChainSynthesesV2.values()].find(
+          (record) =>
+            record.runId === payload.runId &&
+            record.outcome === "completed" &&
+            record.synthesis?.id === evaluation.synthesis.id,
+        );
+        const key = `${payload.runId}:${evaluation.synthesis.id}`;
+        const critique = semanticAdversarialCritiquesV2.get(key);
+        if (
+          run === undefined ||
+          run.completed !== undefined ||
+          run.plan.schemaVersion !== 3 ||
+          registry === undefined ||
+          synthesis === undefined ||
+          critique?.outcome !== "completed" ||
+          canonicalJson(critique.critique) !==
+            canonicalJson(evaluation.critique) ||
+          evaluation.registry.digest !== registry.ref.digest ||
+          payload.artifactDigest !== sha256Digest(evaluation) ||
+          semanticDepthEvaluationIncompletesV2.has(key)
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        semanticDepthEvaluationIncompletesV2.set(key, {
+          ledgerHead: event.campaign_sequence,
+          occurredAt: event.occurred_at,
+          runId: payload.runId,
+          synthesisId: evaluation.synthesis.id,
+          artifactDigest: payload.artifactDigest,
+          evaluation,
+        });
+        continue;
+      }
       if (event.kind === "validation.intended") {
         if (event.schema_version !== 1) {
           throw new UnsupportedLedgerSchemaError(
@@ -3773,6 +4524,91 @@ class SqliteResearchRecord implements ResearchRecord {
         continue;
       }
       if (event.kind === "exploration.depth-iteration-decided") {
+        if (event.schema_version === 3) {
+          const payload = semanticDepthIterationDecidedPayloadV3Schema.parse(
+            this.#parsePayload(event),
+          );
+          const run = semanticRuns.get(payload.runId);
+          const previous = approachFamilyRegistriesV3.get(payload.runId);
+          const synthesis = [...semanticChainSynthesesV2.values()].find(
+            (record) =>
+              record.runId === payload.runId &&
+              record.outcome === "completed" &&
+              record.synthesis?.id === payload.decision.synthesisId,
+          );
+          const critique = semanticAdversarialCritiquesV2.get(
+            `${payload.runId}:${payload.decision.synthesisId}`,
+          );
+          if (
+            run === undefined ||
+            run.completed !== undefined ||
+            run.plan.schemaVersion !== 3 ||
+            previous === undefined ||
+            synthesis === undefined ||
+            critique?.outcome !== "completed" ||
+            critique.critique?.id !== payload.decision.critiqueId ||
+            previous.ref.digest !== payload.predecessorRegistryDigest ||
+            payload.decision.registryDigest !== previous.ref.digest ||
+            payload.decision.targetSnapshotDigest !== run.plan.target.digest ||
+            payload.decision.manifestDigest !== run.plan.manifest.digest ||
+            previous.value.depthDecisions.includes(payload.decision.digest)
+          ) {
+            throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+          }
+          const updated = new Map(
+            payload.updatedFamilies.map((family) => [family.id, family]),
+          );
+          const transitions = new Map(
+            payload.transitions.map((transition) => [
+              transition.familyId,
+              transition,
+            ]),
+          );
+          if (
+            updated.size !== payload.updatedFamilies.length ||
+            transitions.size !== payload.transitions.length ||
+            updated.size !== transitions.size
+          ) {
+            throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+          }
+          const families = previous.value.families.map((family) => {
+            const next = updated.get(family.id);
+            if (next === undefined) return family;
+            const transition = transitions.get(family.id);
+            if (
+              transition === undefined ||
+              canonicalJson(transition.before) !==
+                canonicalJson(referenceApproachFamilyV3(family)) ||
+              canonicalJson(transition.after) !==
+                canonicalJson(referenceApproachFamilyV3(next))
+            ) {
+              throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+            }
+            updated.delete(family.id);
+            transitions.delete(family.id);
+            return next;
+          });
+          if (updated.size > 0 || transitions.size > 0) {
+            throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+          }
+          const registry = projectApproachFamilyRegistryV3({
+            campaignId,
+            runId: payload.runId,
+            target: previous.value.target,
+            manifest: previous.value.manifest,
+            decisions: previous.value.decisions,
+            depthDecisions: [
+              ...previous.value.depthDecisions,
+              payload.decision.digest,
+            ],
+            families,
+          });
+          if (canonicalJson(registry.ref) !== canonicalJson(payload.registry)) {
+            throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+          }
+          approachFamilyRegistriesV3.set(payload.runId, registry);
+          continue;
+        }
         if (event.schema_version !== 1 && event.schema_version !== 2) {
           throw new UnsupportedLedgerSchemaError(
             event.kind,
@@ -4095,6 +4931,19 @@ class SqliteResearchRecord implements ResearchRecord {
             ) {
               throw new LedgerIntegrityError(campaignId, "invalid-event-order");
             }
+            if (
+              !currentDepthResearchMatchesLedger(
+                payload.record.runId,
+                payload.record.depthWorkQueue,
+                payload.record.depthResearch,
+                registry,
+                semanticChainSynthesesV2,
+                semanticAdversarialCritiquesV2,
+                semanticDepthEvaluationIncompletesV2,
+              )
+            ) {
+              throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+            }
             const runIntentIds = new Set(
               [...validationIntents.values()]
                 .filter(
@@ -4383,6 +5232,9 @@ class SqliteResearchRecord implements ResearchRecord {
       semanticIterationDecisions,
       semanticIterationDecisionsV3,
       semanticDepthWorkQueuesV2,
+      semanticChainSynthesesV2,
+      semanticAdversarialCritiquesV2,
+      semanticDepthEvaluationIncompletesV2,
       approachFamilyRegistries,
       approachFamilyRegistriesV3,
       validationIntents,
