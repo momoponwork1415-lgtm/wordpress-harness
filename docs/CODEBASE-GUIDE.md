@@ -9,13 +9,13 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Product stage | Status | Remaining |
 | --- | --- | --- |
 | Manual Target Intake | local directoryは実装済み | archive acquisition、selection / ranking |
-| Semantic Research | v6 initial WaveとDecision@3まで実装済み | v6 conditional Depth / Closure |
+| Semantic Research | v6 initial Wave、Decision@3、Depth Work Queueまで実装済み | v6 conditional Depth実行 / Closure |
 | Source-only Validation | v6へ接続済み | Frontier Gapの次Wave、Risk Assessment |
 | Human Review Packet | 未実装 | packet生成とhandoff |
 | Human Verification | 未実装 | environment、queue、human disposition |
 | Finding | legacy automated Findingのみ | Human Verification gate |
 
-現在のproduction sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> source-only Validation -> durable replay`である。Depth / Critic / Missing-link / Closureはlegacy v5に実装済みだがv6へ未接続。
+現在のproduction sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> source-only Validation / Depth Work Queue -> durable replay`である。Depth実行 / Critic / Missing-link / Closureはlegacy v5に実装済みだがv6へ未接続。
 
 完成度をpercentでは表さない。v0.1にはv6 Depth / Closure、Review Packet、Human Verification、Development Cohort再基準化、異なる3件のoracle-free Prospective Campaignが必要である。
 
@@ -51,7 +51,7 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 - **Purpose:** fixed Targetをfinite Wave、Validation、Review Packet handoffまで進める。
 - **Invariants:** PlanへTarget、Manifest、policy、profile、tool、budgetを固定する。artifactをCASへ置き、Ledger eventを記録してから次stageへ進む。
 - **Failures:** integrity不正は起動前に拒否する。provider / policy / budget failureをnegativeやno-new-evidenceへ丸めない。
-- **Status:** v6 initial Wave、Validation、terminal replay、progressを実装。v6 Depth / Closure / Packetは未接続。
+- **Status:** v6 initial Wave、Validation、Depth Work Queue、terminal replay、progressを実装。v6 Depth実行 / Closure / Packetは未接続。
 - **Code / Tests:** [campaign-control](../src/research/campaign-control), [open-research](../src/research/open-research.ts) · [v6 run](../tests/research/campaign-validation-run.test.ts), [semantic E2E](../tests/research/campaign-semantic-e2e.test.ts), [replay](../tests/research/campaign-run.test.ts)
 
 ### Source Understanding
@@ -82,7 +82,7 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 - **Depth:** fresh tool-free Synthesis、source-enabled Critic、Root Evaluation、Missing-link Waveを分離する。Familyごと最大3 evidence generation、Campaign全体最大12 Wave。
 - **Closure:** 最後のmaterial evidence後に二回連続のcomplete no-material-deltaを要求し、後者はfresh reviewを含む。
 - **Failures:** invalid evaluation、budget exhaustion、active Family、unscheduled Gapを`Incomplete`として残す。
-- **Status:** v6 initial Wave / Decision@3を実装。Depth / Closureはlegacy pathのみ。
+- **Status:** v6 initial Wave / Decision@3 / Depth Work Queueを実装。Depth実行 / Closureはlegacy pathのみ。
 - **Code / Tests:** [exploration](../src/research/exploration) · [planning](../tests/research/semantic-root-planning.test.ts), [evaluation](../tests/research/semantic-root-evaluation.test.ts), [Depth](../tests/research/semantic-depth-work-queue.test.ts), [E2E](../tests/research/campaign-semantic-e2e.test.ts)
 
 ### Validation
@@ -115,7 +115,7 @@ Internal Module。immutable CAS artifact、append-only Ledger event、checkpoint
 - artifactを保存してから参照eventをappendする。
 - cacheを削除しても同じLedgerから同じview digestを再構築できる。
 - semantic identity、priority、Family groupingはowner Moduleが決める。
-- **Status / Tests:** Decision@3、Family、Validation、Frontier Gap、progress replayを実装 · [code](../src/research/research-record), [record](../tests/research/semantic-iteration-decision-record-v3.test.ts), [compatibility](../tests/research/ledger-compatibility.test.ts)
+- **Status / Tests:** Decision@3、Family、Validation、Frontier Gap、Depth Work Queue、progress replayを実装 · [code](../src/research/research-record), [record](../tests/research/semantic-iteration-decision-record-v3.test.ts), [compatibility](../tests/research/ledger-compatibility.test.ts)
 
 ## Human OS
 

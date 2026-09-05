@@ -20,7 +20,10 @@ export {
   openSemanticDepthEvaluation,
   referenceDepthIterationDecision,
 } from "./semantic-depth-evaluation.js";
-export { projectSemanticDepthWorkQueue } from "./semantic-depth-work-queue.js";
+export {
+  projectSemanticDepthWorkQueue,
+  projectSemanticDepthWorkQueueV2,
+} from "./semantic-depth-work-queue.js";
 export { projectMissingLinkDepthWorkQueue } from "./semantic-missing-link-depth-queue.js";
 export {
   advanceApproachFamilyRegistry,
@@ -60,6 +63,7 @@ export {
   approachFamilyV3Schema,
   projectInitialApproachFamilyRegistryV3,
   projectApproachFamilyRegistryV3,
+  referenceApproachFamilyV3,
   referenceSemanticIterationDecisionV3,
   semanticIterationDecisionRefV3Schema,
 } from "./semantic-approach-family-registry-v3.js";
@@ -124,8 +128,11 @@ export type {
 } from "./semantic-depth-evaluation.js";
 export type {
   SemanticDepthWorkItem,
+  SemanticDepthWorkItemV2,
   SemanticDepthWorkQueue,
+  SemanticDepthWorkQueueV2,
   SemanticDepthWorkQueueRef,
+  SemanticDepthWorkQueueRefV2,
 } from "./semantic-depth-work-queue.js";
 export type {
   MissingLinkWorkLease,
@@ -222,8 +229,11 @@ export {
 } from "./semantic-depth-evaluation.js";
 export {
   semanticDepthWorkItemSchema,
+  semanticDepthWorkItemV2Schema,
   semanticDepthWorkQueueRefSchema,
+  semanticDepthWorkQueueRefV2Schema,
   semanticDepthWorkQueueSchema,
+  semanticDepthWorkQueueV2Schema,
 } from "./semantic-depth-work-queue.js";
 export {
   missingLinkWorkLeaseSchema,

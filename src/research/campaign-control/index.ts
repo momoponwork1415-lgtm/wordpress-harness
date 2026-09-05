@@ -18,6 +18,7 @@ import {
   depthApproachFamilyId,
   projectMissingLinkDepthWorkQueue,
   projectSemanticDepthWorkQueue,
+  projectSemanticDepthWorkQueueV2,
   materializeMissingLinkWaves,
   referenceAdversarialCritique,
   referenceChainSynthesis,
@@ -955,6 +956,22 @@ async function completeCurrentSemanticIteration(
   if (registry === undefined) {
     throw new Error("Approach Family Registry v3 is missing");
   }
+  const projectedDepthWorkQueue = projectSemanticDepthWorkQueueV2(
+    decision,
+    registry.value,
+  );
+  const depthWorkQueue =
+    projectedDepthWorkQueue.value.items.length === 0
+      ? undefined
+      : projectedDepthWorkQueue;
+  if (depthWorkQueue !== undefined) {
+    const storedDepthWorkQueueDigest = await dependencies.artifactStore.putJson(
+      depthWorkQueue.value,
+    );
+    if (storedDepthWorkQueueDigest !== depthWorkQueue.ref.digest) {
+      throw new Error("Semantic Depth Work Queue v2 CAS mismatch");
+    }
+  }
   const frontierGaps = await record.listValidationFrontierGaps(
     plan.campaignId,
     plan.runId,
@@ -986,6 +1003,9 @@ async function completeCurrentSemanticIteration(
     iterationDecision: decision,
     iterationDecisionRef: recordedDecision.decision,
     approachFamilyRegistry: registry.ref,
+    ...(depthWorkQueue === undefined
+      ? {}
+      : { depthWorkQueue: depthWorkQueue.ref }),
     validations: validationRecords.sort((left, right) =>
       compareText(left.validationId, right.validationId),
     ),

@@ -33,7 +33,10 @@ import {
   semanticWorkWaveRefSchema,
   sourceBoundHypothesisArtifactRefSchema,
 } from "../exploration/semantic-contracts.js";
-import { semanticDepthWorkQueueRefSchema } from "../exploration/semantic-depth-work-queue.js";
+import {
+  semanticDepthWorkQueueRefSchema,
+  semanticDepthWorkQueueRefV2Schema,
+} from "../exploration/semantic-depth-work-queue.js";
 import { depthIterationDecisionRefSchema } from "../exploration/semantic-depth-evaluation.js";
 import { semanticMissingLinkWavePlanRefSchema } from "../exploration/semantic-missing-link-wave.js";
 import {
@@ -1115,6 +1118,7 @@ const campaignDefaultSemanticCompletionInputV3Schema = z.strictObject({
   iterationDecision: iterationDecisionV3Schema,
   iterationDecisionRef: semanticIterationDecisionRefV3Schema,
   approachFamilyRegistry: approachFamilyRegistryRefV3Schema,
+  depthWorkQueue: semanticDepthWorkQueueRefV2Schema.optional(),
   validations: z.array(validationRecordSchema).max(64),
   validationFrontierGaps: z.array(validationFrontierGapRefSchema).max(64),
   decision: currentSemanticTerminalDecisionSchema,

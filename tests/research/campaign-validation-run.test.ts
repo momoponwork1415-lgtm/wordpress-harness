@@ -108,7 +108,7 @@ function completedResult(
 }
 
 describe("CampaignRunner.run source-only Validation", () => {
-  it("records Decision v3 before Validation and keeps a ready candidate in its active Family", async () => {
+  it("records Decision v3 before Validation and binds Depth work to the same active Family", async () => {
     const directory = await mkdtemp(join(tmpdir(), "campaign-validation-"));
     const databasePath = join(directory, "research.sqlite");
     const artifacts = openFileJsonArtifactStore(join(directory, "artifacts"));
@@ -247,6 +247,21 @@ describe("CampaignRunner.run source-only Validation", () => {
                     },
                   ],
                   reason: "The exact route is ready for fresh source review.",
+                },
+              },
+              {
+                kind: "admit-depth",
+                approachFamilyKey: "cross-actor-state",
+                subjectDigests: [hypothesis.ref.digest],
+                admission: {
+                  highImpactPotential:
+                    "The same cross-actor state may reach additional privileged consumers.",
+                  composition:
+                    "Trace the persisted value into other authority boundaries.",
+                  falsifier:
+                    "Every additional consumer independently checks ownership.",
+                  nextAction:
+                    "Synthesize the source-bound state transition with adjacent consumers.",
                 },
               },
               {
@@ -538,7 +553,17 @@ describe("CampaignRunner.run source-only Validation", () => {
             schemaVersion: 3,
             iterationDecision: {
               schemaVersion: 3,
-              actions: [{ kind: "admit-validation" }, { kind: "retain" }],
+              actions: [
+                { kind: "admit-validation" },
+                { kind: "admit-depth" },
+                { kind: "retain" },
+              ],
+            },
+            depthWorkQueue: {
+              schemaVersion: 2,
+              items: 1,
+              batches: 1,
+              familyBindings: 1,
             },
             validations: [{ status: "ready-for-human" }],
             approachFamilyRegistry: {
