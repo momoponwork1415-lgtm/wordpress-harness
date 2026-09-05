@@ -43,6 +43,7 @@ import type { CampaignProgressView } from "../campaign-progress-contracts.js";
 import type {
   ValidationCandidate,
   ValidationCandidateRef,
+  ValidationRecordRef as SourceValidationRecordRef,
 } from "../validation/contracts.js";
 
 export interface PreparationRecord {
@@ -159,6 +160,15 @@ export interface ResearchRecord {
     campaignId: string,
     runId: string,
   ): Promise<readonly ValidationIntentRecordView[]>;
+  recordValidationCompletion(
+    campaignId: string,
+    runId: string,
+    validation: SourceValidationRecordRef,
+  ): Promise<ValidationCompletionRecordView>;
+  listValidationCompletions(
+    campaignId: string,
+    runId: string,
+  ): Promise<readonly ValidationCompletionRecordView[]>;
   recordVerificationStart(
     plan: VerificationPlan,
   ): Promise<RecordVerificationStartResult>;
@@ -288,6 +298,26 @@ export interface ValidationIntentRecordView {
   readonly ledgerHead: number;
   readonly occurredAt: string;
   readonly intent: ValidationIntent;
+  readonly registry: ApproachFamilyRegistryRefV3;
+}
+
+export interface ValidationCompletion {
+  readonly kind: "validation-completion";
+  readonly schemaVersion: 1;
+  readonly validation: SourceValidationRecordRef;
+  readonly disposition:
+    | "ready-for-human"
+    | "needs-research"
+    | "disproven"
+    | "rejected"
+    | "validation-pending";
+  readonly approachFamilyIds: readonly string[];
+}
+
+export interface ValidationCompletionRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly completion: ValidationCompletion;
   readonly registry: ApproachFamilyRegistryRefV3;
 }
 

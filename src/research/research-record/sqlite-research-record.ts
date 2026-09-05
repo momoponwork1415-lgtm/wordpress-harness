@@ -65,7 +65,10 @@ import {
   referenceSemanticIterationDecisionV3,
   semanticIterationDecisionRefV3Schema,
 } from "../exploration/semantic-approach-family-registry-v3.js";
-import { attachApproachFamilyValidationIntentsV3 } from "../exploration/semantic-approach-family-validation-v3.js";
+import {
+  attachApproachFamilyValidationIntentsV3,
+  resolveApproachFamilyValidationV3,
+} from "../exploration/semantic-approach-family-validation-v3.js";
 import {
   advanceApproachFamilyRegistry,
   approachFamilyEvidenceAttachmentSchema,
@@ -109,7 +112,10 @@ import {
   referenceValidationCandidate,
   validationCandidateRefSchema,
   validationCandidateSchema,
+  validationRecordRefSchema as sourceValidationRecordRefSchema,
+  validationRecordSchema as sourceValidationRecordSchema,
   type ValidationCandidate,
+  type ValidationRecordRef as SourceValidationRecordRef,
 } from "../validation/contracts.js";
 import type { ModelAttemptUsageV2 } from "../model-attempt-usage-contracts.js";
 import { canonicalJson, sha256Digest } from "./canonical-json.js";
@@ -128,6 +134,8 @@ import type {
   SemanticFinderCheckpointRecordView,
   SemanticIterationDecisionRecordView,
   SemanticIterationDecisionRecordViewV3,
+  ValidationCompletion,
+  ValidationCompletionRecordView,
   ValidationIntent,
   ValidationIntentRecordView,
   JsonArtifactStore,
@@ -349,6 +357,27 @@ const validationIntendedPayloadSchema = z.strictObject({
   registry: approachFamilyRegistryRefV3Schema,
 });
 
+const validationCompletionSchema = z.strictObject({
+  kind: z.literal("validation-completion"),
+  schemaVersion: z.literal(1),
+  validation: sourceValidationRecordRefSchema,
+  disposition: z.enum([
+    "ready-for-human",
+    "needs-research",
+    "disproven",
+    "rejected",
+    "validation-pending",
+  ]),
+  approachFamilyIds: z.array(digestSchema).min(1).max(64),
+});
+
+const validationCompletedPayloadSchema = z.strictObject({
+  runId: z.string().min(1).max(128),
+  predecessorRegistryDigest: digestSchema,
+  completion: validationCompletionSchema,
+  registry: approachFamilyRegistryRefV3Schema,
+});
+
 const semanticDepthIterationDecidedPayloadV1Schema = z.strictObject({
   runId: z.string().min(1).max(128),
   predecessorRegistryDigest: digestSchema,
@@ -452,6 +481,10 @@ interface LedgerProjection {
     ApproachFamilyRegistryRecordViewV3
   >;
   readonly validationIntents: ReadonlyMap<string, ValidationIntentRecordView>;
+  readonly validationCompletions: ReadonlyMap<
+    string,
+    ValidationCompletionRecordView
+  >;
   readonly verifications: ReadonlyMap<string, StoredVerification>;
 }
 
@@ -2067,6 +2100,163 @@ class SqliteResearchRecord implements ResearchRecord {
       );
   }
 
+  async recordValidationCompletion(
+    campaignId: string,
+    runId: string,
+    value: SourceValidationRecordRef,
+  ): Promise<ValidationCompletionRecordView> {
+    const validationRef = sourceValidationRecordRefSchema.parse(value);
+    if (this.#artifactStore === undefined) {
+      throw new Error("Validation completion requires an Artifact Store");
+    }
+    const rawValidation = await this.#artifactStore.readJson(
+      validationRef.digest,
+    );
+    if (sha256Digest(rawValidation) !== validationRef.digest) {
+      throw new Error("Validation Record CAS mismatch");
+    }
+    const validation = sourceValidationRecordSchema.parse(rawValidation);
+    if (
+      validation.validationId !== validationRef.validationId ||
+      validation.candidateId !== validationRef.candidateId
+    ) {
+      throw new Error("Validation Record ref mismatch");
+    }
+
+    const rows = this.#readRows(campaignId);
+    if (rows.length === 0) {
+      throw new Error(`Campaign not found: ${campaignId}`);
+    }
+    const ledger = this.#decodeLedger(campaignId, rows);
+    const existing = ledger.validationCompletions.get(validation.validationId);
+    if (existing !== undefined) {
+      if (
+        canonicalJson(existing.completion.validation) !==
+          canonicalJson(validationRef) ||
+        existing.completion.disposition !== validation.status
+      ) {
+        throw new CampaignRunConflictError(campaignId, runId);
+      }
+      return existing;
+    }
+    const run = ledger.semanticRuns.get(runId);
+    const registry = ledger.approachFamilyRegistriesV3.get(runId);
+    const intent = [...ledger.validationIntents.values()].find(
+      (candidate) =>
+        candidate.intent.runId === runId &&
+        candidate.intent.validationId === validation.validationId,
+    );
+    if (
+      run === undefined ||
+      run.completed !== undefined ||
+      registry === undefined ||
+      intent === undefined ||
+      intent.intent.candidate.id !== validation.candidateId
+    ) {
+      throw new CampaignRunConflictError(campaignId, runId);
+    }
+    const completion = validationCompletionSchema.parse({
+      kind: "validation-completion",
+      schemaVersion: 1,
+      validation: validationRef,
+      disposition: validation.status,
+      approachFamilyIds: intent.intent.approachFamilyIds,
+    });
+    const projected = resolveApproachFamilyValidationV3({
+      registry: registry.value,
+      resolution: {
+        validationId: validation.validationId,
+        recordDigest: validationRef.digest,
+        disposition: validation.status,
+        approachFamilyIds: completion.approachFamilyIds,
+      },
+    });
+    const storedRegistryDigest = await this.#artifactStore.putJson(
+      projected.value,
+    );
+    if (storedRegistryDigest !== projected.ref.digest) {
+      throw new Error("Validation completion Registry CAS mismatch");
+    }
+
+    const transact = this.#database.transaction(
+      (): ValidationCompletionRecordView => {
+        const currentRows = this.#readRows(campaignId);
+        const current = this.#decodeLedger(campaignId, currentRows);
+        const currentExisting = current.validationCompletions.get(
+          validation.validationId,
+        );
+        if (currentExisting !== undefined) {
+          if (
+            canonicalJson(currentExisting.completion) !==
+            canonicalJson(completion)
+          ) {
+            throw new CampaignRunConflictError(campaignId, runId);
+          }
+          return currentExisting;
+        }
+        const currentRun = current.semanticRuns.get(runId);
+        const currentRegistry = current.approachFamilyRegistriesV3.get(runId);
+        if (
+          currentRun === undefined ||
+          currentRun.completed !== undefined ||
+          currentRegistry?.ref.digest !== registry.ref.digest
+        ) {
+          throw new CampaignRunConflictError(campaignId, runId);
+        }
+        const occurredAt = this.#clock().toISOString();
+        const ledgerHead = currentRows.length + 1;
+        this.#insertEvent(
+          campaignId,
+          ledgerHead,
+          "validation.completed",
+          occurredAt,
+          {
+            runId,
+            predecessorRegistryDigest: registry.ref.digest,
+            completion,
+            registry: projected.ref,
+          },
+          1,
+        );
+        return {
+          ledgerHead,
+          occurredAt,
+          completion,
+          registry: projected.ref,
+        };
+      },
+    );
+    return transact();
+  }
+
+  async listValidationCompletions(
+    campaignId: string,
+    runId: string,
+  ): Promise<readonly ValidationCompletionRecordView[]> {
+    const rows = this.#readRows(campaignId);
+    if (rows.length === 0) return [];
+    const ledger = this.#decodeLedger(campaignId, rows);
+    return [...ledger.validationCompletions.values()]
+      .filter((record) => {
+        const intent = ledger.validationIntents.get(
+          sha256Digest({
+            kind: "validation-intent",
+            schemaVersion: 1,
+            campaignId,
+            runId,
+            validationId: record.completion.validation.validationId,
+          }),
+        );
+        return intent?.intent.runId === runId;
+      })
+      .sort((left, right) =>
+        compareText(
+          left.completion.validation.validationId,
+          right.completion.validation.validationId,
+        ),
+      );
+  }
+
   async recordSemanticDepthIteration(
     campaignId: string,
     runId: string,
@@ -2566,6 +2756,10 @@ class SqliteResearchRecord implements ResearchRecord {
       ApproachFamilyRegistryRecordViewV3
     >();
     const validationIntents = new Map<string, ValidationIntentRecordView>();
+    const validationCompletions = new Map<
+      string,
+      ValidationCompletionRecordView
+    >();
     const verifications = new Map<string, StoredVerification>();
     for (const event of rows.slice(1)) {
       if (event.kind === "campaign.prepared") {
@@ -2947,6 +3141,61 @@ class SqliteResearchRecord implements ResearchRecord {
             registry: payload.registry,
           });
         }
+        approachFamilyRegistriesV3.set(payload.runId, projected);
+        continue;
+      }
+      if (event.kind === "validation.completed") {
+        if (event.schema_version !== 1) {
+          throw new UnsupportedLedgerSchemaError(
+            event.kind,
+            event.schema_version,
+          );
+        }
+        const payload = validationCompletedPayloadSchema.parse(
+          this.#parsePayload(event),
+        );
+        const run = semanticRuns.get(payload.runId);
+        const previous = approachFamilyRegistriesV3.get(payload.runId);
+        const intentId = sha256Digest({
+          kind: "validation-intent",
+          schemaVersion: 1,
+          campaignId,
+          runId: payload.runId,
+          validationId: payload.completion.validation.validationId,
+        });
+        const intent = validationIntents.get(intentId);
+        if (
+          run === undefined ||
+          run.completed !== undefined ||
+          previous === undefined ||
+          previous.ref.digest !== payload.predecessorRegistryDigest ||
+          intent === undefined ||
+          intent.intent.candidate.id !==
+            payload.completion.validation.candidateId ||
+          canonicalJson(intent.intent.approachFamilyIds) !==
+            canonicalJson(payload.completion.approachFamilyIds) ||
+          validationCompletions.has(payload.completion.validation.validationId)
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        const projected = resolveApproachFamilyValidationV3({
+          registry: previous.value,
+          resolution: {
+            validationId: payload.completion.validation.validationId,
+            recordDigest: payload.completion.validation.digest,
+            disposition: payload.completion.disposition,
+            approachFamilyIds: payload.completion.approachFamilyIds,
+          },
+        });
+        if (canonicalJson(projected.ref) !== canonicalJson(payload.registry)) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        validationCompletions.set(payload.completion.validation.validationId, {
+          ledgerHead: event.campaign_sequence,
+          occurredAt: event.occurred_at,
+          completion: payload.completion,
+          registry: payload.registry,
+        });
         approachFamilyRegistriesV3.set(payload.runId, projected);
         continue;
       }
@@ -3430,6 +3679,7 @@ class SqliteResearchRecord implements ResearchRecord {
       approachFamilyRegistries,
       approachFamilyRegistriesV3,
       validationIntents,
+      validationCompletions,
       verifications,
     };
   }

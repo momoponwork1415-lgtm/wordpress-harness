@@ -12,4 +12,6 @@ export type {
   SemanticIterationDecisionRecordViewV3,
   ValidationIntent,
   ValidationIntentRecordView,
+  ValidationCompletion,
+  ValidationCompletionRecordView,
 } from "./contracts.js";

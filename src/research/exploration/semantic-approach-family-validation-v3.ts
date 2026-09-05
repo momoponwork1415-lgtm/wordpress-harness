@@ -13,6 +13,19 @@ const validationIntentFamilyBindingSchema = z.strictObject({
   approachFamilyIds: z.array(digestSchema).min(1).max(64),
 });
 
+const validationResolutionSchema = z.strictObject({
+  validationId: digestSchema,
+  recordDigest: digestSchema,
+  disposition: z.enum([
+    "ready-for-human",
+    "needs-research",
+    "disproven",
+    "rejected",
+    "validation-pending",
+  ]),
+  approachFamilyIds: z.array(digestSchema).min(1).max(64),
+});
+
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
@@ -71,6 +84,74 @@ export function attachApproachFamilyValidationIntentsV3(input: {
     return updated;
   });
 
+  return projectApproachFamilyRegistryV3({
+    campaignId: registry.campaignId,
+    runId: registry.runId,
+    target: registry.target,
+    manifest: registry.manifest,
+    decisions: registry.decisions,
+    depthDecisions: registry.depthDecisions,
+    families,
+  });
+}
+
+export function resolveApproachFamilyValidationV3(input: {
+  readonly registry: unknown;
+  readonly resolution: {
+    readonly validationId: string;
+    readonly recordDigest: string;
+    readonly disposition:
+      | "ready-for-human"
+      | "needs-research"
+      | "disproven"
+      | "rejected"
+      | "validation-pending";
+    readonly approachFamilyIds: readonly string[];
+  };
+}): ReturnType<typeof projectApproachFamilyRegistryV3> {
+  const registry = approachFamilyRegistryV3Schema.parse(input.registry);
+  const resolution = validationResolutionSchema.parse(input.resolution);
+  if (
+    new Set(resolution.approachFamilyIds).size !==
+    resolution.approachFamilyIds.length
+  ) {
+    throw new Error("Approach Family Validation resolution is duplicated");
+  }
+  const resolvedFamilies = new Set(resolution.approachFamilyIds);
+  const families = registry.families.map((family) => {
+    if (!resolvedFamilies.has(family.id)) return family;
+    resolvedFamilies.delete(family.id);
+    if (
+      !family.pendingValidations.includes(resolution.validationId) ||
+      family.validationOutcomes.some(
+        (outcome) => outcome.validationId === resolution.validationId,
+      )
+    ) {
+      throw new Error("Approach Family has no matching pending Validation");
+    }
+    return approachFamilyV3Schema.parse({
+      ...family,
+      pendingValidations:
+        resolution.disposition === "validation-pending"
+          ? family.pendingValidations
+          : family.pendingValidations.filter(
+              (validationId) => validationId !== resolution.validationId,
+            ),
+      validationOutcomes: [
+        ...family.validationOutcomes,
+        {
+          validationId: resolution.validationId,
+          recordDigest: resolution.recordDigest,
+          disposition: resolution.disposition,
+        },
+      ].sort((left, right) =>
+        compareText(left.validationId, right.validationId),
+      ),
+    });
+  });
+  if (resolvedFamilies.size > 0) {
+    throw new Error("Validation resolution references a foreign Family");
+  }
   return projectApproachFamilyRegistryV3({
     campaignId: registry.campaignId,
     runId: registry.runId,

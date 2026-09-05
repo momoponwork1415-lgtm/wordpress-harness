@@ -17,6 +17,8 @@ import {
 import {
   validationCandidateId,
   validationCandidateSchema,
+  validationRecordRefSchema,
+  validationRecordSchema,
 } from "../../src/research/validation/index.js";
 import { createCampaignInput } from "../fixtures/campaign.js";
 
@@ -337,15 +339,91 @@ describe("Research Record Iteration Decision v3", () => {
         artifactStore.readJson(pendingRegistry!.ref.digest),
       ).resolves.toEqual(pendingRegistry!.value);
 
+      const validationRecord = validationRecordSchema.parse({
+        kind: "validation-record",
+        schemaVersion: 1,
+        validationId: candidate.id,
+        candidateId: candidate.id,
+        planDigest: digest("validation-plan"),
+        status: "validation-pending",
+        reason: "validator-attempt-failed",
+        materialConflictAfterTwo: false,
+        validatorAttempts: [
+          {
+            status: "failed",
+            ordinal: 1,
+            execution: {
+              kind: "attempt-execution-result",
+              schemaVersion: 2,
+              attemptId: "validator-1",
+              owner: "validation",
+              role: "validator",
+              planDigest: digest("validator-plan"),
+              digest: digest("validator-result"),
+            },
+            terminalStatus: "provider-failed",
+            reason: "Provider failed before a valid rubric was returned.",
+          },
+        ],
+      });
+      const validationRecordDigest =
+        await artifactStore.putJson(validationRecord);
+      const validationRecordRef = validationRecordRefSchema.parse({
+        kind: validationRecord.kind,
+        schemaVersion: validationRecord.schemaVersion,
+        validationId: validationRecord.validationId,
+        candidateId: validationRecord.candidateId,
+        digest: validationRecordDigest,
+      });
+      const completion = await record.recordValidationCompletion(
+        input.campaignId,
+        plan.runId,
+        validationRecordRef,
+      );
+      const completionReplay = await record.recordValidationCompletion(
+        input.campaignId,
+        plan.runId,
+        validationRecordRef,
+      );
+      expect(completionReplay).toEqual(completion);
+      expect(completion).toMatchObject({
+        ledgerHead: intended[0]!.ledgerHead + 1,
+        completion: {
+          validation: validationRecordRef,
+          disposition: "validation-pending",
+          approachFamilyIds: [registry!.value.families[0]!.id],
+        },
+      });
+      const unresolvedRegistry = await record.readApproachFamilyRegistryV3(
+        input.campaignId,
+        plan.runId,
+      );
+      expect(unresolvedRegistry?.value.families[0]).toMatchObject({
+        pendingValidations: [candidate.id],
+        validationOutcomes: [
+          {
+            validationId: candidate.id,
+            recordDigest: validationRecordDigest,
+            disposition: "validation-pending",
+          },
+        ],
+      });
+      await expect(
+        artifactStore.readJson(unresolvedRegistry!.ref.digest),
+      ).resolves.toEqual(unresolvedRegistry!.value);
+
       record.close();
       const reopened = openSqliteResearchRecord({ databasePath });
       try {
         await expect(
           reopened.readApproachFamilyRegistryV3(input.campaignId, plan.runId),
-        ).resolves.toEqual(pendingRegistry);
+        ).resolves.toEqual(unresolvedRegistry);
         await expect(
           reopened.listValidationIntents(input.campaignId, plan.runId),
         ).resolves.toEqual(intended);
+        await expect(
+          reopened.listValidationCompletions(input.campaignId, plan.runId),
+        ).resolves.toEqual([completion]);
       } finally {
         reopened.close();
       }
