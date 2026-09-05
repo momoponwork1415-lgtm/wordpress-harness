@@ -278,4 +278,4 @@ provider unavailable、invalid/policy-denied output、source budget exhaustion�
 
 Behavior Testは`Exploration.decide`から観測する。最低限、Manifest-boundなMapなし開始、Source-aware Reconとwhole-target Baselineの並行開始、Map外candidate受理、Manifest外anchor拒否、最大4 Finderの独立性、checkpoint ack前のCAS / Ledger durability、terminal failure後のcheckpoint保持、同一checkpoint再送の冪等性、HypothesisをWave BarrierとRoot Evaluation後にValidationへ送ること、minority route保持、全subjectの明示的処遇、Hypothesis 0件 + Fragmentありの保持、FragmentとFamilyの多対多参照、semantic duplicateの既存Family追加、material deltaとcorroborationの区別、許可Family transition、evidence-backed reopen、ValidationとDepthの同時action、high-impact potentialによるDepth Admission、fresh Synthesis/Critic/missing-link、invalid Root Evaluationのtyped incomplete、失敗またはbudget exhaustionをno-new-evidenceへ丸めないこと、二回のcomplete closure pass、同じLedgerから同じRegistry digestを得るreplay、terminal reasonを保護する。
 
-全体図は[Autonomous Research Loop](architecture/autonomous-research-loop.md)、Breadth/Depth分離は[ADR 0114](../adr/0114-separate-breadth-and-depth-campaign-policies.md)を参照する。
+全体のResearch loopは[Harness Architecture](../ARCHITECTURE.md)、Breadth/Depth分離は[ADR 0114](../adr/0114-separate-breadth-and-depth-campaign-policies.md)を参照する。

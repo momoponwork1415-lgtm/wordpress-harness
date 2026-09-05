@@ -1,6 +1,6 @@
 # 調査設計原則（Research Design Principles）
 
-Status: accepted, 2026-09-05
+Status: accepted research policy, 2026-09-05
 
 この文書は、脆弱性探索に関する設計判断を読む最初の正本である。最上位にはWordfence Argus記事から採った10動詞を置き、公開実装へ落とす運用原則にはAnthropicのDefending Code Reference Harnessを使う。個別のinterfaceと例外はaccepted ADRが決める。
 
@@ -14,7 +14,7 @@ sink、CWE、Surface Map nodeの網羅率は補助信号であり、Discoveryの
 
 通常運転はraw-source-firstの有限Semantic Research Waveである。全Targetを最初からmulti-wave Depth Campaignへ入れない。十分に重大なHypothesisはRoot Evaluation後のValidationへ送り、強い未解決primitiveまたはhigh-impact frontierが残る時だけDepth Admissionを通してSynthesis、Critic、missing-link Waveへ追加投資する。最終impactが既にRCE/ATO/PrivEscと分かっていることをDepth Admissionの条件にしない。
 
-現段階の評価優先順位は`high-impact recall -> root-cause quality -> attacker-premise closure -> independent validation -> false-positive behavior -> token/cost`とする。Budgetはhard ceilingとしてmodel外で強制するが、recallを落としてまでtokenやwall timeを削らない。cost最適化はbaseline確立後のablationで行う。詳細は[ADR 0117](../adr/0117-optimize-for-high-impact-semantic-recall.md)と[ADR 0122](../adr/0122-separate-source-validation-from-human-verification.md)を参照する。
+現段階の評価優先順位は`high-impact recall -> root-cause quality -> attacker-premise closure -> independent validation -> false-positive behavior -> token/cost`とする。Budgetはhard ceilingとしてmodel外で強制するが、recallを落としてまでtokenやwall timeを削らない。cost最適化はbaseline確立後のablationで行う。詳細は[ADR 0117](adr/0117-optimize-for-high-impact-semantic-recall.md)と[ADR 0122](adr/0122-separate-source-validation-from-human-verification.md)を参照する。
 
 ## 1. 最上位の10原則
 
@@ -31,7 +31,7 @@ sink、CWE、Surface Map nodeの網羅率は補助信号であり、Discoveryの
 | Prioritize（優先する） | impact、到達可能性、semantic novelty、未解決frontier、検証費用から次の有限workを選ぶ |
 | Iterate（高速反復する） | Depth Admission後はwaveごとの証拠を統合・批判し、具体的missing linkをfresh runへ返す |
 
-10動詞は10段pipelineでも10個のmoduleでもない。全Campaignと各反復で観測するcontrol propertyである。詳細は[ADR 0001](../adr/0001-ten-verbs-as-control-properties.md)を参照する。
+10動詞は10段pipelineでも10個のmoduleでもない。全Campaignと各反復で観測するcontrol propertyである。詳細は[ADR 0001](adr/0001-ten-verbs-as-control-properties.md)を参照する。
 
 ## 2. Anthropicベストプラクティスの採用方法
 
@@ -52,7 +52,7 @@ sink、CWE、Surface Map nodeの網羅率は補助信号であり、Discoveryの
 | large repositoryでは再分割する | summary、source search、Dependency Wishlist等を使い、単にagent数を増やさない |
 | setupとattackを分離しsupervisorを守る | Researchのsource-only ValidationとHuman Verification Environmentを分け、root control planeをuntrusted sourceから隔離する |
 
-Anthropic文書の「map the system first」は、探索前に完全なSurface Mapを生成してFinderへ強制する意味には採らない。必要なのは対象をnavigateし独立した研究方向を持てることであり、Default Finderはraw sourceからTarget全体へ自由にpivotできる。[ADR 0113](../adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)がこの適応を固定する。
+Anthropic文書の「map the system first」は、探索前に完全なSurface Mapを生成してFinderへ強制する意味には採らない。必要なのは対象をnavigateし独立した研究方向を持てることであり、Default Finderはraw sourceからTarget全体へ自由にpivotできる。[ADR 0113](adr/0113-keep-finder-methods-free-behind-an-evidence-shell.md)がこの適応を固定する。
 
 ## 3. 通常研究、Depth、Breadthを混ぜない
 
@@ -76,7 +76,7 @@ flowchart TB
 
 通常のSemantic Research WaveとArgus-likeなDepth Escalationは同じraw-source reasoning基盤を使うが、後者だけがmulti-wave chain pursuitを必須にする。単発で十分に重大なSQLi、Stored XSS、PrivEsc等を「長いchainでない」という理由で未完成扱いしない。一方、弱いprimitiveでもhigh-impactへ伸びる具体的可能性があれば単独severityだけで捨てない。
 
-BreadthはWordfence PRISMが示すbreadth-first運行への対応であり、sink scannerの同義語ではない。短いAuthZやbusiness-logic bugもbreadthで発見し得る。将来はSemgrep、CodeQL、Surface Map、安価なmodel等で多数Targetへscaleするが、現在のhigh-impact semantic recallを確立するより先にcritical pathへ置かない。二Modeの責任は[ADR 0114](../adr/0114-separate-breadth-and-depth-campaign-policies.md)、通常運転とDepth Admissionは[ADR 0117](../adr/0117-optimize-for-high-impact-semantic-recall.md)を参照する。
+BreadthはWordfence PRISMが示すbreadth-first運行への対応であり、sink scannerの同義語ではない。短いAuthZやbusiness-logic bugもbreadthで発見し得る。将来はSemgrep、CodeQL、Surface Map、安価なmodel等で多数Targetへscaleするが、現在のhigh-impact semantic recallを確立するより先にcritical pathへ置かない。二Modeの責任は[ADR 0114](adr/0114-separate-breadth-and-depth-campaign-policies.md)、通常運転とDepth Admissionは[ADR 0117](adr/0117-optimize-for-high-impact-semantic-recall.md)を参照する。
 
 ## 4. 衝突時の優先規則
 

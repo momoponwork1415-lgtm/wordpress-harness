@@ -39,8 +39,8 @@ node dist/cli.js campaign inspect --database .private/research.sqlite --campaign
 ## Docs
 
 - [Documentation index](docs/README.md) — 目的別の最短reading path
-- [Research Design Principles](docs/design/research-design-principles.md) — high-impact semantic recallとHarness/Agent境界
-- [Architecture Overview](docs/design/architecture/architecture-overview.md) — system context、research loop、trust zones
+- [Research Design](docs/RESEARCH-DESIGN.md) — high-impact semantic recallとHarness/Agent境界
+- [Harness Architecture](docs/ARCHITECTURE.md) — system context、Module、research loop、trust zones
 - [Codebase Guide](docs/CODEBASE-GUIDE.md) — 現在の実装状態、Interface、Test、sourceの対応
 - [Development Rules](AGENTS.md) — repositoryで作業するagent / contributor向け規則
 
@@ -48,4 +48,4 @@ node dist/cli.js campaign inspect --database .private/research.sqlite --campaign
 
 ## Scope
 
-現在のResearch対象はWordPress pluginsです。最初のproduct goalは、手動投入した最新TargetのProspective CampaignからHuman Verification済みFindingまでです。Target Intelligenceによる自動選定、自動submission、vendor communication、patch generation、dashboardは後段に置きます。外部行動はHuman Verificationと分離し、案件ごとの明示承認なしに行いません。能力の拡張順は[Roadmap](docs/design/roadmap.md)を参照してください。
+現在のResearch対象はWordPress pluginsです。最初のproduct goalは、手動投入した最新TargetのProspective CampaignからHuman Verification済みFindingまでです。Target Intelligenceによる自動選定、自動submission、vendor communication、patch generation、dashboardは後段に置きます。外部行動はHuman Verificationと分離し、案件ごとの明示承認なしに行いません。能力の拡張順は[Roadmap](docs/ROADMAP.md)を参照してください。

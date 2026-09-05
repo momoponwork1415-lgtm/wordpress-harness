@@ -7,4 +7,4 @@
 - [development case candidates](development-case-candidates.md) — semantic depthの異なるdevelopment / blind evaluation候補
 - [security harness observability reference](security-harness-observability-reference.md) — Anthropic / OpenAI実装のprogress、debug log、recovery、token/cost比較
 
-Harness全体の外部参照は[Design References](../REFERENCES.md)、採用済みの設計判断は[Research Design Principles](../design/research-design-principles.md)、owning Seam、ADRを正本とする。
+Harness全体の外部参照は[Design References](../REFERENCES.md)、採用済みの設計判断は[Research Design](../RESEARCH-DESIGN.md)、owning Seam、ADRを正本とする。

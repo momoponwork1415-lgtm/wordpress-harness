@@ -1,39 +1,38 @@
-# Design Documentation
+# Module Design Index
 
-設計文書には、安定した責務・Interface・不変条件・failure semanticsだけを置く。現在の実装状態は[Codebase Guide](../CODEBASE-GUIDE.md)だけを正本とする。
+このdirectoryにはModule固有のInterface、不変条件、failure semantics、Behavior Test surfaceだけを置く。system全体は[Harness Architecture](../ARCHITECTURE.md)、research policyは[Research Design](../RESEARCH-DESIGN.md)、現在の実装は[Codebase Guide](../CODEBASE-GUIDE.md)を先に読む。
 
-## 入口
+## Target Intelligence
 
-| 目的 | 読むもの |
+| Module / Seam | Owns |
 | --- | --- |
-| Researchの目的と判断原則 | [Research Design Principles](research-design-principles.md) |
-| system全体とtrust boundary | [Architecture Overview](architecture/architecture-overview.md) |
-| Semantic Research / Depth Escalation | [Autonomous Research Loop](architecture/autonomous-research-loop.md) |
-| Semantic / Depth / Breadthの関係 | [Semantic Research, Breadth and Depth](architecture/breadth-depth-research-loop.md) |
-| capabilityの実装順 | [Roadmap](roadmap.md) |
-| 現在の実装状態 | [Codebase Guide](../CODEBASE-GUIDE.md) |
+| [Target Intake](target-intake-seam.md) | untrusted sourceの受入、canonical identity、Target Intake Packet |
 
-## Moduleごとの正本
+## Research
 
-| Owner / subsystem | Canonical design |
+| Module / Seam | Owns |
 | --- | --- |
-| Campaign Control | [Campaign Execution Seam](campaign-execution-seam.md) |
-| Human Verification setup / lab baseline | [Campaign Setup Seam](campaign-setup-seam.md) |
-| Exploration | [Exploration Seam](exploration-seam.md) |
-| Source Understanding / Surface Map | [Source Mapping Seam](source-mapping-seam.md) |
-| PHP Program Index | [PHP Program Index Seam](php-program-index-seam.md) |
-| Research Validation | [Validation Seam](validation-seam.md) |
-| Human OS / Human Verification | [Human Verification Seam](human-verification-seam.md) |
-| Legacy Verification replay / Assistant compatibility | [Legacy Verification Compatibility Seam](verification-seam.md) |
-| Model Execution | [Model Execution Seam](model-execution-seam.md) |
-| Target intake | [Target Intake Seam](target-intake-seam.md) |
+| [Campaign Control](campaign-execution-seam.md) | lifecycle、finite work、budget、terminal、replay |
+| [Source Understanding](source-mapping-seam.md) | source inventory、optional Surface Map、source query |
+| [PHP Program Index](php-program-index-seam.md) | pinned parser helperから作るmanifest-bound PHP index |
+| [Exploration](exploration-seam.md) | research thesis、Hypothesis、Fragment、Depth、closure |
+| [Validation](validation-seam.md) | independent source review、Synthesis、Review Packet |
+| [Model Execution](model-execution-seam.md) | provider/process/tool binding、supervision、terminal result |
 
-cross-moduleの関係は[Module Map](architecture/module-map.md)で確認し、詳細は各Seamへ置く。巨大な中央設計書は作らない。
+Research RecordはCampaign Controlから使うappend-only internal Moduleであり、単独のpublic Seam文書を持たない。artifactとreplayのcontractは[Campaign Control](campaign-execution-seam.md)を正本とする。
 
-## 書き方
+## Human OS
 
-- 新規docより既存のowner Seamへの追記を優先する。
-- ADRは理由、Seamはcontract、Architecture Viewは理解用の図だけを持つ。
-- implementation path、version、LOC、現在の未実装一覧、run結果はDesignへ置かない。
-- 旧設計や完了計画を保存用Markdownとして残さない。Git履歴を使う。
-- 次に行う作業と受入条件はGitHub Issueへ置く。
+| Module / Seam | Owns |
+| --- | --- |
+| [Human Verification](human-verification-seam.md) | queue、human disposition、Finding、Evidence Request、外部承認 |
+| [Human Verification Environment](campaign-setup-seam.md) | fresh disposable environment、setup receipt、isolation gate |
+| [Legacy Verification compatibility](verification-seam.md) | 旧Ledgerと旧automated Findingのread-only replay |
+
+## Editing rule
+
+- ArchitectureはcontextとModule関係、Seamは一つのModuleのInterfaceだけを説明する。
+- 現在の実装path、version、完成度、未実装一覧はCodebase Guideへ置く。
+- hard-to-reverseな判断理由だけを[ADR](../adr/README.md)へ置く。
+- 次の作業と受入条件はGitHub Issuesへ置く。
+- 同じflow、状態表、ownership説明を複数のSeamへ複製しない。
