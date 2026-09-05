@@ -9,6 +9,7 @@ import {
   openWordfenceIntelligence,
   type WordfenceIntelligenceV3Adapter,
 } from "../../src/target-intelligence/index.js";
+import { sha256Digest } from "../../src/target-intelligence/acquisition/canonical-json.js";
 
 const fixturePath = join(
   import.meta.dirname,
@@ -19,6 +20,29 @@ const fixturePath = join(
   "production.json",
 );
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
+
+function knownRecordAuthorization(verifiedVersion: string) {
+  const body = {
+    kind: "known-record-access-authorization" as const,
+    schemaVersion: 1 as const,
+    verifiedFindingRef: {
+      id: "verified-finding:fixture",
+      digest: digest("f"),
+    },
+    purpose: "known-duplicate-disposition" as const,
+    subject: {
+      pluginIdentity: "wporg:fixture-plugin",
+      verifiedVersion,
+    },
+    authorizedAt: "2030-08-02T00:00:00.000Z",
+  };
+  const authorizationDigest = sha256Digest(body);
+  return {
+    ...body,
+    id: `known-record-access:${authorizationDigest.slice(7, 31)}`,
+    digest: authorizationDigest,
+  };
+}
 
 function fixtureAdapter(): WordfenceIntelligenceV3Adapter {
   return {
@@ -38,11 +62,15 @@ describe("WordfenceIntelligence", () => {
   it("atomically refreshes the v3 feed while separating selection aggregate from verified-Finding records", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordfence-intelligence-"));
     try {
+      const authorization = knownRecordAuthorization("1.2.0");
       const intelligence = openWordfenceIntelligence({
         databasePath: join(directory, "target-intelligence.sqlite"),
         artifactDirectory: join(directory, "artifacts"),
         adapter: fixtureAdapter(),
         credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+        knownRecordAuthorizationVerifier: {
+          verify: async () => authorization,
+        },
         clock: () => new Date("2030-08-01T00:00:00.000Z"),
       });
 
@@ -103,11 +131,12 @@ describe("WordfenceIntelligence", () => {
         snapshotRef: refreshed.snapshotRef,
         pluginIdentity: "wporg:fixture-plugin",
         verifiedVersion: "1.2.0",
-        verifiedFindingRef: {
-          id: "verified-finding:fixture",
-          digest: digest("f"),
+        authorizationRef: {
+          kind: "known-record-access-authorization-ref",
+          schemaVersion: 1,
+          id: authorization.id,
+          digest: authorization.digest,
         },
-        purpose: "known-duplicate-disposition",
       });
       expect(known).toMatchObject({
         kind: "wordfence-known-record-projection",
@@ -341,14 +370,28 @@ describe("WordfenceIntelligence", () => {
     }
   });
 
-  it("requires verified Finding identity and applies affected-version interval boundaries", async () => {
+  it("requires verified-Finding authorization and applies affected-version interval boundaries", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordfence-interval-"));
     try {
+      const authorizations = ["1.4.1", "2.0.0", "2.0"].map(
+        knownRecordAuthorization,
+      );
+      const authorization = authorizations[0];
+      if (authorization === undefined) {
+        throw new Error("Expected a known-record authorization fixture");
+      }
       const intelligence = openWordfenceIntelligence({
         databasePath: join(directory, "target-intelligence.sqlite"),
         artifactDirectory: join(directory, "artifacts"),
         adapter: fixtureAdapter(),
         credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+        knownRecordAuthorizationVerifier: {
+          verify: async (ref) =>
+            authorizations.find(
+              (candidate) =>
+                candidate.id === ref.id && candidate.digest === ref.digest,
+            ),
+        },
       });
       const refreshed = await intelligence.refresh({
         kind: "wordfence-intelligence-refresh",
@@ -362,11 +405,12 @@ describe("WordfenceIntelligence", () => {
         schemaVersion: 1 as const,
         snapshotRef: refreshed.snapshotRef,
         pluginIdentity: "wporg:fixture-plugin",
-        verifiedFindingRef: {
-          id: "verified-finding:fixture",
-          digest: digest("f"),
+        authorizationRef: {
+          kind: "known-record-access-authorization-ref" as const,
+          schemaVersion: 1 as const,
+          id: authorization.id,
+          digest: authorization.digest,
         },
-        purpose: "known-duplicate-disposition" as const,
       };
       await expect(
         intelligence.inspectKnownRecords({
@@ -374,25 +418,59 @@ describe("WordfenceIntelligence", () => {
           verifiedVersion: "1.4.1",
         }),
       ).resolves.toMatchObject({
+        verifiedFindingRef: authorization.verifiedFindingRef,
+        authorizationRef: base.authorizationRef,
         records: [{ recordId: "22222222-2222-4222-8222-222222222222" }],
       });
       await expect(
-        intelligence.inspectKnownRecords({ ...base, verifiedVersion: "2.0.0" }),
+        intelligence.inspectKnownRecords({
+          ...base,
+          verifiedVersion: "2.0.0",
+          authorizationRef: {
+            ...base.authorizationRef,
+            id: authorizations[1]?.id ?? "missing",
+            digest: authorizations[1]?.digest ?? digest("0"),
+          },
+        }),
       ).resolves.toMatchObject({ records: [] });
       await expect(
-        intelligence.inspectKnownRecords({ ...base, verifiedVersion: "2.0" }),
+        intelligence.inspectKnownRecords({
+          ...base,
+          verifiedVersion: "2.0",
+          authorizationRef: {
+            ...base.authorizationRef,
+            id: authorizations[2]?.id ?? "missing",
+            digest: authorizations[2]?.digest ?? digest("0"),
+          },
+        }),
       ).resolves.toMatchObject({ records: [] });
 
-      const withoutFinding = {
+      const selfAssertedFinding = {
         ...base,
         verifiedVersion: "1.2.0",
       } as Record<string, unknown>;
-      delete withoutFinding.verifiedFindingRef;
+      delete selfAssertedFinding.authorizationRef;
+      selfAssertedFinding.verifiedFindingRef = {
+        id: "verified-finding:self-asserted",
+        digest: digest("a"),
+      };
+      selfAssertedFinding.purpose = "known-duplicate-disposition";
       await expect(
         Reflect.apply(intelligence.inspectKnownRecords, intelligence, [
-          withoutFinding,
+          selfAssertedFinding,
         ]),
-      ).rejects.toThrow("verifiedFindingRef");
+      ).rejects.toMatchObject({ code: "known-record-access-denied" });
+
+      await expect(
+        intelligence.inspectKnownRecords({
+          ...base,
+          authorizationRef: {
+            ...base.authorizationRef,
+            id: "known-record-access:unknown",
+          },
+          verifiedVersion: "1.4.1",
+        }),
+      ).rejects.toMatchObject({ code: "known-record-access-denied" });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

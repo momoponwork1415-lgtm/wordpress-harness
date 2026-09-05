@@ -71,14 +71,38 @@ export const immutableFindingRefSchema = z.strictObject({
   digest: digestSchema,
 });
 
+export const knownRecordAccessAuthorizationRefSchema = z.strictObject({
+  kind: z.literal("known-record-access-authorization-ref"),
+  schemaVersion: z.literal(1),
+  id: identifierSchema,
+  digest: digestSchema,
+});
+
+const knownRecordAccessAuthorizationBodySchema = z.strictObject({
+  kind: z.literal("known-record-access-authorization"),
+  schemaVersion: z.literal(1),
+  verifiedFindingRef: immutableFindingRefSchema,
+  purpose: z.literal("known-duplicate-disposition"),
+  subject: z.strictObject({
+    pluginIdentity: pluginIdentitySchema,
+    verifiedVersion: versionSchema,
+  }),
+  authorizedAt: z.string().datetime({ offset: true }),
+});
+
+export const knownRecordAccessAuthorizationSchema =
+  knownRecordAccessAuthorizationBodySchema.extend({
+    id: identifierSchema,
+    digest: digestSchema,
+  });
+
 export const wordfenceKnownRecordInspectionRequestSchema = z.strictObject({
   kind: z.literal("wordfence-known-record-inspection"),
   schemaVersion: z.literal(1),
   snapshotRef: wordfenceIntelligenceSnapshotRefSchema,
   pluginIdentity: pluginIdentitySchema,
   verifiedVersion: versionSchema,
-  verifiedFindingRef: immutableFindingRefSchema,
-  purpose: z.literal("known-duplicate-disposition"),
+  authorizationRef: knownRecordAccessAuthorizationRefSchema,
 });
 
 const attributionPartySchema = z.strictObject({
@@ -136,6 +160,7 @@ export const wordfenceKnownRecordProjectionSchema = z.strictObject({
   pluginIdentity: pluginIdentitySchema,
   verifiedVersion: versionSchema,
   snapshotRef: wordfenceIntelligenceSnapshotRefSchema,
+  authorizationRef: knownRecordAccessAuthorizationRefSchema,
   verifiedFindingRef: immutableFindingRefSchema,
   purpose: z.literal("known-duplicate-disposition"),
   records: z.array(wordfenceKnownRecordSchema),
@@ -172,6 +197,12 @@ export type VulnerabilityHistoryAggregate = z.infer<
 export type WordfenceKnownRecordInspectionRequest = z.infer<
   typeof wordfenceKnownRecordInspectionRequestSchema
 >;
+export type KnownRecordAccessAuthorizationRef = z.infer<
+  typeof knownRecordAccessAuthorizationRefSchema
+>;
+export type KnownRecordAccessAuthorization = z.infer<
+  typeof knownRecordAccessAuthorizationSchema
+>;
 export type WordfenceKnownRecord = z.infer<typeof wordfenceKnownRecordSchema>;
 export type WordfenceStoredPluginRecord = z.infer<
   typeof wordfenceStoredPluginRecordSchema
@@ -193,6 +224,19 @@ export interface WordfenceIntelligenceV3Adapter {
   retrieveProductionFeed(
     request: WordfenceIntelligenceSourceRequest,
   ): Promise<WordfenceIntelligenceSourceResponse>;
+}
+
+export interface KnownRecordAccessAuthorizationVerifier {
+  verify(reference: KnownRecordAccessAuthorizationRef): Promise<unknown>;
+}
+
+export class WordfenceKnownRecordAccessError extends Error {
+  readonly code = "known-record-access-denied" as const;
+
+  constructor() {
+    super("Wordfence known-record access denied");
+    this.name = "WordfenceKnownRecordAccessError";
+  }
 }
 
 export type WordfenceIntelligenceFailureReason =
@@ -240,6 +284,7 @@ export interface OpenWordfenceIntelligenceOptions {
   readonly adapter: WordfenceIntelligenceV3Adapter;
   readonly credential: WordfenceSecretRef;
   readonly maximumFeedBytes?: number;
+  readonly knownRecordAuthorizationVerifier?: KnownRecordAccessAuthorizationVerifier;
   readonly clock?: () => Date;
 }
 

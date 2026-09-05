@@ -1,5 +1,7 @@
 export {
   immutableFindingRefSchema,
+  knownRecordAccessAuthorizationRefSchema,
+  knownRecordAccessAuthorizationSchema,
   vulnerabilityHistoryAggregateRequestSchema,
   vulnerabilityHistoryAggregateSchema,
   wordfenceIntelligenceInspectionRequestSchema,
@@ -15,6 +17,9 @@ export {
 } from "./contracts.js";
 export type {
   CurrentWordfenceIntelligenceSnapshot,
+  KnownRecordAccessAuthorization,
+  KnownRecordAccessAuthorizationRef,
+  KnownRecordAccessAuthorizationVerifier,
   OpenWordfenceIntelligenceOptions,
   VulnerabilityHistoryAggregate,
   VulnerabilityHistoryAggregateRequest,
@@ -36,6 +41,7 @@ export type {
   WordfenceSecretRef,
   WordfenceStoredPluginRecord,
 } from "./contracts.js";
+export { WordfenceKnownRecordAccessError } from "./contracts.js";
 export {
   createWordfenceIntelligenceV3FetchAdapter,
   openWordfenceIntelligence,

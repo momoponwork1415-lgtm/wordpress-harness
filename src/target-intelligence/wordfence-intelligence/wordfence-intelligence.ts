@@ -7,6 +7,8 @@ import { z } from "zod";
 
 import { canonicalJson, sha256Digest } from "../acquisition/canonical-json.js";
 import {
+  WordfenceKnownRecordAccessError,
+  knownRecordAccessAuthorizationSchema,
   vulnerabilityHistoryAggregateRequestSchema,
   vulnerabilityHistoryAggregateSchema,
   wordfenceIntelligenceInspectionRequestSchema,
@@ -20,6 +22,8 @@ import {
   wordfenceSecretRefSchema,
   wordfenceStoredPluginRecordSchema,
   type OpenWordfenceIntelligenceOptions,
+  type KnownRecordAccessAuthorization,
+  type KnownRecordAccessAuthorizationRef,
   type VulnerabilityHistoryAggregate,
   type VulnerabilityHistoryAggregateRequest,
   type WordfenceIntelligence,
@@ -470,6 +474,9 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   readonly #adapter: WordfenceIntelligenceV3Adapter;
   readonly #credential: WordfenceSecretRef;
   readonly #maximumFeedBytes: number;
+  readonly #knownRecordAuthorizationVerifier:
+    | OpenWordfenceIntelligenceOptions["knownRecordAuthorizationVerifier"]
+    | undefined;
   readonly #clock: () => Date;
 
   constructor(options: OpenWordfenceIntelligenceOptions) {
@@ -479,6 +486,8 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     this.#credential = wordfenceSecretRefSchema.parse(options.credential);
     this.#maximumFeedBytes =
       options.maximumFeedBytes ?? DEFAULT_MAXIMUM_FEED_BYTES;
+    this.#knownRecordAuthorizationVerifier =
+      options.knownRecordAuthorizationVerifier;
     this.#clock = options.clock ?? (() => new Date());
     if (
       !Number.isSafeInteger(this.#maximumFeedBytes) ||
@@ -629,8 +638,21 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   async inspectKnownRecords(
     requestValue: WordfenceKnownRecordInspectionRequest,
   ): Promise<WordfenceKnownRecordProjection> {
-    const request =
-      wordfenceKnownRecordInspectionRequestSchema.parse(requestValue);
+    const parsedRequest =
+      wordfenceKnownRecordInspectionRequestSchema.safeParse(requestValue);
+    if (!parsedRequest.success) {
+      throw new WordfenceKnownRecordAccessError();
+    }
+    const request = parsedRequest.data;
+    const authorization = await this.#verifyKnownRecordAuthorization(
+      request.authorizationRef,
+    );
+    if (
+      authorization.subject.pluginIdentity !== request.pluginIdentity ||
+      authorization.subject.verifiedVersion !== request.verifiedVersion
+    ) {
+      throw new WordfenceKnownRecordAccessError();
+    }
     this.#readSnapshot(request.snapshotRef);
     const records = this.#records(
       request.snapshotRef.digest,
@@ -646,10 +668,41 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       pluginIdentity: request.pluginIdentity,
       verifiedVersion: request.verifiedVersion,
       snapshotRef: request.snapshotRef,
-      verifiedFindingRef: request.verifiedFindingRef,
-      purpose: request.purpose,
+      authorizationRef: request.authorizationRef,
+      verifiedFindingRef: authorization.verifiedFindingRef,
+      purpose: authorization.purpose,
       records,
     });
+  }
+
+  async #verifyKnownRecordAuthorization(
+    reference: KnownRecordAccessAuthorizationRef,
+  ): Promise<KnownRecordAccessAuthorization> {
+    if (this.#knownRecordAuthorizationVerifier === undefined) {
+      throw new WordfenceKnownRecordAccessError();
+    }
+    let unvalidated: unknown;
+    try {
+      unvalidated =
+        await this.#knownRecordAuthorizationVerifier.verify(reference);
+    } catch {
+      throw new WordfenceKnownRecordAccessError();
+    }
+    const result = knownRecordAccessAuthorizationSchema.safeParse(unvalidated);
+    if (!result.success) {
+      throw new WordfenceKnownRecordAccessError();
+    }
+    const authorization = result.data;
+    const { id, digest, ...body } = authorization;
+    if (
+      id !== reference.id ||
+      digest !== reference.digest ||
+      digest !== sha256Digest(body) ||
+      id !== `known-record-access:${digest.slice(7, 31)}`
+    ) {
+      throw new WordfenceKnownRecordAccessError();
+    }
+    return authorization;
   }
 
   #storeSnapshot(
