@@ -1654,6 +1654,9 @@ async function executeDefaultSemanticCampaign(
         policy: plan.semanticPolicy,
         decision: evaluation,
         critique,
+        sourceQueue: currentQueue.value,
+        synthesis,
+        registry: currentFamilyRegistry.value,
         maximumAdditionalWaves:
           plan.budgetPolicy.maxWorkWaves - 1 - usedMissingLinkWaves,
       });

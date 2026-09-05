@@ -9,8 +9,6 @@ import {
 } from "./semantic-depth-evaluation.js";
 import {
   approachFamilyRegistrySchema,
-  depthApproachFamilyId,
-  referenceApproachFamily,
   type ApproachFamilyRegistry,
 } from "./semantic-approach-family-registry.js";
 import {
@@ -19,7 +17,10 @@ import {
   semanticDepthWorkQueueSchema,
   type SemanticDepthWorkQueue,
 } from "./semantic-depth-work-queue.js";
-import { semanticMissingLinkWavePlanSchema } from "./semantic-missing-link-wave.js";
+import {
+  resolveEligibleMissingLinkFamilies,
+  semanticMissingLinkWavePlanSchema,
+} from "./semantic-missing-link-wave.js";
 
 const gapRefSchema = z.strictObject({
   kind: z.literal("critic-frontier-gap"),
@@ -81,7 +82,6 @@ export function projectMissingLinkDepthWorkQueue(input: {
     throw new Error("Missing-link Depth Queue binding mismatch");
   }
 
-  const sourceItems = new Map(sourceQueue.items.map((item) => [item.id, item]));
   const proposals = new Map(
     synthesis.proposals.map((proposal) => [proposal.id, proposal]),
   );
@@ -122,30 +122,13 @@ export function projectMissingLinkDepthWorkQueue(input: {
           compareText(left.id, right.id) ||
           compareText(left.digest, right.digest),
       );
-    const inheritedFamilies = [
-      ...new Map(
-        proposal.itemIds
-          .flatMap((itemId) => sourceItems.get(itemId)?.families ?? [])
-          .map((family) => [family.id, family]),
-      ).values(),
-    ].sort((left, right) => compareText(left.id, right.id));
-    const families =
-      inheritedFamilies.length > 0
-        ? inheritedFamilies
-        : registry.families
-            .filter(
-              (family) =>
-                family.id ===
-                depthApproachFamilyId({
-                  campaignId: registry.campaignId,
-                  runId: registry.runId,
-                  targetSnapshotDigest: decision.target.digest,
-                  manifestDigest: decision.manifest.digest,
-                  openingDecisionDigest: decisionRef.digest,
-                  proposalId: proposal.id,
-                }),
-            )
-            .map(referenceApproachFamily);
+    const families = resolveEligibleMissingLinkFamilies({
+      sourceQueue,
+      registry,
+      synthesis,
+      decision,
+      proposalId: proposal.id,
+    });
     if (subjects.length === 0 || families.length === 0) {
       unresolvedGaps.push(action.gap);
       continue;

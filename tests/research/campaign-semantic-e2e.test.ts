@@ -343,6 +343,7 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
       | "critic-failure"
       | "multiple-depth-batches"
       | "multiple-depth-missing-links"
+      | "family-wave-envelope"
       | "no-chain-depth"
       | "missing-link-depth"
       | "missing-link-overflow"
@@ -769,7 +770,8 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
           if (
             scenario === "missing-link-depth" ||
             scenario === "unbound-depth-genesis" ||
-            scenario === "multiple-depth-missing-links"
+            scenario === "multiple-depth-missing-links" ||
+            scenario === "family-wave-envelope"
           ) {
             missingLinkCriticCalls += 1;
           }
@@ -788,6 +790,7 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
                       missingLinkCriticCalls === 1) ||
                     (scenario === "multiple-depth-missing-links" &&
                       missingLinkCriticCalls <= 3) ||
+                    scenario === "family-wave-envelope" ||
                     scenario === "missing-link-overflow"
                   ? {
                       proposalId,
@@ -858,6 +861,7 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
             scenario === "missing-link-depth" ||
             scenario === "unbound-depth-genesis" ||
             scenario === "multiple-depth-missing-links" ||
+            scenario === "family-wave-envelope" ||
             scenario === "missing-link-overflow"
           ) {
             const prefix = "Depth evaluation context: ";
@@ -1985,6 +1989,43 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
           "root-synthesizer",
         ].sort(),
       );
+
+      scenario = "family-wave-envelope";
+      missingLinkCriticCalls = 0;
+      const rolesBeforeFamilyEnvelope = observedRoles.length;
+      const familyEnvelopePlan = campaignDefaultSemanticRunPlanV2Schema.parse({
+        ...plan,
+        runId: "semantic-e2e-family-wave-envelope",
+      });
+      await research.runner.run(familyEnvelopePlan);
+      const familyEnvelopeRun = await research.reader.inspect(
+        input.campaignId,
+        { kind: "run", runId: familyEnvelopePlan.runId },
+      );
+      expect(familyEnvelopeRun).toMatchObject({
+        kind: "run",
+        value: {
+          decision: {
+            kind: "incomplete",
+            reason: "depth-research-incomplete",
+          },
+          depthResearch: {
+            rounds: [
+              { batches: [{ missingLinkWaves: [{}] }] },
+              { batches: [{ missingLinkWaves: [{}] }] },
+              { batches: [{ unscheduledGaps: [{}] }] },
+            ],
+          },
+          approachFamilyRegistry: {
+            maxRound: 3,
+          },
+        },
+      });
+      expect(
+        observedRoles
+          .slice(rolesBeforeFamilyEnvelope)
+          .filter((role) => role === "finder"),
+      ).toHaveLength(4);
 
       scenario = "missing-link-overflow";
       const overflowPlan = campaignDefaultSemanticRunPlanV2Schema.parse({
