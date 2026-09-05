@@ -534,6 +534,116 @@ describe("TargetBatchApproval", () => {
     }
   });
 
+  it("creates a nomination-only Batch without inventing an autonomous Target or model result", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "target-batch-nomination-only-"),
+    );
+    let modelCalls = 0;
+    try {
+      const selection = openTargetSelection({
+        storageDirectory: directory,
+        model: {
+          rank: async () => {
+            modelCalls += 1;
+            throw new Error("An empty autonomous pool must not invoke a model");
+          },
+        },
+        clock: () => new Date("2030-09-01T12:00:00.000Z"),
+      });
+      const selected = await selection.select({
+        kind: "target-selection-request",
+        schemaVersion: 2,
+        selectionKey: "manual-pilot-selection",
+        revision: 1,
+        policy: selectionPolicy,
+        modelProfile,
+        candidates: [],
+      });
+      if (selected.status !== "selected") {
+        throw new Error(
+          "Expected a durable empty autonomous Selection Attempt",
+        );
+      }
+      const { origin: _origin, ...nominatedCandidate } = candidate(
+        "manual-pilot-target",
+      );
+      const approval = openTargetBatchApproval({
+        storageDirectory: directory,
+        selectionResolver: selection,
+        clock: () => new Date("2030-09-01T12:00:00.000Z"),
+      });
+      const ref = await approval.approve({
+        kind: "target-batch-approval-request",
+        schemaVersion: 2,
+        batchKey: "manual-pilot-batch",
+        revision: 1,
+        selectionAttempt: {
+          ref: selected.attemptRef,
+          selectionKey: "manual-pilot-selection",
+          revision: 1,
+        },
+        operatorNominations: [
+          {
+            candidate: nominatedCandidate,
+            nominatedBy: "human:fixture-operator",
+            nominatedAt: "2030-09-01T11:55:00.000Z",
+            reason: "operator-priority",
+          },
+        ],
+        selectionPolicy,
+        modelProfile,
+        campaignPolicy: { id: "campaign-policy-v1", digest: digest("2") },
+        batchBudget: {
+          kind: "target-batch-budget",
+          schemaVersion: 1,
+          id: "manual-pilot-budget-v1",
+          digest: digest("3"),
+          maxTargets: 1,
+          maxActiveCampaigns: 1,
+        },
+        executionWindow: {
+          startsAt: "2030-09-02T00:00:00.000Z",
+          endsAt: "2030-09-03T00:00:00.000Z",
+        },
+        operator: {
+          identity: "human:fixture-operator",
+          decidedAt: "2030-09-01T11:55:00.000Z",
+        },
+        decisions: [
+          {
+            candidateId: "manual-pilot-target",
+            decision: "approve",
+            reason: "approve-operator-nomination",
+          },
+        ],
+        approvedOrder: ["manual-pilot-target"],
+        orderReason: "single-target-batch",
+      });
+
+      expect(modelCalls).toBe(0);
+      expect(selected.receipts).toEqual([]);
+      await expect(approval.inspect(ref)).resolves.toMatchObject({
+        kind: "approved-target-batch",
+        schemaVersion: 2,
+        approvedTargets: [
+          {
+            candidateId: "manual-pilot-target",
+            source: "operator-nominated",
+          },
+        ],
+        selectionReceipts: [
+          {
+            receiptSource: "approval-nomination",
+            candidateId: "manual-pilot-target",
+            hardGate: { status: "passed" },
+          },
+        ],
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("does not let an operator nomination bypass a failed Selection hard gate", async () => {
     const directory = await mkdtemp(join(tmpdir(), "target-batch-gate-"));
     const covered = candidate("candidate-covered");

@@ -167,7 +167,7 @@ export const targetSelectionRequestSchema = z
     revision: z.number().int().positive(),
     policy: targetSelectionPolicySchema,
     modelProfile: targetSelectionModelProfileSchema,
-    candidates: z.array(targetSelectionCandidateSchema).min(1),
+    candidates: z.array(targetSelectionCandidateSchema),
   })
   .superRefine((request, context) => {
     const candidateIds = new Set<string>();
@@ -348,7 +348,7 @@ export const targetSelectionAttemptSchema = z.discriminatedUnion("status", [
     createdAt: z.string().datetime({ offset: true }),
     completedAt: z.string().datetime({ offset: true }),
     modelResult: targetSelectionModelResultSchema.optional(),
-    receipts: z.array(targetSelectionReceiptSchema).min(1),
+    receipts: z.array(targetSelectionReceiptSchema),
   }),
   z.strictObject({
     kind: z.literal("target-selection-attempt"),
