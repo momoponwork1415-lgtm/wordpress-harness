@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import Database from "better-sqlite3";
 import { z } from "zod";
@@ -8,11 +8,14 @@ import { z } from "zod";
 import { canonicalJson, sha256Digest } from "../acquisition/canonical-json.js";
 import {
   WordfenceKnownRecordAccessError,
+  currentWordfenceIntelligenceSnapshotSchema,
   knownRecordAccessAuthorizationSchema,
   vulnerabilityHistoryAggregateRequestSchema,
   vulnerabilityHistoryAggregateSchema,
   wordfenceIntelligenceInspectionRequestSchema,
+  wordfenceIntelligenceFailureSchema,
   wordfenceIntelligenceRefreshRequestSchema,
+  wordfenceIntelligenceResultSchema,
   wordfenceIntelligenceSnapshotRefSchema,
   wordfenceIntelligenceSnapshotSchema,
   wordfenceIntelligenceSourceResponseSchema,
@@ -21,6 +24,7 @@ import {
   wordfenceKnownRecordSchema,
   wordfenceRateLimitBackoffSchema,
   wordfenceSecretRefSchema,
+  wordfenceSoftwareIdentifierSchema,
   wordfenceStoredPluginRecordSchema,
   type HostPrivateCredentialBroker,
   type OpenWordfenceIntelligenceRefreshOptions,
@@ -61,11 +65,7 @@ const rawVersionIntervalSchema = z.object({
 const rawSoftwareSchema = z.object({
   type: z.enum(["core", "plugin", "theme"]),
   name: z.string().min(1),
-  slug: z
-    .string()
-    .min(1)
-    .max(192)
-    .regex(/^[^\u0000-\u001f\u007f]+$/u),
+  slug: wordfenceSoftwareIdentifierSchema,
   affected_versions: z.record(z.string(), rawVersionIntervalSchema),
   patched: z.boolean(),
   patched_versions: z.array(z.string().min(1).max(64)),
@@ -156,6 +156,58 @@ class CredentialUnavailableError extends Error {
   }
 }
 
+class ArtifactConflictError extends Error {
+  constructor() {
+    super("Wordfence Intelligence artifact conflict");
+    this.name = "ArtifactConflictError";
+  }
+}
+
+class SnapshotConflictError extends Error {
+  constructor() {
+    super("Wordfence Intelligence snapshot conflict");
+    this.name = "SnapshotConflictError";
+  }
+}
+
+const storageFailureCodes = new Set([
+  "EACCES",
+  "EBUSY",
+  "EDQUOT",
+  "EIO",
+  "EEXIST",
+  "ENOENT",
+  "ENOSPC",
+  "ENOTDIR",
+  "EPERM",
+  "EROFS",
+  "SQLITE_BUSY",
+  "SQLITE_CANTOPEN",
+  "SQLITE_FULL",
+  "SQLITE_LOCKED",
+  "SQLITE_PERM",
+  "SQLITE_READONLY",
+]);
+
+function isStorageFailure(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return false;
+  }
+  const code = error.code;
+  return (
+    typeof code === "string" &&
+    (storageFailureCodes.has(code) || code.startsWith("SQLITE_IOERR"))
+  );
+}
+
+function maximumFeedBytes(value: number | undefined): number {
+  const maximum = value ?? DEFAULT_MAXIMUM_FEED_BYTES;
+  if (!Number.isSafeInteger(maximum) || maximum <= 0) {
+    throw new Error("maximumFeedBytes must be a positive safe integer");
+  }
+  return maximum;
+}
+
 function rawDigest(bytes: Uint8Array): string {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }
@@ -182,7 +234,7 @@ async function persistBytes(path: string, bytes: Uint8Array): Promise<void> {
     }
     const existing = await readFile(path);
     if (!existing.equals(bytes)) {
-      throw new Error("Wordfence Intelligence artifact conflict");
+      throw new ArtifactConflictError();
     }
   }
 }
@@ -191,11 +243,26 @@ function failure(
   reason: WordfenceIntelligenceFailure["reason"],
   backoff?: WordfenceIntelligenceFailure["backoff"],
 ): WordfenceIntelligenceFailure {
-  return {
+  return wordfenceIntelligenceFailureSchema.parse({
+    kind: "wordfence-intelligence-result",
+    schemaVersion: 1,
     status: "failed",
     reason,
     ...(backoff === undefined ? {} : { backoff }),
-  };
+  });
+}
+
+function currentResult(
+  snapshot: WordfenceIntelligenceSnapshot,
+  snapshotRef: WordfenceIntelligenceSnapshotRef,
+): WordfenceIntelligenceResult {
+  return currentWordfenceIntelligenceSnapshotSchema.parse({
+    kind: "wordfence-intelligence-result",
+    schemaVersion: 1,
+    status: "current",
+    snapshot,
+    snapshotRef,
+  });
 }
 
 function responseFailure(
@@ -626,41 +693,40 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   readonly #clock: () => Date;
 
   constructor(options: OpenWordfenceIntelligenceOptions) {
-    this.#database = new Database(options.databasePath);
     this.#artifactDirectory = options.artifactDirectory;
     this.#adapter = options.adapter;
     this.#credential = wordfenceSecretRefSchema.parse(options.credential);
-    this.#maximumFeedBytes =
-      options.maximumFeedBytes ?? DEFAULT_MAXIMUM_FEED_BYTES;
+    this.#maximumFeedBytes = maximumFeedBytes(options.maximumFeedBytes);
     this.#knownRecordAuthorizationProvider =
       options.knownRecordAuthorizationProvider;
     this.#clock = options.clock ?? (() => new Date());
-    if (
-      !Number.isSafeInteger(this.#maximumFeedBytes) ||
-      this.#maximumFeedBytes <= 0
-    ) {
-      throw new Error("maximumFeedBytes must be a positive safe integer");
+    const database = new Database(options.databasePath);
+    try {
+      database.pragma("journal_mode = WAL");
+      database.pragma("busy_timeout = 5000");
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS wordfence_intelligence_snapshots (
+          snapshot_digest TEXT PRIMARY KEY,
+          snapshot_id TEXT NOT NULL UNIQUE,
+          snapshot_json TEXT NOT NULL
+        ) STRICT;
+        CREATE TABLE IF NOT EXISTS wordfence_intelligence_records (
+          snapshot_digest TEXT NOT NULL,
+          plugin_slug TEXT NOT NULL,
+          record_id TEXT NOT NULL,
+          record_json TEXT NOT NULL,
+          PRIMARY KEY (snapshot_digest, plugin_slug, record_id)
+        ) STRICT;
+        CREATE TABLE IF NOT EXISTS wordfence_intelligence_current (
+          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+          snapshot_digest TEXT NOT NULL
+        ) STRICT;
+      `);
+    } catch (error) {
+      database.close();
+      throw error;
     }
-    this.#database.pragma("journal_mode = WAL");
-    this.#database.pragma("busy_timeout = 5000");
-    this.#database.exec(`
-      CREATE TABLE IF NOT EXISTS wordfence_intelligence_snapshots (
-        snapshot_digest TEXT PRIMARY KEY,
-        snapshot_id TEXT NOT NULL UNIQUE,
-        snapshot_json TEXT NOT NULL
-      ) STRICT;
-      CREATE TABLE IF NOT EXISTS wordfence_intelligence_records (
-        snapshot_digest TEXT NOT NULL,
-        plugin_slug TEXT NOT NULL,
-        record_id TEXT NOT NULL,
-        record_json TEXT NOT NULL,
-        PRIMARY KEY (snapshot_digest, plugin_slug, record_id)
-      ) STRICT;
-      CREATE TABLE IF NOT EXISTS wordfence_intelligence_current (
-        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-        snapshot_digest TEXT NOT NULL
-      ) STRICT;
-    `);
+    this.#database = database;
   }
 
   async refresh(
@@ -726,8 +792,11 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
         join(artifactDirectory, `${contentDigest.slice(7)}.json`),
         response.bytes,
       );
-    } catch {
-      return failure("storage-failure");
+    } catch (error) {
+      if (isStorageFailure(error)) {
+        return failure("storage-failure");
+      }
+      throw error;
     }
     const snapshot = wordfenceIntelligenceSnapshotSchema.parse({
       kind: "wordfence-intelligence-snapshot",
@@ -744,10 +813,13 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     const snapshotRef = snapshotReference(snapshot);
     try {
       this.#storeSnapshot(snapshot, snapshotRef, normalized.records);
-    } catch {
-      return failure("storage-failure");
+    } catch (error) {
+      if (isStorageFailure(error)) {
+        return failure("storage-failure");
+      }
+      throw error;
     }
-    return { status: "current", snapshot, snapshotRef };
+    return currentResult(snapshot, snapshotRef);
   }
 
   async inspect(
@@ -760,7 +832,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       return failure("not-refreshed");
     }
     const snapshot = this.#readSnapshot(ref);
-    return { status: "current", snapshot, snapshotRef: ref };
+    return currentResult(snapshot, ref);
   }
 
   async aggregate(
@@ -903,7 +975,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
         existing.snapshot_id !== reference.id ||
         existing.snapshot_json !== snapshotJson
       ) {
-        throw new Error("Wordfence Intelligence snapshot conflict");
+        throw new SnapshotConflictError();
       }
       this.#database
         .prepare(
@@ -1005,17 +1077,17 @@ export function openWordfenceIntelligence(
 export function openWordfenceIntelligenceRefresh(
   options: OpenWordfenceIntelligenceRefreshOptions,
 ): WordfenceIntelligenceRefresh {
-  const intelligence = openWordfenceIntelligence({
+  const configuredMaximumFeedBytes = maximumFeedBytes(options.maximumFeedBytes);
+  const adapter = createWordfenceIntelligenceV3FetchAdapter({
+    credentialBroker: options.credentialBroker,
+    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+  });
+  const intelligenceOptions: OpenWordfenceIntelligenceOptions = {
     databasePath: options.databasePath,
     artifactDirectory: options.artifactDirectory,
-    adapter: createWordfenceIntelligenceV3FetchAdapter({
-      credentialBroker: options.credentialBroker,
-      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-    }),
+    adapter,
     credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
-    ...(options.maximumFeedBytes === undefined
-      ? {}
-      : { maximumFeedBytes: options.maximumFeedBytes }),
+    maximumFeedBytes: configuredMaximumFeedBytes,
     ...(options.knownRecordAuthorizationProvider === undefined
       ? {}
       : {
@@ -1023,9 +1095,42 @@ export function openWordfenceIntelligenceRefresh(
             options.knownRecordAuthorizationProvider,
         }),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
-  });
+  };
+  let intelligence: WordfenceIntelligence | undefined;
+  const initialize = async (): Promise<WordfenceIntelligence | undefined> => {
+    try {
+      await mkdir(dirname(intelligenceOptions.databasePath), {
+        recursive: true,
+      });
+      intelligence ??= openWordfenceIntelligence(intelligenceOptions);
+      return intelligence;
+    } catch (error) {
+      if (isStorageFailure(error)) {
+        return undefined;
+      }
+      throw error;
+    }
+  };
   return {
-    run: (request) => intelligence.refresh(request),
-    inspect: (request) => intelligence.inspect(request),
+    run: async (request) => {
+      wordfenceIntelligenceRefreshRequestSchema.parse(request);
+      const current = await initialize();
+      if (current === undefined) {
+        return failure("storage-failure");
+      }
+      return wordfenceIntelligenceResultSchema.parse(
+        await current.refresh(request),
+      );
+    },
+    inspect: async (request) => {
+      wordfenceIntelligenceInspectionRequestSchema.parse(request);
+      const current = await initialize();
+      if (current === undefined) {
+        return failure("storage-failure");
+      }
+      return wordfenceIntelligenceResultSchema.parse(
+        await current.inspect(request),
+      );
+    },
   };
 }

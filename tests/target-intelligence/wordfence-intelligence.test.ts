@@ -20,6 +20,10 @@ const fixturePath = join(
   "production.json",
 );
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
+const resultEnvelope = {
+  kind: "wordfence-intelligence-result" as const,
+  schemaVersion: 1 as const,
+};
 
 async function knownRecordAuthorization(
   verifiedVersion: string,
@@ -287,7 +291,11 @@ describe("WordfenceIntelligence", () => {
           kind: "wordfence-intelligence-refresh",
           schemaVersion: 1,
         }),
-      ).resolves.toEqual({ status: "failed", reason: "schema-drift" });
+      ).resolves.toEqual({
+        ...resultEnvelope,
+        status: "failed",
+        reason: "schema-drift",
+      });
       await expect(
         intelligence.inspect({
           kind: "wordfence-intelligence-inspection",
@@ -378,13 +386,17 @@ describe("WordfenceIntelligence", () => {
             kind: "wordfence-intelligence-refresh",
             schemaVersion: 1,
           }),
-        ).resolves.toEqual({ status: "failed", reason });
+        ).resolves.toEqual({ ...resultEnvelope, status: "failed", reason });
         await expect(
           intelligence.inspect({
             kind: "wordfence-intelligence-inspection",
             schemaVersion: 1,
           }),
-        ).resolves.toEqual({ status: "failed", reason: "not-refreshed" });
+        ).resolves.toEqual({
+          ...resultEnvelope,
+          status: "failed",
+          reason: "not-refreshed",
+        });
       } finally {
         await rm(directory, { recursive: true, force: true });
       }
@@ -423,7 +435,11 @@ describe("WordfenceIntelligence", () => {
           kind: "wordfence-intelligence-refresh",
           schemaVersion: 1,
         }),
-      ).resolves.toEqual({ status: "failed", reason: "attribution-missing" });
+      ).resolves.toEqual({
+        ...resultEnvelope,
+        status: "failed",
+        reason: "attribution-missing",
+      });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

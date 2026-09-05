@@ -1,11 +1,15 @@
 export {
+  currentWordfenceIntelligenceSnapshotSchema,
   immutableFindingRefSchema,
   knownRecordAccessAuthorizationRefSchema,
   knownRecordAccessAuthorizationSchema,
   vulnerabilityHistoryAggregateRequestSchema,
   vulnerabilityHistoryAggregateSchema,
   wordfenceIntelligenceInspectionRequestSchema,
+  wordfenceIntelligenceFailureReasonSchema,
+  wordfenceIntelligenceFailureSchema,
   wordfenceIntelligenceRefreshRequestSchema,
+  wordfenceIntelligenceResultSchema,
   wordfenceIntelligenceSnapshotRefSchema,
   wordfenceIntelligenceSnapshotSchema,
   wordfenceIntelligenceSourceResponseSchema,
@@ -25,6 +29,7 @@ export type {
   KnownRecordAccessAuthorizationResolution,
   OpenWordfenceIntelligenceOptions,
   OpenWordfenceIntelligenceRefreshOptions,
+  OpenSqliteHostPrivateCredentialBrokerOptions,
   VulnerabilityHistoryAggregate,
   VulnerabilityHistoryAggregateRequest,
   WordfenceIntelligence,
@@ -53,3 +58,4 @@ export {
   openWordfenceIntelligence,
   openWordfenceIntelligenceRefresh,
 } from "./wordfence-intelligence.js";
+export { openSqliteHostPrivateCredentialBroker } from "./sqlite-host-private-credential-broker.js";

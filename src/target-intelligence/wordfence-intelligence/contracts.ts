@@ -8,7 +8,7 @@ const identifierSchema = z
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
 const pluginIdentitySchema = z.string().regex(/^wporg:[a-z0-9][a-z0-9-]*$/);
 const versionSchema = z.string().min(1).max(64);
-const softwareIdentifierSchema = z
+export const wordfenceSoftwareIdentifierSchema = z
   .string()
   .min(1)
   .max(192)
@@ -157,7 +157,7 @@ export const wordfenceKnownRecordSchema = z.strictObject({
 });
 
 export const wordfenceStoredPluginRecordSchema = z.strictObject({
-  pluginSlug: softwareIdentifierSchema,
+  pluginSlug: wordfenceSoftwareIdentifierSchema,
   record: wordfenceKnownRecordSchema,
 });
 
@@ -179,6 +179,44 @@ export const wordfenceRateLimitBackoffSchema = z.strictObject({
   automaticRetries: z.literal(0),
   retryAfter: wordfenceRateLimitRetryAfterSchema,
 });
+
+export const wordfenceIntelligenceFailureReasonSchema = z.enum([
+  "not-refreshed",
+  "not-found",
+  "authentication-failed",
+  "rate-limited",
+  "network-failure",
+  "partial-response",
+  "source-mismatch",
+  "schema-drift",
+  "attribution-missing",
+  "credential-unavailable",
+  "storage-failure",
+]);
+
+export const wordfenceIntelligenceFailureSchema = z.strictObject({
+  kind: z.literal("wordfence-intelligence-result"),
+  schemaVersion: z.literal(1),
+  status: z.literal("failed"),
+  reason: wordfenceIntelligenceFailureReasonSchema,
+  backoff: wordfenceRateLimitBackoffSchema.optional(),
+});
+
+export const currentWordfenceIntelligenceSnapshotSchema = z.strictObject({
+  kind: z.literal("wordfence-intelligence-result"),
+  schemaVersion: z.literal(1),
+  status: z.literal("current"),
+  snapshot: wordfenceIntelligenceSnapshotSchema,
+  snapshotRef: wordfenceIntelligenceSnapshotRefSchema,
+});
+
+export const wordfenceIntelligenceResultSchema = z.discriminatedUnion(
+  "status",
+  [
+    currentWordfenceIntelligenceSnapshotSchema,
+    wordfenceIntelligenceFailureSchema,
+  ],
+);
 
 export const wordfenceKnownRecordProjectionSchema = z.strictObject({
   kind: z.literal("wordfence-known-record-projection"),
@@ -245,6 +283,18 @@ export type WordfenceIntelligenceSourceResponse = z.infer<
 export type WordfenceRateLimitBackoff = z.infer<
   typeof wordfenceRateLimitBackoffSchema
 >;
+export type WordfenceIntelligenceFailureReason = z.infer<
+  typeof wordfenceIntelligenceFailureReasonSchema
+>;
+export type WordfenceIntelligenceFailure = z.infer<
+  typeof wordfenceIntelligenceFailureSchema
+>;
+export type CurrentWordfenceIntelligenceSnapshot = z.infer<
+  typeof currentWordfenceIntelligenceSnapshotSchema
+>;
+export type WordfenceIntelligenceResult = z.infer<
+  typeof wordfenceIntelligenceResultSchema
+>;
 
 export interface WordfenceIntelligenceSourceRequest {
   readonly credential: WordfenceSecretRef;
@@ -279,34 +329,6 @@ export class WordfenceKnownRecordAccessError extends Error {
     this.name = "WordfenceKnownRecordAccessError";
   }
 }
-
-export type WordfenceIntelligenceFailureReason =
-  | "not-refreshed"
-  | "not-found"
-  | "authentication-failed"
-  | "rate-limited"
-  | "network-failure"
-  | "partial-response"
-  | "source-mismatch"
-  | "schema-drift"
-  | "attribution-missing"
-  | "credential-unavailable"
-  | "storage-failure";
-
-export interface WordfenceIntelligenceFailure {
-  readonly status: "failed";
-  readonly reason: WordfenceIntelligenceFailureReason;
-  readonly backoff?: WordfenceRateLimitBackoff;
-}
-
-export interface CurrentWordfenceIntelligenceSnapshot {
-  readonly status: "current";
-  readonly snapshot: WordfenceIntelligenceSnapshot;
-  readonly snapshotRef: WordfenceIntelligenceSnapshotRef;
-}
-
-export type WordfenceIntelligenceResult =
-  CurrentWordfenceIntelligenceSnapshot | WordfenceIntelligenceFailure;
 
 export interface WordfenceIntelligence {
   refresh(
@@ -347,6 +369,10 @@ export interface HostPrivateCredentialBroker {
     reference: WordfenceSecretRef,
     use: (credential: string) => Promise<T>,
   ): Promise<T>;
+}
+
+export interface OpenSqliteHostPrivateCredentialBrokerOptions {
+  readonly databasePath: string;
 }
 
 export interface WordfenceIntelligenceRefresh {
