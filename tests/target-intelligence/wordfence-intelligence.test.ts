@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import {
+  chmod,
+  lstat,
   mkdir,
   mkdtemp,
   readdir,
@@ -335,6 +337,60 @@ describe("WordfenceIntelligence", () => {
         credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
       });
       await expect(restarted.aggregate(request)).resolves.toEqual(expected);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("refreshes and replays a fixed-main local CAS artifact stored with mode 0644", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-local-cas-upgrade-"),
+    );
+    const databasePath = join(directory, "target-intelligence.sqlite");
+    const artifactDirectory = join(directory, "artifacts");
+    let now = new Date("2030-08-01T00:00:00.000Z");
+    const options = {
+      databasePath,
+      artifactDirectory,
+      adapter: fixtureAdapter(),
+      credential: {
+        kind: "secret-ref" as const,
+        id: "wordfence-v3-api-key" as const,
+      },
+      clock: () => now,
+    };
+    try {
+      const original = openWordfenceIntelligence(options);
+      const first = await original.refresh({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      if (first.status !== "current") {
+        throw new Error("Expected an initial current snapshot");
+      }
+      const artifactPath = join(
+        artifactDirectory,
+        "wordfence-intelligence-v3",
+        `${first.snapshot.source.contentDigest.slice(7)}.json`,
+      );
+      await chmod(artifactPath, 0o644);
+
+      now = new Date("2030-08-02T00:00:00.000Z");
+      const upgraded = openWordfenceIntelligence(options);
+      const refreshed = await upgraded.refresh({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      expect(refreshed.status).toBe("current");
+      expect((await lstat(artifactPath)).mode & 0o777).toBe(0o644);
+
+      const replay = openWordfenceIntelligence(options);
+      await expect(
+        replay.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual(refreshed);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
