@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { campaignDefaultSemanticRunPlanV2Schema } from "../../src/research/campaign-control/contracts.js";
+import { campaignDefaultSemanticRunPlanV3Schema } from "../../src/research/campaign-control/contracts.js";
 import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
 import { openSqliteResearchRecord } from "../../src/research/research-record/index.js";
 import { projectTargetFileManifest } from "../../src/research/source-mapping/target-file-manifest.js";
@@ -20,11 +20,11 @@ const targets = [
   { slug: "translatepress-multilingual", version: "3.2.5" },
 ] as const;
 
-describe("semantic-research-recall-baseline-v5", () => {
+describe("semantic-research-recall-baseline-v6", () => {
   it.each(targets)(
     "dry-checks $slug without starting a model or Lab",
     async ({ slug, version }) => {
-      const directory = await mkdtemp(join(tmpdir(), "semantic-v5-dry-"));
+      const directory = await mkdtemp(join(tmpdir(), "semantic-v6-dry-"));
       const record = openSqliteResearchRecord({
         databasePath: join(directory, "research.sqlite"),
       });
@@ -42,7 +42,8 @@ describe("semantic-research-recall-baseline-v5", () => {
           { id: "opus-planner-v5", digest: digest("5") },
           { id: "opus-finder-v5", digest: digest("6") },
           { id: "opus-evaluator-v5", digest: digest("7") },
-          { id: "opus-verifier-v5", digest: digest("8") },
+          { id: "opus-validator-v6", digest: digest("8") },
+          { id: "opus-validation-synthesis-v6", digest: digest("9") },
         ],
         canonicalFileManifest: {
           kind: "canonical-file-manifest" as const,
@@ -96,9 +97,9 @@ describe("semantic-research-recall-baseline-v5", () => {
         id: "semantic-source-tools-v3",
         digest: digest("c"),
       };
-      const plan = campaignDefaultSemanticRunPlanV2Schema.parse({
+      const plan = campaignDefaultSemanticRunPlanV3Schema.parse({
         kind: "campaign-run-plan",
-        schemaVersion: 2,
+        schemaVersion: 3,
         runId: `dry-${slug}-run`,
         campaignId: input.campaignId,
         preparationDigest: preparation.requestedInputDigest,
@@ -167,47 +168,51 @@ describe("semantic-research-recall-baseline-v5", () => {
             reportedUsageEnforcement: "telemetry-only",
           },
         },
-        verification: {
-          labBaseline: {
-            kind: "lab-baseline",
-            schemaVersion: 1,
-            id: `${slug}-baseline`,
+        validation: {
+          wordpressBaseline: {
+            id: "wordpress-threat-baseline-v1",
             digest: digest("d"),
-            targetSnapshotDigest: targetSnapshot.digest,
-            runtimeProfileDigest: input.runtimeProfile.digest,
-            setupPlanDigest: digest("e"),
-            configurationDigest: digest("f"),
           },
-          verifierModelProfile: profile("opus-verifier-v5", digest("8")).ref,
+          validationPolicy: {
+            id: "source-validation-v1",
+            digest: digest("e"),
+          },
           promptSet,
-          verificationPolicy: {
-            kind: "verification-policy",
-            schemaVersion: 1,
-            id: "independent-pair-v1",
-            digest: digest("0"),
-          },
-          experimentRegistry: {
-            kind: "experiment-registry",
-            schemaVersion: 1,
-            id: input.experimentRegistry.id,
-            digest: input.experimentRegistry.digest,
-          },
+          validatorModelProfile: profile("opus-validator-v6", digest("8")),
+          synthesisModelProfile: profile(
+            "opus-validation-synthesis-v6",
+            digest("9"),
+          ),
+          sourceToolPolicy,
+          publicSurface: [],
+          technicalExclusions: [],
           budget: {
-            schemaVersion: 2,
-            maxVerifierAttempts: 96,
-            maxExperiments: 8,
-            maxWallTimeMs: 7_200_000,
-            maxModelTokens: 400_000,
-            maxModelTurns: 128,
-            maxProviderCostUsd: 30,
-            maxOutputBytes: 2 * MEBIBYTE,
-            reportedUsageEnforcement: "telemetry-only",
+            validator: {
+              maxWallTimeMs: 1_800_000,
+              maxModelTokens: 100_000,
+              maxModelTurns: 64,
+              maxProviderCostUsd: 7.5,
+              maxOutputBytes: 2 * MEBIBYTE,
+              maxSourceQueries: 128,
+              maxSourceScanBytes: 16 * GIBIBYTE,
+              maxSourceResponseBytes: 256 * MEBIBYTE,
+              sourceLimitTerminalOutput: "preserve",
+              reportedUsageEnforcement: "telemetry-only",
+            },
+            synthesis: {
+              maxWallTimeMs: 1_800_000,
+              maxModelTokens: 100_000,
+              maxModelTurns: 64,
+              maxProviderCostUsd: 7.5,
+              maxOutputBytes: 2 * MEBIBYTE,
+              reportedUsageEnforcement: "telemetry-only",
+            },
           },
         },
         budgetPolicy: {
           kind: "semantic-research-budget",
-          schemaVersion: 1,
-          id: "semantic-research-recall-baseline-v5",
+          schemaVersion: 2,
+          id: "semantic-research-recall-baseline-v6",
           maxWorkWaves: 12,
           maxFinderAttempts: 48,
           maxConcurrentFinders: 4,
@@ -221,20 +226,21 @@ describe("semantic-research-recall-baseline-v5", () => {
             maxProviderCostUsd: 120,
             maxWallTimeMs: 36_000_000,
           },
-          verificationReserve: {
+          validationReserve: {
             maxModelTokens: 400_000,
             maxProviderCostUsd: 30,
             maxWallTimeMs: 7_200_000,
-            maxVerifierAttempts: 96,
-            maxExperiments: 8,
           },
         },
       });
+      expect(plan).not.toHaveProperty("verification");
 
       try {
+        const started = await record.recordSemanticCampaignRunStart(plan);
+        expect(started).toMatchObject({ disposition: "started" });
         await expect(
           record.recordSemanticCampaignRunStart(plan),
-        ).resolves.toMatchObject({ disposition: "started" });
+        ).resolves.toEqual(started);
       } finally {
         record.close();
         await rm(directory, { force: true, recursive: true });

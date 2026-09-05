@@ -21,6 +21,7 @@ import {
   campaignRunCompletionInputV2Schema,
   campaignRunPlanSchema,
   campaignRunPlanV2Schema,
+  campaignRunPlanV3Schema,
   campaignRunRecordSchema,
   campaignRunRecordV2Schema,
   type AnyCampaignRunRecordView,
@@ -28,7 +29,9 @@ import {
   type CampaignRunCompletionInputV2,
   type CampaignRunPlan,
   type CampaignRunPlanV2,
+  type CampaignRunPlanV3,
   type DefaultSemanticCampaignRunPlanV2,
+  type DefaultSemanticCampaignRunPlanV3,
   type CampaignRunRecordRef,
   type CampaignRunRecordRefV2,
   type CampaignRunRecordView,
@@ -257,6 +260,57 @@ function semanticPlanBudgetMismatch(
   );
 }
 
+function currentSemanticPlanBudgetMismatch(
+  plan: DefaultSemanticCampaignRunPlanV3,
+  input: NewCampaignInput,
+): boolean {
+  const policy = plan.budgetPolicy;
+  const validator = plan.validation.budget.validator;
+  const synthesis = plan.validation.budget.synthesis;
+  return (
+    policy.maxModelAttempts > input.budget.maxAttempts ||
+    policy.maxModelTokens > input.budget.maxModelTokens ||
+    policy.maxWallTimeMs > input.budget.maxWallTimeMs ||
+    plan.semanticPolicy.maxLeases > policy.maxConcurrentFinders ||
+    plan.semanticPolicy.finderLeaseBudget.maxWallTimeMs !== 10_800_000 ||
+    plan.semanticPolicy.finderLeaseBudget.maxModelTurns !== 256 ||
+    plan.semanticPolicy.finderLeaseBudget.maxProviderCostUsd !== 20 ||
+    plan.semanticPolicy.finderLeaseBudget.maxOutputBytes !== 2 * MEBIBYTE ||
+    plan.semanticPolicy.finderLeaseBudget.maxSourceQueries !== 512 ||
+    plan.semanticPolicy.finderLeaseBudget.maxSourceScanBytes !==
+      16 * GIBIBYTE ||
+    plan.semanticPolicy.finderLeaseBudget.maxSourceResponseBytes !==
+      256 * MEBIBYTE ||
+    plan.semanticPolicy.finderLeaseBudget.sourceLimitTerminalOutput !==
+      "preserve" ||
+    plan.semanticPolicy.finderLeaseBudget.reportedUsageEnforcement !==
+      "telemetry-only" ||
+    plan.semanticPolicy.plannerBudget.maxWallTimeMs !== 3_600_000 ||
+    plan.semanticPolicy.plannerBudget.maxModelTurns !== 128 ||
+    plan.semanticPolicy.plannerBudget.maxProviderCostUsd !== 10 ||
+    plan.semanticPolicy.plannerBudget.maxOutputBytes !== 2 * MEBIBYTE ||
+    plan.semanticPolicy.plannerBudget.maxSourceQueries !== 256 ||
+    plan.semanticPolicy.plannerBudget.maxSourceScanBytes !== 16 * GIBIBYTE ||
+    plan.semanticPolicy.plannerBudget.maxSourceResponseBytes !==
+      256 * MEBIBYTE ||
+    plan.semanticPolicy.plannerBudget.sourceLimitTerminalOutput !==
+      "preserve" ||
+    plan.semanticPolicy.plannerBudget.reportedUsageEnforcement !==
+      "telemetry-only" ||
+    plan.evaluator.budget.maxWallTimeMs !== 3_600_000 ||
+    plan.evaluator.budget.maxModelTurns !== 128 ||
+    plan.evaluator.budget.maxProviderCostUsd !== 10 ||
+    plan.evaluator.budget.maxOutputBytes !== 2 * MEBIBYTE ||
+    plan.evaluator.budget.reportedUsageEnforcement !== "telemetry-only" ||
+    validator.maxModelTokens * 3 + synthesis.maxModelTokens >
+      policy.validationReserve.maxModelTokens ||
+    validator.maxProviderCostUsd * 3 + synthesis.maxProviderCostUsd >
+      policy.validationReserve.maxProviderCostUsd ||
+    validator.maxWallTimeMs * 3 + synthesis.maxWallTimeMs >
+      policy.validationReserve.maxWallTimeMs
+  );
+}
+
 const campaignPreparedPayloadV1Schema = z.strictObject({
   input: newCampaignInputV1Schema,
   inputDigest: digestSchema,
@@ -306,6 +360,11 @@ const campaignAttemptCompletedPayloadSchema = z.strictObject({
 
 const semanticCampaignRunStartedPayloadSchema = z.strictObject({
   plan: campaignRunPlanV2Schema,
+  planDigest: digestSchema,
+});
+
+const semanticCampaignRunStartedPayloadV3Schema = z.strictObject({
+  plan: campaignRunPlanV3Schema,
   planDigest: digestSchema,
 });
 
@@ -463,7 +522,7 @@ interface StoredCampaignRun {
 }
 
 interface StoredSemanticCampaignRun {
-  readonly plan: CampaignRunPlanV2;
+  readonly plan: CampaignRunPlanV2 | CampaignRunPlanV3;
   readonly planDigest: string;
   readonly startedAt: string;
   readonly startedLedgerHead: number;
@@ -1106,9 +1165,12 @@ class SqliteResearchRecord implements ResearchRecord {
   }
 
   async recordSemanticCampaignRunStart(
-    value: CampaignRunPlanV2,
+    value: CampaignRunPlanV2 | CampaignRunPlanV3,
   ): Promise<RecordSemanticCampaignRunStartResult> {
-    const plan = campaignRunPlanV2Schema.parse(value);
+    const plan =
+      value.schemaVersion === 3
+        ? campaignRunPlanV3Schema.parse(value)
+        : campaignRunPlanV2Schema.parse(value);
     const planDigest = sha256Digest(plan);
     const transact = this.#database.transaction(
       (): RecordSemanticCampaignRunStartResult => {
@@ -1121,14 +1183,22 @@ class SqliteResearchRecord implements ResearchRecord {
         const input = preparation.input;
         const manifest = preparation.targetFileManifest;
         const modelRefs =
-          "workWave" in plan
-            ? [plan.finder.modelProfile.ref]
-            : [
+          plan.schemaVersion === 3
+            ? [
                 plan.planner.modelProfile.ref,
                 plan.finder.modelProfile.ref,
                 plan.evaluator.modelProfile.ref,
-                plan.verification.verifierModelProfile,
-              ];
+                plan.validation.validatorModelProfile.ref,
+                plan.validation.synthesisModelProfile.ref,
+              ]
+            : "workWave" in plan
+              ? [plan.finder.modelProfile.ref]
+              : [
+                  plan.planner.modelProfile.ref,
+                  plan.finder.modelProfile.ref,
+                  plan.evaluator.modelProfile.ref,
+                  plan.verification.verifierModelProfile,
+                ];
         const modelMatches = modelRefs.every((modelRef) =>
           input.modelProfiles.some(
             (profile) =>
@@ -1147,6 +1217,33 @@ class SqliteResearchRecord implements ResearchRecord {
             );
           },
         );
+        const currentPlanMismatch =
+          plan.schemaVersion === 3 &&
+          (plan.planner.promptSet.id !== input.promptSet.id ||
+            plan.planner.promptSet.digest !== input.promptSet.digest ||
+            plan.evaluator.promptSet.id !== input.promptSet.id ||
+            plan.evaluator.promptSet.digest !== input.promptSet.digest ||
+            plan.validation.promptSet.id !== input.promptSet.id ||
+            plan.validation.promptSet.digest !== input.promptSet.digest ||
+            currentSemanticPlanBudgetMismatch(plan, input));
+        const legacyDefaultPlanMismatch =
+          plan.schemaVersion === 2 &&
+          !("workWave" in plan) &&
+          (plan.planner.promptSet.id !== input.promptSet.id ||
+            plan.planner.promptSet.digest !== input.promptSet.digest ||
+            plan.evaluator.promptSet.id !== input.promptSet.id ||
+            plan.evaluator.promptSet.digest !== input.promptSet.digest ||
+            plan.verification.promptSet.id !== input.promptSet.id ||
+            plan.verification.promptSet.digest !== input.promptSet.digest ||
+            plan.verification.experimentRegistry.id !==
+              input.experimentRegistry.id ||
+            plan.verification.experimentRegistry.digest !==
+              input.experimentRegistry.digest ||
+            plan.verification.labBaseline.targetSnapshotDigest !==
+              plan.target.digest ||
+            plan.verification.labBaseline.runtimeProfileDigest !==
+              input.runtimeProfile.digest ||
+            semanticPlanBudgetMismatch(plan, input));
         if (
           !("schemaVersion" in input) ||
           (input.schemaVersion !== 2 && input.schemaVersion !== 3) ||
@@ -1160,22 +1257,8 @@ class SqliteResearchRecord implements ResearchRecord {
           !modelMatches ||
           plan.finder.promptSet.id !== input.promptSet.id ||
           plan.finder.promptSet.digest !== input.promptSet.digest ||
-          (!("workWave" in plan) &&
-            (plan.planner.promptSet.id !== input.promptSet.id ||
-              plan.planner.promptSet.digest !== input.promptSet.digest ||
-              plan.evaluator.promptSet.id !== input.promptSet.id ||
-              plan.evaluator.promptSet.digest !== input.promptSet.digest ||
-              plan.verification.promptSet.id !== input.promptSet.id ||
-              plan.verification.promptSet.digest !== input.promptSet.digest ||
-              plan.verification.experimentRegistry.id !==
-                input.experimentRegistry.id ||
-              plan.verification.experimentRegistry.digest !==
-                input.experimentRegistry.digest ||
-              plan.verification.labBaseline.targetSnapshotDigest !==
-                plan.target.digest ||
-              plan.verification.labBaseline.runtimeProfileDigest !==
-                input.runtimeProfile.digest ||
-              semanticPlanBudgetMismatch(plan, input))) ||
+          currentPlanMismatch ||
+          legacyDefaultPlanMismatch ||
           !knowledgeMatches
         ) {
           throw new CampaignRunConflictError(plan.campaignId, plan.runId);
@@ -1203,8 +1286,11 @@ class SqliteResearchRecord implements ResearchRecord {
               };
         }
         if (
-          !("workWave" in plan) &&
-          plan.budgetPolicy.id !== "semantic-research-recall-baseline-v5"
+          (plan.schemaVersion === 3 &&
+            plan.budgetPolicy.id !== "semantic-research-recall-baseline-v6") ||
+          (plan.schemaVersion === 2 &&
+            !("workWave" in plan) &&
+            plan.budgetPolicy.id !== "semantic-research-recall-baseline-v5")
         ) {
           throw new RetiredSemanticBudgetPolicyError();
         }
@@ -1217,7 +1303,7 @@ class SqliteResearchRecord implements ResearchRecord {
           "campaign.run-started",
           occurredAt,
           { plan, planDigest },
-          2,
+          plan.schemaVersion,
         );
         return {
           disposition: "started",
@@ -2841,10 +2927,15 @@ class SqliteResearchRecord implements ResearchRecord {
         throw new LedgerIntegrityError(campaignId, "invalid-event-order");
       }
       if (event.kind === "campaign.run-started") {
-        if (event.schema_version === 2) {
-          const payload = semanticCampaignRunStartedPayloadSchema.parse(
-            this.#parsePayload(event),
-          );
+        if (event.schema_version === 2 || event.schema_version === 3) {
+          const payload =
+            event.schema_version === 3
+              ? semanticCampaignRunStartedPayloadV3Schema.parse(
+                  this.#parsePayload(event),
+                )
+              : semanticCampaignRunStartedPayloadSchema.parse(
+                  this.#parsePayload(event),
+                );
           if (
             payload.plan.campaignId !== campaignId ||
             sha256Digest(payload.plan) !== payload.planDigest ||

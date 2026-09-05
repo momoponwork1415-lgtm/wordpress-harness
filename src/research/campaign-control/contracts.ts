@@ -340,6 +340,43 @@ const semanticModelRoleConfigurationSchema = z.strictObject({
   promptSet: promptSetRefSchema,
 });
 
+const modelBudgetSchema = z.strictObject({
+  maxWallTimeMs: z.number().int().positive(),
+  maxModelTokens: z.number().int().positive(),
+  maxModelTurns: z.number().int().positive(),
+  maxProviderCostUsd: z.number().positive(),
+  maxOutputBytes: z.number().int().positive(),
+  reportedUsageEnforcement: z.literal("telemetry-only").optional(),
+});
+
+const validationConfigurationSchema = z.strictObject({
+  wordpressBaseline: z.strictObject({
+    id: identifierSchema,
+    digest: digestSchema,
+  }),
+  validationPolicy: z.strictObject({
+    id: identifierSchema,
+    digest: digestSchema,
+  }),
+  promptSet: promptSetRefSchema,
+  validatorModelProfile:
+    semanticModelRoleConfigurationSchema.shape.modelProfile,
+  synthesisModelProfile:
+    semanticModelRoleConfigurationSchema.shape.modelProfile,
+  sourceToolPolicy: sourceToolPolicyRefSchema,
+  publicSurface: z.array(z.string().min(1).max(2_000)).max(64),
+  technicalExclusions: z.array(z.string().min(1).max(2_000)).max(64),
+  budget: z.strictObject({
+    validator: modelBudgetSchema.extend({
+      maxSourceQueries: z.number().int().positive(),
+      maxSourceScanBytes: z.number().int().positive().optional(),
+      maxSourceResponseBytes: z.number().int().positive().optional(),
+      sourceLimitTerminalOutput: z.literal("preserve").optional(),
+    }),
+    synthesis: modelBudgetSchema,
+  }),
+});
+
 const semanticResearchBudgetPolicyV1Schema = z.strictObject({
   kind: z.literal("semantic-research-budget"),
   schemaVersion: z.literal(1),
@@ -462,6 +499,30 @@ const semanticResearchBudgetPolicyV5Schema = z.strictObject({
   }),
 });
 
+export const semanticResearchBudgetPolicyV6Schema = z.strictObject({
+  kind: z.literal("semantic-research-budget"),
+  schemaVersion: z.literal(2),
+  id: z.literal("semantic-research-recall-baseline-v6"),
+  maxWorkWaves: z.literal(12),
+  maxFinderAttempts: z.literal(48),
+  maxConcurrentFinders: z.literal(4),
+  maxModelAttempts: z.literal(128),
+  maxModelTokens: z.literal(4_000_000),
+  maxProviderCostUsd: z.literal(150),
+  maxWallTimeMs: z.literal(43_200_000),
+  reportedUsageEnforcement: z.literal("telemetry-only"),
+  exploration: z.strictObject({
+    maxModelTokens: z.literal(3_600_000),
+    maxProviderCostUsd: z.literal(120),
+    maxWallTimeMs: z.literal(36_000_000),
+  }),
+  validationReserve: z.strictObject({
+    maxModelTokens: z.literal(400_000),
+    maxProviderCostUsd: z.literal(30),
+    maxWallTimeMs: z.literal(7_200_000),
+  }),
+});
+
 export const semanticResearchBudgetPolicySchema = z.union([
   semanticResearchBudgetPolicyV5Schema,
   semanticResearchBudgetPolicyV4Schema,
@@ -508,6 +569,32 @@ export const campaignDefaultSemanticRunPlanV2Schema = z.strictObject({
   }),
   budgetPolicy: semanticResearchBudgetPolicySchema,
 });
+
+export const campaignDefaultSemanticRunPlanV3Schema = z.strictObject({
+  kind: z.literal("campaign-run-plan"),
+  schemaVersion: z.literal(3),
+  runId: identifierSchema,
+  campaignId: identifierSchema,
+  preparationDigest: digestSchema,
+  target: targetSnapshotRefSchema,
+  manifest: targetFileManifestRefSchema,
+  metadata: oracleFreeTargetMetadataSchema,
+  semanticPolicy: semanticRootPlanningPolicySchema,
+  planner: semanticModelRoleConfigurationSchema.extend({
+    sourceToolPolicy: sourceToolPolicyRefSchema,
+  }),
+  finder: semanticModelRoleConfigurationSchema.extend({
+    selectedKnowledge: z.array(selectedKnowledgeRefSchema),
+    sourceToolPolicy: sourceToolPolicyRefSchema,
+  }),
+  evaluator: semanticModelRoleConfigurationSchema.extend({
+    budget: modelBudgetSchema,
+  }),
+  validation: validationConfigurationSchema,
+  budgetPolicy: semanticResearchBudgetPolicyV6Schema,
+});
+
+export const campaignRunPlanV3Schema = campaignDefaultSemanticRunPlanV3Schema;
 
 export const campaignRunPlanV2Schema = z.union([
   campaignDefaultSemanticRunPlanV2Schema,
@@ -1001,7 +1088,12 @@ export type PreparedWaveCampaignRunPlanV2 = z.infer<
 export type DefaultSemanticCampaignRunPlanV2 = z.infer<
   typeof campaignDefaultSemanticRunPlanV2Schema
 >;
-export type AnyCampaignRunPlan = CampaignRunPlan | CampaignRunPlanV2;
+export type DefaultSemanticCampaignRunPlanV3 = z.infer<
+  typeof campaignDefaultSemanticRunPlanV3Schema
+>;
+export type CampaignRunPlanV3 = z.infer<typeof campaignRunPlanV3Schema>;
+export type AnyCampaignRunPlan =
+  CampaignRunPlan | CampaignRunPlanV2 | CampaignRunPlanV3;
 export type CampaignRunCompletionInput = z.infer<
   typeof campaignRunCompletionInputSchema
 >;

@@ -29,6 +29,7 @@ import type {
   CampaignRunCompletionInputV2,
   CampaignRunPlan,
   CampaignRunPlanV2,
+  CampaignRunPlanV3,
   CampaignRunRecordView,
   CampaignRunRecordViewV2,
   AnyCampaignRunRecordView,
@@ -75,7 +76,7 @@ export interface ResearchRecord {
     input: CampaignRunCompletionInput,
   ): Promise<CampaignRunRecordView>;
   recordSemanticCampaignRunStart(
-    plan: CampaignRunPlanV2,
+    plan: CampaignRunPlanV2 | CampaignRunPlanV3,
   ): Promise<RecordSemanticCampaignRunStartResult>;
   recordSemanticCampaignRunCompletion(
     input: CampaignRunCompletionInputV2,
