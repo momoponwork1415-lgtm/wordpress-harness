@@ -1,8 +1,7 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { copyFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import Database from "better-sqlite3";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 
@@ -1439,76 +1438,42 @@ describe("CampaignRunner.run source-only Validation", () => {
           .slice(invalidResultCallOffset)
           .filter((attempt) => attempt.role === "validator"),
       ).toHaveLength(1);
-
-      const legacyLedger = new Database(databasePath);
-      try {
-        const storedResultEvent: unknown = legacyLedger
-          .prepare(
-            `SELECT campaign_sequence
-             FROM research_events
-             WHERE campaign_id = ?
-               AND kind = 'campaign.attempt-result-stored'
-               AND json_extract(payload_json, '$.result.runId') = ?`,
-          )
-          .get(input.campaignId, plan.runId);
-        if (
-          typeof storedResultEvent !== "object" ||
-          storedResultEvent === null ||
-          !("campaign_sequence" in storedResultEvent) ||
-          typeof storedResultEvent.campaign_sequence !== "number"
-        ) {
-          throw new Error("Expected one durable Validator result event");
-        }
-        const sequence = storedResultEvent.campaign_sequence;
-        legacyLedger.transaction(() => {
-          legacyLedger
-            .prepare(
-              `DELETE FROM research_events
-               WHERE campaign_id = ? AND campaign_sequence = ?`,
-            )
-            .run(input.campaignId, sequence);
-          legacyLedger
-            .prepare(
-              `UPDATE research_events
-               SET campaign_sequence = -campaign_sequence
-               WHERE campaign_id = ? AND campaign_sequence > ?`,
-            )
-            .run(input.campaignId, sequence);
-          legacyLedger
-            .prepare(
-              `UPDATE research_events
-               SET campaign_sequence = -campaign_sequence - 1
-               WHERE campaign_id = ? AND campaign_sequence < 0`,
-            )
-            .run(input.campaignId);
-        })();
-      } finally {
-        legacyLedger.close();
-      }
-
-      const legacyReplay = openResearch({
-        databasePath,
-        artifactStore: artifacts,
-      });
-      try {
-        await expect(
-          legacyReplay.reader.inspect(input.campaignId, {
-            kind: "run",
-            runId: plan.runId,
-          }),
-        ).resolves.toMatchObject({
-          kind: "run",
-          value: {
-            schemaVersion: 3,
-            validations: [{ status: "ready-for-runtime" }],
-          },
-        });
-      } finally {
-        legacyReplay.close();
-      }
     } finally {
       research.close();
       await rm(directory, { force: true, recursive: true });
     }
   }, 15_000);
+
+  it("replays a pre-result-stored Validator completion", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "campaign-validation-legacy-"),
+    );
+    const databasePath = join(directory, "research.sqlite");
+    await copyFile(
+      new URL(
+        "../fixtures/research/validation-completion-before-result-stored-ca2d862.sqlite",
+        import.meta.url,
+      ),
+      databasePath,
+    );
+    const research = openResearch({ databasePath });
+
+    try {
+      await expect(
+        research.reader.inspect("campaign-validation-run", {
+          kind: "run",
+          runId: "source-validation-run",
+        }),
+      ).resolves.toMatchObject({
+        kind: "run",
+        value: {
+          schemaVersion: 3,
+          validations: [{ status: "ready-for-runtime" }],
+        },
+      });
+    } finally {
+      research.close();
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
 });
