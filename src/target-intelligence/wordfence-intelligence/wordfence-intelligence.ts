@@ -130,6 +130,12 @@ const snapshotRowSchema = z.strictObject({
 
 const recordRowSchema = z.strictObject({ record_json: z.string() });
 
+const snapshotRecordRowSchema = z.strictObject({
+  plugin_slug: z.string(),
+  record_id: z.string(),
+  record_json: z.string(),
+});
+
 const refreshStateRowSchema = z.strictObject({ state_json: z.string() });
 
 const productionRefreshStateSchema = z.strictObject({
@@ -900,6 +906,12 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   ): Promise<WordfenceIntelligenceResult> {
     const request =
       wordfenceIntelligenceInspectionRequestSchema.parse(requestValue);
+    return this.#inspectSnapshot(request);
+  }
+
+  #inspectSnapshot(
+    request: WordfenceIntelligenceInspectionRequest,
+  ): WordfenceIntelligenceResult {
     const ref = request.snapshotRef ?? this.#currentReference();
     if (ref === undefined) {
       return failure("not-refreshed");
@@ -911,33 +923,38 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   async inspectProduction(
     requestValue: WordfenceIntelligenceInspectionRequest,
   ): Promise<WordfenceIntelligenceResult> {
-    const result = await this.inspect(requestValue);
-    if (result.status !== "current") {
-      return result;
-    }
-    const row = refreshStateRowSchema.optional().parse(
-      this.#database
-        .prepare(
-          `SELECT state_json
-           FROM wordfence_intelligence_refresh_state
-          WHERE singleton = 1`,
-        )
-        .get(),
-    );
-    if (row === undefined) {
-      return result;
-    }
-    const state = productionRefreshStateSchema.parse(
-      JSON.parse(row.state_json),
-    );
-    if (state.currentSnapshotDigest !== result.snapshotRef.digest) {
-      return result;
-    }
-    return staleWordfenceIntelligenceSnapshotSchema.parse({
-      ...result,
-      status: "stale",
-      latestRefresh: state.latestRefresh,
+    const request =
+      wordfenceIntelligenceInspectionRequestSchema.parse(requestValue);
+    const transaction = this.#database.transaction(() => {
+      const result = this.#inspectSnapshot(request);
+      if (result.status !== "current") {
+        return result;
+      }
+      const row = refreshStateRowSchema.optional().parse(
+        this.#database
+          .prepare(
+            `SELECT state_json
+             FROM wordfence_intelligence_refresh_state
+            WHERE singleton = 1`,
+          )
+          .get(),
+      );
+      if (row === undefined) {
+        return result;
+      }
+      const state = productionRefreshStateSchema.parse(
+        JSON.parse(row.state_json),
+      );
+      if (state.currentSnapshotDigest !== result.snapshotRef.digest) {
+        return result;
+      }
+      return staleWordfenceIntelligenceSnapshotSchema.parse({
+        ...result,
+        status: "stale",
+        latestRefresh: state.latestRefresh,
+      });
     });
+    return transaction.deferred();
   }
 
   async aggregate(
@@ -1077,11 +1094,14 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
             canonicalJson(stored.record),
           );
         }
-      } else if (
-        existing.snapshot_id !== reference.id ||
-        existing.snapshot_json !== snapshotJson
-      ) {
-        throw new SnapshotConflictError();
+      } else {
+        if (
+          existing.snapshot_id !== reference.id ||
+          existing.snapshot_json !== snapshotJson
+        ) {
+          throw new SnapshotConflictError();
+        }
+        this.#assertStoredRecords(reference.digest, records);
       }
       this.#database
         .prepare(
@@ -1102,6 +1122,41 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       }
     });
     transaction.immediate();
+  }
+
+  #assertStoredRecords(
+    snapshotDigest: string,
+    records: readonly WordfenceStoredPluginRecord[],
+  ): void {
+    const persisted = snapshotRecordRowSchema.array().parse(
+      this.#database
+        .prepare(
+          `SELECT plugin_slug, record_id, record_json
+           FROM wordfence_intelligence_records
+          WHERE snapshot_digest = ?
+          ORDER BY plugin_slug, record_id`,
+        )
+        .all(snapshotDigest),
+    );
+    const expected = records.map((stored) => ({
+      plugin_slug: stored.pluginSlug,
+      record_id: stored.record.recordId,
+      record_json: canonicalJson(stored.record),
+    }));
+    if (
+      persisted.length !== expected.length ||
+      persisted.some((row, index) => {
+        const candidate = expected[index];
+        return (
+          candidate === undefined ||
+          row.plugin_slug !== candidate.plugin_slug ||
+          row.record_id !== candidate.record_id ||
+          row.record_json !== candidate.record_json
+        );
+      })
+    ) {
+      throw new SnapshotConflictError();
+    }
   }
 
   #refreshFailure(
@@ -1265,6 +1320,9 @@ export function openWordfenceIntelligenceRefresh(
   const initialize = async (): Promise<
     SqliteWordfenceIntelligence | undefined
   > => {
+    if (intelligence !== undefined) {
+      return intelligence;
+    }
     try {
       await mkdir(dirname(intelligenceOptions.databasePath), {
         recursive: true,

@@ -666,6 +666,108 @@ describe("WordfenceIntelligenceRefresh", () => {
     }
   });
 
+  it("inspects the snapshot and freshness marker from one committed state", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-consistent-inspection-"),
+    );
+    const databasePath = join(directory, "target-intelligence.sqlite");
+    const validBytes = await readFile(fixturePath);
+    let now = "2030-08-02T00:00:00.000Z";
+    const credentialBroker: HostPrivateCredentialBroker = {
+      async resolve<T>(
+        _reference: WordfenceSecretRef,
+        use: (credential: string) => Promise<T>,
+      ): Promise<T> {
+        return use("synthetic-consistent-inspection-credential");
+      },
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(validBytes, { status: 200 }))
+      .mockResolvedValueOnce(new Response(validBytes, { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(undefined, {
+          status: 429,
+          headers: { "retry-after": "120" },
+        }),
+      );
+    try {
+      const writer = openWordfenceIntelligenceRefresh({
+        databasePath,
+        artifactDirectory: join(directory, "artifacts"),
+        credentialBroker,
+        fetch: fetchMock,
+        clock: () => new Date(now),
+      });
+      const replacement = await writer.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      expect(replacement.status).toBe("current");
+      if (replacement.status !== "current") {
+        throw new Error("Expected a replacement snapshot");
+      }
+      now = "2030-08-01T00:00:00.000Z";
+      await writer.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      now = "2030-08-03T00:00:00.000Z";
+      await writer.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+
+      const reader = openWordfenceIntelligenceRefresh({
+        databasePath,
+        artifactDirectory: join(directory, "artifacts"),
+        credentialBroker,
+        fetch: vi.fn<typeof fetch>(() =>
+          Promise.reject(new Error("inspection must not retrieve the feed")),
+        ),
+      });
+      const stale = await reader.inspect({
+        kind: "wordfence-intelligence-inspection",
+        schemaVersion: 1,
+      });
+      expect(stale.status).toBe("stale");
+
+      const concurrentPublication = new Database(databasePath);
+      let observed: Awaited<ReturnType<typeof reader.inspect>>;
+      try {
+        const publishReplacement = concurrentPublication.transaction(() => {
+          concurrentPublication
+            .prepare(
+              `UPDATE wordfence_intelligence_current
+                  SET snapshot_digest = ?
+                WHERE singleton = 1`,
+            )
+            .run(replacement.snapshotRef.digest);
+          concurrentPublication
+            .prepare(
+              `DELETE FROM wordfence_intelligence_refresh_state
+               WHERE singleton = 1`,
+            )
+            .run();
+        });
+        const inspection = reader.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        });
+        const publication = Promise.resolve().then(() => {
+          publishReplacement.immediate();
+        });
+        [observed] = await Promise.all([inspection, publication]);
+      } finally {
+        concurrentPublication.close();
+      }
+
+      expect([stale, replacement]).toContainEqual(observed);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     {
       retryAfter: "999999999999999999999999999999",

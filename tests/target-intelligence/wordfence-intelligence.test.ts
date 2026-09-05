@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import Database from "better-sqlite3";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -296,6 +297,88 @@ describe("WordfenceIntelligence", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it.each(["missing", "tampered"] as const)(
+    "rejects re-publication when persisted snapshot records are %s",
+    async (caseName) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "wordfence-record-integrity-"),
+      );
+      const databasePath = join(directory, "target-intelligence.sqlite");
+      const artifactDirectory = join(directory, "artifacts");
+      try {
+        const historical = openWordfenceIntelligence({
+          databasePath,
+          artifactDirectory,
+          adapter: fixtureAdapter(),
+          credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+          clock: () => new Date("2030-08-01T00:00:00.000Z"),
+        });
+        const historicalResult = await historical.refresh({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        });
+        if (historicalResult.status !== "current") {
+          throw new Error("Expected a historical snapshot");
+        }
+        const latest = openWordfenceIntelligence({
+          databasePath,
+          artifactDirectory,
+          adapter: fixtureAdapter(),
+          credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+          clock: () => new Date("2030-08-02T00:00:00.000Z"),
+        });
+        const latestResult = await latest.refresh({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        });
+        if (latestResult.status !== "current") {
+          throw new Error("Expected a latest snapshot");
+        }
+
+        const corruption = new Database(databasePath);
+        if (caseName === "missing") {
+          corruption
+            .prepare(
+              `DELETE FROM wordfence_intelligence_records
+               WHERE snapshot_digest = ?`,
+            )
+            .run(historicalResult.snapshotRef.digest);
+        } else {
+          corruption
+            .prepare(
+              `UPDATE wordfence_intelligence_records
+                  SET record_json = '{}'
+                WHERE snapshot_digest = ?`,
+            )
+            .run(historicalResult.snapshotRef.digest);
+        }
+        corruption.close();
+
+        const replay = openWordfenceIntelligence({
+          databasePath,
+          artifactDirectory,
+          adapter: fixtureAdapter(),
+          credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+          clock: () => new Date("2030-08-01T00:00:00.000Z"),
+        });
+        await expect(
+          replay.refresh({
+            kind: "wordfence-intelligence-refresh",
+            schemaVersion: 1,
+          }),
+        ).rejects.toThrow("Wordfence Intelligence snapshot conflict");
+        await expect(
+          replay.inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual(latestResult);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("keeps the prior current pointer when a later feed fails validation", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordfence-atomic-"));
