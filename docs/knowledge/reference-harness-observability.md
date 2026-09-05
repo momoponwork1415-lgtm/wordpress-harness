@@ -1,12 +1,12 @@
 # Knowledge: reference harness comparison
 
-Status: implementation-checked external reference, 2026-09-05
+Status: implementation-checked external reference and first Prospective measurement, 2026-09-06
 
 ## Conclusion
 
 設計方向は妥当である。Argusのcontrol properties、Anthropicの探索と検証の分離、Codex Securityのdurable contract、AVDHのfresh ValidationとHuman handoffを組み合わせており、完全独自ではない。
 
-弱いのは設計原則ではなく実証である。v6のMissing-link / Closure、実Target Prospective Campaign、Target Intelligenceが未完であり、high recall、false-positive率、human負荷、costをまだ比較できない（[Codebase Guide](../CODEBASE-GUIDE.md)）。
+弱いのは設計原則ではなく実証である。最初の実Target Prospective Campaignはsource Researchまで到達したが、Root Evaluation前にbudgetで`Incomplete`となった。v6のMissing-link / Closureと二段runtime reproductionは未実証であり、high recall、false-positive率、human負荷をまだ比較できない（[Codebase Guide](../CODEBASE-GUIDE.md)）。
 
 ## Fixed sources
 
@@ -47,7 +47,7 @@ Argusの公式記事は10動詞、model-agnostic方針、目的だけを公開�
 | Hypothesize | premise、route、impact、unknown、falsifierをtyped artifact化 | Strong |
 | Verify | single fresh source screen、AI Reproduction、別fresh環境での必須Human Reproduction | 移行中。runtime成立率とHuman再現率のProspective実測は未完 |
 | Record | append-only Ledger、immutable CAS、checkpoint、replay | Strong |
-| Prioritize | Root EvaluationとDepth Admission | Research内は実装、Target selectionは未実装 |
+| Prioritize | Root EvaluationとDepth Admission | 実装済み。最初のProspective計測はRoot Evaluationのadmission前にbudgetで停止 |
 | Iterate | Synthesis、Critic、Missing-link、Closure | Missing-link / Closureがv6未接続 |
 
 Argusの“iterate hard and fast”まで含めると、現Harnessはまだ不合格である。重いartifact chainとHuman gateを持つ以上、同等のtempoは実測で示す必要がある。
@@ -66,13 +66,31 @@ Argusの“iterate hard and fast”まで含めると、現Harnessはまだ不�
 ## Concrete weaknesses
 
 1. **Coverage / Iterateが未完成。** v6 Missing-link / Closureがつながっていない。Argusの`iterate`とCodex Securityのhonest coverageに対する最大の差である。
-2. **設計を証明するprospective dataがない。** 既知CVE再現やcontract testだけではoracle-free recall、FP、costを評価できない。
+2. **Prospective evidenceは一件のpartial runだけである。** oracle-free source Researchのcostは測れたが、Root Evaluation前に停止したためrecall、FP、runtime成立率は評価できない。
 3. **source screenと二段runtime reproductionのバランスが未検証。** source側のmodel costは下がるが、AIのruntime成立率、人間の再現率、Escalation Queue量、review時間をProspectiveで測れていない。
 4. **model-agnosticはinterfaceだけ。** ArgusとCodex Securityはmodel/provider切替を公開しているが、現実装はClaude Adapterだけである（[Codebase Guide](../CODEBASE-GUIDE.md)、lines 100-110）。
 5. **control planeが研究実績に先行している。** fine-grained schema、Ledger、CAS、fresh role分離は安全だが、targets/hourやreview minutesを改善する証拠がなければ過剰設計になる。
 6. **外側はdeepだが内側のSeamが広い。** `openResearch`はrunner / readerだけを公開する一方、internal `ResearchRecord`は旧版を含む多数の操作を持つ。early Prospective前にcurrent writeとlegacy read/replayを分離する。
 
-次はsingle source screen、AI Reproduction、mandatory Human Reproductionを小さなvertical sliceで接続し、Coverage Closureや三件cohortを待たず実Target一件を回す。`candidate -> ready-for-runtime -> runtime-confirmed -> verified-finding`率、human rejection理由、setup-blocked率、review時間、candidate当たりcost、coverage unknownを測り、その後にmapping / closure policyとcost ablationを決める。SQLiやXSS等のclass別Recipeはsuccess criterionを明確にするために使い、固定Adapter対応をcandidateの入場条件にはしない。
+次は最初の計測を別Issueのbudget / admission判断へ入力し、既存runのbudgetや意味論を変更せずfreshなfollow-upを回す。そこでsingle source screen、AI Reproduction、mandatory Human Reproductionを接続し、`candidate -> ready-for-runtime -> runtime-confirmed -> verified-finding`率、human rejection理由、setup-blocked率、review時間、candidate当たりcost、coverage unknownを測る。その後にmapping / closure policyとcost ablationを決める。SQLiやXSS等のclass別Recipeはsuccess criterionを明確にするために使い、固定Adapter対応をcandidateの入場条件にはしない。
+
+## First Prospective measurement
+
+Issue #109のsingle-target runは、durable Approved Target Batch、dispatch直前のversion / digest再検証、oracle-free source Research、Ledger / CAS replayまでをproduction seamで通した。Target sourceは実行せず、programme情報とcredentialをworkerへ渡さなかった。
+
+| Metric | Observed |
+| --- | ---: |
+| Provider attempts | 3 completed / 3 started |
+| Durable checkpoints | 13 |
+| Hypothesis / Route Fragment / Frontier Gap | 3 / 3 / 7 |
+| Model tokens / estimated cost | 3,976,741 / USD 7.1014455 |
+| Model wall time / source queries | 1,170,960 ms / 80 |
+| Root Evaluation / Validation | 0 / 0 |
+| Runtime Verification Packet / AI Reproduction / Human Verification | 0 / not started / not queued |
+
+探索ownerの3,600,000 token ceilingに対してreported usageが3,976,741となり、campaign全体の残りは23,259 tokenだった。次のRoot Evaluatorが要求する100,000 token reservationを満たせず、source dispositionは`evaluation-incomplete`、Target Research Historyは`budget-exhausted`の`Incomplete`で閉じた。400,000 token / USD 30のValidation reserveは全量未使用である。
+
+これはnegative resultでもCoverage Closureでもない。Root Evaluationとsingle fresh Validationが実行されていないため、候補0件を「脆弱性なし」へ読み替えず、coverageは`unknown`のままにする。budget overshootと次段reservationの関係は、次のpilot前に別の設計判断として扱う。
 
 ## Operational observability
 
