@@ -282,6 +282,9 @@ describe("source-only Validation", () => {
       assignment: { attemptOrdinal: 1 },
       sourceToolPolicy: plan.sourceToolPolicy,
     });
+    expect(model.calls[0]?.prompt).toContain(
+      "Include proofGap only for needs-research; omit proofGap for ready-for-runtime and disproven.",
+    );
     expect(record).toMatchObject({
       schemaVersion: 2,
       status: "ready-for-runtime",

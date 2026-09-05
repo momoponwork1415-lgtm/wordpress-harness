@@ -69,6 +69,7 @@ function validatorAttempt(
       "Independently inspect the fixed Target source; do not trust discovery wording or use Finder conversation, scratch, or verdicts.",
       "Handle every rubric criterion exactly once as pass, fail, or unknown, with source evidence.",
       "Use needs-research only for a concrete source-decidable proof gap. Runtime reproduction alone is not a source proof gap.",
+      "Include proofGap only for needs-research; omit proofGap for ready-for-runtime and disproven.",
       "Use disproven only for a decisive source contradiction supported by a failed rubric criterion.",
       "If no decisive source contradiction exists and the attacker premise, Security Effect, and a concrete runtime-testable route remain, return ready-for-runtime; rubric unknowns are allowed and must be preserved.",
       "Do not return rejected. Do not execute Target code, use a shell, assign severity, vote, or create a Finding.",
