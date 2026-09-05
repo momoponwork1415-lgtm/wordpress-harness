@@ -141,6 +141,8 @@ describe("CampaignRunner.run source-only Validation", () => {
     };
     const observedPlans: ModelAttemptPlan[] = [];
     const validatorAttemptIds: string[] = [];
+    const depthQueuesObservedBeforeValidation: string[] = [];
+    let expectedValidationRunId = "";
     let validationDisposition: "ready-for-human" | "needs-research" =
       "ready-for-human";
     const modelExecution: ModelExecution = {
@@ -275,6 +277,24 @@ describe("CampaignRunner.run source-only Validation", () => {
           });
         }
         if (plan.role === "validator") {
+          const durableRecord = openSqliteResearchRecord({
+            databasePath,
+            artifactStore: artifacts,
+          });
+          try {
+            const queued = await durableRecord.readSemanticDepthWorkQueueV2(
+              input.campaignId,
+              expectedValidationRunId,
+            );
+            if (queued === undefined) {
+              throw new Error(
+                "Validation started before the Depth Work Queue was durable",
+              );
+            }
+            depthQueuesObservedBeforeValidation.push(queued.queue.digest);
+          } finally {
+            durableRecord.close();
+          }
           validatorAttemptIds.push(plan.attemptId);
           return completedResult(plan, {
             kind: "validation-attempt-output",
@@ -539,6 +559,7 @@ describe("CampaignRunner.run source-only Validation", () => {
         },
       });
 
+      expectedValidationRunId = plan.runId;
       const ref = await research.runner.run(plan);
       const modelCallsAfterFirstRun = observedPlans.length;
       const inspected = await research.reader.inspect(input.campaignId, {
@@ -582,6 +603,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       expect(
         observedPlans.filter((attempt) => attempt.role === "validator"),
       ).toHaveLength(2);
+      expect([...new Set(depthQueuesObservedBeforeValidation)]).toHaveLength(1);
       expect(
         observedPlans.find(
           (attempt) => attempt.role === "validation-synthesizer",
@@ -621,6 +643,7 @@ describe("CampaignRunner.run source-only Validation", () => {
         ...plan,
         runId: "source-validation-needs-research",
       });
+      expectedValidationRunId = needsResearchPlan.runId;
       const needsResearchRef = await research.runner.run(needsResearchPlan);
       const needsResearchInspected = await research.reader.inspect(
         input.campaignId,

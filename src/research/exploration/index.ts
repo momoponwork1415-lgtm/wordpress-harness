@@ -23,6 +23,7 @@ export {
 export {
   projectSemanticDepthWorkQueue,
   projectSemanticDepthWorkQueueV2,
+  referenceSemanticDepthWorkQueueV2,
 } from "./semantic-depth-work-queue.js";
 export { projectMissingLinkDepthWorkQueue } from "./semantic-missing-link-depth-queue.js";
 export {

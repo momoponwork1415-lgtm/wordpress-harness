@@ -70,6 +70,7 @@ import {
   approachFamilyV3Schema,
   projectApproachFamilyRegistryV3,
   projectInitialApproachFamilyRegistryV3,
+  referenceApproachFamilyV3,
   referenceSemanticIterationDecisionV3,
   semanticIterationDecisionRefV3Schema,
 } from "../exploration/semantic-approach-family-registry-v3.js";
@@ -91,7 +92,12 @@ import {
   depthIterationDecisionSchema,
   referenceDepthIterationDecision,
 } from "../exploration/semantic-depth-evaluation.js";
-import { semanticDepthWorkQueueSchema } from "../exploration/semantic-depth-work-queue.js";
+import {
+  referenceSemanticDepthWorkQueueV2,
+  semanticDepthWorkQueueRefV2Schema,
+  semanticDepthWorkQueueSchema,
+  semanticDepthWorkQueueV2Schema,
+} from "../exploration/semantic-depth-work-queue.js";
 import {
   VerificationConflictError,
   verificationCompletionInputSchema,
@@ -144,6 +150,7 @@ import type {
   SemanticFinderCheckpointRecordView,
   SemanticIterationDecisionRecordView,
   SemanticIterationDecisionRecordViewV3,
+  SemanticDepthWorkQueueRecordViewV2,
   ValidationCompletion,
   ValidationCompletionRecordView,
   ValidationFrontierGapRecordView,
@@ -413,6 +420,12 @@ const semanticIterationDecidedPayloadV3Schema = z.strictObject({
   registry: approachFamilyRegistryRefV3Schema,
 });
 
+const semanticDepthWorkQueuedPayloadV2Schema = z.strictObject({
+  runId: z.string().min(1).max(128),
+  decision: semanticIterationDecisionRefV3Schema,
+  queue: semanticDepthWorkQueueRefV2Schema,
+});
+
 const validationIntentSchema = z.strictObject({
   kind: z.literal("validation-intent"),
   schemaVersion: z.literal(1),
@@ -560,6 +573,10 @@ interface LedgerProjection {
   readonly semanticIterationDecisionsV3: ReadonlyMap<
     string,
     SemanticIterationDecisionRecordViewV3
+  >;
+  readonly semanticDepthWorkQueuesV2: ReadonlyMap<
+    string,
+    SemanticDepthWorkQueueRecordViewV2
   >;
   readonly approachFamilyRegistries: ReadonlyMap<
     string,
@@ -2193,6 +2210,109 @@ class SqliteResearchRecord implements ResearchRecord {
     return transact();
   }
 
+  async recordSemanticDepthWorkQueueV2(
+    campaignId: string,
+    runId: string,
+    value: z.infer<typeof semanticDepthWorkQueueV2Schema>,
+  ): Promise<SemanticDepthWorkQueueRecordViewV2> {
+    const queue = semanticDepthWorkQueueV2Schema.parse(value);
+    const queueRef = referenceSemanticDepthWorkQueueV2(queue);
+    if (queue.items.length === 0) {
+      throw new Error("Semantic Depth Work Queue v2 must contain work");
+    }
+    if (this.#artifactStore === undefined) {
+      throw new Error(
+        "Semantic Depth Work Queue v2 requires an Artifact Store",
+      );
+    }
+    const queueArtifactDigest = await this.#artifactStore.putJson(queue);
+    if (queueArtifactDigest !== queueRef.digest) {
+      throw new Error("Semantic Depth Work Queue v2 CAS mismatch");
+    }
+
+    const transact = this.#database.transaction(
+      (): SemanticDepthWorkQueueRecordViewV2 => {
+        const rows = this.#readRows(campaignId);
+        if (rows.length === 0) {
+          throw new Error(`Campaign not found: ${campaignId}`);
+        }
+        const ledger = this.#decodeLedger(campaignId, rows);
+        const existing = ledger.semanticDepthWorkQueuesV2.get(runId);
+        if (existing !== undefined) {
+          if (canonicalJson(existing.queue) !== canonicalJson(queueRef)) {
+            throw new CampaignRunConflictError(campaignId, runId);
+          }
+          return existing;
+        }
+        const run = ledger.semanticRuns.get(runId);
+        const decision = ledger.semanticIterationDecisionsV3.get(
+          queue.predecessorDecisionDigest,
+        );
+        const registry = ledger.approachFamilyRegistriesV3.get(runId);
+        const familyRefs = new Map(
+          (registry?.value.families ?? []).map((family) => {
+            const ref = referenceApproachFamilyV3(family);
+            return [ref.id, ref] as const;
+          }),
+        );
+        if (
+          run === undefined ||
+          run.completed !== undefined ||
+          run.plan.schemaVersion !== 3 ||
+          queue.campaignId !== campaignId ||
+          queue.runId !== runId ||
+          canonicalJson(queue.target) !== canonicalJson(run.plan.target) ||
+          canonicalJson(queue.manifest) !== canonicalJson(run.plan.manifest) ||
+          decision === undefined ||
+          decision.decision.workWaveDigest !== queue.wave.digest ||
+          registry === undefined ||
+          !registry.value.decisions.some(
+            (candidate) => candidate.digest === queue.predecessorDecisionDigest,
+          ) ||
+          queue.items.some((item) =>
+            item.families.some((family) => {
+              const expected = familyRefs.get(family.id);
+              return (
+                expected === undefined ||
+                canonicalJson(expected) !== canonicalJson(family)
+              );
+            }),
+          )
+        ) {
+          throw new CampaignRunConflictError(campaignId, runId);
+        }
+
+        const occurredAt = this.#clock().toISOString();
+        const ledgerHead = rows.length + 1;
+        this.#insertEvent(
+          campaignId,
+          ledgerHead,
+          "exploration.depth-work-queued",
+          occurredAt,
+          {
+            runId,
+            decision: decision.decision,
+            queue: queueRef,
+          },
+          2,
+        );
+        return { ledgerHead, occurredAt, queue: queueRef };
+      },
+    );
+    return transact();
+  }
+
+  async readSemanticDepthWorkQueueV2(
+    campaignId: string,
+    runId: string,
+  ): Promise<SemanticDepthWorkQueueRecordViewV2 | undefined> {
+    const rows = this.#readRows(campaignId);
+    if (rows.length === 0) return undefined;
+    return this.#decodeLedger(campaignId, rows).semanticDepthWorkQueuesV2.get(
+      runId,
+    );
+  }
+
   async readApproachFamilyRegistry(
     campaignId: string,
     runId: string,
@@ -3117,6 +3237,10 @@ class SqliteResearchRecord implements ResearchRecord {
       string,
       SemanticIterationDecisionRecordViewV3
     >();
+    const semanticDepthWorkQueuesV2 = new Map<
+      string,
+      SemanticDepthWorkQueueRecordViewV2
+    >();
     const approachFamilyRegistries = new Map<
       string,
       ApproachFamilyRegistryRecordView
@@ -3453,6 +3577,50 @@ class SqliteResearchRecord implements ResearchRecord {
           registry: payload.registry,
         });
         approachFamilyRegistries.set(payload.runId, registry);
+        continue;
+      }
+      if (event.kind === "exploration.depth-work-queued") {
+        if (event.schema_version !== 2) {
+          throw new UnsupportedLedgerSchemaError(
+            event.kind,
+            event.schema_version,
+          );
+        }
+        const payload = semanticDepthWorkQueuedPayloadV2Schema.parse(
+          this.#parsePayload(event),
+        );
+        const run = semanticRuns.get(payload.runId);
+        const decision = semanticIterationDecisionsV3.get(
+          payload.decision.digest,
+        );
+        const registry = approachFamilyRegistriesV3.get(payload.runId);
+        if (
+          run === undefined ||
+          run.completed !== undefined ||
+          run.plan.schemaVersion !== 3 ||
+          decision === undefined ||
+          registry === undefined ||
+          semanticDepthWorkQueuesV2.has(payload.runId) ||
+          payload.queue.campaignId !== campaignId ||
+          payload.queue.runId !== payload.runId ||
+          payload.queue.predecessorDecisionDigest !== payload.decision.digest ||
+          payload.queue.targetSnapshotDigest !== run.plan.target.digest ||
+          payload.queue.manifestDigest !== run.plan.manifest.digest ||
+          payload.decision.workWaveDigest !==
+            decision.decision.workWaveDigest ||
+          canonicalJson(payload.decision) !==
+            canonicalJson(decision.decision) ||
+          !registry.value.decisions.some(
+            (candidate) => candidate.digest === payload.decision.digest,
+          )
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        semanticDepthWorkQueuesV2.set(payload.runId, {
+          ledgerHead: event.campaign_sequence,
+          occurredAt: event.occurred_at,
+          queue: payload.queue,
+        });
         continue;
       }
       if (event.kind === "validation.intended") {
@@ -3908,13 +4076,22 @@ class SqliteResearchRecord implements ResearchRecord {
             const registry = approachFamilyRegistriesV3.get(
               payload.record.runId,
             );
+            const queuedDepthWork = semanticDepthWorkQueuesV2.get(
+              payload.record.runId,
+            );
             if (
               decision === undefined ||
               registry === undefined ||
               canonicalJson(decision.decision) !==
                 canonicalJson(payload.record.iterationDecisionRef) ||
               canonicalJson(registry.ref) !==
-                canonicalJson(payload.record.approachFamilyRegistry)
+                canonicalJson(payload.record.approachFamilyRegistry) ||
+              (queuedDepthWork === undefined) !==
+                (payload.record.depthWorkQueue === undefined) ||
+              (queuedDepthWork !== undefined &&
+                payload.record.depthWorkQueue !== undefined &&
+                canonicalJson(queuedDepthWork.queue) !==
+                  canonicalJson(payload.record.depthWorkQueue))
             ) {
               throw new LedgerIntegrityError(campaignId, "invalid-event-order");
             }
@@ -4205,6 +4382,7 @@ class SqliteResearchRecord implements ResearchRecord {
       semanticFinderCheckpoints,
       semanticIterationDecisions,
       semanticIterationDecisionsV3,
+      semanticDepthWorkQueuesV2,
       approachFamilyRegistries,
       approachFamilyRegistriesV3,
       validationIntents,

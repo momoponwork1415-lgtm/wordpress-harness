@@ -680,6 +680,16 @@ function resolveCurrentEvaluatorOutput(
     }
 
     if (proposal.kind === "schedule-work") {
+      const familyBound = approachFamilies.some((family) =>
+        resolved.subjects.some((subject) =>
+          family.subjects.some(
+            (evidence) => evidence.digest === subject.digest,
+          ),
+        ),
+      );
+      if (!familyBound) {
+        return { kind: "failed", reason: "invalid-action-binding" };
+      }
       actions.push(
         iterationActionV3Schema.parse({
           kind: proposal.kind,

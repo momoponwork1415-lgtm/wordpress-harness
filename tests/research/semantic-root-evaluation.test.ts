@@ -540,6 +540,68 @@ describe("Exploration fresh Root Evaluation", () => {
     expect(depthAction.approachFamily).toEqual(validationAction.approachFamily);
   });
 
+  it("returns typed incomplete when scheduled Depth work is not bound to a proposed Family", async () => {
+    const modelExecution: ModelExecution = {
+      run: async (plan) =>
+        completedResult(plan, {
+          kind: "root-evaluator-output",
+          schemaVersion: 2,
+          approachFamilies: [
+            {
+              key: "cross-actor-state",
+              subjectDigests: [hypothesisRef.digest],
+              thesis: "A public state writer may cross an actor boundary.",
+              mechanism:
+                "Attacker-controlled state reaches a privileged consumer.",
+              falsifier: "Every consumer enforces actor ownership.",
+              nextAction: "Trace each privileged consumer.",
+            },
+          ],
+          actions: [
+            {
+              kind: "admit-depth",
+              approachFamilyKey: "cross-actor-state",
+              subjectDigests: [hypothesisRef.digest],
+              admission: {
+                highImpactPotential:
+                  "Adjacent consumers may amplify the security effect.",
+                composition: "Connect the writer to privileged consumers.",
+                falsifier: "No consumer crosses an actor boundary.",
+                nextAction: "Trace adjacent source-bound consumers.",
+              },
+            },
+            {
+              kind: "schedule-work",
+              subjectDigests: [fragmentRef.digest],
+              work: {
+                requiredFact: "Resolve the fragment's consuming actor.",
+                falsifier: "The fragment has no privileged consumer.",
+                nextAction: "Inspect the source-bound fragment consumers.",
+              },
+            },
+            {
+              kind: "retain",
+              subjectDigests: [sha256Digest(thesis)],
+              reason: "Keep the independent thesis active.",
+            },
+          ],
+          campaignDisposition: "continue",
+        }),
+    };
+
+    await expect(
+      semanticExploration(modelExecution).decide({
+        ...evaluationInput(),
+        schemaVersion: 3 as const,
+      }),
+    ).resolves.toMatchObject({
+      kind: "evaluation-incomplete",
+      schemaVersion: 3,
+      reason: "invalid-action-binding",
+      attempts: [{ role: "root-evaluator" }, { role: "root-evaluator" }],
+    });
+  });
+
   it("sends a Hypothesis to Verification and a Fragment to Depth in one complete decision", async () => {
     const observedPlans: ModelAttemptPlan[] = [];
     const modelExecution: ModelExecution = {

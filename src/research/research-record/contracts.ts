@@ -16,7 +16,11 @@ import type {
 } from "../exploration/semantic-contracts.js";
 import type { ChainSynthesis } from "../exploration/semantic-chain-synthesis.js";
 import type { DepthIterationDecision } from "../exploration/semantic-depth-evaluation.js";
-import type { SemanticDepthWorkQueue } from "../exploration/semantic-depth-work-queue.js";
+import type {
+  SemanticDepthWorkQueue,
+  SemanticDepthWorkQueueRefV2,
+  SemanticDepthWorkQueueV2,
+} from "../exploration/semantic-depth-work-queue.js";
 import type { TargetFileManifestRef } from "../source-mapping/contracts.js";
 import type {
   CampaignAttemptCompletion,
@@ -127,6 +131,15 @@ export interface ResearchRecord {
     runId: string,
     decision: IterationDecisionV3,
   ): Promise<SemanticIterationDecisionRecordViewV3>;
+  recordSemanticDepthWorkQueueV2(
+    campaignId: string,
+    runId: string,
+    queue: SemanticDepthWorkQueueV2,
+  ): Promise<SemanticDepthWorkQueueRecordViewV2>;
+  readSemanticDepthWorkQueueV2(
+    campaignId: string,
+    runId: string,
+  ): Promise<SemanticDepthWorkQueueRecordViewV2 | undefined>;
   recordSemanticDepthIteration(
     campaignId: string,
     runId: string,
@@ -286,6 +299,12 @@ export interface SemanticIterationDecisionRecordViewV3 {
   readonly occurredAt: string;
   readonly decision: SemanticIterationDecisionRefV3;
   readonly registry: ApproachFamilyRegistryRefV3;
+}
+
+export interface SemanticDepthWorkQueueRecordViewV2 {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly queue: SemanticDepthWorkQueueRefV2;
 }
 
 export interface ApproachFamilyRegistryRecordViewV3 {
