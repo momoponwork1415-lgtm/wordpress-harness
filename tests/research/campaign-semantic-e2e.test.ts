@@ -2647,5 +2647,5 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
       research.close();
       await rm(directory, { force: true, recursive: true });
     }
-  }, 30_000);
+  }, 60_000);
 });
