@@ -1460,6 +1460,15 @@ export class LegacyMapFirstExecutionDisabledError extends Error {
   }
 }
 
+export class LegacySemanticExecutionDisabledError extends Error {
+  constructor() {
+    super(
+      "Semantic Campaign v2 execution is retired; only completed legacy ledger replay remains available",
+    );
+    this.name = "LegacySemanticExecutionDisabledError";
+  }
+}
+
 export class RetiredSemanticBudgetPolicyError extends Error {
   constructor() {
     super(

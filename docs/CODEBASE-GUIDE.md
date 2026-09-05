@@ -113,10 +113,11 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 Internal Module。immutable CAS artifact、append-only Ledger event、checkpoint、replay projectionを所有する。
 
+- **Interface:** current writeはprivate `CurrentCampaignStore`、全世代のread-only replayは`LegacyResearchReplay`。SQLiteとpublic `CampaignRunner / CampaignReader`は維持する。
 - artifactを保存してから参照eventをappendする。
 - cacheを削除しても同じLedgerから同じview digestを再構築できる。
 - semantic identity、priority、Family groupingはowner Moduleが決める。
-- **Status / Tests:** Decision@3、Family、Validation、Frontier Gap、Depth Queue / Synthesis / Critique / Evaluation、Review Packet handoff、progress replayを実装 · [code](../src/research/research-record), [record](../tests/research/semantic-iteration-decision-record-v3.test.ts), [compatibility](../tests/research/ledger-compatibility.test.ts)
+- **Status / Tests:** current v3 writeをlegacy `ResearchRecord`から分離し、v1 / v2は既存Ledgerのreplayだけをproductionで許可する。Decision@3、Family、Validation、Frontier Gap、Depth Queue / Synthesis / Critique / Evaluation、Review Packet handoff、progress replayを実装 · [current store](../src/research/research-record/current-campaign-store.ts), [legacy replay](../src/research/research-record/legacy-research-replay.ts), [v3 behavior](../tests/research/campaign-validation-run.test.ts), [compatibility](../tests/research/ledger-compatibility.test.ts)
 
 ## Human OS
 

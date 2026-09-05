@@ -1,14 +1,37 @@
-import { openCampaignControl } from "./campaign-control/index.js";
+import {
+  openCampaignControl,
+  openLegacyCampaignControlForTests,
+} from "./campaign-control/index.js";
 import type { OpenResearchOptions, ResearchModule } from "./contracts.js";
-import { openSqliteResearchRecord } from "./research-record/index.js";
+import {
+  openSqliteResearchRecord,
+  openSqliteResearchStores,
+} from "./research-record/index.js";
 
 export function openResearch(options: OpenResearchOptions): ResearchModule {
-  return openResearchWithLegacyMapFirst(options, false);
+  const artifactStore =
+    options.artifactStore ?? options.campaignExecution?.artifactStore;
+  const stores = openSqliteResearchStores({
+    databasePath: options.databasePath,
+    ...(options.clock === undefined ? {} : { clock: options.clock }),
+    ...(artifactStore === undefined ? {} : { artifactStore }),
+  });
+  const campaign = openCampaignControl(
+    stores.current,
+    stores.replay,
+    options.campaignExecution,
+    artifactStore,
+  );
+  return {
+    runner: campaign.runner,
+    reader: campaign.reader,
+    close: stores.close,
+  };
 }
 
-function openResearchWithLegacyMapFirst(
+/** Internal compatibility harness for behavior tests that create legacy ledgers. */
+export function openLegacyResearchForTests(
   options: OpenResearchOptions,
-  allowLegacyMapFirstExecution: boolean,
 ): ResearchModule {
   const artifactStore =
     options.artifactStore ?? options.campaignExecution?.artifactStore;
@@ -17,11 +40,10 @@ function openResearchWithLegacyMapFirst(
     ...(options.clock === undefined ? {} : { clock: options.clock }),
     ...(artifactStore === undefined ? {} : { artifactStore }),
   });
-  const campaign = openCampaignControl(
+  const campaign = openLegacyCampaignControlForTests(
     record,
     options.campaignExecution,
     artifactStore,
-    allowLegacyMapFirstExecution,
   );
   return {
     runner: campaign.runner,
@@ -30,9 +52,9 @@ function openResearchWithLegacyMapFirst(
   };
 }
 
-/** Internal compatibility harness for behavior tests of archived v1 ledgers. */
+/** Backward-compatible name for archived Map-first test fixtures. */
 export function openLegacyMapFirstResearchForTests(
   options: OpenResearchOptions,
 ): ResearchModule {
-  return openResearchWithLegacyMapFirst(options, true);
+  return openLegacyResearchForTests(options);
 }

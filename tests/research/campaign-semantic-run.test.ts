@@ -8,6 +8,7 @@ import {
   CampaignRunConflictError,
   openResearch,
 } from "../../src/research/index.js";
+import { openLegacyResearchForTests } from "../../src/research/open-research.js";
 import type { SemanticWorkWavePlan } from "../../src/research/exploration/index.js";
 import type {
   AttemptExecutionResultV2,
@@ -278,7 +279,7 @@ describe("CampaignRunner.run semantic Finder wave", () => {
     let legacyMaterializerCalls = 0;
     let verifierCalls = 0;
     let labCalls = 0;
-    const research = openResearch({
+    const research = openLegacyResearchForTests({
       databasePath: join(directory, "research.sqlite"),
       campaignExecution: {
         artifactStore: artifacts,
@@ -405,6 +406,27 @@ describe("CampaignRunner.run semantic Finder wave", () => {
       expect(observedPlans).toHaveLength(4);
       expect(firstCheckpointAcks).toHaveLength(2);
       expect(firstCheckpointAcks[1]).toEqual(firstCheckpointAcks[0]);
+
+      const publicReplay = openResearch({
+        databasePath: join(directory, "research.sqlite"),
+      });
+      try {
+        await expect(publicReplay.runner.run(plan)).resolves.toEqual(ref);
+        await expect(
+          publicReplay.reader.inspect(input.campaignId, {
+            kind: "run",
+            runId: plan.runId,
+          }),
+        ).resolves.toEqual(inspected);
+        await expect(
+          publicReplay.runner.run({
+            ...plan,
+            runId: "semantic-wave-new-legacy-write",
+          }),
+        ).rejects.toThrow("only completed legacy ledger replay remains");
+      } finally {
+        publicReplay.close();
+      }
 
       const checkpointReader = openSqliteResearchRecord({
         databasePath: join(directory, "research.sqlite"),

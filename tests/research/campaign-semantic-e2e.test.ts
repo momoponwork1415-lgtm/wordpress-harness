@@ -10,6 +10,7 @@ import {
   campaignDefaultSemanticRunPlanV2Schema,
   openResearch,
 } from "../../src/research/index.js";
+import { openLegacyResearchForTests } from "../../src/research/open-research.js";
 import type {
   AttemptExecutionResultV2,
   ModelAttemptPlan,
@@ -1154,7 +1155,7 @@ describe("CampaignRunner.run Default Map-free Semantic Wave", () => {
       },
     };
     let legacyMaterializerCalls = 0;
-    const research = openResearch({
+    const research = openLegacyResearchForTests({
       databasePath: join(directory, "research.sqlite"),
       artifactStore: artifacts,
       campaignExecution: {

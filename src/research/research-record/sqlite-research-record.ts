@@ -191,6 +191,8 @@ import type {
   JsonArtifactStore,
   HumanReviewPacketRecordView,
 } from "./contracts.js";
+import type { CurrentCampaignStore } from "./current-campaign-store.js";
+import type { LegacyResearchReplay } from "./legacy-research-replay.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 
@@ -1203,7 +1205,9 @@ function verificationRef(
   };
 }
 
-class SqliteResearchRecord implements ResearchRecord {
+class SqliteResearchRecord
+  implements ResearchRecord, CurrentCampaignStore, LegacyResearchReplay
+{
   readonly #database: Database.Database;
   readonly #clock: () => Date;
   readonly #artifactStore: JsonArtifactStore | undefined;
@@ -5686,4 +5690,67 @@ export function openSqliteResearchRecord(
   options: OpenResearchRecordOptions,
 ): ResearchRecord {
   return new SqliteResearchRecord(options);
+}
+
+export interface SqliteResearchStores {
+  readonly current: CurrentCampaignStore;
+  readonly replay: LegacyResearchReplay;
+  close(): void;
+}
+
+export function openSqliteResearchStores(
+  options: OpenResearchRecordOptions,
+): SqliteResearchStores {
+  const record = new SqliteResearchRecord(options);
+  const current = {
+    recordPreparation: record.recordPreparation.bind(record),
+    readPreparation: record.readPreparation.bind(record),
+    recordSemanticCampaignRunStart:
+      record.recordSemanticCampaignRunStart.bind(record),
+    recordSemanticCampaignRunCompletionV3:
+      record.recordSemanticCampaignRunCompletionV3.bind(record),
+    recordSemanticCampaignAttemptStart:
+      record.recordSemanticCampaignAttemptStart.bind(record),
+    recordSemanticCampaignAttemptCompletion:
+      record.recordSemanticCampaignAttemptCompletion.bind(record),
+    listSemanticCampaignAttempts:
+      record.listSemanticCampaignAttempts.bind(record),
+    recordSemanticFinderCheckpoint:
+      record.recordSemanticFinderCheckpoint.bind(record),
+    listSemanticFinderCheckpoints:
+      record.listSemanticFinderCheckpoints.bind(record),
+    recordSemanticIterationDecisionV3:
+      record.recordSemanticIterationDecisionV3.bind(record),
+    recordSemanticDepthWorkQueueV2:
+      record.recordSemanticDepthWorkQueueV2.bind(record),
+    recordSemanticChainSynthesisV2:
+      record.recordSemanticChainSynthesisV2.bind(record),
+    recordSemanticAdversarialCritiqueV2:
+      record.recordSemanticAdversarialCritiqueV2.bind(record),
+    recordSemanticDepthEvaluationIncompleteV2:
+      record.recordSemanticDepthEvaluationIncompleteV2.bind(record),
+    recordSemanticDepthIterationV3:
+      record.recordSemanticDepthIterationV3.bind(record),
+    readApproachFamilyRegistryV3:
+      record.readApproachFamilyRegistryV3.bind(record),
+    recordValidationIntents: record.recordValidationIntents.bind(record),
+    listValidationCompletions: record.listValidationCompletions.bind(record),
+    recordValidationCompletion: record.recordValidationCompletion.bind(record),
+    listValidationFrontierGaps: record.listValidationFrontierGaps.bind(record),
+    readHumanReviewPacket: record.readHumanReviewPacket.bind(record),
+    recordHumanReviewPacket: record.recordHumanReviewPacket.bind(record),
+    recordHumanReviewPacketHandoff:
+      record.recordHumanReviewPacketHandoff.bind(record),
+  } satisfies CurrentCampaignStore;
+  const replay = {
+    readPreparation: record.readPreparation.bind(record),
+    readCampaignRun: record.readCampaignRun.bind(record),
+    readVerification: record.readVerification.bind(record),
+    readCampaignProgress: record.readCampaignProgress.bind(record),
+  } satisfies LegacyResearchReplay;
+  return {
+    current,
+    replay,
+    close: () => record.close(),
+  };
 }

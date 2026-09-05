@@ -8,6 +8,7 @@ import {
   openResearch,
   type PreparedCampaign,
 } from "../../src/research/index.js";
+import { openLegacyResearchForTests } from "../../src/research/open-research.js";
 import type { SemanticWorkWavePlan } from "../../src/research/exploration/index.js";
 import type {
   AttemptExecutionResultV2,
@@ -241,7 +242,7 @@ describe("CampaignRunner.prepareFromTargetIntake", () => {
         throw new Error("Expected a Target File Manifest");
       }
       let finderRuns = 0;
-      const reopened = openResearch({
+      const reopened = openLegacyResearchForTests({
         databasePath,
         artifactStore: artifacts,
         campaignExecution: {

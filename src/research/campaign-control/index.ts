@@ -83,6 +83,8 @@ import {
   sha256Digest,
 } from "../research-record/canonical-json.js";
 import type {
+  CurrentCampaignStore,
+  LegacyResearchReplay,
   PreparationRecord,
   ResearchRecord,
 } from "../research-record/index.js";
@@ -117,6 +119,7 @@ import {
 import {
   CampaignRunConflictError,
   LegacyMapFirstExecutionDisabledError,
+  LegacySemanticExecutionDisabledError,
   campaignRunPlanSchema,
   campaignRunPlanV2Schema,
   campaignRunPlanV3Schema,
@@ -231,6 +234,15 @@ function semanticRunConflict(
   plan: CampaignRunPlanV2 | DefaultSemanticCampaignRunPlanV3,
 ): never {
   throw new CampaignRunConflictError(plan.campaignId, plan.runId);
+}
+
+function requireLegacyExecution(
+  record: ResearchRecord | undefined,
+): ResearchRecord {
+  if (record === undefined) {
+    throw new LegacySemanticExecutionDisabledError();
+  }
+  return record;
 }
 
 async function preflightSemanticFinderWave(
@@ -479,7 +491,7 @@ function semanticAttemptCompletion(
 }
 
 async function executeRecordedSemanticAttempt(
-  record: ResearchRecord,
+  record: CurrentCampaignStore,
   dependencies: CampaignExecutionDependencies,
   plan: Extract<ModelAttemptPlan, { schemaVersion: 2 }>,
   intent: CampaignAttemptIntentV2,
@@ -579,7 +591,7 @@ async function executeRecordedSemanticAttempt(
 }
 
 async function openSemanticFinderCheckpointObserver(
-  record: ResearchRecord,
+  record: CurrentCampaignStore,
   dependencies: CampaignExecutionDependencies,
   plan: Extract<AttemptPlanV2, { role: "finder" }>,
   intent: Extract<CampaignAttemptIntentV2, { role: "finder" }>,
@@ -854,7 +866,7 @@ interface CurrentDepthExecutionInput {
     readonly value: SemanticDepthWorkQueueV2;
   };
   readonly registry: NonNullable<
-    Awaited<ReturnType<ResearchRecord["readApproachFamilyRegistryV3"]>>
+    Awaited<ReturnType<CurrentCampaignStore["readApproachFamilyRegistryV3"]>>
   >;
   readonly manifestValue: ReturnType<
     typeof semanticChainSynthesisInputSchema.parse
@@ -874,7 +886,7 @@ interface CurrentDepthExecutionInput {
 }
 
 async function executeCurrentSemanticDepthRound(
-  record: ResearchRecord,
+  record: CurrentCampaignStore,
   dependencies: CampaignExecutionDependencies,
   plan: DefaultSemanticCampaignRunPlanV3,
   input: CurrentDepthExecutionInput,
@@ -1211,7 +1223,7 @@ async function executeCurrentSemanticDepthRound(
 }
 
 async function prepareCurrentHumanReviewPackets(
-  record: ResearchRecord,
+  record: CurrentCampaignStore,
   dependencies: CampaignExecutionDependencies,
   plan: DefaultSemanticCampaignRunPlanV3,
   candidates: readonly ValidationCandidate[],
@@ -1347,7 +1359,7 @@ async function prepareCurrentHumanReviewPackets(
 }
 
 async function completeCurrentSemanticIteration(
-  record: ResearchRecord,
+  record: CurrentCampaignStore,
   dependencies: CampaignExecutionDependencies,
   plan: DefaultSemanticCampaignRunPlanV3,
   planDigest: string,
@@ -1576,9 +1588,10 @@ async function completeCurrentSemanticIteration(
 }
 
 async function executeDefaultSemanticCampaign(
-  record: ResearchRecord,
+  record: CurrentCampaignStore,
   dependencies: CampaignExecutionDependencies,
   plan: DefaultSemanticCampaignRunPlanV2 | DefaultSemanticCampaignRunPlanV3,
+  legacyExecution?: ResearchRecord,
 ) {
   const campaignStartedAt = performance.now();
   const preparation = await record.readPreparation(plan.campaignId);
@@ -1595,12 +1608,22 @@ async function executeDefaultSemanticCampaign(
     semanticRunConflict(plan);
   }
   const canonicalFileEntries = preparation.input.canonicalFileManifest.entries;
-  const start = await record.recordSemanticCampaignRunStart(plan);
+  const start =
+    plan.schemaVersion === 3
+      ? await record.recordSemanticCampaignRunStart(plan)
+      : await legacyExecution?.recordSemanticCampaignRunStart(plan);
+  if (start === undefined) {
+    throw new LegacySemanticExecutionDisabledError();
+  }
   if (start.disposition === "completed") return start.run;
 
   const verificationQueue =
     plan.schemaVersion === 2
-      ? openSemanticVerificationQueue(record, dependencies, plan)
+      ? openSemanticVerificationQueue(
+          requireLegacyExecution(legacyExecution),
+          dependencies,
+          plan,
+        )
       : undefined;
   for (const checkpoint of await record.listSemanticFinderCheckpoints(
     plan.campaignId,
@@ -1725,7 +1748,9 @@ async function executeDefaultSemanticCampaign(
         decision: { kind: "incomplete", reason: "planning-incomplete" },
       });
     }
-    return record.recordSemanticCampaignRunCompletion({
+    return requireLegacyExecution(
+      legacyExecution,
+    ).recordSemanticCampaignRunCompletion({
       kind: "campaign-run-completion",
       schemaVersion: 2,
       runId: plan.runId,
@@ -1983,7 +2008,9 @@ async function executeDefaultSemanticCampaign(
       });
     }
     if (evaluated.schemaVersion !== 2) semanticRunConflict(plan);
-    return record.recordSemanticCampaignRunCompletion({
+    return requireLegacyExecution(
+      legacyExecution,
+    ).recordSemanticCampaignRunCompletion({
       kind: "campaign-run-completion",
       schemaVersion: 2,
       runId: plan.runId,
@@ -2026,6 +2053,7 @@ async function executeDefaultSemanticCampaign(
   ) {
     semanticRunConflict(plan);
   }
+  const legacyRecord = requireLegacyExecution(legacyExecution);
   const iterationDecision: IterationDecisionV2 = evaluated;
   const iterationDecisionArtifactDigest =
     await dependencies.artifactStore.putJson(iterationDecision);
@@ -2035,7 +2063,7 @@ async function executeDefaultSemanticCampaign(
     throw new Error("Semantic Iteration Decision CAS mismatch");
   }
   const recordedIterationDecision =
-    await record.recordSemanticIterationDecision(
+    await legacyRecord.recordSemanticIterationDecision(
       plan.campaignId,
       plan.runId,
       iterationDecision,
@@ -2046,7 +2074,7 @@ async function executeDefaultSemanticCampaign(
   ) {
     throw new Error("Semantic Iteration Decision CAS mismatch");
   }
-  const initialFamilyRegistry = await record.readApproachFamilyRegistry(
+  const initialFamilyRegistry = await legacyRecord.readApproachFamilyRegistry(
     plan.campaignId,
     plan.runId,
   );
@@ -2073,7 +2101,7 @@ async function executeDefaultSemanticCampaign(
   ) => {
     coverageReviewOrdinal += 1;
     const result = await executeSemanticCoverageReview({
-      record,
+      record: legacyRecord,
       artifactStore: dependencies.artifactStore,
       run: plan,
       plannerAttempt: wave.plannerAttempt,
@@ -2086,7 +2114,7 @@ async function executeDefaultSemanticCampaign(
       knownSubjectIds,
       executeAttempt: (attemptPlan, intent, onCheckpoint) =>
         executeRecordedSemanticAttempt(
-          record,
+          legacyRecord,
           dependencies,
           attemptPlan,
           intent,
@@ -2442,7 +2470,7 @@ async function executeDefaultSemanticCampaign(
       if (evaluationArtifactDigest !== evaluationRef.digest) {
         throw new Error("Semantic Depth Iteration Decision CAS mismatch");
       }
-      currentFamilyRegistry = await record.recordSemanticDepthIteration(
+      currentFamilyRegistry = await legacyRecord.recordSemanticDepthIteration(
         plan.campaignId,
         plan.runId,
         {
@@ -2648,12 +2676,13 @@ async function executeDefaultSemanticCampaign(
         if (terminal.issues.length > 0) depthIncomplete = true;
       }
       if (followUpQueues.length > 0) {
-        currentFamilyRegistry = await record.recordSemanticMissingLinkEvidence(
-          plan.campaignId,
-          plan.runId,
-          evaluationRef.digest,
-          followUpQueues.map((queue) => queue.value),
-        );
+        currentFamilyRegistry =
+          await legacyRecord.recordSemanticMissingLinkEvidence(
+            plan.campaignId,
+            plan.runId,
+            evaluationRef.digest,
+            followUpQueues.map((queue) => queue.value),
+          );
         storedRegistryDigest = await dependencies.artifactStore.putJson(
           currentFamilyRegistry.value,
         );
@@ -2733,7 +2762,7 @@ async function executeDefaultSemanticCampaign(
   );
   if (familyVerificationResolutions.length > 0) {
     currentFamilyRegistry =
-      await record.recordSemanticFamilyVerificationOutcomes(
+      await legacyRecord.recordSemanticFamilyVerificationOutcomes(
         plan.campaignId,
         plan.runId,
         familyVerificationResolutions,
@@ -2816,7 +2845,7 @@ async function executeDefaultSemanticCampaign(
     }
   }
 
-  const attemptRecords = await record.listSemanticCampaignAttempts(
+  const attemptRecords = await legacyRecord.listSemanticCampaignAttempts(
     plan.campaignId,
     plan.runId,
   );
@@ -2828,7 +2857,7 @@ async function executeDefaultSemanticCampaign(
   );
   const verificationViews = await Promise.all(
     verificationRefs.map(async (ref) => {
-      const view = await record.readVerification(
+      const view = await legacyRecord.readVerification(
         plan.campaignId,
         ref.verificationId,
       );
@@ -2879,7 +2908,7 @@ async function executeDefaultSemanticCampaign(
                 kind: "incomplete" as const,
                 reason: "active-research-remains" as const,
               };
-  return record.recordSemanticCampaignRunCompletion({
+  return legacyRecord.recordSemanticCampaignRunCompletion({
     kind: "campaign-run-completion",
     schemaVersion: 2,
     runId: plan.runId,
@@ -3420,11 +3449,12 @@ async function executeRun(
   });
 }
 
-export function openCampaignControl(
-  record: ResearchRecord,
+function createCampaignControl(
+  currentStore: CurrentCampaignStore,
+  replay: LegacyResearchReplay,
   dependencies?: CampaignExecutionDependencies,
   preparationArtifactStore?: JsonArtifactStore,
-  allowLegacyMapFirstExecution = false,
+  legacyExecution?: ResearchRecord,
 ): CampaignControl {
   const validatePreparationHandoff = async (
     preparation: PreparationRecord,
@@ -3467,7 +3497,7 @@ export function openCampaignControl(
         parsedInput,
       );
     }
-    const result = await record.recordPreparation(
+    const result = await currentStore.recordPreparation(
       parsedInput,
       targetFileManifest,
     );
@@ -3502,26 +3532,66 @@ export function openCampaignControl(
           "schemaVersion" in value &&
           (value.schemaVersion === 2 || value.schemaVersion === 3)
         ) {
-          const plan =
-            value.schemaVersion === 3
-              ? campaignRunPlanV3Schema.parse(value)
-              : campaignRunPlanV2Schema.parse(value);
+          if (value.schemaVersion === 2) {
+            const plan = campaignRunPlanV2Schema.parse(value);
+            const completed = await replay.readCampaignRun(
+              plan.campaignId,
+              plan.runId,
+            );
+            if (completed !== undefined) {
+              if (
+                completed.value.schemaVersion !== 2 ||
+                completed.value.planDigest !== sha256Digest(plan)
+              ) {
+                throw new CampaignRunConflictError(plan.campaignId, plan.runId);
+              }
+              return completed.ref;
+            }
+            if (legacyExecution === undefined) {
+              throw new LegacySemanticExecutionDisabledError();
+            }
+            if (dependencies === undefined) {
+              throw new Error(
+                "Campaign execution dependencies are unavailable",
+              );
+            }
+            const preparation = await replay.readPreparation(plan.campaignId);
+            if (preparation === undefined) {
+              throw new Error(`Campaign not found: ${plan.campaignId}`);
+            }
+            await validatePreparationHandoff(preparation);
+            return (
+              await ("workWave" in plan
+                ? executeSemanticFinderWave(legacyExecution, dependencies, plan)
+                : executeDefaultSemanticCampaign(
+                    legacyExecution,
+                    dependencies,
+                    plan,
+                    legacyExecution,
+                  ))
+            ).ref;
+          }
+          const plan = campaignRunPlanV3Schema.parse(value);
           if (dependencies === undefined) {
             throw new Error("Campaign execution dependencies are unavailable");
           }
-          const preparation = await record.readPreparation(plan.campaignId);
+          const preparation = await currentStore.readPreparation(
+            plan.campaignId,
+          );
           if (preparation === undefined) {
             throw new Error(`Campaign not found: ${plan.campaignId}`);
           }
           await validatePreparationHandoff(preparation);
           return (
-            await (plan.schemaVersion === 2 && "workWave" in plan
-              ? executeSemanticFinderWave(record, dependencies, plan)
-              : executeDefaultSemanticCampaign(record, dependencies, plan))
+            await executeDefaultSemanticCampaign(
+              currentStore,
+              dependencies,
+              plan,
+            )
           ).ref;
         }
         const plan = campaignRunPlanSchema.parse(value);
-        const completed = await record.readCampaignRun(
+        const completed = await replay.readCampaignRun(
           plan.campaignId,
           plan.runId,
         );
@@ -3534,21 +3604,27 @@ export function openCampaignControl(
           }
           return completed.ref;
         }
-        if (!allowLegacyMapFirstExecution) {
+        if (legacyExecution === undefined) {
           throw new LegacyMapFirstExecutionDisabledError();
         }
-        const start = await record.recordCampaignRunStart(plan);
+        const start = await legacyExecution.recordCampaignRunStart(plan);
         if (start.disposition === "completed") return start.run.ref;
         if (dependencies === undefined) {
           throw new Error("Campaign execution dependencies are unavailable");
         }
-        return (await executeRun(record, dependencies, plan, start.planDigest))
-          .ref;
+        return (
+          await executeRun(
+            legacyExecution,
+            dependencies,
+            plan,
+            start.planDigest,
+          )
+        ).ref;
       },
     },
     reader: {
       read: async (campaignId) => {
-        const preparation = await record.readPreparation(campaignId);
+        const preparation = await replay.readPreparation(campaignId);
         if (preparation === undefined) {
           throw new Error(`Campaign not found: ${campaignId}`);
         }
@@ -3557,14 +3633,14 @@ export function openCampaignControl(
       },
       inspect: async (campaignId, subject): Promise<SubjectView> => {
         if (subject.kind === "progress") {
-          const progress = await record.readCampaignProgress(campaignId);
+          const progress = await replay.readCampaignProgress(campaignId);
           if (progress === undefined) {
             throw new Error(`Campaign not found: ${campaignId}`);
           }
           return progress;
         }
         if (subject.kind === "finding-mechanism-groups") {
-          const run = await record.readCampaignRun(campaignId, subject.runId);
+          const run = await replay.readCampaignRun(campaignId, subject.runId);
           if (run === undefined) {
             throw new Error(
               `Campaign run not found: ${campaignId}/${subject.runId}`,
@@ -3583,7 +3659,7 @@ export function openCampaignControl(
               : [];
           const verifications = await Promise.all(
             verificationRefs.map(async (ref) => {
-              const view = await record.readVerification(
+              const view = await replay.readVerification(
                 campaignId,
                 ref.verificationId,
               );
@@ -3607,7 +3683,7 @@ export function openCampaignControl(
           });
         }
         if (subject.kind === "run") {
-          const run = await record.readCampaignRun(campaignId, subject.runId);
+          const run = await replay.readCampaignRun(campaignId, subject.runId);
           if (run === undefined) {
             throw new Error(
               `Campaign run not found: ${campaignId}/${subject.runId}`,
@@ -3621,7 +3697,7 @@ export function openCampaignControl(
             value: run.value,
           };
         }
-        const preparation = await record.readPreparation(campaignId);
+        const preparation = await replay.readPreparation(campaignId);
         if (preparation === undefined) {
           throw new Error(`Campaign not found: ${campaignId}`);
         }
@@ -3639,4 +3715,33 @@ export function openCampaignControl(
       },
     },
   };
+}
+
+export function openCampaignControl(
+  currentStore: CurrentCampaignStore,
+  replay: LegacyResearchReplay,
+  dependencies?: CampaignExecutionDependencies,
+  preparationArtifactStore?: JsonArtifactStore,
+): CampaignControl {
+  return createCampaignControl(
+    currentStore,
+    replay,
+    dependencies,
+    preparationArtifactStore,
+  );
+}
+
+/** Internal writer used only to construct archived Ledger fixtures in tests. */
+export function openLegacyCampaignControlForTests(
+  record: ResearchRecord,
+  dependencies?: CampaignExecutionDependencies,
+  preparationArtifactStore?: JsonArtifactStore,
+): CampaignControl {
+  return createCampaignControl(
+    record,
+    record,
+    dependencies,
+    preparationArtifactStore,
+    record,
+  );
 }

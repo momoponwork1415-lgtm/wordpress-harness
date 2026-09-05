@@ -1,5 +1,10 @@
 export { openFileJsonArtifactStore } from "./file-json-artifact-store.js";
-export { openSqliteResearchRecord } from "./sqlite-research-record.js";
+export {
+  openSqliteResearchRecord,
+  openSqliteResearchStores,
+} from "./sqlite-research-record.js";
+export type { CurrentCampaignStore } from "./current-campaign-store.js";
+export type { LegacyResearchReplay } from "./legacy-research-replay.js";
 export type {
   JsonArtifactStore,
   ApproachFamilyRegistryRecordViewV3,
