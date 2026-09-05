@@ -9,12 +9,14 @@ import { canonicalJson, sha256Digest } from "../acquisition/canonical-json.js";
 import {
   WordfenceKnownRecordAccessError,
   currentWordfenceIntelligenceSnapshotSchema,
+  staleWordfenceIntelligenceSnapshotSchema,
   knownRecordAccessAuthorizationSchema,
   vulnerabilityHistoryAggregateRequestSchema,
   vulnerabilityHistoryAggregateSchema,
   wordfenceIntelligenceInspectionRequestSchema,
   wordfenceIntelligenceFailureSchema,
   wordfenceIntelligenceRefreshRequestSchema,
+  wordfenceIntelligenceRefreshAttemptSchema,
   wordfenceIntelligenceResultSchema,
   wordfenceIntelligenceSnapshotRefSchema,
   wordfenceIntelligenceSnapshotSchema,
@@ -52,6 +54,7 @@ import {
 } from "./contracts.js";
 
 const DEFAULT_MAXIMUM_FEED_BYTES = 256_000_000;
+const MAXIMUM_RETRY_AFTER_SECONDS = 86_400;
 const DEFAULT_SOURCE_URL =
   "https://www.wordfence.com/api/intelligence/v3/vulnerabilities/production";
 
@@ -125,6 +128,18 @@ const snapshotRowSchema = z.strictObject({
 });
 
 const recordRowSchema = z.strictObject({ record_json: z.string() });
+
+const refreshStateRowSchema = z.strictObject({ state_json: z.string() });
+
+const productionRefreshStateSchema = z.strictObject({
+  kind: z.literal("wordfence-intelligence-production-refresh-state"),
+  schemaVersion: z.literal(1),
+  currentSnapshotDigest: z
+    .string()
+    .regex(/^sha256:[a-f0-9]{64}$/)
+    .optional(),
+  latestRefresh: wordfenceIntelligenceRefreshAttemptSchema,
+});
 
 type SnapshotRow = z.infer<typeof snapshotRowSchema>;
 
@@ -557,36 +572,56 @@ async function boundedResponseBytes(
   return bytes;
 }
 
-function rateLimitBackoff(headers: Headers) {
+function rateLimitBackoff(headers: Headers, now: Date) {
   const value = headers.get("retry-after");
+  const boundedAt = now.toISOString();
+  const earliestTimestamp = now.getTime();
+  const latestTimestamp =
+    earliestTimestamp + MAXIMUM_RETRY_AFTER_SECONDS * 1_000;
   let retryAfter:
     | { readonly kind: "unspecified" }
     | {
         readonly kind: "delay-seconds";
         readonly seconds: number;
+        readonly capped: boolean;
       }
     | {
         readonly kind: "absolute-time";
         readonly at: string;
+        readonly capped: boolean;
       } = { kind: "unspecified" };
   if (value !== null && /^\d+$/u.test(value)) {
-    const seconds = Number(value);
-    if (Number.isSafeInteger(seconds)) {
-      retryAfter = { kind: "delay-seconds", seconds };
-    }
+    const normalizedSeconds = value.replace(/^0+(?=\d)/u, "");
+    const maximumSeconds = String(MAXIMUM_RETRY_AFTER_SECONDS);
+    const capped =
+      normalizedSeconds.length > maximumSeconds.length ||
+      (normalizedSeconds.length === maximumSeconds.length &&
+        normalizedSeconds > maximumSeconds);
+    retryAfter = {
+      kind: "delay-seconds",
+      seconds: capped ? MAXIMUM_RETRY_AFTER_SECONDS : Number(normalizedSeconds),
+      capped,
+    };
   } else if (value !== null) {
     const timestamp = Date.parse(value);
     if (!Number.isNaN(timestamp)) {
+      const boundedTimestamp = Math.max(
+        earliestTimestamp,
+        Math.min(timestamp, latestTimestamp),
+      );
       retryAfter = {
         kind: "absolute-time",
-        at: new Date(timestamp).toISOString(),
+        at: new Date(boundedTimestamp).toISOString(),
+        capped: boundedTimestamp !== timestamp,
       };
     }
   }
   return wordfenceRateLimitBackoffSchema.parse({
     kind: "wordfence-rate-limit-backoff",
-    schemaVersion: 1,
+    schemaVersion: 2,
     automaticRetries: 0,
+    boundedAt,
+    maximumDelaySeconds: MAXIMUM_RETRY_AFTER_SECONDS,
     retryAfter,
   });
 }
@@ -597,12 +632,14 @@ class FetchWordfenceIntelligenceV3Adapter implements WordfenceIntelligenceV3Adap
     ((reference: WordfenceSecretRef) => Promise<string> | string) | undefined;
   readonly #credentialBroker: HostPrivateCredentialBroker | undefined;
   readonly #fetch: typeof fetch;
+  readonly #clock: () => Date;
 
   constructor(options: WordfenceIntelligenceV3FetchAdapterOptions) {
     this.sourceUrl = options.sourceUrl ?? DEFAULT_SOURCE_URL;
     this.#credentialResolver = options.credentialResolver;
     this.#credentialBroker = options.credentialBroker;
     this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#clock = options.clock ?? (() => new Date());
     if (
       (this.#credentialResolver === undefined) ===
       (this.#credentialBroker === undefined)
@@ -665,7 +702,7 @@ class FetchWordfenceIntelligenceV3Adapter implements WordfenceIntelligenceV3Adap
       complete: true,
       redirected: response.status >= 300 && response.status < 400,
       ...(response.status === 429
-        ? { backoff: rateLimitBackoff(response.headers) }
+        ? { backoff: rateLimitBackoff(response.headers, this.#clock()) }
         : {}),
       bytes:
         response.status >= 200 && response.status < 300
@@ -721,6 +758,10 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
           singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
           snapshot_digest TEXT NOT NULL
         ) STRICT;
+        CREATE TABLE IF NOT EXISTS wordfence_intelligence_refresh_state (
+          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+          state_json TEXT NOT NULL
+        ) STRICT;
       `);
     } catch (error) {
       database.close();
@@ -741,12 +782,13 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       });
     } catch (error) {
       return failure(
-        error instanceof ResponseTooLargeError ||
-          error instanceof PartialResponseError
-          ? "partial-response"
-          : error instanceof CredentialUnavailableError
-            ? "credential-unavailable"
-            : "network-failure",
+        error instanceof ResponseTooLargeError
+          ? "response-byte-ceiling-exceeded"
+          : error instanceof PartialResponseError
+            ? "partial-response"
+            : error instanceof CredentialUnavailableError
+              ? "credential-unavailable"
+              : "network-failure",
       );
     }
     const parsedResponse =
@@ -765,11 +807,11 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     if (responseFailureResult !== undefined) {
       return responseFailureResult;
     }
-    if (
-      !response.complete ||
-      response.bytes.byteLength > this.#maximumFeedBytes
-    ) {
+    if (!response.complete) {
       return failure("partial-response");
+    }
+    if (response.bytes.byteLength > this.#maximumFeedBytes) {
+      return failure("response-byte-ceiling-exceeded");
     }
     let normalized: ReturnType<typeof normalizeFeed>;
     try {
@@ -833,6 +875,75 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     }
     const snapshot = this.#readSnapshot(ref);
     return currentResult(snapshot, ref);
+  }
+
+  recordProductionRefresh(result: WordfenceIntelligenceResult): void {
+    const parsed = wordfenceIntelligenceResultSchema.parse(result);
+    if (parsed.status === "current") {
+      this.#database
+        .prepare(
+          `DELETE FROM wordfence_intelligence_refresh_state
+           WHERE singleton = 1`,
+        )
+        .run();
+      return;
+    }
+    if (parsed.status === "stale") {
+      throw new Error("A stale inspection cannot be recorded as a refresh");
+    }
+    const currentSnapshotDigest = this.#currentReference()?.digest;
+    const state = productionRefreshStateSchema.parse({
+      kind: "wordfence-intelligence-production-refresh-state",
+      schemaVersion: 1,
+      ...(currentSnapshotDigest === undefined ? {} : { currentSnapshotDigest }),
+      latestRefresh: {
+        kind: "wordfence-intelligence-refresh-attempt",
+        schemaVersion: 1,
+        attemptedAt: this.#clock().toISOString(),
+        result: parsed,
+      },
+    });
+    this.#database
+      .prepare(
+        `INSERT INTO wordfence_intelligence_refresh_state (
+           singleton, state_json
+         ) VALUES (1, ?)
+         ON CONFLICT(singleton) DO UPDATE SET
+           state_json = excluded.state_json`,
+      )
+      .run(canonicalJson(state));
+  }
+
+  async inspectProduction(
+    requestValue: WordfenceIntelligenceInspectionRequest,
+  ): Promise<WordfenceIntelligenceResult> {
+    const result = await this.inspect(requestValue);
+    if (result.status !== "current") {
+      return result;
+    }
+    const row = refreshStateRowSchema.optional().parse(
+      this.#database
+        .prepare(
+          `SELECT state_json
+           FROM wordfence_intelligence_refresh_state
+          WHERE singleton = 1`,
+        )
+        .get(),
+    );
+    if (row === undefined) {
+      return result;
+    }
+    const state = productionRefreshStateSchema.parse(
+      JSON.parse(row.state_json),
+    );
+    if (state.currentSnapshotDigest !== result.snapshotRef.digest) {
+      return result;
+    }
+    return staleWordfenceIntelligenceSnapshotSchema.parse({
+      ...result,
+      status: "stale",
+      latestRefresh: state.latestRefresh,
+    });
   }
 
   async aggregate(
@@ -1081,6 +1192,7 @@ export function openWordfenceIntelligenceRefresh(
   const adapter = createWordfenceIntelligenceV3FetchAdapter({
     credentialBroker: options.credentialBroker,
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
   const intelligenceOptions: OpenWordfenceIntelligenceOptions = {
     databasePath: options.databasePath,
@@ -1096,13 +1208,15 @@ export function openWordfenceIntelligenceRefresh(
         }),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   };
-  let intelligence: WordfenceIntelligence | undefined;
-  const initialize = async (): Promise<WordfenceIntelligence | undefined> => {
+  let intelligence: SqliteWordfenceIntelligence | undefined;
+  const initialize = async (): Promise<
+    SqliteWordfenceIntelligence | undefined
+  > => {
     try {
       await mkdir(dirname(intelligenceOptions.databasePath), {
         recursive: true,
       });
-      intelligence ??= openWordfenceIntelligence(intelligenceOptions);
+      intelligence ??= new SqliteWordfenceIntelligence(intelligenceOptions);
       return intelligence;
     } catch (error) {
       if (isStorageFailure(error)) {
@@ -1118,9 +1232,18 @@ export function openWordfenceIntelligenceRefresh(
       if (current === undefined) {
         return failure("storage-failure");
       }
-      return wordfenceIntelligenceResultSchema.parse(
+      const result = wordfenceIntelligenceResultSchema.parse(
         await current.refresh(request),
       );
+      try {
+        current.recordProductionRefresh(result);
+      } catch (error) {
+        if (isStorageFailure(error)) {
+          return failure("storage-failure");
+        }
+        throw error;
+      }
+      return result;
     },
     inspect: async (request) => {
       wordfenceIntelligenceInspectionRequestSchema.parse(request);
@@ -1128,9 +1251,16 @@ export function openWordfenceIntelligenceRefresh(
       if (current === undefined) {
         return failure("storage-failure");
       }
-      return wordfenceIntelligenceResultSchema.parse(
-        await current.inspect(request),
-      );
+      try {
+        return wordfenceIntelligenceResultSchema.parse(
+          await current.inspectProduction(request),
+        );
+      } catch (error) {
+        if (isStorageFailure(error)) {
+          return failure("storage-failure");
+        }
+        throw error;
+      }
     },
   };
 }

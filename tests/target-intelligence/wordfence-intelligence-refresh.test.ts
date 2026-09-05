@@ -100,11 +100,30 @@ describe("WordfenceIntelligenceRefresh", () => {
         kind: "wordfence-intelligence-refresh",
         schemaVersion: 1,
       });
-      expect(result).toMatchObject({
+      expect(result).toEqual({
         kind: "wordfence-intelligence-result",
         schemaVersion: 1,
         status: "current",
-        snapshot: { source: { recordCount: 2, complete: true } },
+        snapshot: {
+          kind: "wordfence-intelligence-snapshot",
+          schemaVersion: 1,
+          retrievedAt: expect.stringMatching(
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u,
+          ),
+          source: {
+            sourceUrl,
+            contentDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+            parserVersion: "wordfence-intelligence-production-v3",
+            recordCount: 2,
+            complete: true,
+          },
+        },
+        snapshotRef: {
+          kind: "wordfence-intelligence-snapshot-ref",
+          schemaVersion: 1,
+          id: expect.stringMatching(/^wordfence-snapshot:[a-f0-9]{24}$/u),
+          digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+        },
       });
       expect(JSON.stringify(result)).not.toContain(credential);
       const persisted = await Promise.all(
@@ -265,17 +284,27 @@ describe("WordfenceIntelligenceRefresh", () => {
         kind: "wordfence-intelligence-refresh",
         schemaVersion: 1,
       });
-      expect(current).toMatchObject({
+      expect(current).toEqual({
         kind: "wordfence-intelligence-result",
         schemaVersion: 1,
         status: "current",
         snapshot: {
+          kind: "wordfence-intelligence-snapshot",
+          schemaVersion: 1,
           retrievedAt: "2030-08-01T00:00:00.000Z",
           source: {
             sourceUrl,
+            contentDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+            parserVersion: "wordfence-intelligence-production-v3",
             recordCount: 2,
             complete: true,
           },
+        },
+        snapshotRef: {
+          kind: "wordfence-intelligence-snapshot-ref",
+          schemaVersion: 1,
+          id: expect.stringMatching(/^wordfence-snapshot:[a-f0-9]{24}$/u),
+          digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
         },
       });
 
@@ -290,21 +319,37 @@ describe("WordfenceIntelligenceRefresh", () => {
         reason: "rate-limited",
         backoff: {
           kind: "wordfence-rate-limit-backoff",
-          schemaVersion: 1,
+          schemaVersion: 2,
           automaticRetries: 0,
-          retryAfter: { kind: "delay-seconds", seconds: 120 },
+          boundedAt: "2030-08-01T00:00:00.000Z",
+          maximumDelaySeconds: 86_400,
+          retryAfter: {
+            kind: "delay-seconds",
+            seconds: 120,
+            capped: false,
+          },
         },
       });
       expect(wordfenceIntelligenceResultSchema.parse(rateLimited)).toEqual(
         rateLimited,
       );
       expect(wordfenceIntelligenceResultSchema.parse(current)).toEqual(current);
-      await expect(
-        refresh.inspect({
-          kind: "wordfence-intelligence-inspection",
-          schemaVersion: 1,
-        }),
-      ).resolves.toEqual(current);
+      const latestRefresh = {
+        kind: "wordfence-intelligence-refresh-attempt",
+        schemaVersion: 1,
+        attemptedAt: "2030-08-01T00:00:00.000Z",
+        result: rateLimited,
+      } as const;
+      const stale = await refresh.inspect({
+        kind: "wordfence-intelligence-inspection",
+        schemaVersion: 1,
+      });
+      expect(stale).toEqual({
+        ...current,
+        status: "stale",
+        latestRefresh,
+      });
+      expect(wordfenceIntelligenceResultSchema.parse(stale)).toEqual(stale);
 
       const replayFetch = vi.fn<typeof fetch>(() =>
         Promise.reject(new Error("inspect must not access the network")),
@@ -315,13 +360,16 @@ describe("WordfenceIntelligenceRefresh", () => {
         credentialBroker,
         fetch: replayFetch,
       });
-      await expect(
-        restarted.inspect({
-          kind: "wordfence-intelligence-inspection",
-          schemaVersion: 1,
-        }),
-      ).resolves.toEqual(current);
+      const replayed = await restarted.inspect({
+        kind: "wordfence-intelligence-inspection",
+        schemaVersion: 1,
+      });
+      expect(replayed).toEqual(stale);
       expect(replayFetch).not.toHaveBeenCalled();
+
+      expect(
+        JSON.stringify([current, rateLimited, stale, replayed]),
+      ).not.toContain(credential);
 
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(resolutions).toEqual([
@@ -335,6 +383,175 @@ describe("WordfenceIntelligenceRefresh", () => {
         true,
       );
     } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    {
+      retryAfter: "999999999999999999999999999999",
+      expected: {
+        kind: "delay-seconds",
+        seconds: 86_400,
+        capped: true,
+      },
+    },
+    {
+      retryAfter: "Thu, 01 Jan 2099 00:00:00 GMT",
+      expected: {
+        kind: "absolute-time",
+        at: "2030-08-02T00:00:00.000Z",
+        capped: true,
+      },
+    },
+  ] as const)(
+    "bounds Retry-After $retryAfter without an automatic retry",
+    async ({ retryAfter, expected }) => {
+      const directory = await mkdtemp(join(tmpdir(), "wordfence-backoff-"));
+      const fetchMock = vi.fn<typeof fetch>(async () =>
+        Promise.resolve(
+          new Response(undefined, {
+            status: 429,
+            headers: { "retry-after": retryAfter },
+          }),
+        ),
+      );
+      try {
+        const refresh = openWordfenceIntelligenceRefresh({
+          databasePath: join(directory, "target-intelligence.sqlite"),
+          artifactDirectory: join(directory, "artifacts"),
+          credentialBroker: {
+            async resolve<T>(
+              _reference: WordfenceSecretRef,
+              use: (credential: string) => Promise<T>,
+            ): Promise<T> {
+              return use("synthetic-bounded-backoff-credential");
+            },
+          },
+          fetch: fetchMock,
+          clock: () => new Date("2030-08-01T00:00:00.000Z"),
+        });
+
+        await expect(
+          refresh.run({
+            kind: "wordfence-intelligence-refresh",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual({
+          kind: "wordfence-intelligence-result",
+          schemaVersion: 1,
+          status: "failed",
+          reason: "rate-limited",
+          backoff: {
+            kind: "wordfence-rate-limit-backoff",
+            schemaVersion: 2,
+            automaticRetries: 0,
+            boundedAt: "2030-08-01T00:00:00.000Z",
+            maximumDelaySeconds: 86_400,
+            retryAfter: expected,
+          },
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("reports the response byte ceiling separately from a partial response", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "wordfence-byte-ceiling-"));
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Promise.resolve(
+        new Response(await readFile(fixturePath), { status: 200 }),
+      ),
+    );
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath: join(directory, "target-intelligence.sqlite"),
+        artifactDirectory: join(directory, "artifacts"),
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            return use("synthetic-byte-ceiling-credential");
+          },
+        },
+        maximumFeedBytes: 1,
+        fetch: fetchMock,
+      });
+
+      await expect(
+        refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual({
+        kind: "wordfence-intelligence-result",
+        schemaVersion: 1,
+        status: "failed",
+        reason: "response-byte-ceiling-exceeded",
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("sanitizes credential-broker errors from public results, logs, and storage", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "wordfence-secret-error-"));
+    const credential = "synthetic-secret-only-present-in-broker-error";
+    const logged: unknown[][] = [];
+    const consoleSpies = [
+      vi.spyOn(console, "debug").mockImplementation((...values) => {
+        logged.push(values);
+      }),
+      vi.spyOn(console, "info").mockImplementation((...values) => {
+        logged.push(values);
+      }),
+      vi.spyOn(console, "log").mockImplementation((...values) => {
+        logged.push(values);
+      }),
+      vi.spyOn(console, "warn").mockImplementation((...values) => {
+        logged.push(values);
+      }),
+      vi.spyOn(console, "error").mockImplementation((...values) => {
+        logged.push(values);
+      }),
+    ];
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath: join(directory, "target-intelligence.sqlite"),
+        artifactDirectory: join(directory, "artifacts"),
+        credentialBroker: {
+          async resolve<T>(): Promise<T> {
+            throw new Error(`broker failed while handling ${credential}`);
+          },
+        },
+      });
+
+      const result = await refresh.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      expect(result).toEqual({
+        kind: "wordfence-intelligence-result",
+        schemaVersion: 1,
+        status: "failed",
+        reason: "credential-unavailable",
+      });
+      expect(JSON.stringify(result)).not.toContain(credential);
+      expect(logged.flat().map(String).join("\n")).not.toContain(credential);
+      const persisted = await Promise.all(
+        (await filesBelow(directory)).map((path) => readFile(path)),
+      );
+      expect(persisted.every((bytes) => !bytes.includes(credential))).toBe(
+        true,
+      );
+    } finally {
+      for (const spy of consoleSpies) {
+        spy.mockRestore();
+      }
       await rm(directory, { recursive: true, force: true });
     }
   });

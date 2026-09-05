@@ -164,19 +164,23 @@ export const wordfenceStoredPluginRecordSchema = z.strictObject({
 const wordfenceRateLimitRetryAfterSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("delay-seconds"),
-    seconds: z.number().int().nonnegative(),
+    seconds: z.number().int().nonnegative().max(86_400),
+    capped: z.boolean(),
   }),
   z.strictObject({
     kind: z.literal("absolute-time"),
     at: z.string().datetime({ offset: true }),
+    capped: z.boolean(),
   }),
   z.strictObject({ kind: z.literal("unspecified") }),
 ]);
 
 export const wordfenceRateLimitBackoffSchema = z.strictObject({
   kind: z.literal("wordfence-rate-limit-backoff"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   automaticRetries: z.literal(0),
+  boundedAt: z.string().datetime({ offset: true }),
+  maximumDelaySeconds: z.literal(86_400),
   retryAfter: wordfenceRateLimitRetryAfterSchema,
 });
 
@@ -187,6 +191,7 @@ export const wordfenceIntelligenceFailureReasonSchema = z.enum([
   "rate-limited",
   "network-failure",
   "partial-response",
+  "response-byte-ceiling-exceeded",
   "source-mismatch",
   "schema-drift",
   "attribution-missing",
@@ -210,10 +215,27 @@ export const currentWordfenceIntelligenceSnapshotSchema = z.strictObject({
   snapshotRef: wordfenceIntelligenceSnapshotRefSchema,
 });
 
+export const wordfenceIntelligenceRefreshAttemptSchema = z.strictObject({
+  kind: z.literal("wordfence-intelligence-refresh-attempt"),
+  schemaVersion: z.literal(1),
+  attemptedAt: z.string().datetime({ offset: true }),
+  result: wordfenceIntelligenceFailureSchema,
+});
+
+export const staleWordfenceIntelligenceSnapshotSchema = z.strictObject({
+  kind: z.literal("wordfence-intelligence-result"),
+  schemaVersion: z.literal(1),
+  status: z.literal("stale"),
+  snapshot: wordfenceIntelligenceSnapshotSchema,
+  snapshotRef: wordfenceIntelligenceSnapshotRefSchema,
+  latestRefresh: wordfenceIntelligenceRefreshAttemptSchema,
+});
+
 export const wordfenceIntelligenceResultSchema = z.discriminatedUnion(
   "status",
   [
     currentWordfenceIntelligenceSnapshotSchema,
+    staleWordfenceIntelligenceSnapshotSchema,
     wordfenceIntelligenceFailureSchema,
   ],
 );
@@ -292,6 +314,12 @@ export type WordfenceIntelligenceFailure = z.infer<
 export type CurrentWordfenceIntelligenceSnapshot = z.infer<
   typeof currentWordfenceIntelligenceSnapshotSchema
 >;
+export type StaleWordfenceIntelligenceSnapshot = z.infer<
+  typeof staleWordfenceIntelligenceSnapshotSchema
+>;
+export type WordfenceIntelligenceRefreshAttempt = z.infer<
+  typeof wordfenceIntelligenceRefreshAttemptSchema
+>;
 export type WordfenceIntelligenceResult = z.infer<
   typeof wordfenceIntelligenceResultSchema
 >;
@@ -362,6 +390,7 @@ export interface WordfenceIntelligenceV3FetchAdapterOptions {
   readonly credentialBroker?: HostPrivateCredentialBroker;
   readonly fetch?: typeof fetch;
   readonly sourceUrl?: string;
+  readonly clock?: () => Date;
 }
 
 export interface HostPrivateCredentialBroker {

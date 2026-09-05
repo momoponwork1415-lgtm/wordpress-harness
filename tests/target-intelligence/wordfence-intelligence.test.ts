@@ -347,7 +347,7 @@ describe("WordfenceIntelligence", () => {
     {
       status: 200,
       complete: true,
-      reason: "partial-response",
+      reason: "response-byte-ceiling-exceeded",
       source: "expected",
       maximumFeedBytes: 1,
     },

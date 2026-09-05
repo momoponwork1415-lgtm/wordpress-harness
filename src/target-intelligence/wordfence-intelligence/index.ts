@@ -1,5 +1,6 @@
 export {
   currentWordfenceIntelligenceSnapshotSchema,
+  staleWordfenceIntelligenceSnapshotSchema,
   immutableFindingRefSchema,
   knownRecordAccessAuthorizationRefSchema,
   knownRecordAccessAuthorizationSchema,
@@ -9,6 +10,7 @@ export {
   wordfenceIntelligenceFailureReasonSchema,
   wordfenceIntelligenceFailureSchema,
   wordfenceIntelligenceRefreshRequestSchema,
+  wordfenceIntelligenceRefreshAttemptSchema,
   wordfenceIntelligenceResultSchema,
   wordfenceIntelligenceSnapshotRefSchema,
   wordfenceIntelligenceSnapshotSchema,
@@ -22,6 +24,7 @@ export {
 } from "./contracts.js";
 export type {
   CurrentWordfenceIntelligenceSnapshot,
+  StaleWordfenceIntelligenceSnapshot,
   HostPrivateCredentialBroker,
   KnownRecordAccessAuthorization,
   KnownRecordAccessAuthorizationRef,
@@ -38,6 +41,7 @@ export type {
   WordfenceIntelligenceFailureReason,
   WordfenceIntelligenceInspectionRequest,
   WordfenceIntelligenceRefreshRequest,
+  WordfenceIntelligenceRefreshAttempt,
   WordfenceIntelligenceResult,
   WordfenceRateLimitBackoff,
   WordfenceIntelligenceSnapshot,
