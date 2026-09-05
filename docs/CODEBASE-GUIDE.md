@@ -8,8 +8,9 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 
 | Product stage | Status | Remaining |
 | --- | --- | --- |
-| Manual Target Intake | local directoryは実装済み | archive acquisition |
-| Target selection / dispatch | 設計とIssue分割まで完了 | 自律選定、Batch承認、durable queue、freshness、約5 active Campaign |
+| Target Acquisition / Intake | local directory、WordPress.org archiveを実装済み | premium acquisition |
+| Target selection / approval | Research History、programme / route観測、自律選定、人間のBatch承認を実装済み | Campaign Coverage Receipt、unattended dispatch |
+| Vulnerability Intelligence | Wordfence Intelligence v3のlocal indexとoracle-separated projectionを実装済み | なし（Wordfence-only方針を#102で確定済み） |
 | Semantic Research | v6 initial Wave、Decision@3、conditional Depth実行まで実装済み | Missing-link / Closure |
 | Source-only Validation | v6 single fresh Attemptと4 dispositionを実装済み | Frontier Gapの次Wave |
 | Runtime handoff | Runtime Verification Packet v2とAI Reproduction intakeを実装済み | 実Targetでのhandoff実測 |
@@ -20,7 +21,7 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 
 現在のproduction sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / single source Validation -> Risk Assessment / Runtime Verification Packet -> AI Reproduction / Triage Reproduction Packet -> mandatory fresh Human reproduction -> Finding`である。Human OSのv1 Human Review Packet flowはread-only replay境界に残す。v6 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Packet delivery failureはPacketを保持したままResearch failureと分ける。Missing-link / Closureはlegacy v5に実装済みだがv6へ未接続。
 
-手動Target IntakeからFindingまでのflowをversioned contractとpublic seamで接続済みである。次に実plugin一件を早期に完走し、その実測後にCoverage policy、Development Cohort、三件のProspectiveへ広げる。自律選定と無人運転は未接続であり、完成度をpercentでは表さない。
+手動Target IntakeからFindingまでのflowをversioned contractとpublic seamで接続済みである。次に実plugin一件を早期に完走し、その実測後にCoverage policy、Development Cohort、三件のProspectiveへ広げる。Target Intelligence内の自律選定とBatch承認は実装済みだが、Approved Target BatchからTarget Acquisition / Researchへのdispatchは未接続であり、完成度をpercentでは表さない。
 
 残作業の実行順と完了条件は[Issue #86](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/86)を正本とする。
 
@@ -35,24 +36,114 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 
 ## Target Intelligence
 
+### Programme Intelligence
+
+- **Purpose:** 外部programmeのscope、eligibility、reward policy、competition ruleを、Programme Identityとrequired source provenanceへ結び付けたProgramme Eligibility Snapshotにする。
+- **Interface:** `ProgrammeIntelligence.refresh / inspect`
+- **Invariants:** source URL、retrievedAt、raw content digest、parser version、freshness policyを固定する。Programme Opportunity BandとFinding後専用のreward estimate inputを分離し、programme ruleでFindingのtechnical validityを変更しない。Oracle FactをResearchまたはTarget Intake Packetへ渡さない。
+- **Failure semantics:** required Intelligence Source間の不一致は`policy-conflict`、必須fieldまたはnormalized contract不成立は`parse-failed`、refresh失敗と期限切れsnapshotは`stale`。Target選定batchとSubmission Stagingはそれぞれcurrent freshnessを要求する。
+- **Behavior Test:** [Programme Intelligence](../tests/target-intelligence/programme-intelligence.test.ts)
+- **Status:** versioned core contract、content-addressed snapshot、sanitized fixture Adapterの共通Behavior Testを実装。Patchstack / Wordfence固有Adapterを実装済み。
+- **Code:** [programme-intelligence](../src/target-intelligence/programme-intelligence)
+
+### Patchstack Programme Adapter
+
+- **Purpose:** Rules / Terms、report form、leaderboard、mVDP directory、marketing pageの5 Intelligence Sourceを優先順付きで取得・parseし、programme-neutralなProgramme Eligibility Snapshotへ統合する。
+- **Interface:** `createPatchstackProgrammeAdapters -> ProgrammePolicySourceAdapter[]`
+- **Invariants:** Rulesをeligibilityの正本とし、lower-precedence sourceで上書きしない。latest stable、3年以内更新、active-install threshold、attacker role、mVDP例外をeligibilityへ固定する。mVDP directoryはrequired sourceとし、directory membership条件と適用される例外をprogramme-neutralなeligibility ruleへ変換する。directory ruleはRulesのauthorization conditionが存在する場合だけ有効にする。Monthly CompetitionとZerodayを別のFinding-only reward routeにし、XP factor、contribution share、rejection-rate reduction、monthly poolをsource digestへbindする。named plugin、CVE、affected version、researcher detailsをnormalized policyへ含めない。
+- **Failure semantics:** required Intelligence Source取得失敗は`stale`、必須rule、mVDP membership / exceptionまたはstrict page contract不成立は`parse-failed`、directory ruleがRulesにない例外を主張する場合を含むsource間の実質的矛盾は`policy-conflict`。marketing表示だけでRulesを置き換えない。
+- **Behavior Test:** [Patchstack Programme Adapter](../tests/target-intelligence/patchstack-programme-adapter.test.ts)
+- **Status:** 5-source group parse、mVDP membership / exception projection、source provenance、reward-route分離、conflict / stale / driftのsanitized fixture Behavior Testを実装。
+- **Code:** [patchstack-programme](../src/target-intelligence/patchstack-programme)
+
+### Wordfence Programme Adapter
+
+- **Purpose:** current programme、Terms、report form、payout page、promotion page、monthly reportの6 Intelligence Sourceを取得・parseし、programme-neutralなProgramme Eligibility Snapshotへ統合する。
+- **Interface:** `createWordfenceProgrammeAdapters -> ProgrammePolicySourceAdapter[]`
+- **Invariants:** asset、vulnerability class、attacker role、active-install threshold、researcher tier、pending cap、out-of-scope条件をeligibilityへ固定する。base / range、bonus、minimum、promotion期間はFinding-only reward routeに置き、保証額にしない。monthly reportはCWE category、authentication level、install帯、submission disposition、rewardのaggregateだけを保持し、named plugin、CVE、affected version、known route、researcher identityを含めない。
+- **Failure semantics:** required Intelligence Source取得失敗は`stale`、必須rule、promotion、monthly aggregateまたはstrict page contract不成立は`parse-failed`、source間のscope / payout矛盾は`policy-conflict`。old defaultへfallbackしない。
+- **Behavior Test:** [Wordfence Programme Adapter](../tests/target-intelligence/wordfence-programme-adapter.test.ts)
+- **Status:** 6-source group parse、source provenance、Finding-only payout / promotion input、oracle-free monthly aggregate、conflict / stale / drift、restart replayのsanitized fixture Behavior Testを実装。
+- **Code:** [wordfence-programme](../src/target-intelligence/wordfence-programme)
+
+### Disclosure Route Observation
+
+- **Purpose:** Targetごとの公開脆弱性報告routeを、`first-party-bounty / first-party-vdp / delegated-vdp / security-contact-only / none-found / conflicting`へsource付きで不変化する。
+- **Interface:** `DisclosureRoute.observe / inspect / projectAssignmentStaleness`、`ProgrammeAssignmentRouteBindingResolver`
+- **Invariants:** vendor公式、official repository `SECURITY.md`、WordPress.org maintainer記載、programme directory、検索結果の順で根拠を評価する。source URL / owner、validated final URL、retrievedAt、raw digest、parser version、checked scope、submission route、exclusivity / disclosure条件を固定する。`none-found`は確認sourceの範囲だけを意味する。route semantic digestは取得時刻に依存せずTargetへbindする。callerが自己申告したAssignment ref / route digestをauthorityにせず、公開resolverが返したcontent-boundなversioned Programme Assignment route bindingとcurrent Observationからstaleness projectionだけを作る。Human OS storage、Programme Assignment作成、外部送信を所有しない。Oracle FactまたはResearch eligibility判断を含めない。
+- **Failure semantics:** Intelligence Source取得失敗は`acquisition-failed`、HTTPS origin allowlist外へのredirectは`untrusted-provenance`、strict source document不成立は`parse-failed`。first-partyとlower-precedence sourceの矛盾はfirst-party根拠を保持した`conflicting`として人間確認を要求する。resolver不在、未知ref、artifact integrity不一致は`assignment-binding-unverified`、検証済みbindingとObservationのTarget不一致は`binding-mismatch`。
+- **Behavior Test:** [Disclosure Route](../tests/target-intelligence/disclosure-route.test.ts)
+- **Status:** content-addressed observation、6分類、Ultimate Member型direct reward / GiveWP型delegated VDPのsanitized fixture、conflict / none-found / redirect / Oracle separation、選定・staging再取得、restart replayを実装。
+- **Code:** [disclosure-route](../src/target-intelligence/disclosure-route)
+
+### Target Research History
+
+- **Purpose:** Plugin Identity、verified version、Canonical File Manifest digestでTargetを固定し、Campaignの選定、進行、terminal statusをappend-onlyに記録して重複Researchを制御する。
+- **Interface:** `TargetResearchHistory.migrateLegacyArtifact / admit / record`
+- **Invariants:** activeは既存Campaignへresumeし、Coverage Closedは通常のprospective選定を`already-covered`にする。Incomplete後のprospective再実行は元Campaignと理由codeを固定したfollow-upだけを許可する。同じplugin/versionの異なるManifest digestはprovenance conflict、新しいverified versionは別Targetにする。v2 writerはCampaign purposeと理由を列挙code、progressを意味を持つIDのないversioned content digestだけで受け付け、Oracle Factを自由記述として保存しない。v1 eventはversioned public migration artifactから取込み、読取専用でreplayし、自由記述をpublic projectionへ出さず、v2 eventを追記しない。Research Ledgerを参照せず、保存rowをruntime validationしてからpublic projectionをreplayする。
+- **Failure semantics:** admission判断は`new / resume / already-covered / follow-up-required / provenance-conflict`。不正contract、保存row、Campaign binding、lifecycle順序、v1 / v2 writer混在、durable write failureだけをerrorにする。
+- **Behavior Test:** [Target Research History](../tests/target-intelligence/target-research-history.test.ts)
+- **Status:** Target Intelligence専用SQLite eventからCampaign viewをreplayする。v1 replay migration projectionとv2-only writeを実装。Development Cohort、calibration、意図的な独立反復はkind、run ordinal、理由を固定して許可する。
+- **Code:** [research-history](../src/target-intelligence/research-history)
+
+### Target Selection
+
+- **Purpose:** Target Observation、Programme Eligibility、Disclosure Route、弱いVulnerability History Aggregate、Target Research Historyを一つのprogramme-neutral Candidate Poolとして評価し、有限のSelection Receipt集合を作る。
+- **Interface:** `TargetSelection.select / migrateLegacyAttempt / resolveForApproval`、`TargetSelectionApprovalResolver`
+- **Invariants:** provenance、取得可能性、Target identity、source freshness、Research Historyをdeterministic hard gateにする。operator nominationはApproval verification requestだけから受け付け、operator identity、時刻、列挙理由をCandidateへ固定し、他Candidateと同じhard gateを再評価してSelection-owned verification artifactへdurable receiptとして保存する。ApprovalはAttemptのprivate storageを読まずresolverだけを使う。callerが渡したAttempt refはdurable Attemptのdigest、policy、profileへ一致し、各Receiptのselection key、revision、request digest、policy、profileは親Attemptへ完全一致しなければならない。v1 Attemptは公開migration seamで一度だけ取込み、自由記述をreason codeへ縮退した読取専用projectionにし、v2 writerと混在させない。Opus Model Profileへはactive installs、更新時刻、公開integration、粗いsource scale、Disclosure Route、diversityだけを渡す。Vulnerability History AggregateはAttempt / Receiptへbindするがmodel inputにせず、単独で採否を変えない。Research Value Bandを先に比較し、同BandでだけProgramme Opportunity Bandをtie-breakerに使い、vendor / family / use case / size / authority / integrationのversioned capで多様性を保つ。ReceiptはCampaignを開始しない。
+- **Failure semantics:** provider failure、budget exhaustion、invalid model result、model実行前にdurable化したAttemptの中断は、空Batchではなく`selection-pending`として保持する。同じselection key / revisionの異なるinput、v1 / v2 writer混在、Attempt ref / policy / profile / Receipt integrityまたは親binding不一致、nomination operator / 時刻不一致、Plugin Identity・version・Manifest digestが一致するTarget identity重複はerrorにする。同じinputはmodelを再実行せずreplayし、明示的な新revisionだけを再選定する。
+- **Behavior Test:** [Target Selection](../tests/target-intelligence/target-selection.test.ts)
+- **Status:** v2 content-bound Attempt / Receipt、v1 read-only migration projection、Approval resolver、Opus-only profile、stable projection、hard gate、active resume / already-covered / Incomplete follow-up、Research-only保持、diversity、restart / failure replayを実装。
+- **Code:** [target-selection](../src/target-intelligence/target-selection)
+
+### Target Batch Approval
+
+- **Purpose:** 一つのSelection Attemptの有限なSelection Receipt集合について、人間の承認、除外、順序変更、operator nominationを一回の判断へまとめ、versioned Approved Target Batchにする。
+- **Interface:** `TargetBatchApproval.migrateLegacyBatch / approve / inspect`（`TargetSelectionApprovalResolver` portを要求）
+- **Invariants:** Target Selectionが検証したdurable Attempt、Selection-owned verification ref / Receipt、Selection Policy、Opus Model Profile、Target Observation、programme / disclosure freshness、Campaign Policy、Batch Budget、execution window、human identity / decision time / 列挙理由を固定する。手動追加はApproval requestのnominationとしてだけ表現し、Selection resolverのhard gateとdurable receiptを必須にする。caller生成Receiptや名称変更をauthorityにしない。v1 Batchは公開migration seamで一度だけ取込み、自由記述を列挙codeへ縮退した読取専用projectionにし、v2 writerと混在させない。承認はResearch、Campaign、外部通信を開始しない。
+- **Failure semantics:** resolverがdurable Attemptを検証できない場合は`selection-attempt-unverified`。resolver結果とAttempt / policy / profile binding、decision集合、approved orderの不一致を拒否する。hard gate不通過は人間でもoverrideできず、Batch Budget超過を拒否する。同じbatch key / revisionの異なるinputは`revision-conflict`、変更は開始前の新revision + `supersedes`だけを許可し、開始後は`execution-started`にする。
+- **Behavior Test:** [Target Batch Approval](../tests/target-intelligence/target-batch-approval.test.ts)
+- **Status:** v2 content-addressed Batch、v1 read-only migration projection、revision index、approval / exclusion / reorder / approval-time nomination、idempotency、restart replay、supersedeのBehavior Testを実装。
+- **Code:** [target-batch-approval](../src/target-intelligence/target-batch-approval)
+
+### Wordfence Vulnerability Intelligence
+
+- **Purpose:** Wordfence Intelligence v3 Production Intelligence Sourceを不変snapshotとlocal indexへ変換し、Target選定用の弱いVulnerability History AggregateとFinding後専用のknown-record projectionを分離する。
+- **Interface:** `WordfenceIntelligence.refresh / inspect / aggregate / inspectKnownRecords`、`KnownRecordAccessAuthorizationProvider`
+- **Invariants:** complete response、source URL、取得時刻、raw response digest、parser versionをsnapshotへ固定し、全recordとWordfence / MITRE attributionのvalidation成功後だけcurrent pointerをtransaction更新する。選定projectionはplugin単位の件数、公開年密度、最終公開時刻だけを返し、CVE、CWE、CVSS、affected / patched versionを含めない。exact recordはverified Finding、Plugin Identity、verified version、Canonical File Manifest digest、`known-duplicate-disposition` purposeへbindしたv2 authorizationを公開providerが`authorized`として解決できる場合だけ返す。caller自己申告のFinding refまたはartifactをauthorizationにせず、Human OS storageを参照しない。Bearer値はSecretRef resolverの内側だけで使用する。
+- **Failure semantics:** 404、auth failure、429、network failure、partial response、schema drift、copyright / license metadata欠落をtyped failureにする。失敗refreshは既存current pointerを変更しない。provider不在 / denial、authorization integrity不一致、Plugin Identity / version / Manifest digest不一致は`known-record-access-denied`にする。
+- **Behavior Test:** [Wordfence Vulnerability Intelligence](../tests/target-intelligence/wordfence-intelligence.test.ts)
+- **Status:** bounded production fetch Adapter、sanitized fixture Adapter、Store / replay、affected-version interval query、oracle-separated aggregateを実装。
+- **Code:** [wordfence-intelligence](../src/target-intelligence/wordfence-intelligence)
+
+### WordPress.org Target Source
+
+- **Purpose:** official plugin slugから不変なTarget Observationを作り、観測したstable versionのarchive原本を既存Target Intakeへ安全に渡す。
+- **Interface:** `WordPressOrgTargetSource.observe / acquire`
+- **Invariants:** Plugin Identityは`wporg:<slug>`とし、表示名、stable version、active installations、last updated、download provenance、取得時刻をmetadata digestとparser versionへ固定する。acquireは観測済みversionとMain Plugin File headerを照合し、archive bytesをcontent digestで不変化する。CVE、advisory、known vulnerable range、known routeをObservationまたはPacketへ保存しない。同じofficial bytesは取得時刻やrestartにかかわらず同じCanonical File ManifestとTarget Intake Packetへ収束する。
+- **Failure semantics:** metadata / archiveの404、rate limit、network failure、quota超過、invalid metadata、要求version不一致、metadata / archive不一致をtyped failureにする。ZIPのpath traversal、link、multiple plugin root、integrity不正、quota超過はTarget Intake公開前に`rejected`、Main Plugin Fileの不足・曖昧性は既存Intakeの`deferred`にする。別versionまたは別sourceへsilent fallbackしない。
+- **Behavior Test:** [WordPress.org Target Source](../tests/target-intelligence/wordpress-org-target-source.test.ts)
+- **Status:** bounded production fetch Adapter、sanitized fixture Adapterによるoffline Behavior Test、Deflate / Store ZIPの安全な展開、Acquisition Original保存、restart replayを実装。
+- **Code:** [acquisition](../src/target-intelligence/acquisition)
+
 ### Target Intake
 
-**Interface:** `TargetIntake.intake(request) -> ready | deferred | rejected`
-
 - **Purpose:** untrustedなarchiveまたはdirectoryを、oracle-freeなTarget Intake Packetへ変換する。
+- **Interface:** `TargetIntake.intake(request) -> ready | deferred | rejected`
 - **Invariants:** identityとversionを照合し、sourceを実行せず、artifactをdurableにしてから`ready`を返す。同じrequestは同じ結果へ収束する。
-- **Failures:** policy outcomeは`deferred / rejected`、durable化できないsystem failureだけをerrorにする。
-- **Status:** local directory、manifest、quota / path / link検査、Campaign handoffを実装。archive acquisitionは未実装。
-- **Code / Tests:** [acquisition](../src/target-intelligence/acquisition), [handoff](../src/research/campaign-control/target-intake-campaign-handoff.ts) · [intake](../tests/target-intelligence/local-directory-target-intake.test.ts), [handoff](../tests/research/target-intake-campaign-handoff.test.ts)
+- **Failure semantics:** policy outcomeは`deferred / rejected`、durable化できないsystem failureだけをerrorにする。
+- **Behavior Test:** [Target Intake](../tests/target-intelligence/local-directory-target-intake.test.ts)、[Campaign handoff](../tests/research/target-intake-campaign-handoff.test.ts)
+- **Status:** local directoryとWordPress.org archive、manifest、quota / path / link検査、Campaign handoffを実装。premium archive acquisitionは未実装。
+- **Code:** [acquisition](../src/target-intelligence/acquisition)、[handoff](../src/research/campaign-control/target-intake-campaign-handoff.ts)
 
-### Automated selection and dispatch
+### Target Campaign Dispatch
 
-**Accepted Interface:** `TargetSelection.select`、`TargetBatchApproval.approve`、`TargetCampaignDispatch.run / inspect`
-
-- **Purpose:** oracle-freeな事実から多数Targetを自律選定し、人間のBatch承認後にfreshnessを再確認して複数Campaignへdispatchする。
-- **Invariants:** source semantic解析、CWE、sink、既知routeを選定へ使わない。待機Queueとactive Campaignを分け、versionやsourceをsilentに差し替えない。初期Model ProfileはOpusだけとする。
-- **Failures:** Target固有failureは次Targetを失わせず、systemic failureはcircuit breaker、budget / execution window到達は破棄せずpauseにする。
-- **Status:** 未実装。自律選定[#95](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/95)、Batch承認[#112](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/112)、無人dispatch[#113](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/113)で扱う。
+- **Purpose:** Approved Target Batchから実行直前のfreshnessとTarget Intakeを確認し、複数CampaignをResearchへdispatchする。
+- **Interface:** accepted `TargetCampaignDispatch.run / inspect`
+- **Invariants:** 待機Queueとactive Campaignを分け、versionやsourceをsilentに差し替えない。Target固有failureで次Targetを失わせず、承認だけではCampaignを開始しない。
+- **Failure semantics:** systemic failureはcircuit breaker、budget / execution window到達は破棄せずpauseにする。
+- **Behavior Test:** 未実装（[#113](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/113)）
+- **Status:** 未実装。Target SelectionとTarget Batch Approvalはそれぞれの公開Seamで実装済み。
 
 ## Research
 

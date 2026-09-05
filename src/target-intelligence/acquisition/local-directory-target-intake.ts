@@ -24,6 +24,8 @@ import {
 
 interface LocalDirectoryTargetIntakeOptions {
   readonly storageDirectory: string;
+  readonly sourceCaptureKind?:
+    "captured-local-directory" | "captured-wordpress-org-archive";
 }
 
 interface CapturedFile {
@@ -304,9 +306,13 @@ async function persistBytes(path: string, bytes: Uint8Array): Promise<void> {
 
 class LocalDirectoryTargetIntake implements TargetIntake {
   readonly #storageDirectory: string;
+  readonly #sourceCaptureKind:
+    "captured-local-directory" | "captured-wordpress-org-archive";
 
   constructor(options: LocalDirectoryTargetIntakeOptions) {
     this.#storageDirectory = options.storageDirectory;
+    this.#sourceCaptureKind =
+      options.sourceCaptureKind ?? "captured-local-directory";
   }
 
   async #persistJson(value: unknown): Promise<{ id: string; digest: string }> {
@@ -474,7 +480,7 @@ class LocalDirectoryTargetIntake implements TargetIntake {
         manifest,
       },
       sourceCapture: {
-        kind: "captured-local-directory",
+        kind: this.#sourceCaptureKind,
         digest: treeDigest,
         files: manifestEntries,
       },

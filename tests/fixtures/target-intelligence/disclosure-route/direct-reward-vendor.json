@@ -1,0 +1,16 @@
+{
+  "kind": "disclosure-route-source-document",
+  "schemaVersion": 1,
+  "claim": {
+    "routeKind": "first-party-bounty",
+    "checkedScopes": ["wordpress-plugin", "public-release"],
+    "submissionRoute": {
+      "kind": "web-form",
+      "url": "https://vendor.example/security/report"
+    },
+    "conditions": {
+      "exclusivity": "required",
+      "disclosure": "coordinated-required"
+    }
+  }
+}

@@ -9,7 +9,7 @@ plugin directory、vulnerability intelligence、利用統計等、Target Observa
 _Avoid_: Feed、API
 
 **Disclosure Route Observation**:
-Targetの脆弱性報告先を、取得時刻と確認source付きで`first-party-bounty`、`first-party-vdp`、`delegated-vdp`、`security-contact-only`、`none-found`、`conflicting`のいずれかへ固定した不変な観測。vendor公式security / bountyページ、official repositoryの`SECURITY.md`、WordPress.orgのmaintainer記載、programme directory、検索結果の順に根拠を優先する。`none-found`は確認したsourceで公開routeを発見しなかった意味であり、存在しないことの保証ではない。
+Targetの脆弱性報告先を、取得時刻と確認source付きで`first-party-bounty`、`first-party-vdp`、`delegated-vdp`、`security-contact-only`、`none-found`、`conflicting`のいずれかへ固定した不変な観測。vendor公式security / bountyページ、official repositoryの`SECURITY.md`、WordPress.orgのmaintainer記載、programme directory、検索結果の順に根拠を優先する。`none-found`は確認したsourceで公開routeを発見しなかった意味であり、存在しないことの保証ではない。Programme Assignmentのroute freshnessは、公開resolverが検証したversioned bindingとのdigest比較だけをprojectionし、Human OSの内部storageを参照しない。
 _Avoid_: Programme Assignment、Submission destination、Search result
 
 **Target Observation**:
@@ -24,6 +24,26 @@ _Avoid_: Signal、Score input
 Finding前のTarget Candidateについて、現在の外部programmeで狙える対象範囲を`broad`、`high-impact-only`、`research-only`等へ粗く分類した選定補助。脆弱性class、成立条件、報奨額を予測せず、具体的なReward Estimateとして扱わない。
 _Avoid_: Expected payout、Reward Estimate、Finding severity
 
+**Programme Identity**:
+scope、eligibility、reward policy、competition ruleを一つのProgramme Eligibility Snapshotへ結び付ける外部programmeの安定identity。programme名の表示文字列、個別Findingの提出先またはProgramme Assignmentではない。
+_Avoid_: Programme name、Submission destination、Programme Assignment
+
+**Programme Eligibility Snapshot**:
+一つのProgramme Identityについてrequired sourceのURL、取得時刻、content digest、parser versionと、asset、vulnerability class、attacker role、active-install threshold、researcher tier、除外条件、必要なdirectory membershipとそのeligibility効果を固定したversionedなpolicy観測。Target選定batch開始時とSubmission Staging前にfreshnessを検査し、古い観測をcurrent扱いしない。programme ruleはFindingのtechnical validityを変更せず、CVE、advisory、Findingまたはknown routeを含めない。
+_Avoid_: Current policy、Finding verdict、Target Intake Packet
+
+**Finding-only Reward Estimate Input**:
+Programme Eligibility Snapshotのうち、成立済みFindingについて外部行動を検討する時だけreward estimateへ使えるcurrencyとpolicy factor。Finding前のProgramme Opportunity BandまたはSelection Factとして使わない。
+_Avoid_: Programme Opportunity Band、Expected Finding value、Selection score
+
+**Programme Reward Route**:
+一つのProgramme Eligibility Snapshot内でMonthly Competition、Zeroday、base payout、期間限定promotion等を区別する、source-boundなFinding-only policy経路。currency、factor、下限・上限・pool等のpolicy termを保持するが、具体的Findingの報奨額またはTarget選定scoreを予測しない。
+_Avoid_: Programme Opportunity Band、Guaranteed payout、Selection incentive
+
+**Programme Monthly Aggregate**:
+外部programmeの月次報告を、期間、CWE category、authentication level、active-install帯、submission disposition、reward集計だけへ縮約したsource-boundな観測。named plugin、CVE、affected version、known route、researcher identity等の個票を保持せず、Research inputまたはTarget Intake Packetへ渡さない。
+_Avoid_: Vulnerability record、Research prior、Researcher leaderboard
+
 **Oracle Fact**:
 既知の脆弱version、patch、CVE、advisory narrative等、prospective Researchへ渡すと発見能力の評価を汚染する情報。
 _Avoid_: Selection Fact、Sensitive metadata
@@ -31,6 +51,10 @@ _Avoid_: Selection Fact、Sensitive metadata
 **Vulnerability History Aggregate**:
 Oracle FactからCVE、脆弱version、CWE構成、affected function、advisory、patch、既知routeを除き、plugin単位の件数、密度、最終公開時期等へ粗く集約した履歴値。Target Intelligence内の補助的な選定にだけ使い、主要な選定根拠、Research inputまたはTarget Intake Packetにしない。
 _Avoid_: Selection Fact、Vulnerability profile、Research hint
+
+**Known Record Projection**:
+verified Finding後のKnown Duplicate Dispositionだけに使う、versioned vulnerability intelligence snapshotからのexact record投影。公開authorization providerが、verified FindingをPlugin Identity、verified version、Canonical File Manifest digestへbindした時だけ利用する。同じversion文字列でもManifest digestが異なるsource treeへ流用しない。affected version interval、patched version、CVE、CWE、CVSS、公開時刻、copyright / license attributionを保持するが、Target選定、Research inputまたはTarget Intake Packetへ渡さない。
+_Avoid_: Vulnerability History Aggregate、Research prior、Finding validity
 
 **Selection Policy**:
 provenance、取得可能性、利用規模、更新鮮度、公開integration、調査履歴から、重複せず多様なProspective Targetを自律選定するversion固定した判断基準。hard gate、Programme Opportunity Band、Research Value Band、diversity、stable tie-breakerの順で理由を示す。sourceのsemantic解析、疑わしいsymbol、CWE、sink、既知route、推定報奨額を選定根拠にしない。
@@ -49,8 +73,16 @@ _Avoid_: Directory name、Plugin title、Bare slug
 _Avoid_: Out-of-scope Target、False positive、Rejected Candidate
 
 **Selection Receipt**:
-Target IntelligenceがTarget Candidateを採用、保留、拒否した結論を、使用したSelection Fact、Selection Attempt、policy version、理由、不確実性に結び付けた記録。採用結論はCampaign開始命令ではなく、人間がCandidate Batchを判断する入力である。Researchへ渡す場合は採用結論、policy version、oracle-freeな理由だけを公開する。
+Target IntelligenceがTarget Candidateを採用、保留、拒否した結論を、使用したSelection Fact、Selection Attempt、policy version、理由、不確実性に結び付けた記録。Approval時のoperator nominationはTarget Selectionが同じhard gateを再評価し、Selection AttemptとApproval verificationへbindしたdurable Receiptにする。採用結論はCampaign開始命令ではなく、人間がCandidate Batchを判断する入力である。Researchへ渡す場合は採用結論、policy version、oracle-freeな理由だけを公開する。
 _Avoid_: Score、Approval
+
+**Selection Attempt**:
+一つのCandidate Pool、Selection Policy、Opus Model Profile、revision、model結果または`selection-pending`をdigest固定した実行記録。model実行前のintentからdurable化し、同じinputのreplayでmodelを再起動せず、明示的な再選定だけを新revisionにする。
+_Avoid_: Candidate Batch、Model transcript、Campaign run
+
+**Research Value Band**:
+許可されたSelection FactだけからTarget Candidateのprospectiveな調査価値を`high / medium / low`へ粗く比較するmodel出力。脆弱性の存在、class、sinkまたは報奨額を予測せず、Programme Opportunity Bandは同じResearch Value Band内のtie-breakerにだけ使う。
+_Avoid_: Vulnerability likelihood、Severity prediction、Expected payout
 
 **Candidate Pool**:
 Programmeごとに分割せず、少なくとも一つのProgrammeで提出可能性があるTarget CandidateとResearch-only Candidateをまとめた選定母集団。同じTargetを提出先ごとに重複Researchせず、Programme AssignmentはFinding後にHuman OSが決める。
@@ -61,8 +93,8 @@ Candidate Poolから同じSelection Policyで一度に人間へ提示する有�
 _Avoid_: Campaign Wave、Submission batch、Leaderboard quota
 
 **Approved Target Batch**:
-Candidate Batchについて、人間がCandidateごとの理由、欠損、freshness、Research Historyを確認し、承認、除外、順序変更、手動候補追加を記録したversionedな実行許可。Campaign Policy、Model Profile、Batch Budget、execution windowを固定するが、承認だけではResearchを開始しない。
-_Avoid_: Selection Receipt、Automatic approval、Campaign Queue
+一つのSelection Attemptについて、人間がCandidateごとの理由、欠損、freshness、Research Historyを確認し、承認、除外、順序変更、operator nominationを一回のApproval requestとして記録したversionedな実行許可。Target Selectionが検証したAttemptとdurable Receipt、Selection Policy、Opus Model Profile、source freshness、Campaign Policy、Batch Budget、execution windowへbindする。operator nominationもSelection hard gateを迂回せず、caller生成Receiptや自己申告Attempt refをauthorityにせず、Batchの承認だけではResearchまたは外部行動を開始しない。
+_Avoid_: Candidate Batch、Campaign Queue、Submission approval
 
 **Target Campaign Dispatch**:
 Approved Target Batchをdurable queueへ入れ、Targetごとの実行直前freshness、取得、Target Intakeを確認してResearchへ渡すTarget Intelligenceの運行。待機件数とactive Campaign数を分け、初期pilot後は約5 active Campaignをpolicyで許可する。versionやsourceをsilentに差し替えず、systemic failureでは新規開始を止める。
@@ -76,8 +108,12 @@ _Avoid_: Research Ledger、Finding outcome、Coverage proof
 選ばれたplugin sourceと配布metadataを、provenanceを失わずResearchへ受け渡せる状態にする行為。
 _Avoid_: Download、Human Verification setup
 
+**Target Research History**:
+Plugin Identity、verified version、Canonical File Manifest digestで固定したTargetについて、Campaign kind、policy/profile identity、purpose、run ordinal、選定・進行・terminal時刻をTarget Intelligenceがappend-onlyに所有する重複管理記録。activeのresume、Coverage Closedの既探索、Incompleteの理由付きfollow-up、新version、同versionで異なるbytesのprovenance conflictを区別する。CVE、advisory、Finding、Hypothesis、known vulnerable rangeまたはknown routeを持たず、Research Ledgerを参照しない。
+_Avoid_: Research Ledger、Finding history、Vulnerability History Aggregate
+
 **Acquisition Original**:
-archiveまたはdirectoryとして受け取ったsourceを、展開・正規化前の内容と入手経路へ結び付けて不変化した原本。
+archiveまたはdirectoryとして受け取ったsourceを、展開・正規化前の原文bytesのcontent identity、source URL、取得時刻へ結び付けて不変化した原本。同じbytesのidentityは取得時刻が変わっても変えず、取得観測だけを追加する。
 _Avoid_: Working copy、Extracted plugin、Target Snapshot
 
 **Canonical File Manifest**:
