@@ -216,13 +216,14 @@ describe("TargetSelection", () => {
   it("resolves a legacy v1 Attempt through an Oracle-free read-only approval projection", async () => {
     const directory = await mkdtemp(join(tmpdir(), "target-selection-legacy-"));
     try {
-      const fixture = await createLegacyTargetSelectionFixture(directory);
+      const fixture = await createLegacyTargetSelectionFixture();
       const selection = openTargetSelection({
         storageDirectory: directory,
         model: {
           rank: () => Promise.reject(new Error("legacy replay must not rank")),
         },
       });
+      await selection.migrateLegacyAttempt(fixture.attempt);
       const verificationRequest = {
         kind: "target-selection-approval-verification-request" as const,
         schemaVersion: 1 as const,

@@ -13,7 +13,10 @@ import {
   type TargetSelectionPolicy,
   type TargetSelectionReceipt,
 } from "../../src/target-intelligence/index.js";
-import { createLegacyApprovedTargetBatchFixture } from "../fixtures/target-intelligence/legacy-target-selection.js";
+import {
+  createLegacyApprovedTargetBatchFixture,
+  createLegacyTargetSelectionFixture,
+} from "../fixtures/target-intelligence/legacy-target-selection.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 const selectionPolicy: TargetSelectionPolicy = {
@@ -259,6 +262,71 @@ describe("TargetBatchApproval", () => {
     } finally {
       await rm(selectionDirectory, { recursive: true, force: true });
       await rm(approvalDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a durable Receipt whose full Attempt binding differs from its parent Attempt", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "target-batch-receipt-binding-"),
+    );
+    try {
+      const fixture = await createLegacyTargetSelectionFixture({
+        receiptRequestDigest: digest("9"),
+      });
+      const selection = openTargetSelection({
+        storageDirectory: directory,
+        model: { rank: async () => ({}) },
+      });
+      const migratedRef = await selection.migrateLegacyAttempt(fixture.attempt);
+      const approval = openTargetBatchApproval({
+        storageDirectory: directory,
+        selectionResolver: selection,
+      });
+
+      await expect(
+        approval.approve({
+          kind: "target-batch-approval-request",
+          schemaVersion: 2,
+          batchKey: "receipt-binding-batch",
+          revision: 1,
+          selectionAttempt: {
+            ref: migratedRef,
+            selectionKey: fixture.selectionKey,
+            revision: fixture.revision,
+          },
+          operatorNominations: [],
+          selectionPolicy: fixture.policy,
+          modelProfile: fixture.modelProfile,
+          campaignPolicy: { id: "campaign-policy-v1", digest: digest("2") },
+          batchBudget: {
+            kind: "target-batch-budget",
+            schemaVersion: 1,
+            id: "batch-budget-v1",
+            digest: digest("3"),
+            maxTargets: 1,
+            maxActiveCampaigns: 1,
+          },
+          executionWindow: {
+            startsAt: "2031-09-02T00:00:00.000Z",
+            endsAt: "2031-09-03T00:00:00.000Z",
+          },
+          operator: {
+            identity: "human:fixture-operator",
+            decidedAt: "2030-09-01T00:00:00.000Z",
+          },
+          decisions: [
+            {
+              candidateId: "legacy-candidate",
+              decision: "approve",
+              reason: "accept-autonomous-selection",
+            },
+          ],
+          approvedOrder: ["legacy-candidate"],
+          orderReason: "single-target-batch",
+        }),
+      ).rejects.toMatchObject({ code: "selection-attempt-unverified" });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
     }
   });
 

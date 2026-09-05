@@ -9,7 +9,7 @@ import {
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 
 export async function createLegacyTargetSelectionFixture(
-  storageDirectory: string,
+  options: { readonly receiptRequestDigest?: string } = {},
 ) {
   const policy = {
     kind: "target-selection-policy" as const,
@@ -108,7 +108,7 @@ export async function createLegacyTargetSelectionFixture(
     attempt: {
       selectionKey,
       revision,
-      requestDigest,
+      requestDigest: options.receiptRequestDigest ?? requestDigest,
       policy: { id: policy.id, digest: policy.digest },
       modelProfile: { id: modelProfile.id, digest: modelProfile.digest },
     },
@@ -136,24 +136,21 @@ export async function createLegacyTargetSelectionFixture(
     id: `selection-attempt:${attemptDigest.slice(7, 31)}`,
     digest: attemptDigest,
   };
-  await mkdir(join(storageDirectory, "target-selection-attempts"), {
-    recursive: true,
-  });
-  await writeFile(
-    join(
-      storageDirectory,
-      "target-selection-attempts",
-      `${selectionKey}.revision-${revision}.json`,
-    ),
-    canonicalJson(attempt),
-  );
-  return { attemptRef, selectionKey, revision, policy, modelProfile, receipt };
+  return {
+    attempt,
+    attemptRef,
+    selectionKey,
+    revision,
+    policy,
+    modelProfile,
+    receipt,
+  };
 }
 
 export async function createLegacyApprovedTargetBatchFixture(
   storageDirectory: string,
 ) {
-  const selection = await createLegacyTargetSelectionFixture(storageDirectory);
+  const selection = await createLegacyTargetSelectionFixture();
   const decision = {
     candidateId: selection.receipt.candidateId,
     decision: "approve" as const,

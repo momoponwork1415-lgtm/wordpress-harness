@@ -617,6 +617,9 @@ export type TargetSelectionResult = SelectedTargets | TargetSelectionPending;
 
 export interface TargetSelection {
   select(request: TargetSelectionRequest): Promise<TargetSelectionResult>;
+  migrateLegacyAttempt(
+    artifact: unknown,
+  ): Promise<TargetSelectionReadableAttemptRef>;
   resolveForApproval(
     request: TargetSelectionApprovalVerificationRequest,
   ): Promise<TargetSelectionApprovalVerification>;

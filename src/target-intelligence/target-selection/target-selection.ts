@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { canonicalJson, sha256Digest } from "../acquisition/canonical-json.js";
 import {
   TargetSelectionModelError,
+  legacyTargetSelectionAttemptRefSchema,
+  legacyTargetSelectionAttemptSchema,
   targetSelectionApprovalVerificationRequestSchema,
   targetSelectionApprovalVerificationSchema,
   targetSelectionAttemptRefSchema,
@@ -25,6 +27,7 @@ import {
   type TargetSelectionPendingReason,
   type TargetSelectionReceipt,
   type TargetSelectionReadableAttempt,
+  type TargetSelectionReadableAttemptRef,
   type TargetSelectionRequest,
   type TargetSelectionResult,
 } from "./contracts.js";
@@ -608,9 +611,32 @@ class FileTargetSelection implements TargetSelection {
       throw new Error("Target Selection Attempt binding mismatch");
     }
 
+    const expectedReceiptBinding = {
+      selectionKey: attempt.input.selectionKey,
+      revision: attempt.input.revision,
+      requestDigest: attempt.requestDigest,
+      policy: {
+        id: attempt.input.policy.id,
+        digest: attempt.input.policy.digest,
+      },
+      modelProfile: {
+        id: attempt.input.modelProfile.id,
+        digest: attempt.input.modelProfile.digest,
+      },
+    };
+
     const receipts = attempt.receipts.map((storedReceipt) => {
       if (!verifyStoredReceipt(storedReceipt)) {
         throw new Error("Target Selection Receipt integrity mismatch");
+      }
+      if (
+        storedReceipt.candidateId !== storedReceipt.candidate.candidateId ||
+        canonicalJson(storedReceipt.attempt) !==
+          canonicalJson(expectedReceiptBinding) ||
+        (storedReceipt.schemaVersion === 2 &&
+          storedReceipt.receiptSource !== "selection-attempt")
+      ) {
+        throw new Error("Target Selection Receipt parent binding mismatch");
       }
       if (storedReceipt.schemaVersion === 2) {
         return storedReceipt;
@@ -727,6 +753,41 @@ class FileTargetSelection implements TargetSelection {
     return verification;
   }
 
+  async migrateLegacyAttempt(
+    artifactValue: unknown,
+  ): Promise<TargetSelectionReadableAttemptRef> {
+    const attempt = legacyTargetSelectionAttemptSchema.parse(artifactValue);
+    if (attempt.requestDigest !== sha256Digest(attempt.input)) {
+      throw new Error("Legacy Target Selection Attempt request mismatch");
+    }
+    for (const storedReceipt of attempt.status === "selected"
+      ? attempt.receipts
+      : []) {
+      if (!verifyStoredReceipt(storedReceipt)) {
+        throw new Error("Legacy Target Selection Receipt integrity mismatch");
+      }
+    }
+    const digest = sha256Digest(attempt);
+    const ref = legacyTargetSelectionAttemptRefSchema.parse({
+      kind: "target-selection-attempt-ref",
+      schemaVersion: 1,
+      id: `selection-attempt:${digest.slice(7, 31)}`,
+      digest,
+    });
+    const path = this.#attemptPath(attempt.input);
+    const existing = await this.#read(path);
+    if (existing !== undefined) {
+      if (canonicalJson(existing) !== canonicalJson(attempt)) {
+        throw new Error("Target Selection legacy migration conflict");
+      }
+      return ref;
+    }
+    if (!(await this.#create(path, attempt))) {
+      throw new Error("Target Selection legacy migration raced");
+    }
+    return ref;
+  }
+
   async #finishPending(
     path: string,
     running: Extract<TargetSelectionAttempt, { status: "running" }>,
@@ -792,7 +853,7 @@ class FileTargetSelection implements TargetSelection {
 
   async #create(
     path: string,
-    attempt: TargetSelectionAttempt,
+    attempt: TargetSelectionReadableAttempt,
   ): Promise<boolean> {
     await mkdir(join(this.#storageDirectory, "target-selection-attempts"), {
       recursive: true,
