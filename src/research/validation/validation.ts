@@ -226,16 +226,33 @@ function validatedExecution(
   };
 }
 
+async function persistExecutionResult(
+  result: AttemptExecutionResult,
+  execution: AttemptExecutionResultV2Ref | undefined,
+  options: OpenValidationOptions,
+): Promise<void> {
+  if (execution === undefined) return;
+  const value = modelAttemptResultV2Schema.parse(result.value);
+  if (sha256Digest(value) !== execution.digest) {
+    throw new Error("Validation Attempt result digest mismatch");
+  }
+  const storedDigest = await options.artifactStore.putJson(value);
+  if (storedDigest !== execution.digest) {
+    throw new Error(
+      "Validation Attempt artifact store returned a foreign digest",
+    );
+  }
+}
+
 async function runValidator(
   plan: ValidationPlan,
   ordinal: 1 | 2 | 3,
   options: OpenValidationOptions,
 ): Promise<ValidatorAttemptRecord> {
   const attempt = validatorAttempt(plan, ordinal, options);
-  const executed = validatedExecution(
-    attempt,
-    await options.modelExecution.run(attempt),
-  );
+  const result = await options.modelExecution.run(attempt);
+  const executed = validatedExecution(attempt, result);
+  await persistExecutionResult(result, executed.execution, options);
   if (executed.kind === "failed") {
     if (executed.execution === undefined) {
       throw new Error(executed.reason);
@@ -366,10 +383,9 @@ async function runSynthesis(
   options: OpenValidationOptions,
 ): Promise<SynthesisAttemptRecord> {
   const attempt = synthesisAttempt(plan, attempts, options);
-  const executed = validatedExecution(
-    attempt,
-    await options.modelExecution.run(attempt),
-  );
+  const result = await options.modelExecution.run(attempt);
+  const executed = validatedExecution(attempt, result);
+  await persistExecutionResult(result, executed.execution, options);
   if (executed.kind === "failed") {
     if (executed.execution === undefined) throw new Error(executed.reason);
     return {

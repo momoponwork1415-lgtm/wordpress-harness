@@ -335,6 +335,52 @@ describe("source-only Validation", () => {
     expect(record.validatorAttempts).toHaveLength(2);
   });
 
+  it("persists every model Attempt result before the next Validation stage starts", async () => {
+    const store = new MemoryArtifactStore();
+    const validatorAttemptIds: string[] = [];
+    let synthesisResultDigest: string | undefined;
+    const execution: ModelExecution = {
+      run: async (planValue) => {
+        if (planValue.schemaVersion !== 2) {
+          throw new Error("Validation must use AttemptPlanV2");
+        }
+        if (planValue.role === "validator") {
+          validatorAttemptIds.push(planValue.attemptId);
+          return completedResult(planValue, attemptOutput(planValue.attemptId));
+        }
+        const validatorDigests = [...store.values.values()]
+          .filter(
+            (value): value is { attemptId: string; role: string } =>
+              typeof value === "object" &&
+              value !== null &&
+              "attemptId" in value &&
+              "role" in value &&
+              typeof value.attemptId === "string" &&
+              typeof value.role === "string",
+          )
+          .filter((value) => value.role === "validator")
+          .map((value) => value.attemptId)
+          .sort();
+        expect(validatorDigests).toEqual([...validatorAttemptIds].sort());
+        const result = completedResult(
+          planValue,
+          synthesisOutput(validatorAttemptIds),
+        );
+        synthesisResultDigest = result.ref.digest;
+        return result;
+      },
+    };
+    const validation = openValidation({
+      artifactStore: store,
+      modelExecution: execution,
+    });
+
+    await validation.validate(plan);
+
+    expect(synthesisResultDigest).toBeDefined();
+    expect(store.values.has(synthesisResultDigest!)).toBe(true);
+  });
+
   it("runs a third Validator only for a material rubric conflict", async () => {
     const store = new MemoryArtifactStore();
     const model = modelExecution((attempt, calls) => {
