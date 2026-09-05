@@ -35,13 +35,13 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 
 ### Programme Intelligence
 
-**Interface:** `ProgrammeIntelligence.refresh / inspect`
-
 - **Purpose:** 外部programmeのscope、eligibility、reward policy、competition ruleを、Programme Identityとrequired source provenanceへ結び付けたProgramme Eligibility Snapshotにする。
+- **Interface:** `ProgrammeIntelligence.refresh / inspect`
 - **Invariants:** source URL、retrievedAt、raw content digest、parser version、freshness policyを固定する。Programme Opportunity BandとFinding後専用のreward estimate inputを分離し、programme ruleでFindingのtechnical validityを変更しない。Oracle FactをResearchまたはTarget Intake Packetへ渡さない。
-- **Failures:** required source間の不一致は`policy-conflict`、必須fieldまたはnormalized contract不成立は`parse-failed`、refresh失敗と期限切れsnapshotは`stale`。Target選定batchとSubmission Stagingはそれぞれcurrent freshnessを要求する。
+- **Failure semantics:** required Intelligence Source間の不一致は`policy-conflict`、必須fieldまたはnormalized contract不成立は`parse-failed`、refresh失敗と期限切れsnapshotは`stale`。Target選定batchとSubmission Stagingはそれぞれcurrent freshnessを要求する。
+- **Behavior Test:** [Programme Intelligence](../tests/target-intelligence/programme-intelligence.test.ts)
 - **Status:** versioned core contract、content-addressed snapshot、sanitized fixture Adapterの共通Behavior Testを実装。Patchstack / Wordfence固有Adapterを実装済み。
-- **Code / Tests:** [programme-intelligence](../src/target-intelligence/programme-intelligence) · [Behavior Test](../tests/target-intelligence/programme-intelligence.test.ts)
+- **Code:** [programme-intelligence](../src/target-intelligence/programme-intelligence)
 
 ### Patchstack Programme Adapter
 
@@ -65,13 +65,13 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 
 ### Disclosure Route Observation
 
-**Interface:** `DisclosureRoute.observe / inspect / projectAssignmentStaleness`
-
 - **Purpose:** Targetごとの公開脆弱性報告routeを、`first-party-bounty / first-party-vdp / delegated-vdp / security-contact-only / none-found / conflicting`へsource付きで不変化する。
+- **Interface:** `DisclosureRoute.observe / inspect / projectAssignmentStaleness`
 - **Invariants:** vendor公式、official repository `SECURITY.md`、WordPress.org maintainer記載、programme directory、検索結果の順で根拠を評価する。source URL / owner、validated final URL、retrievedAt、raw digest、parser version、checked scope、submission route、exclusivity / disclosure条件を固定する。`none-found`は確認sourceの範囲だけを意味する。route semantic digestは取得時刻に依存せずTargetへbindする。versioned Programme Assignment route bindingとcurrent Observationからcontent-addressed staleness projectionだけを作り、Programme Assignmentまたは外部送信を所有しない。Oracle FactまたはResearch eligibility判断を含めない。
-- **Failures:** source取得失敗は`acquisition-failed`、HTTPS origin allowlist外へのredirectは`untrusted-provenance`、strict source document不成立は`parse-failed`。first-partyとlower-precedence sourceの矛盾はfirst-party根拠を保持した`conflicting`として人間確認を要求する。Assignment bindingとObservationのTarget不一致は`binding-mismatch`。
+- **Failure semantics:** Intelligence Source取得失敗は`acquisition-failed`、HTTPS origin allowlist外へのredirectは`untrusted-provenance`、strict source document不成立は`parse-failed`。first-partyとlower-precedence sourceの矛盾はfirst-party根拠を保持した`conflicting`として人間確認を要求する。Assignment bindingとObservationのTarget不一致は`binding-mismatch`。
+- **Behavior Test:** [Disclosure Route](../tests/target-intelligence/disclosure-route.test.ts)
 - **Status:** content-addressed observation、6分類、Ultimate Member型direct reward / GiveWP型delegated VDPのsanitized fixture、conflict / none-found / redirect / Oracle separation、選定・staging再取得、restart replayを実装。
-- **Code / Tests:** [disclosure-route](../src/target-intelligence/disclosure-route) · [Behavior Test](../tests/target-intelligence/disclosure-route.test.ts)
+- **Code:** [disclosure-route](../src/target-intelligence/disclosure-route)
 
 ### Target Research History
 
@@ -85,53 +85,53 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 
 ### Target Selection
 
-**Interface:** `TargetSelection.select`
-
 - **Purpose:** Target Observation、Programme Eligibility、Disclosure Route、弱いVulnerability History Aggregate、Target Research Historyを一つのprogramme-neutral Candidate Poolとして評価し、有限のSelection Receipt集合を作る。
+- **Interface:** `TargetSelection.select`
 - **Invariants:** provenance、取得可能性、Target identity、source freshness、Research Historyをdeterministic hard gateにする。operator nominationはoperator identity、時刻、列挙理由をCandidateへ固定し、他Candidateと同じhard gateを通す。Opus Model Profileへはactive installs、更新時刻、公開integration、粗いsource scale、Disclosure Route、diversityだけを渡す。Vulnerability History AggregateはAttempt / Receiptへbindするがmodel inputにせず、単独で採否を変えない。Research Value Bandを先に比較し、同BandでだけProgramme Opportunity Bandをtie-breakerに使い、vendor / family / use case / size / authority / integrationのversioned capで多様性を保つ。ReceiptはCampaignを開始しない。
-- **Failures:** provider failure、budget exhaustion、invalid model result、model実行前にdurable化したAttemptの中断は、空Batchではなく`selection-pending`として保持する。同じselection key / revisionの異なるinputはconflict、同じinputはmodelを再実行せずreplayし、明示的な新revisionだけを再選定する。
+- **Failure semantics:** provider failure、budget exhaustion、invalid model result、model実行前にdurable化したAttemptの中断は、空Batchではなく`selection-pending`として保持する。同じselection key / revisionの異なるinputはconflict、同じinputはmodelを再実行せずreplayし、明示的な新revisionだけを再選定する。
+- **Behavior Test:** [Target Selection](../tests/target-intelligence/target-selection.test.ts)
 - **Status:** content-bound Attempt / Receipt、Opus-only profile、stable projection、hard gate、active resume / already-covered / Incomplete follow-up、Research-only保持、diversity、restart / failure replayを実装。
-- **Code / Tests:** [target-selection](../src/target-intelligence/target-selection) · [Behavior Test](../tests/target-intelligence/target-selection.test.ts)
+- **Code:** [target-selection](../src/target-intelligence/target-selection)
 
 ### Target Batch Approval
 
-**Interface:** `TargetBatchApproval.approve / inspect`
-
 - **Purpose:** 一つのSelection Attemptの有限なSelection Receipt集合について、人間の承認、除外、順序変更、operator nominationを一回の判断へまとめ、versioned Approved Target Batchにする。
+- **Interface:** `TargetBatchApproval.approve / inspect`
 - **Invariants:** Selection Receipt digest、durableな完了済みSelection Attempt、Selection Policy、Opus Model Profile、Target Observation、programme / disclosure freshness、Campaign Policy、Batch Budget、execution window、human identity / decision time / 列挙理由を固定する。operator nominationの出所はReceipt内のCandidateから導出し、callerによる名称変更を許さない。operator-nominated TargetもSelection hard gate通過済みReceiptを必須とする。承認はResearch、Campaign、外部通信を開始しない。
-- **Failures:** durable Attemptが存在しない、Attempt refまたはReceipt集合が一致しない場合は`selection-attempt-unverified`。Receipt integrity、Attempt / policy / profile binding、decision集合、approved orderの不一致を拒否する。hard gate不通過は人間でもoverrideできず、Batch Budget超過を拒否する。同じbatch key / revisionの異なるinputは`revision-conflict`、変更は開始前の新revision + `supersedes`だけを許可し、開始後は`execution-started`にする。
+- **Failure semantics:** durable Attemptが存在しない、Attempt refまたはReceipt集合が一致しない場合は`selection-attempt-unverified`。Receipt integrity、Attempt / policy / profile binding、decision集合、approved orderの不一致を拒否する。hard gate不通過は人間でもoverrideできず、Batch Budget超過を拒否する。同じbatch key / revisionの異なるinputは`revision-conflict`、変更は開始前の新revision + `supersedes`だけを許可し、開始後は`execution-started`にする。
+- **Behavior Test:** [Target Batch Approval](../tests/target-intelligence/target-batch-approval.test.ts)
 - **Status:** content-addressed Batch、revision index、approval / exclusion / reorder / nomination、idempotency、restart replay、supersedeのBehavior Testを実装。
-- **Code / Tests:** [target-batch-approval](../src/target-intelligence/target-batch-approval) · [Behavior Test](../tests/target-intelligence/target-batch-approval.test.ts)
+- **Code:** [target-batch-approval](../src/target-intelligence/target-batch-approval)
 
 ### Wordfence Vulnerability Intelligence
 
-**Interface:** `WordfenceIntelligence.refresh / inspect / aggregate / inspectKnownRecords`
-
-- **Purpose:** Wordfence Intelligence v3 Production Feedを不変snapshotとlocal indexへ変換し、Target選定用の弱いVulnerability History AggregateとFinding後専用のknown-record projectionを分離する。
+- **Purpose:** Wordfence Intelligence v3 Production Intelligence Sourceを不変snapshotとlocal indexへ変換し、Target選定用の弱いVulnerability History AggregateとFinding後専用のknown-record projectionを分離する。
+- **Interface:** `WordfenceIntelligence.refresh / inspect / aggregate / inspectKnownRecords`
 - **Invariants:** complete response、source URL、取得時刻、raw response digest、parser versionをsnapshotへ固定し、全recordとWordfence / MITRE attributionのvalidation成功後だけcurrent pointerをtransaction更新する。選定projectionはplugin単位の件数、公開年密度、最終公開時刻だけを返し、CVE、CWE、CVSS、affected / patched versionを含めない。exact recordはverified Finding、Target identity、version、`known-duplicate-disposition` purposeへbindしたversioned authorizationを公開verifierで解決できる場合だけ返す。caller自己申告のFinding refはauthorizationにしない。Bearer値はSecretRef resolverの内側だけで使用する。
-- **Failures:** 404、auth failure、429、network failure、partial response、schema drift、copyright / license metadata欠落をtyped failureにする。失敗refreshは既存current pointerを変更しない。authorizationが欠落、不正またはquery subjectと不一致なら`known-record-access-denied`にする。
+- **Failure semantics:** 404、auth failure、429、network failure、partial response、schema drift、copyright / license metadata欠落をtyped failureにする。失敗refreshは既存current pointerを変更しない。authorizationが欠落、不正またはquery subjectと不一致なら`known-record-access-denied`にする。
+- **Behavior Test:** [Wordfence Vulnerability Intelligence](../tests/target-intelligence/wordfence-intelligence.test.ts)
 - **Status:** bounded production fetch Adapter、sanitized fixture Adapter、Store / replay、affected-version interval query、oracle-separated aggregateを実装。
-- **Code / Tests:** [wordfence-intelligence](../src/target-intelligence/wordfence-intelligence) · [Behavior Test](../tests/target-intelligence/wordfence-intelligence.test.ts)
+- **Code:** [wordfence-intelligence](../src/target-intelligence/wordfence-intelligence)
 
 ### WordPress.org Target Source
 
-**Interface:** `WordPressOrgTargetSource.observe / acquire`
-
 - **Purpose:** official plugin slugから不変なTarget Observationを作り、観測したstable versionのarchive原本を既存Target Intakeへ安全に渡す。
+- **Interface:** `WordPressOrgTargetSource.observe / acquire`
 - **Invariants:** Plugin Identityは`wporg:<slug>`とし、表示名、stable version、active installations、last updated、download provenance、取得時刻をmetadata digestとparser versionへ固定する。acquireは観測済みversionとMain Plugin File headerを照合し、archive bytesをcontent digestで不変化する。CVE、advisory、known vulnerable range、known routeをObservationまたはPacketへ保存しない。同じofficial bytesは取得時刻やrestartにかかわらず同じCanonical File ManifestとTarget Intake Packetへ収束する。
-- **Failures:** metadata / archiveの404、rate limit、network failure、quota超過、invalid metadata、要求version不一致、metadata / archive不一致をtyped failureにする。ZIPのpath traversal、link、multiple plugin root、integrity不正、quota超過はTarget Intake公開前に`rejected`、Main Plugin Fileの不足・曖昧性は既存Intakeの`deferred`にする。別versionまたは別sourceへsilent fallbackしない。
+- **Failure semantics:** metadata / archiveの404、rate limit、network failure、quota超過、invalid metadata、要求version不一致、metadata / archive不一致をtyped failureにする。ZIPのpath traversal、link、multiple plugin root、integrity不正、quota超過はTarget Intake公開前に`rejected`、Main Plugin Fileの不足・曖昧性は既存Intakeの`deferred`にする。別versionまたは別sourceへsilent fallbackしない。
+- **Behavior Test:** [WordPress.org Target Source](../tests/target-intelligence/wordpress-org-target-source.test.ts)
 - **Status:** bounded production fetch Adapter、sanitized fixture Adapterによるoffline Behavior Test、Deflate / Store ZIPの安全な展開、Acquisition Original保存、restart replayを実装。
-- **Code / Tests:** [acquisition](../src/target-intelligence/acquisition) · [Behavior Test](../tests/target-intelligence/wordpress-org-target-source.test.ts)
+- **Code:** [acquisition](../src/target-intelligence/acquisition)
 
 ### Target Intake
 
-**Interface:** `TargetIntake.intake(request) -> ready | deferred | rejected`
-
 - **Purpose:** untrustedなarchiveまたはdirectoryを、oracle-freeなTarget Intake Packetへ変換する。
+- **Interface:** `TargetIntake.intake(request) -> ready | deferred | rejected`
 - **Invariants:** identityとversionを照合し、sourceを実行せず、artifactをdurableにしてから`ready`を返す。同じrequestは同じ結果へ収束する。
-- **Failures:** policy outcomeは`deferred / rejected`、durable化できないsystem failureだけをerrorにする。
+- **Failure semantics:** policy outcomeは`deferred / rejected`、durable化できないsystem failureだけをerrorにする。
+- **Behavior Test:** [Target Intake](../tests/target-intelligence/local-directory-target-intake.test.ts)、[Campaign handoff](../tests/research/target-intake-campaign-handoff.test.ts)
 - **Status:** local directoryとWordPress.org archive、manifest、quota / path / link検査、Campaign handoffを実装。premium archive acquisitionは未実装。
-- **Code / Tests:** [acquisition](../src/target-intelligence/acquisition), [handoff](../src/research/campaign-control/target-intake-campaign-handoff.ts) · [intake](../tests/target-intelligence/local-directory-target-intake.test.ts), [handoff](../tests/research/target-intake-campaign-handoff.test.ts)
+- **Code:** [acquisition](../src/target-intelligence/acquisition)、[handoff](../src/research/campaign-control/target-intake-campaign-handoff.ts)
 
 ## Research
 
