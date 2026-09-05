@@ -138,22 +138,33 @@ export const disclosureRouteObservationRefSchema = z.strictObject({
 
 export const programmeAssignmentRouteBindingSchema = z.strictObject({
   kind: z.literal("programme-assignment-route-binding"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
+  id: identifierSchema,
+  digest: digestSchema,
   programmeAssignmentRef: immutableRefSchema,
   pluginIdentity: pluginIdentitySchema,
   routeDigest: digestSchema,
+  boundAt: z.string().datetime({ offset: true }),
+});
+
+export const programmeAssignmentRouteBindingRefSchema = z.strictObject({
+  kind: z.literal("programme-assignment-route-binding-ref"),
+  schemaVersion: z.literal(2),
+  id: identifierSchema,
+  digest: digestSchema,
 });
 
 export const programmeAssignmentRouteStalenessRequestSchema = z.strictObject({
   kind: z.literal("programme-assignment-route-staleness-request"),
-  schemaVersion: z.literal(1),
-  assignmentBinding: programmeAssignmentRouteBindingSchema,
+  schemaVersion: z.literal(2),
+  assignmentBindingRef: programmeAssignmentRouteBindingRefSchema,
   currentObservationRef: disclosureRouteObservationRefSchema,
 });
 
 const programmeAssignmentRouteStalenessBodySchema = z.strictObject({
   kind: z.literal("programme-assignment-route-staleness"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
+  assignmentBindingRef: programmeAssignmentRouteBindingRefSchema,
   programmeAssignmentRef: immutableRefSchema,
   pluginIdentity: pluginIdentitySchema,
   status: z.enum(["current", "stale"]),
@@ -192,6 +203,9 @@ export type DisclosureRouteObservationRef = z.infer<
 export type ProgrammeAssignmentRouteBinding = z.infer<
   typeof programmeAssignmentRouteBindingSchema
 >;
+export type ProgrammeAssignmentRouteBindingRef = z.infer<
+  typeof programmeAssignmentRouteBindingRefSchema
+>;
 export type ProgrammeAssignmentRouteStalenessRequest = z.infer<
   typeof programmeAssignmentRouteStalenessRequestSchema
 >;
@@ -228,13 +242,21 @@ export class DisclosureRouteError extends Error {
   }
 }
 
-export class DisclosureRouteStalenessError extends Error {
-  readonly code = "binding-mismatch" as const;
+export type DisclosureRouteStalenessErrorCode =
+  "assignment-binding-unverified" | "binding-mismatch";
 
-  constructor() {
-    super("Disclosure Route staleness binding mismatch");
+export class DisclosureRouteStalenessError extends Error {
+  readonly code: DisclosureRouteStalenessErrorCode;
+
+  constructor(code: DisclosureRouteStalenessErrorCode) {
+    super(`Disclosure Route staleness ${code}`);
     this.name = "DisclosureRouteStalenessError";
+    this.code = code;
   }
+}
+
+export interface ProgrammeAssignmentRouteBindingResolver {
+  resolve(ref: ProgrammeAssignmentRouteBindingRef): Promise<unknown>;
 }
 
 export interface DisclosureRoute {
@@ -252,5 +274,6 @@ export interface DisclosureRoute {
 export interface OpenDisclosureRouteOptions {
   readonly storageDirectory: string;
   readonly sourceAdapters: readonly DisclosureRouteSourceAdapter[];
+  readonly assignmentBindingResolver?: ProgrammeAssignmentRouteBindingResolver;
   readonly clock?: () => Date;
 }

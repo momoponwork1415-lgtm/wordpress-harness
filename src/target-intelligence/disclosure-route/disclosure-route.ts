@@ -12,6 +12,7 @@ import {
   disclosureRouteSourceDocumentSchema,
   disclosureRouteSourceKindSchema,
   disclosureRouteSourceSnapshotSchema,
+  programmeAssignmentRouteBindingSchema,
   programmeAssignmentRouteStalenessRequestSchema,
   programmeAssignmentRouteStalenessSchema,
   type DisclosureRoute,
@@ -144,10 +145,12 @@ function validatedOrigin(value: string): string {
 class FileDisclosureRoute implements DisclosureRoute {
   readonly #storageDirectory: string;
   readonly #sourceAdapters: readonly DisclosureRouteSourceAdapter[];
+  readonly #assignmentBindingResolver: OpenDisclosureRouteOptions["assignmentBindingResolver"];
   readonly #clock: () => Date;
 
   constructor(options: OpenDisclosureRouteOptions) {
     this.#storageDirectory = options.storageDirectory;
+    this.#assignmentBindingResolver = options.assignmentBindingResolver;
     this.#sourceAdapters = [...options.sourceAdapters].sort((left, right) => {
       const sourceOrder =
         precedence[left.sourceKind] - precedence[right.sourceKind];
@@ -260,23 +263,45 @@ class FileDisclosureRoute implements DisclosureRoute {
   ): Promise<ProgrammeAssignmentRouteStaleness> {
     const request =
       programmeAssignmentRouteStalenessRequestSchema.parse(requestValue);
+    let binding;
+    try {
+      if (this.#assignmentBindingResolver === undefined) {
+        throw new Error("Programme Assignment binding resolver is unavailable");
+      }
+      binding = programmeAssignmentRouteBindingSchema.parse(
+        await this.#assignmentBindingResolver.resolve(
+          request.assignmentBindingRef,
+        ),
+      );
+      const { id, digest, ...body } = binding;
+      if (
+        sha256Digest(body) !== digest ||
+        id !== `assignment-route-binding:${digest.slice(7, 31)}` ||
+        id !== request.assignmentBindingRef.id ||
+        digest !== request.assignmentBindingRef.digest
+      ) {
+        throw new Error(
+          "Programme Assignment route binding integrity mismatch",
+        );
+      }
+    } catch {
+      throw new DisclosureRouteStalenessError("assignment-binding-unverified");
+    }
     const observation = await this.inspect(request.currentObservationRef);
-    if (
-      observation.pluginIdentity !== request.assignmentBinding.pluginIdentity
-    ) {
-      throw new DisclosureRouteStalenessError();
+    if (observation.pluginIdentity !== binding.pluginIdentity) {
+      throw new DisclosureRouteStalenessError("binding-mismatch");
     }
     const body = {
       kind: "programme-assignment-route-staleness" as const,
-      schemaVersion: 1 as const,
-      programmeAssignmentRef: request.assignmentBinding.programmeAssignmentRef,
-      pluginIdentity: request.assignmentBinding.pluginIdentity,
+      schemaVersion: 2 as const,
+      assignmentBindingRef: request.assignmentBindingRef,
+      programmeAssignmentRef: binding.programmeAssignmentRef,
+      pluginIdentity: binding.pluginIdentity,
       status:
-        request.assignmentBinding.routeDigest ===
-        request.currentObservationRef.routeDigest
+        binding.routeDigest === request.currentObservationRef.routeDigest
           ? ("current" as const)
           : ("stale" as const),
-      assignedRouteDigest: request.assignmentBinding.routeDigest,
+      assignedRouteDigest: binding.routeDigest,
       observedRouteDigest: request.currentObservationRef.routeDigest,
       observationRef: request.currentObservationRef,
     };

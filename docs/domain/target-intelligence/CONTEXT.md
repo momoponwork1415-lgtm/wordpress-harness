@@ -9,7 +9,7 @@ plugin directory、vulnerability intelligence、利用統計等、Target Observa
 _Avoid_: Feed、API
 
 **Disclosure Route Observation**:
-Targetの脆弱性報告先を、取得時刻と確認source付きで`first-party-bounty`、`first-party-vdp`、`delegated-vdp`、`security-contact-only`、`none-found`、`conflicting`のいずれかへ固定した不変な観測。vendor公式security / bountyページ、official repositoryの`SECURITY.md`、WordPress.orgのmaintainer記載、programme directory、検索結果の順に根拠を優先する。`none-found`は確認したsourceで公開routeを発見しなかった意味であり、存在しないことの保証ではない。
+Targetの脆弱性報告先を、取得時刻と確認source付きで`first-party-bounty`、`first-party-vdp`、`delegated-vdp`、`security-contact-only`、`none-found`、`conflicting`のいずれかへ固定した不変な観測。vendor公式security / bountyページ、official repositoryの`SECURITY.md`、WordPress.orgのmaintainer記載、programme directory、検索結果の順に根拠を優先する。`none-found`は確認したsourceで公開routeを発見しなかった意味であり、存在しないことの保証ではない。Programme Assignmentのroute freshnessは、公開resolverが検証したversioned bindingとのdigest比較だけをprojectionし、Human OSの内部storageを参照しない。
 _Avoid_: Programme Assignment、Submission destination、Search result
 
 **Target Observation**:
