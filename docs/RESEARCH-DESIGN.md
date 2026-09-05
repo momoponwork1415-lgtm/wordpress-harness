@@ -12,6 +12,8 @@ RCEとsite-wide compromiseは最上位impactだが唯一の成功条件ではな
 
 通常運転はraw-source-firstのSemantic Research Wave。重大HypothesisはValidationへ送り、strong semantic frontierだけをconditional Depthへ送る。
 
+現在のResearch attacker scopeは、未認証、built-in Subscriber、またはeffective capabilityがSubscriberを超えないcustom roleだけである。WooCommerce `customer`は既知のsubscriber-equivalentとして扱う。最低開始権限がContributor以上または`unresolved`のrouteはDepth、Validation、Runtime handoffへ進めない。許可された開始権限から途中で昇格するrouteは対象に含む。legacy artifactの広いpremise enumはreplay互換のため維持する。
+
 優先順位は次のとおり。
 
 ```text
@@ -74,15 +76,16 @@ Surface Map、PHP Program Index、AST、Semgrep、CodeQLはnavigation、evidence
 ## Decision rules
 
 1. Finderへfile、CWE、固定手順を強制しない。
-2. Harnessは隔離、provenance、budget、artifact、barrier、freshness、stopを管理する。research decisionはagentへ残す。
-3. 支持数、model confidence、到着順でcandidateを捨てない。
-4. 一つのcandidate後もstrong frontierがあれば終了しない。
-5. Depth Admissionはknown final impactではなくhigh-impact potentialで決める。
-6. Validationは`rejected`またはFindingを作らず、`ready-for-runtime`をRuntime Verification Packetへ渡す。
-7. budget exhaustion、validation-pending、setup-blockedをnegativeへ丸めない。
-8. Map-first v1とlegacy Verificationはread/replay互換に限る。
-9. Coverage policy未決のno-finding Campaignをsafeまたはcoverage-closedと表現しない。
-10. AI Reproduction成功だけを通常のHuman Verification Queueへ送り、人間は別fresh instanceで必ず再実行する。
+2. current Campaignのattacker scopeはHarnessの共通境界で固定し、prompt、provider output schema、Root Evaluation、Validation、Runtime handoffで強制する。
+3. Harnessは隔離、provenance、budget、artifact、barrier、freshness、stopを管理する。research decisionはagentへ残す。
+4. 支持数、model confidence、到着順でcandidateを捨てない。
+5. 一つのcandidate後もstrong frontierがあれば終了しない。
+6. Depth Admissionはknown final impactではなくhigh-impact potentialで決める。
+7. Validationは`rejected`またはFindingを作らず、`ready-for-runtime`をRuntime Verification Packetへ渡す。
+8. budget exhaustion、validation-pending、setup-blockedをnegativeへ丸めない。
+9. Map-first v1とlegacy Verificationはread/replay互換に限る。
+10. Coverage policy未決のno-finding Campaignをsafeまたはcoverage-closedと表現しない。
+11. AI Reproduction成功だけを通常のHuman Verification Queueへ送り、人間は別fresh instanceで必ず再実行する。
 
 ## Change gate
 

@@ -27,6 +27,7 @@ import { materializeInitialSemanticWave } from "./initial-semantic-wave.js";
 import { targetSnapshotRefSchema } from "../contracts.js";
 import { targetFileManifestRefSchema } from "../source-mapping/contracts.js";
 import { evaluateSemanticWave } from "./semantic-wave-evaluation.js";
+import { currentResearchAttackerScopePrompt } from "../current-research-attacker-scope.js";
 
 type PlanningFailureReason = Extract<
   SemanticExplorationDecision,
@@ -165,6 +166,7 @@ class FirstSemanticExploration implements SemanticExploration {
       modelProfile: this.#modelProfile,
       prompt: [
         "Act as source-aware Recon for an oracle-free security review.",
+        currentResearchAttackerScopePrompt,
         `Target: ${canonicalJson(this.#target)}`,
         `Source identity: ${canonicalJson(this.#manifest)}`,
         `Metadata: ${canonicalJson(this.#metadata)}`,

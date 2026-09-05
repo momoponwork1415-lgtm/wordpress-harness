@@ -15,6 +15,10 @@ import {
   sha256Digest,
 } from "../research-record/canonical-json.js";
 import {
+  currentResearchAttackerScopePrompt,
+  isWithinCurrentResearchAttackerScope,
+} from "../current-research-attacker-scope.js";
+import {
   targetFileManifestRefSchema,
   targetFileManifestSchema,
 } from "../source-mapping/contracts.js";
@@ -457,6 +461,7 @@ function rootSynthesisAttempt(
     modelProfile: options.modelProfile,
     prompt: [
       "Act as a fresh Root Synthesizer over immutable semantic research artifacts.",
+      currentResearchAttackerScopePrompt,
       "Use every Depth Work Item exactly once as used or retained-no-connection.",
       "Propose a chain only when at least two supplied subjects can be ordered by actor, request, state identity, and value flow.",
       "Distinguish source-observed relations from proposed connections. Preserve explicit unknowns, a falsifier, and the next action.",
@@ -562,7 +567,11 @@ function materialize(
   const proposals: ChainProposal[] = [];
   const usedItems = new Set<string>();
   for (const proposal of output.proposals) {
-    if (!unique(proposal.itemIds) || !unique(proposal.subjectDigests)) {
+    if (
+      !isWithinCurrentResearchAttackerScope(proposal.attackerPremise) ||
+      !unique(proposal.itemIds) ||
+      !unique(proposal.subjectDigests)
+    ) {
       return { kind: "failed", reason: "invalid-proposal" };
     }
     const itemSubjects = new Set<string>();

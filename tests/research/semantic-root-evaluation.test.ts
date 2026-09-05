@@ -419,6 +419,50 @@ function evaluationInput(
   };
 }
 
+function contributorEvaluationInput(): SemanticWaveEvaluationInput {
+  const contributorHypothesisValue = {
+    ...hypothesisValue,
+    attackerPremise: "contributor" as const,
+  };
+  const contributorHypothesisArtifact = {
+    ...hypothesisArtifact,
+    id: sha256Digest({
+      kind: hypothesisArtifact.kind,
+      targetSnapshotDigest: target.digest,
+      manifestDigest: manifest.digest,
+      value: contributorHypothesisValue,
+    }),
+    value: contributorHypothesisValue,
+  };
+  const contributorHypothesisRef = {
+    ...hypothesisRef,
+    id: contributorHypothesisArtifact.id,
+    digest: sha256Digest(contributorHypothesisArtifact),
+  };
+  const contributorWaveTerminal = {
+    ...waveTerminal,
+    hypotheses: [contributorHypothesisRef],
+  };
+  const contributorWaveTerminalRef = {
+    ...waveTerminalRef,
+    digest: sha256Digest(contributorWaveTerminal),
+    hypotheses: [contributorHypothesisRef],
+  };
+  return {
+    ...evaluationInput(),
+    schemaVersion: 3,
+    terminal: {
+      ref: contributorWaveTerminalRef,
+      value: contributorWaveTerminal,
+    },
+    artifacts: {
+      hypotheses: [contributorHypothesisArtifact],
+      routeFragments: [fragmentArtifact],
+      frontierGaps: [],
+    },
+  };
+}
+
 describe("Exploration fresh Root Evaluation", () => {
   it("admits Validation only from a complete Wave evaluation and binds it to an explicit shared Approach Family", async () => {
     const observedPlans: ModelAttemptPlan[] = [];
@@ -624,6 +668,70 @@ describe("Exploration fresh Root Evaluation", () => {
       attempts: [{ role: "root-evaluator" }, { role: "root-evaluator" }],
     });
     expect(attempts).toBe(2);
+  });
+
+  it("retries instead of admitting a Contributor hypothesis to Depth", async () => {
+    const input = contributorEvaluationInput();
+    const contributorHypothesis = input.terminal.value.hypotheses[0];
+    if (contributorHypothesis === undefined) {
+      throw new Error("Expected a Contributor Hypothesis");
+    }
+    const observedPlans: ModelAttemptPlan[] = [];
+    const modelExecution: ModelExecution = {
+      run: async (plan) => {
+        observedPlans.push(plan);
+        return completedResult(plan, {
+          kind: "root-evaluator-output",
+          schemaVersion: 2,
+          approachFamilies: [
+            {
+              key: "contributor-only-route",
+              subjectDigests: [contributorHypothesis.digest],
+              thesis: "A Contributor route might cross a control boundary.",
+              mechanism: "A Contributor-controlled value reaches a consumer.",
+              falsifier:
+                "The consumer rejects the Contributor-controlled value.",
+              nextAction: "Trace the Contributor-only route.",
+            },
+          ],
+          actions: [
+            {
+              kind: "admit-depth",
+              approachFamilyKey: "contributor-only-route",
+              subjectDigests: [contributorHypothesis.digest],
+              admission: {
+                highImpactPotential:
+                  "The route might affect a privileged consumer.",
+                composition: "Connect the Contributor input to that consumer.",
+                falsifier: "No privileged consumer exists.",
+                nextAction: "Run a bounded Contributor-only trace.",
+              },
+            },
+            {
+              kind: "close",
+              subjectDigests: [fragmentRef.digest, sha256Digest(thesis)],
+              record: {
+                basis: "The remaining subjects have no material route.",
+                reopenWhen: "New source evidence establishes a material route.",
+              },
+            },
+          ],
+          campaignDisposition: "continue",
+        });
+      },
+    };
+
+    await expect(
+      semanticExploration(modelExecution).decide(input),
+    ).resolves.toMatchObject({
+      kind: "evaluation-incomplete",
+      reason: "invalid-action-binding",
+      attempts: [{ role: "root-evaluator" }, { role: "root-evaluator" }],
+    });
+    expect(observedPlans).toHaveLength(2);
+    expect(observedPlans[0]?.prompt).toContain(
+      "Current research attacker scope permits only unauthenticated attackers and subscriber-equivalent low-privilege users.",
+    );
   });
 
   it("returns typed incomplete when scheduled Depth work is not bound to a proposed Family", async () => {

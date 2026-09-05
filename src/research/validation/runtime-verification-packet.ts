@@ -6,6 +6,7 @@ import {
   canonicalJson,
   sha256Digest,
 } from "../research-record/canonical-json.js";
+import { isWithinCurrentResearchAttackerScope } from "../current-research-attacker-scope.js";
 import { targetFileManifestRefSchema } from "../source-mapping/contracts.js";
 import {
   currentValidationRecordRefSchema,
@@ -284,7 +285,11 @@ export const runtimeVerificationPacketPreparationFailureSchema = z.strictObject(
     schemaVersion: z.literal(2),
     candidate: validationCandidateRefSchema,
     validation: currentValidationRecordRefSchema,
-    reason: z.enum(["invalid-binding", "unsafe-runtime-content"]),
+    reason: z.enum([
+      "invalid-binding",
+      "unsafe-runtime-content",
+      "attacker-out-of-scope",
+    ]),
   },
 );
 
@@ -325,7 +330,8 @@ export type RuntimeVerificationPacketPreparationResult =
     }
   | {
       readonly kind: "incomplete";
-      readonly reason: "invalid-binding" | "unsafe-runtime-content";
+      readonly reason:
+        "invalid-binding" | "unsafe-runtime-content" | "attacker-out-of-scope";
     };
 
 export function referenceRuntimeRiskAssessment(
@@ -403,6 +409,13 @@ export function prepareRuntimeVerificationPacket(input: {
   const validation = validationResult.data;
   const hypothesis = hypothesisResult.data;
   const threatContext = threatContextResult.data;
+  if (
+    !isWithinCurrentResearchAttackerScope(candidate.attackerPremise) ||
+    !isWithinCurrentResearchAttackerScope(hypothesis.value.attackerPremise) ||
+    !isWithinCurrentResearchAttackerScope(threatContext.permittedAttacker)
+  ) {
+    return { kind: "incomplete", reason: "attacker-out-of-scope" };
+  }
   if (
     validation.status !== "ready-for-runtime" ||
     validation.validatorAttempt.status !== "completed" ||

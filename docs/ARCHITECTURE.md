@@ -43,6 +43,7 @@ ResearchはFindingを作らない。Human OSはResearch Ledgerを変更しない
 6. verified FindingだけからAIがtemplate reportを作り、人間がPoCとDescriptionを承認する。Programme Adapterは承認済みrevisionをSubmit直前まで入力し、最後のSubmitは人間だけが行う。
 
 - 通常運転はraw-source-first。Reconとwhole-target Baselineを並行し、最大4個の独立thesisを保つ。
+- current Campaignは未認証またはsubscriber-equivalentの最低開始権限だけを探索後段へ進め、Contributor以上と`unresolved`をDepth、Validation、Runtime handoffへ昇格させない。
 - Candidateを支持数、多数決、到着順で捨てない。
 - strong semantic frontierだけをconditional Depthへ送る。
 - Validationは一つのfreshなsource screenで決定的な反証だけを除き、`ready-for-runtime`を作る。

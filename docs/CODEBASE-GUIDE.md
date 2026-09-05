@@ -64,6 +64,8 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 - **Purpose:** fixed Targetをfinite Wave、Validation、Runtime Verification Packet handoffまで進める。
 - **Invariants:** PlanへTarget、Manifest、policy、profile、tool、budgetを固定する。artifactをCASへ置き、Ledger eventを記録してから次stageへ進む。
+- **Attacker scope:** current Campaignは未認証、Subscriber、subscriber-equivalent custom role（`customer`を含む）だけを許可する。Contributor以上と`unresolved`はcheckpoint、Root Evaluation、Validation admission、Runtime handoffでfail closedにする。legacy enumとLedgerはreplay互換を維持する。
+- **Attempt observability:** ValidatorもCampaign Attempt Ledgerへstart / completionを記録する。active progressとreported token / costはFinder、Root role、Critic、Validatorを同じAttempt projectionから集計する。
 - **Failures:** integrity不正は起動前に拒否する。provider / policy / budget failureをnegativeやno-new-evidenceへ丸めない。
 - **Status:** v6 initial Wave、single Validation、conditional Depth、Runtime Verification Packet v2 handoff、Human OS intake、terminal replay、progressを実装。Missing-link / Closureは未接続。
 - **Code / Tests:** [campaign-control](../src/research/campaign-control), [open-research](../src/research/open-research.ts) · [v6 run](../tests/research/campaign-validation-run.test.ts), [semantic E2E](../tests/research/campaign-semantic-e2e.test.ts), [replay](../tests/research/campaign-run.test.ts)
@@ -92,6 +94,7 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 - **Purpose:** raw sourceからHypothesis、Route Fragment、Frontier Gapを作り、Validation、Depth、次Wave、Closureへ処遇する。
 - **Invariants:** ReconとBaselineを並行し、最大4個の独立Finderを保つ。file / CWE / 手順を固定せず、支持数や多数決でcandidateを捨てない。
+- **Attacker invariant:** provider outputはcurrent scopeへ絞り、Root Evaluationはscope外subjectを`close`以外へ処遇できない。Depth Synthesisとfresh Root Evaluationもscope外premiseをrejectする。
 - **Checkpoint:** subjectをTarget、Manifest、Attempt、Leaseへbindし、CAS / Ledgerへ保存してからackする。
 - **Depth:** fresh tool-free Synthesis、source-enabled Critic、Root Evaluation、Missing-link Waveを分離する。Familyごと最大3 evidence generation、Campaign全体最大12 Wave。
 - **Closure:** 最後のmaterial evidence後に二回連続のcomplete no-material-deltaを要求し、後者はfresh reviewを含む。
@@ -105,11 +108,12 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 - **Purpose:** Root-evaluated candidateをfreshなsource reviewで反証し、Humanへ渡す明らかなfalse positiveを抑える。
 - **Current implementation:** exact identityはTarget、Manifest、premise、property、ordered route、anchorで作る。一つのfresh Validatorから`ready-for-runtime / needs-research / disproven / validation-pending`を決定的に投影し、二つ目・第三AttemptとValidation Synthesisを起動しない。
+- **Attacker invariant:** Validator起動前にCandidateとThreat Contextをcurrent scopeへ照合し、scope外ならmodel tokenを使わない。Runtime Packet準備でも独立に`attacker-out-of-scope`として止める。
 - **Runtime handoff:** `ready-for-runtime`からsingle Validation、bind済みCandidate、Risk、source route / control / counterevidence、runtime sketchを自己完結のRuntime Verification Packet v2へ投影する。明白なsource contradictionだけを止め、Researchは`rejected`を作らない。[#107](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/107)
 - **Boundary:** Findingやruntime reproductionを所有しない。`needs-research`は具体的Gapとして同じFamilyへ戻す。
 - **Risk / Packet:** Riskはsingle Validationとbind済みCandidateから追加model judgeなしで投影する。exact payloadとraw requestをResearchへ保存せず、delivery failureでもPacketを失わない。
 - **Status:** single fresh Attempt、Disposition、Risk / Runtime Packetをv6へ接続。multi-Attempt / Synthesis / Human Review Packet v1は元の意味でlegacy replayする。
-- **Code / Tests:** [validation](../src/research/validation), [candidate admission](../src/research/campaign-control/validation-candidate-admission.ts) · [Validation](../tests/research/validation.test.ts), [Runtime Packet](../tests/research/runtime-verification-packet.test.ts), [legacy Packet](../tests/research/human-review-packet.test.ts), [v6 handoff](../tests/research/campaign-validation-run.test.ts)
+- **Code / Tests:** [attacker scope](../src/research/current-research-attacker-scope.ts), [validation](../src/research/validation), [candidate admission](../src/research/campaign-control/validation-candidate-admission.ts) · [scope](../tests/research/current-research-attacker-scope.test.ts), [Validation](../tests/research/validation.test.ts), [Runtime Packet](../tests/research/runtime-verification-packet.test.ts), [legacy Packet](../tests/research/human-review-packet.test.ts), [v6 handoff / usage](../tests/research/campaign-validation-run.test.ts)
 
 ### Model Execution
 

@@ -83,7 +83,7 @@ export function materializeInitialSemanticWaveFoundation(input: {
     securityAssumption:
       "a whole-target review may reveal broken security semantics outside every Recon packet",
     question:
-      "Which high-impact security property can a permitted attacker break anywhere in this Target?",
+      "Which high-impact security property can an unauthenticated or subscriber-equivalent attacker break anywhere in this Target?",
     motivation:
       "An independent baseline protects recall from Recon classification and framing errors.",
     startingBasis:

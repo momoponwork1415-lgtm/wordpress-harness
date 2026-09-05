@@ -432,6 +432,43 @@ describe("source-only Validation", () => {
     });
   });
 
+  it("does not spend a Validator attempt on a Contributor-or-higher candidate", async () => {
+    const contributorIdentity = {
+      ...candidateIdentity,
+      attackerPremise: "contributor" as const,
+    };
+    const contributorCandidate = {
+      ...candidate,
+      ...contributorIdentity,
+      id: validationCandidateId(contributorIdentity),
+    };
+    const contributorThreatContextIdentity = {
+      ...threatContextIdentity,
+      candidateId: contributorCandidate.id,
+      permittedAttacker: "contributor" as const,
+    };
+    const contributorPlan: CurrentValidationPlan = {
+      ...plan,
+      validationId: contributorCandidate.id,
+      candidate: contributorCandidate,
+      threatContext: {
+        ...contributorThreatContextIdentity,
+        id: sha256Digest(contributorThreatContextIdentity),
+      },
+    };
+    const store = new MemoryArtifactStore();
+    const model = modelExecution((attempt) => attemptOutput(attempt.attemptId));
+    const validation = openValidation({
+      artifactStore: store,
+      modelExecution: model.execution,
+    });
+
+    await expect(validation.validate(contributorPlan)).rejects.toThrow(
+      "Validation candidate exceeds the current research attacker scope",
+    );
+    expect(model.calls).toEqual([]);
+  });
+
   it("uses exact semantic identity rather than discovery provenance", () => {
     expect(
       validationCandidateId({

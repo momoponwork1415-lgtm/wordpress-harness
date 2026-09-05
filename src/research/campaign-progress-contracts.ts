@@ -3,7 +3,8 @@ export type CampaignProgressRole =
   | "root-planner"
   | "root-evaluator"
   | "root-synthesizer"
-  | "adversarial-critic";
+  | "adversarial-critic"
+  | "validator";
 
 export interface CampaignProgressCount {
   readonly started: number;

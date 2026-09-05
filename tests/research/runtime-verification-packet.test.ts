@@ -45,6 +45,11 @@ const anchor = {
 function fixture(
   disposition: "ready-for-runtime" | "needs-research" = "ready-for-runtime",
   routeClaim = "Public state reaches a privileged consumer.",
+  attackerPremise:
+    | "unauthenticated"
+    | "subscriber"
+    | "customer"
+    | "contributor" = "unauthenticated",
 ) {
   const hypothesisIdentity = {
     kind: "source-bound-hypothesis" as const,
@@ -58,7 +63,7 @@ function fixture(
         attackerControlledPrimitive: "public-state-write",
         brokenSecurityProperty: "state-ownership",
       },
-      attackerPremise: "unauthenticated" as const,
+      attackerPremise,
       impact: "account-takeover" as const,
       route: { anchors: [anchor] },
       unknowns: [
@@ -85,7 +90,7 @@ function fixture(
   const candidateIdentity = {
     target,
     manifest,
-    attackerPremise: "unauthenticated" as const,
+    attackerPremise,
     brokenSecurityProperty: "state-ownership",
     causalRoute: [{ ordinal: 1, claim: routeClaim, evidence: [anchor] }],
   };
@@ -157,7 +162,7 @@ function fixture(
       id: "wordpress-threat-baseline-v1",
       digest: digest("c"),
     },
-    permittedAttacker: "unauthenticated" as const,
+    permittedAttacker: attackerPremise,
     publicSurface: ["Public WordPress request handler"],
     technicalExclusions: [],
   };
@@ -230,6 +235,18 @@ describe("prepareRuntimeVerificationPacket", () => {
     expect(prepareRuntimeVerificationPacket(fixture("needs-research"))).toEqual(
       { kind: "incomplete", reason: "invalid-binding" },
     );
+  });
+
+  it("does not hand a Contributor-or-higher candidate to runtime", () => {
+    expect(
+      prepareRuntimeVerificationPacket(
+        fixture(
+          "ready-for-runtime",
+          "A Contributor-only route reaches a privileged consumer.",
+          "contributor",
+        ),
+      ),
+    ).toEqual({ kind: "incomplete", reason: "attacker-out-of-scope" });
   });
 
   it("keeps exact payload-shaped material out of the Research handoff", () => {

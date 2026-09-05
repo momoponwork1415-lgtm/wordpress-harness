@@ -211,6 +211,9 @@ describe("Exploration semantic root planning", () => {
       role: "root-planner",
       target,
       manifest,
+      prompt: expect.stringContaining(
+        "Current research attacker scope permits only unauthenticated attackers and subscriber-equivalent low-privilege users.",
+      ),
       assignment: {
         kind: "initial-research-planning",
         maxTargetSpecificTheses: 3,

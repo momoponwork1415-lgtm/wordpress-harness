@@ -13,6 +13,10 @@ import {
   sha256Digest,
 } from "../research-record/canonical-json.js";
 import {
+  currentResearchAttackerScopePrompt,
+  isWithinCurrentResearchAttackerScope,
+} from "../current-research-attacker-scope.js";
+import {
   sourceEvidenceReceiptRefV2Schema,
   type SourceEvidenceReceiptValueV2,
 } from "../source-mapping/source-evidence-contracts.js";
@@ -465,6 +469,9 @@ function rootEvaluatorAttempt(
     modelProfile: evaluator.modelProfile,
     prompt: [
       "Evaluate every semantic research subject and assign each at least one explicit action.",
+      ...(input.schemaVersion === 3
+        ? [currentResearchAttackerScopePrompt]
+        : []),
       input.schemaVersion === 3
         ? [
             "Validation admission, Depth Admission, next work, and retain are nonexclusive.",
@@ -562,6 +569,22 @@ function resolveCurrentEvaluatorOutput(
       hypothesis,
     ]),
   );
+  const outOfScopeSubjectDigests = new Set([
+    ...input.artifacts.hypotheses
+      .filter(
+        (hypothesis) =>
+          !isWithinCurrentResearchAttackerScope(
+            hypothesis.value.attackerPremise,
+          ),
+      )
+      .map((hypothesis) => sha256Digest(hypothesis)),
+    ...input.artifacts.routeFragments
+      .filter(
+        (fragment) =>
+          !isWithinCurrentResearchAttackerScope(fragment.value.attackerPremise),
+      )
+      .map((fragment) => sha256Digest(fragment)),
+  ]);
   const common = {
     target: input.target,
     manifest: input.manifest,
@@ -585,6 +608,13 @@ function resolveCurrentEvaluatorOutput(
   )) {
     const resolved = resolveSubjects(proposal.subjectDigests, subjectsByDigest);
     if (resolved.kind === "failed") return resolved;
+    if (
+      proposal.subjectDigests.some((digest) =>
+        outOfScopeSubjectDigests.has(digest),
+      )
+    ) {
+      return { kind: "failed", reason: "invalid-action-binding" };
+    }
     const familySubjects = sortSubjects(resolved.subjects);
     const identity = {
       kind: "approach-family-admission" as const,
@@ -612,6 +642,14 @@ function resolveCurrentEvaluatorOutput(
   for (const proposal of output.actions) {
     const resolved = resolveSubjects(proposal.subjectDigests, subjectsByDigest);
     if (resolved.kind === "failed") return resolved;
+    if (
+      proposal.kind !== "close" &&
+      proposal.subjectDigests.some((digest) =>
+        outOfScopeSubjectDigests.has(digest),
+      )
+    ) {
+      return { kind: "failed", reason: "invalid-action-binding" };
+    }
     for (const subject of resolved.subjects) covered.add(subject.digest);
 
     if (

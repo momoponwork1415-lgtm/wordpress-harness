@@ -691,6 +691,14 @@ export const campaignAttemptIntentV2Schema = z.discriminatedUnion("role", [
     role: z.literal("adversarial-critic"),
     synthesisDigest: digestSchema,
   }),
+  z.strictObject({
+    kind: z.literal("campaign-attempt-intent"),
+    schemaVersion: z.literal(2),
+    ...semanticCampaignAttemptIdentityFields,
+    role: z.literal("validator"),
+    candidateId: digestSchema,
+    validationAttemptOrdinal: z.number().int().positive().max(3),
+  }),
 ]);
 
 const semanticCampaignAttemptCompletionFields = {
@@ -753,6 +761,16 @@ export const campaignAttemptCompletionV2Schema = z.discriminatedUnion("role", [
     result: attemptExecutionResultV2RefSchema.extend({
       owner: z.literal("exploration"),
       role: z.literal("adversarial-critic"),
+    }),
+  }),
+  z.strictObject({
+    ...semanticCampaignAttemptCompletionFields,
+    role: z.literal("validator"),
+    candidateId: digestSchema,
+    validationAttemptOrdinal: z.number().int().positive().max(3),
+    result: attemptExecutionResultV2RefSchema.extend({
+      owner: z.literal("validation"),
+      role: z.literal("validator"),
     }),
   }),
 ]);

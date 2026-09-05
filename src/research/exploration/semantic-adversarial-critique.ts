@@ -14,6 +14,7 @@ import {
   canonicalJson,
   sha256Digest,
 } from "../research-record/canonical-json.js";
+import { currentResearchAttackerScopePrompt } from "../current-research-attacker-scope.js";
 import {
   targetFileManifestRefSchema,
   targetFileManifestSchema,
@@ -437,6 +438,7 @@ function criticAttempt(
     modelProfile: options.modelProfile,
     prompt: [
       "Act as a fresh Adversarial Critic over an immutable Chain Synthesis artifact.",
+      currentResearchAttackerScopePrompt,
       "Use the Manifest-bound source tools to independently challenge attacker premise, actor, state identity, request ordering, defenses, causal hops, and source binding.",
       "Disposition every proposal exactly once as survives, needs-evidence, or contradicted.",
       "A needs-evidence disposition must name one concrete Frontier Gap with a falsifier and next source action.",

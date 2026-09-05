@@ -9,6 +9,10 @@ import {
   type SemanticWorkWavePlan,
 } from "../exploration/semantic-contracts.js";
 import {
+  routeFragmentProposalSchema,
+  sourceBoundHypothesisSchema,
+} from "../exploration/contracts.js";
+import {
   attemptPlanV2Schema,
   type AttemptPlanV2,
 } from "../model-execution/contracts.js";
@@ -22,16 +26,30 @@ import {
   type CampaignRunPlanV2,
   type CampaignRunPlanV3,
 } from "./contracts.js";
+import {
+  currentResearchAttackerPremiseSchema,
+  currentResearchAttackerScopePrompt,
+} from "../current-research-attacker-scope.js";
 
 function finderJsonSchema(
   maxHypotheses: number,
   leaseId: string,
+  currentScope: boolean,
 ): Record<string, unknown> {
+  const hypothesisSchema = currentScope
+    ? sourceBoundHypothesisSchema.extend({
+        attackerPremise: currentResearchAttackerPremiseSchema,
+      })
+    : sourceBoundHypothesisSchema;
+  const fragmentSchema = currentScope
+    ? routeFragmentProposalSchema.extend({
+        attackerPremise: currentResearchAttackerPremiseSchema,
+      })
+    : routeFragmentProposalSchema;
   const bounded = finderOutputV2Schema.extend({
     leaseId: z.literal(leaseId),
-    hypotheses: finderOutputV2Schema.shape.hypotheses.max(maxHypotheses),
-    routeFragments:
-      finderOutputV2Schema.shape.routeFragments.max(maxHypotheses),
+    hypotheses: z.array(hypothesisSchema).max(maxHypotheses),
+    routeFragments: z.array(fragmentSchema).max(maxHypotheses),
     frontierGaps: finderOutputV2Schema.shape.frontierGaps.max(maxHypotheses),
   });
   const schema = z.toJSONSchema(bounded);
@@ -99,6 +117,7 @@ export function materializeRawSourceFinderAttempt(
     coverageReview
       ? "Act as a fresh independent Wildcard Finder for a Coverage Closure review."
       : "Act as an independent Finder in an oracle-free security review.",
+    ...(run.schemaVersion === 3 ? [currentResearchAttackerScopePrompt] : []),
     ...(coverageReview
       ? [
           "Actively try to falsify the prior no-material-delta observation. Do not rely on prior closure reasoning or candidate hints.",
@@ -145,7 +164,11 @@ export function materializeRawSourceFinderAttempt(
     },
     modelProfile: run.finder.modelProfile.execution,
     prompt,
-    outputJsonSchema: finderJsonSchema(lease.budget.maxHypotheses, lease.id),
+    outputJsonSchema: finderJsonSchema(
+      lease.budget.maxHypotheses,
+      lease.id,
+      run.schemaVersion === 3,
+    ),
     sourceToolPolicy: run.finder.sourceToolPolicy,
     budget: {
       maxWallTimeMs: lease.budget.maxWallTimeMs,

@@ -48,6 +48,7 @@ import {
   researchThesisRefSchema,
   routeFragmentArtifactSchema,
   routeFragmentArtifactRefSchema,
+  semanticCheckpointSubjectProposalSchema,
   semanticFinderCheckpointRefSchema,
   semanticFinderCheckpointSchema,
   semanticWaveTerminalSchema,
@@ -152,6 +153,7 @@ import {
   materializeTargetIntakeCampaignInput,
   validatePreparedTargetIntake,
 } from "./target-intake-campaign-handoff.js";
+import { isWithinCurrentResearchAttackerScope } from "../current-research-attacker-scope.js";
 
 export interface CampaignControl {
   readonly runner: CampaignRunner;
@@ -405,6 +407,23 @@ function semanticAttemptCompletion(
   intent: CampaignAttemptIntentV2,
   result: AttemptExecutionResultV2["ref"],
 ): CampaignAttemptCompletionV2 {
+  if (intent.role === "validator") {
+    if (result.owner !== "validation" || result.role !== "validator") {
+      throw new Error("Validator completion contains another owner or role");
+    }
+    return {
+      kind: "campaign-attempt-completion",
+      schemaVersion: 2,
+      campaignId: intent.campaignId,
+      runId: intent.runId,
+      attemptId: intent.attemptId,
+      ordinal: intent.ordinal,
+      role: intent.role,
+      candidateId: intent.candidateId,
+      validationAttemptOrdinal: intent.validationAttemptOrdinal,
+      result: { ...result, owner: "validation", role: "validator" },
+    };
+  }
   if (result.owner !== "exploration") {
     throw new Error("Semantic completion contains another owner");
   }
@@ -487,6 +506,139 @@ function semanticAttemptCompletion(
     role: intent.role,
     synthesisDigest: intent.synthesisDigest,
     result: { ...result, owner: "exploration", role: "adversarial-critic" },
+  };
+}
+
+function recordedValidationModelExecution(
+  record: CurrentCampaignStore,
+  dependencies: CampaignExecutionDependencies,
+  campaignId: string,
+  runId: string,
+  candidateOrdinals: ReadonlyMap<string, number>,
+): ModelExecution {
+  return {
+    run: async (plan, observer) => {
+      if (
+        plan.schemaVersion !== 2 ||
+        plan.owner !== "validation" ||
+        plan.role !== "validator" ||
+        plan.assignment.kind !== "candidate-validation"
+      ) {
+        throw new Error("Recorded Validation received another Attempt kind");
+      }
+      const candidateOrdinal = candidateOrdinals.get(
+        plan.assignment.candidateId,
+      );
+      if (candidateOrdinal === undefined) {
+        throw new Error("Validator Attempt references a foreign candidate");
+      }
+      const planDigest = sha256Digest(plan);
+      const intent: Extract<CampaignAttemptIntentV2, { role: "validator" }> = {
+        kind: "campaign-attempt-intent",
+        schemaVersion: 2,
+        campaignId,
+        runId,
+        attemptId: plan.attemptId,
+        role: "validator",
+        ordinal: (candidateOrdinal - 1) * 3 + plan.assignment.attemptOrdinal,
+        mode: "execute",
+        attemptPlanDigest: planDigest,
+        candidateId: plan.assignment.candidateId,
+        validationAttemptOrdinal: plan.assignment.attemptOrdinal,
+      };
+      const storedPlanDigest = await dependencies.artifactStore.putJson(plan);
+      if (storedPlanDigest !== planDigest) {
+        throw new Error(
+          `Validator Attempt Plan CAS mismatch: ${plan.attemptId}`,
+        );
+      }
+      const started = await record.recordSemanticCampaignAttemptStart(intent);
+      let result: AttemptExecutionResultV2;
+      if (started.disposition === "completed") {
+        const ref = started.attempt.completion.value.result;
+        const raw = await dependencies.artifactStore.readJson(ref.digest);
+        const value = modelAttemptResultV2Schema.parse(raw);
+        if (
+          ref.owner !== "validation" ||
+          ref.role !== "validator" ||
+          ref.digest !== sha256Digest(value) ||
+          value.owner !== "validation" ||
+          value.role !== "validator" ||
+          value.attemptId !== plan.attemptId ||
+          value.planDigest !== planDigest
+        ) {
+          throw new Error(
+            `Validator Attempt result mismatch: ${plan.attemptId}`,
+          );
+        }
+        return { status: value.status, ref, value };
+      }
+      if (started.disposition === "in-progress") {
+        const value = modelAttemptResultV2Schema.parse({
+          kind: "model-attempt-result",
+          schemaVersion: 2,
+          attemptId: plan.attemptId,
+          owner: "validation",
+          role: "validator",
+          planDigest,
+          status: "orphaned",
+          reason: "orphaned-execution-requires-fresh-attempt",
+        });
+        const digest = await dependencies.artifactStore.putJson(value);
+        result = {
+          status: value.status,
+          value,
+          ref: attemptExecutionResultV2RefSchema.parse({
+            kind: "attempt-execution-result",
+            schemaVersion: 2,
+            attemptId: plan.attemptId,
+            owner: "validation",
+            role: "validator",
+            planDigest,
+            digest,
+          }),
+        };
+      } else {
+        const executed = await dependencies.modelExecution.run(plan, observer);
+        if (
+          executed.ref.schemaVersion !== 2 ||
+          executed.value.schemaVersion !== 2
+        ) {
+          throw new Error(
+            `Validator Attempt returned a legacy result: ${plan.attemptId}`,
+          );
+        }
+        const ref = attemptExecutionResultV2RefSchema.parse(executed.ref);
+        const value = modelAttemptResultV2Schema.parse(executed.value);
+        if (
+          ref.owner !== "validation" ||
+          ref.role !== "validator" ||
+          ref.attemptId !== plan.attemptId ||
+          ref.planDigest !== planDigest ||
+          ref.digest !== sha256Digest(value) ||
+          value.owner !== "validation" ||
+          value.role !== "validator" ||
+          value.attemptId !== plan.attemptId ||
+          value.planDigest !== planDigest ||
+          executed.status !== value.status
+        ) {
+          throw new Error(
+            `Validator Attempt result mismatch: ${plan.attemptId}`,
+          );
+        }
+        const digest = await dependencies.artifactStore.putJson(value);
+        if (digest !== ref.digest) {
+          throw new Error(
+            `Validator Attempt result CAS mismatch: ${plan.attemptId}`,
+          );
+        }
+        result = { status: value.status, ref, value };
+      }
+      await record.recordSemanticCampaignAttemptCompletion(
+        semanticAttemptCompletion(intent, result.ref),
+      );
+      return result;
+    },
   };
 }
 
@@ -618,6 +770,7 @@ async function openSemanticFinderCheckpointObserver(
     manifestDigest: plan.manifest.digest,
   });
   const manifestEntries = preparation.input.canonicalFileManifest.entries;
+  const currentAttackerScope = preparation.input.schemaVersion === 3;
   const observed = (
     await record.listSemanticFinderCheckpoints(intent.campaignId, intent.runId)
   ).filter((entry) => entry.checkpoint.attemptId === intent.attemptId);
@@ -629,6 +782,21 @@ async function openSemanticFinderCheckpointObserver(
   let pending = Promise.resolve();
 
   const persist = async (subject: unknown) => {
+    if (currentAttackerScope) {
+      const parsedSubject =
+        semanticCheckpointSubjectProposalSchema.safeParse(subject);
+      if (
+        parsedSubject.success &&
+        "attackerPremise" in parsedSubject.data &&
+        !isWithinCurrentResearchAttackerScope(
+          parsedSubject.data.attackerPremise,
+        )
+      ) {
+        throw new Error(
+          "Semantic checkpoint exceeds the current research attacker scope",
+        );
+      }
+    }
     const subjectRef = await materializeSemanticSubject(
       dependencies.artifactStore,
       {
@@ -1467,8 +1635,17 @@ async function completeCurrentSemanticIteration(
       candidates,
     );
   }
+  const candidateOrdinals = new Map(
+    candidates.map((candidate, index) => [candidate.id, index + 1]),
+  );
   const validation = openValidation({
-    modelExecution: dependencies.modelExecution,
+    modelExecution: recordedValidationModelExecution(
+      record,
+      dependencies,
+      plan.campaignId,
+      plan.runId,
+      candidateOrdinals,
+    ),
     artifactStore: dependencies.artifactStore,
     attemptNamespace: `${plan.campaignId}:${plan.runId}`,
   });

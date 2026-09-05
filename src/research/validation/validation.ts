@@ -12,6 +12,10 @@ import {
   sha256Digest,
 } from "../research-record/canonical-json.js";
 import {
+  currentResearchAttackerScopePrompt,
+  isWithinCurrentResearchAttackerScope,
+} from "../current-research-attacker-scope.js";
+import {
   currentValidationRecordSchema,
   currentValidationRecordRefSchema,
   currentValidationPlanSchema,
@@ -66,6 +70,7 @@ function validatorAttempt(
     modelProfile: plan.validatorModelProfile,
     prompt: [
       "Act as a fresh source-only security Validator.",
+      currentResearchAttackerScopePrompt,
       "Independently inspect the fixed Target source; do not trust discovery wording or use Finder conversation, scratch, or verdicts.",
       "Handle every rubric criterion exactly once as pass, fail, or unknown, with source evidence.",
       "Use needs-research only for a concrete source-decidable proof gap. Runtime reproduction alone is not a source proof gap.",
@@ -270,6 +275,16 @@ class SingleSourceValidation implements Validation {
     input: CurrentValidationPlan,
   ): Promise<CurrentValidationRecordRef> {
     const plan = currentValidationPlanSchema.parse(input);
+    if (
+      !isWithinCurrentResearchAttackerScope(plan.candidate.attackerPremise) ||
+      !isWithinCurrentResearchAttackerScope(
+        plan.threatContext.permittedAttacker,
+      )
+    ) {
+      throw new Error(
+        "Validation candidate exceeds the current research attacker scope",
+      );
+    }
     const planDigest = sha256Digest(plan);
     const validatorAttempt = await runValidator(plan, this.#options);
     if (validatorAttempt.status === "failed") {

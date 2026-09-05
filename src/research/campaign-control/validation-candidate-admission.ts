@@ -10,6 +10,7 @@ import {
   canonicalJson,
   sha256Digest,
 } from "../research-record/canonical-json.js";
+import { isWithinCurrentResearchAttackerScope } from "../current-research-attacker-scope.js";
 import type { JsonArtifactStore } from "../research-record/contracts.js";
 import {
   validationCandidateId,
@@ -104,6 +105,13 @@ export async function materializeValidationCandidates(
     }
     const hypothesis =
       sourceBoundHypothesisArtifactSchema.parse(hypothesisInput);
+    if (
+      !isWithinCurrentResearchAttackerScope(hypothesis.value.attackerPremise)
+    ) {
+      throw new Error(
+        "Validation admission exceeds the current research attacker scope",
+      );
+    }
     const hypothesisRef = action.admission.hypothesis;
     if (
       hypothesis.id !== hypothesisRef.id ||

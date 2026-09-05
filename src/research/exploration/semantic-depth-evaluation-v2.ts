@@ -13,6 +13,10 @@ import {
   canonicalJson,
   sha256Digest,
 } from "../research-record/canonical-json.js";
+import {
+  currentResearchAttackerScopePrompt,
+  isWithinCurrentResearchAttackerScope,
+} from "../current-research-attacker-scope.js";
 import { sourceBoundHypothesisSchema } from "./contracts.js";
 import {
   adversarialCritiqueRefSchema,
@@ -241,6 +245,7 @@ function currentDepthAttempt(
     modelProfile: options.modelProfile,
     prompt: [
       "Evaluate every critiqued Chain Proposal exactly once.",
+      currentResearchAttackerScopePrompt,
       "A surviving source-bound route may be admitted to fresh source-only Validation. State its causal identity, exact attacker premise, impact, unresolved evidence, falsifier, and next experiment; the Harness derives route anchors from the Chain Proposal.",
       "A needs-evidence route may schedule only its concrete Critic Frontier Gap.",
       "A contradicted route must be closed and must not become a Finding.",
@@ -297,7 +302,12 @@ function resolveOutput(
     seen.add(disposition.proposalId);
     const proposalRef: ChainProposalRef = referenceChainProposal(proposal);
     if (disposition.action === "request-verification") {
-      if (critique.verdict !== "survives") {
+      if (
+        critique.verdict !== "survives" ||
+        !isWithinCurrentResearchAttackerScope(
+          disposition.hypothesis.attackerPremise,
+        )
+      ) {
         return { kind: "failed", reason: "invalid-disposition" };
       }
       const anchors = [

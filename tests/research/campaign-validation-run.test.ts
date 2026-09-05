@@ -173,6 +173,7 @@ describe("CampaignRunner.run source-only Validation", () => {
     const observedPlans: ModelAttemptPlan[] = [];
     const depthQueuesObservedBeforeValidation: string[] = [];
     const depthQueuesObservedBeforeSynthesis: string[] = [];
+    const validatorProgressSnapshots: unknown[] = [];
     let expectedValidationRunId = "";
     let validationDisposition: "ready-for-runtime" | "needs-research" =
       "ready-for-runtime";
@@ -434,6 +435,11 @@ describe("CampaignRunner.run source-only Validation", () => {
           });
         }
         if (plan.role === "validator") {
+          validatorProgressSnapshots.push(
+            await research.reader.inspect(input.campaignId, {
+              kind: "progress",
+            }),
+          );
           const durableRecord = openSqliteResearchRecord({
             databasePath,
             artifactStore: artifacts,
@@ -695,6 +701,25 @@ describe("CampaignRunner.run source-only Validation", () => {
       expectedValidationRunId = plan.runId;
       const ref = await research.runner.run(plan);
       const modelCallsAfterFirstRun = observedPlans.length;
+      expect(
+        observedPlans.every((attempt) =>
+          attempt.prompt.includes(
+            "Current research attacker scope permits only unauthenticated attackers and subscriber-equivalent low-privilege users.",
+          ),
+        ),
+      ).toBe(true);
+      const finderPlan = observedPlans.find(
+        (attempt) => attempt.role === "finder",
+      );
+      if (finderPlan?.schemaVersion !== 2) {
+        throw new Error("Expected a current Finder Attempt");
+      }
+      const finderOutputSchema = JSON.stringify(finderPlan.outputJsonSchema);
+      expect(finderOutputSchema).toContain('"unauthenticated"');
+      expect(finderOutputSchema).toContain('"subscriber"');
+      expect(finderOutputSchema).toContain('"customer"');
+      expect(finderOutputSchema).not.toContain('"contributor"');
+      expect(finderOutputSchema).not.toContain('"unresolved"');
       const inspected = await research.reader.inspect(input.campaignId, {
         kind: "run",
         runId: plan.runId,
@@ -779,6 +804,38 @@ describe("CampaignRunner.run source-only Validation", () => {
       expect(
         observedPlans.filter((attempt) => attempt.role === "validator"),
       ).toHaveLength(1);
+      expect(validatorProgressSnapshots).toMatchObject([
+        {
+          kind: "progress",
+          counts: {
+            attempts: { started: 10, completed: 9, active: 1 },
+          },
+          activeAttempts: [{ role: "validator" }],
+          usage: {
+            measurement: "partial",
+            modelAttempts: 9,
+            reportedModelAttempts: 9,
+            modelTokens: { total: 180 },
+            estimatedCostUsd: 2.25,
+          },
+        },
+      ]);
+      await expect(
+        research.reader.inspect(input.campaignId, { kind: "progress" }),
+      ).resolves.toMatchObject({
+        kind: "progress",
+        counts: {
+          attempts: { started: 10, completed: 10, active: 0 },
+        },
+        activeAttempts: [],
+        usage: {
+          measurement: "reported",
+          modelAttempts: 10,
+          reportedModelAttempts: 10,
+          modelTokens: { total: 200 },
+          estimatedCostUsd: 2.5,
+        },
+      });
       expect([...new Set(depthQueuesObservedBeforeSynthesis)]).toHaveLength(1);
       expect([...new Set(depthQueuesObservedBeforeValidation)]).toHaveLength(1);
       const depthPlans = observedPlans.filter(
@@ -836,6 +893,18 @@ describe("CampaignRunner.run source-only Validation", () => {
             },
           },
         ]);
+        await expect(
+          record.listSemanticCampaignAttempts(input.campaignId, plan.runId),
+        ).resolves.toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              intent: expect.objectContaining({ role: "validator" }),
+              completion: expect.objectContaining({
+                value: expect.objectContaining({ role: "validator" }),
+              }),
+            }),
+          ]),
+        );
         await expect(
           record.listValidationFrontierGaps(input.campaignId, plan.runId),
         ).resolves.toEqual([]);

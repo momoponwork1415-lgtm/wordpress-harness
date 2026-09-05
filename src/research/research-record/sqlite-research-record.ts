@@ -1143,6 +1143,12 @@ function semanticAttemptIdentityMatches(
   ) {
     return intent.synthesisDigest === completion.synthesisDigest;
   }
+  if (intent.role === "validator" && completion.role === "validator") {
+    return (
+      intent.candidateId === completion.candidateId &&
+      intent.validationAttemptOrdinal === completion.validationAttemptOrdinal
+    );
+  }
   return false;
 }
 
@@ -1180,6 +1186,8 @@ function semanticAttemptRoleRank(
       return 3;
     case "adversarial-critic":
       return 4;
+    case "validator":
+      return 5;
   }
 }
 
