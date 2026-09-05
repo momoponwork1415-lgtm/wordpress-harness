@@ -189,6 +189,9 @@ class FileProgrammeIntelligence implements ProgrammeIntelligence {
         eligibility: first.policy.eligibility,
         programmeOpportunityBand: first.policy.programmeOpportunityBand,
         rewardEstimateInput: first.policy.rewardEstimateInput,
+        ...(first.policy.monthlyAggregates === undefined
+          ? {}
+          : { monthlyAggregates: first.policy.monthlyAggregates }),
       },
       freshnessPolicy: this.#freshnessPolicy,
     });

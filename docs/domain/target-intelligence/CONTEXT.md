@@ -40,6 +40,10 @@ _Avoid_: Programme Opportunity Band、Expected Finding value、Selection score
 一つのProgramme Eligibility Snapshot内でMonthly Competition、Zeroday、base payout、期間限定promotion等を区別する、source-boundなFinding-only policy経路。currency、factor、下限・上限・pool等のpolicy termを保持するが、具体的Findingの報奨額またはTarget選定scoreを予測しない。
 _Avoid_: Programme Opportunity Band、Guaranteed payout、Selection incentive
 
+**Programme Monthly Aggregate**:
+外部programmeの月次報告を、期間、CWE category、authentication level、active-install帯、submission disposition、reward集計だけへ縮約したsource-boundな観測。named plugin、CVE、affected version、known route、researcher identity等の個票を保持せず、Research inputまたはTarget Intake Packetへ渡さない。
+_Avoid_: Vulnerability record、Research prior、Researcher leaderboard
+
 **Oracle Fact**:
 既知の脆弱version、patch、CVE、advisory narrative等、prospective Researchへ渡すと発見能力の評価を汚染する情報。
 _Avoid_: Selection Fact、Sensitive metadata

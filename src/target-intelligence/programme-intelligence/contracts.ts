@@ -47,6 +47,14 @@ export const programmeEligibilitySchema = z.strictObject({
   researcherTiers: z.array(policyTermSchema).min(1),
   exclusions: z.array(policyTermSchema),
   conditions: z.array(policyTermSchema).optional(),
+  limits: z
+    .array(
+      z.strictObject({
+        key: policyTermSchema,
+        value: z.number().int().nonnegative(),
+      }),
+    )
+    .optional(),
 });
 
 const programmeRewardRouteTermSchema = z.strictObject({
@@ -60,6 +68,25 @@ export const programmeRewardRouteSchema = z.strictObject({
   currency: z.string().regex(/^[A-Z]{3}$/),
   factors: z.array(policyTermSchema).min(1),
   terms: z.array(programmeRewardRouteTermSchema),
+});
+
+const programmeAggregateCountSchema = z.strictObject({
+  key: policyTermSchema,
+  count: z.number().int().nonnegative(),
+});
+
+export const programmeMonthlyAggregateSchema = z.strictObject({
+  period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+  cweCategories: z.array(programmeAggregateCountSchema),
+  authenticationLevels: z.array(programmeAggregateCountSchema),
+  activeInstallBands: z.array(programmeAggregateCountSchema),
+  submissionDispositions: z.array(programmeAggregateCountSchema),
+  reward: z.strictObject({
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    total: z.number().nonnegative(),
+    average: z.number().nonnegative(),
+    highest: z.number().nonnegative(),
+  }),
 });
 
 export const normalizedProgrammePolicySchema = z.strictObject({
@@ -76,6 +103,7 @@ export const normalizedProgrammePolicySchema = z.strictObject({
     factors: z.array(policyTermSchema).min(1),
     routes: z.array(programmeRewardRouteSchema).optional(),
   }),
+  monthlyAggregates: z.array(programmeMonthlyAggregateSchema).optional(),
 });
 
 export const programmePolicyConflictSignalSchema = z.strictObject({

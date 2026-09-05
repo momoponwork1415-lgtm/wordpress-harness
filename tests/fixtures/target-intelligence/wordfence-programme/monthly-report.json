@@ -1,0 +1,34 @@
+{
+  "kind": "wordfence-programme-page",
+  "schemaVersion": 1,
+  "sourceKind": "monthly-report",
+  "assertions": {
+    "monthlyAggregates": [
+      {
+        "period": "2030-07",
+        "cweCategories": [
+          { "key": "cwe-79", "count": 12 },
+          { "key": "cwe-269", "count": 4 }
+        ],
+        "authenticationLevels": [
+          { "key": "unauthenticated", "count": 9 },
+          { "key": "authenticated", "count": 7 }
+        ],
+        "activeInstallBands": [
+          { "key": "one-thousand-to-ten-thousand", "count": 6 },
+          { "key": "over-one-hundred-thousand", "count": 10 }
+        ],
+        "submissionDispositions": [
+          { "key": "in-scope", "count": 11 },
+          { "key": "out-of-scope", "count": 5 }
+        ],
+        "reward": {
+          "currency": "USD",
+          "total": 2500,
+          "average": 156.25,
+          "highest": 750
+        }
+      }
+    ]
+  }
+}

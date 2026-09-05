@@ -1,0 +1,30 @@
+{
+  "kind": "wordfence-programme-page",
+  "schemaVersion": 1,
+  "sourceKind": "payout",
+  "assertions": {
+    "rewardRoutes": [
+      {
+        "id": "standard-bounty",
+        "kind": "finding-estimate-schedule",
+        "currency": "USD",
+        "factors": [
+          "cvss-base-score",
+          "active-install-band",
+          "attacker-role",
+          "researcher-tier",
+          "promotion-period"
+        ],
+        "terms": [
+          { "key": "base-reward", "value": 100 },
+          { "key": "minimum-reward", "value": 50 },
+          { "key": "range-maximum", "value": 10000 },
+          { "key": "bonus-maximum-percent", "value": 25 },
+          { "key": "promotion-start", "value": "2030-07-01T00:00:00Z" },
+          { "key": "promotion-end", "value": "2030-07-31T23:59:59Z" },
+          { "key": "payout-guaranteed", "value": false }
+        ]
+      }
+    ]
+  }
+}

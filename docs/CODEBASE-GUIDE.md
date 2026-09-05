@@ -40,7 +40,7 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 - **Purpose:** 外部programmeのscope、eligibility、reward policy、competition ruleを、Programme Identityとrequired source provenanceへ結び付けたProgramme Eligibility Snapshotにする。
 - **Invariants:** source URL、retrievedAt、raw content digest、parser version、freshness policyを固定する。Programme Opportunity BandとFinding後専用のreward estimate inputを分離し、programme ruleでFindingのtechnical validityを変更しない。Oracle FactをResearchまたはTarget Intake Packetへ渡さない。
 - **Failures:** required source間の不一致は`policy-conflict`、必須fieldまたはnormalized contract不成立は`parse-failed`、refresh失敗と期限切れsnapshotは`stale`。Target選定batchとSubmission Stagingはそれぞれcurrent freshnessを要求する。
-- **Status:** versioned core contract、content-addressed snapshot、sanitized fixture Adapterの共通Behavior Testを実装。Patchstack固有Adapterは実装済み。Wordfence programme固有Adapterは#100で扱う。
+- **Status:** versioned core contract、content-addressed snapshot、sanitized fixture Adapterの共通Behavior Testを実装。Patchstack / Wordfence固有Adapterを実装済み。
 - **Code / Tests:** [programme-intelligence](../src/target-intelligence/programme-intelligence) · [Behavior Test](../tests/target-intelligence/programme-intelligence.test.ts)
 
 ### Patchstack Programme Adapter
@@ -52,6 +52,16 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 - **Failures:** required source取得失敗は`stale`、必須ruleまたはstrict page contract不成立は`parse-failed`、source間の実質的矛盾は`policy-conflict`。marketing表示だけでRulesを置き換えない。
 - **Status:** 4-source group parse、source provenance、reward-route分離、conflict / stale / driftのsanitized fixture Behavior Testを実装。
 - **Code / Tests:** [patchstack-programme](../src/target-intelligence/patchstack-programme) · [Behavior Test](../tests/target-intelligence/patchstack-programme-adapter.test.ts)
+
+### Wordfence Programme Adapter
+
+**Interface:** `createWordfenceProgrammeAdapters -> ProgrammePolicySourceAdapter[]`
+
+- **Purpose:** current programme、Terms、report form、payout page、monthly reportの5 sourceを取得・parseし、programme-neutralなProgramme Eligibility Snapshotへ統合する。
+- **Invariants:** asset、vulnerability class、attacker role、active-install threshold、researcher tier、pending cap、out-of-scope条件をeligibilityへ固定する。base / range、bonus、minimum、promotion期間はFinding-only reward routeに置き、保証額にしない。monthly reportはCWE category、authentication level、install帯、submission disposition、rewardのaggregateだけを保持し、named plugin、CVE、affected version、known route、researcher identityを含めない。
+- **Failures:** required source取得失敗は`stale`、必須rule、monthly aggregateまたはstrict page contract不成立は`parse-failed`、source間のscope / payout矛盾は`policy-conflict`。old defaultへfallbackしない。
+- **Status:** 5-source group parse、source provenance、Finding-only payout input、oracle-free monthly aggregate、conflict / stale / drift、restart replayのsanitized fixture Behavior Testを実装。
+- **Code / Tests:** [wordfence-programme](../src/target-intelligence/wordfence-programme) · [Behavior Test](../tests/target-intelligence/wordfence-programme-adapter.test.ts)
 
 ### Target Research History
 
