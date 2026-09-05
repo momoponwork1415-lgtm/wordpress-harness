@@ -5,7 +5,6 @@ import {
   lstat,
   mkdir,
   open,
-  readFile,
   realpath,
   unlink,
   type FileHandle,
@@ -259,6 +258,7 @@ const storageFailureCodes = new Set([
   "EBUSY",
   "EDQUOT",
   "EIO",
+  "EISDIR",
   "ELOOP",
   "EEXIST",
   "EMFILE",
@@ -512,6 +512,32 @@ async function secureHostPrivateDirectory(path: string): Promise<void> {
   }
 }
 
+async function requireHostPrivateDirectory(path: string): Promise<void> {
+  if (!isAbsolute(path)) {
+    throw new HostPrivateStorageError();
+  }
+  await createDirectoryPathWithoutSymlinks(path);
+  if ((await realpath(path)) !== resolve(path)) {
+    throw new HostPrivateStorageError();
+  }
+  const handle = await open(
+    path,
+    fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW,
+  );
+  try {
+    const metadata = await handle.stat();
+    if (
+      !metadata.isDirectory() ||
+      !isOwnedByCurrentUser(metadata.uid) ||
+      (metadata.mode & 0o777) !== 0o700
+    ) {
+      throw new HostPrivateStorageError();
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
 async function openHostPrivateRegularFile(path: string, create: boolean) {
   const existingFlags = fsConstants.O_RDWR | fsConstants.O_NOFOLLOW;
   try {
@@ -577,6 +603,40 @@ async function secureHostPrivateSqliteFiles(path: string): Promise<void> {
   await secureHostPrivateRegularFile(`${path}-shm`, false);
 }
 
+async function verifyHostPrivateArtifact(
+  path: string,
+  bytes: Uint8Array,
+): Promise<void> {
+  let handle: FileHandle;
+  try {
+    handle = await open(
+      path,
+      fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK,
+    );
+  } catch (error) {
+    if (hasErrorCode(error, "ELOOP")) {
+      throw new ArtifactConflictError();
+    }
+    throw error;
+  }
+  try {
+    const metadata = await handle.stat();
+    if (
+      !metadata.isFile() ||
+      !isOwnedByCurrentUser(metadata.uid) ||
+      (metadata.mode & 0o777) !== 0o400
+    ) {
+      throw new ArtifactConflictError();
+    }
+    const existing = await handle.readFile();
+    if (!existing.equals(bytes)) {
+      throw new ArtifactConflictError();
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
 async function persistBytes(path: string, bytes: Uint8Array): Promise<void> {
   const directory = dirname(path);
   const temporaryPath = join(
@@ -594,6 +654,8 @@ async function persistBytes(path: string, bytes: Uint8Array): Promise<void> {
     try {
       await handle.writeFile(bytes);
       await handle.sync();
+      await handle.chmod(0o400);
+      await handle.sync();
     } finally {
       await handle.close();
     }
@@ -604,10 +666,7 @@ async function persistBytes(path: string, bytes: Uint8Array): Promise<void> {
         throw error;
       }
     }
-    const existing = await readFile(path);
-    if (!existing.equals(bytes)) {
-      throw new ArtifactConflictError();
-    }
+    await verifyHostPrivateArtifact(path, bytes);
   } finally {
     let finalizationError: unknown;
     if (ownsTemporaryPath) {
@@ -1817,6 +1876,12 @@ export function openWordfenceIntelligenceRefresh(
     }
     try {
       await prepareHostPrivateSqliteStorage(intelligenceOptions.databasePath);
+      await requireHostPrivateDirectory(
+        join(
+          intelligenceOptions.artifactDirectory,
+          "wordfence-intelligence-v3",
+        ),
+      );
       const candidate = new SqliteWordfenceIntelligence(
         intelligenceOptions,
         true,

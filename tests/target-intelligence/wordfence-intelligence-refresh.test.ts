@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   chmod,
   lstat,
@@ -101,6 +102,199 @@ function controlledFetch(): {
 }
 
 describe("WordfenceIntelligenceRefresh", () => {
+  it("publishes raw CAS bytes only in a protected immutable regular file", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-private-cas-publication-"),
+    );
+    const artifactDirectory = join(directory, "artifacts");
+    const rawDirectory = join(artifactDirectory, "wordfence-intelligence-v3");
+    const bytes = await readFile(fixturePath);
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath: join(directory, "index", "target-intelligence.sqlite"),
+        artifactDirectory,
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            return use("synthetic-private-cas-credential");
+          },
+        },
+        fetch: vi.fn<typeof fetch>(async () =>
+          Promise.resolve(new Response(bytes, { status: 200 })),
+        ),
+      });
+      const result = await refresh.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      if (result.status !== "current") {
+        throw new Error("Expected a current snapshot");
+      }
+
+      const artifactName = `${result.snapshot.source.contentDigest.slice(7)}.json`;
+      const finalPath = join(rawDirectory, artifactName);
+      const directoryMetadata = await lstat(rawDirectory);
+      const finalMetadata = await lstat(finalPath);
+      expect(directoryMetadata.isDirectory()).toBe(true);
+      expect(directoryMetadata.mode & 0o777).toBe(0o700);
+      expect(finalMetadata.isFile()).toBe(true);
+      expect(finalMetadata.isSymbolicLink()).toBe(false);
+      expect(finalMetadata.mode & 0o777).toBe(0o400);
+      expect(await readFile(finalPath)).toEqual(bytes);
+      expect(await readdir(rawDirectory)).toEqual([artifactName]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a permissive raw CAS directory before credential resolution", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-permissive-cas-directory-"),
+    );
+    const artifactDirectory = join(directory, "artifacts");
+    const rawDirectory = join(artifactDirectory, "wordfence-intelligence-v3");
+    let resolveCalls = 0;
+    const fetchMock = vi.fn<typeof fetch>();
+    await mkdir(rawDirectory, { recursive: true, mode: 0o755 });
+    await chmod(rawDirectory, 0o755);
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath: join(directory, "index", "target-intelligence.sqlite"),
+        artifactDirectory,
+        credentialBroker: {
+          async resolve<T>(): Promise<T> {
+            resolveCalls += 1;
+            throw new Error("must not resolve for unsafe CAS storage");
+          },
+        },
+        fetch: fetchMock,
+      });
+      await expect(
+        refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual({
+        kind: "wordfence-intelligence-result",
+        schemaVersion: 1,
+        status: "failed",
+        reason: "storage-failure",
+      });
+      expect(resolveCalls).toBe(0);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect((await lstat(rawDirectory)).mode & 0o777).toBe(0o755);
+      expect(await readdir(rawDirectory)).toEqual([]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a permissive existing raw CAS file without changing it", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-permissive-cas-file-"),
+    );
+    const artifactDirectory = join(directory, "artifacts");
+    const rawDirectory = join(artifactDirectory, "wordfence-intelligence-v3");
+    const bytes = await readFile(fixturePath);
+    const artifactName = `${createHash("sha256").update(bytes).digest("hex")}.json`;
+    const finalPath = join(rawDirectory, artifactName);
+    await mkdir(rawDirectory, { recursive: true, mode: 0o700 });
+    await chmod(rawDirectory, 0o700);
+    await writeFile(finalPath, bytes, { mode: 0o644 });
+    await chmod(finalPath, 0o644);
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath: join(directory, "index", "target-intelligence.sqlite"),
+        artifactDirectory,
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            return use("synthetic-private-cas-credential");
+          },
+        },
+        fetch: vi.fn<typeof fetch>(async () =>
+          Promise.resolve(new Response(bytes, { status: 200 })),
+        ),
+      });
+      await expect(
+        refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).rejects.toThrow("Wordfence Intelligence artifact conflict");
+      expect((await lstat(finalPath)).mode & 0o777).toBe(0o644);
+      expect(await readFile(finalPath)).toEqual(bytes);
+      expect(await readdir(rawDirectory)).toEqual([artifactName]);
+      await expect(
+        refresh.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).resolves.toMatchObject({ status: "failed", reason: "not-refreshed" });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a matching raw CAS symlink before publishing current state", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-private-cas-symlink-"),
+    );
+    const artifactDirectory = join(directory, "artifacts");
+    const rawDirectory = join(artifactDirectory, "wordfence-intelligence-v3");
+    const bytes = await readFile(fixturePath);
+    const artifactName = `${createHash("sha256").update(bytes).digest("hex")}.json`;
+    const finalPath = join(rawDirectory, artifactName);
+    const backingPath = join(directory, "mutable-backing.json");
+    await mkdir(rawDirectory, { recursive: true, mode: 0o700 });
+    await chmod(rawDirectory, 0o700);
+    await writeFile(backingPath, bytes, { mode: 0o600 });
+    await symlink(backingPath, finalPath, "file");
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath: join(directory, "index", "target-intelligence.sqlite"),
+        artifactDirectory,
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            return use("synthetic-private-cas-credential");
+          },
+        },
+        fetch: vi.fn<typeof fetch>(async () =>
+          Promise.resolve(new Response(bytes, { status: 200 })),
+        ),
+      });
+
+      await expect(
+        refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).rejects.toThrow("Wordfence Intelligence artifact conflict");
+      expect((await lstat(finalPath)).isSymbolicLink()).toBe(true);
+      await writeFile(backingPath, Buffer.from('{"mutated":true}'));
+      await expect(
+        refresh.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual({
+        kind: "wordfence-intelligence-result",
+        schemaVersion: 1,
+        status: "failed",
+        reason: "not-refreshed",
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("does not commit a current snapshot before the raw CAS directory is durable", async () => {
     const directory = await mkdtemp(
       join(tmpdir(), "wordfence-cas-durability-"),
@@ -317,6 +511,7 @@ describe("WordfenceIntelligenceRefresh", () => {
     const brokerPath = join(directory, "credential-broker.sqlite");
     const credential = "synthetic-sqlite-broker-value";
     const brokerDatabase = new Database(brokerPath);
+    brokerDatabase.pragma("journal_mode = WAL");
     brokerDatabase.exec(`
       CREATE TABLE secret_values (
         ref_id TEXT PRIMARY KEY NOT NULL,
@@ -341,8 +536,9 @@ describe("WordfenceIntelligenceRefresh", () => {
         "2030-01-01T00:00:00.000Z",
         "2030-01-01T00:00:00.000Z",
       );
-    brokerDatabase.close();
     await chmod(brokerPath, 0o600);
+    await chmod(`${brokerPath}-wal`, 0o600);
+    await chmod(`${brokerPath}-shm`, 0o600);
     await mkdir(applicationDirectory);
     const fetchMock = vi.fn<typeof fetch>(async (_input, init) => {
       expect(new Headers(init?.headers).get("authorization")).toBe(
@@ -398,9 +594,96 @@ describe("WordfenceIntelligenceRefresh", () => {
         true,
       );
     } finally {
+      brokerDatabase.close();
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    "permissive parent",
+    "parent symlink",
+    "permissive sidecars",
+  ] as const)(
+    "rejects a credential broker with %s before reading its synthetic secret",
+    async (unsafeStorage) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "wordfence-unsafe-broker-storage-"),
+      );
+      const realDirectory = join(directory, "real-broker");
+      const selectedDirectory = join(directory, "selected-broker");
+      const realDatabasePath = join(realDirectory, "credential-broker.sqlite");
+      const selectedDatabasePath =
+        unsafeStorage === "parent symlink"
+          ? join(selectedDirectory, "credential-broker.sqlite")
+          : realDatabasePath;
+      const credential = `synthetic-${unsafeStorage.replaceAll(" ", "-")}-credential`;
+      let useCalled = false;
+      await mkdir(realDirectory, { mode: 0o700 });
+      const database = new Database(realDatabasePath);
+      database.pragma("journal_mode = WAL");
+      database.exec(`
+        CREATE TABLE secret_values (
+          ref_id TEXT PRIMARY KEY NOT NULL,
+          provider TEXT NOT NULL,
+          purpose TEXT NOT NULL,
+          secret_value TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        ) STRICT
+      `);
+      database
+        .prepare(
+          `INSERT INTO secret_values (
+             ref_id, provider, purpose, secret_value, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          "wordfence-v3-api-key",
+          "wordfence",
+          "wordfence-intelligence-v3-production-feed",
+          credential,
+          "2030-01-01T00:00:00.000Z",
+          "2030-01-01T00:00:00.000Z",
+        );
+      await chmod(realDatabasePath, 0o600);
+      await chmod(
+        `${realDatabasePath}-wal`,
+        unsafeStorage === "permissive sidecars" ? 0o644 : 0o600,
+      );
+      await chmod(
+        `${realDatabasePath}-shm`,
+        unsafeStorage === "permissive sidecars" ? 0o644 : 0o600,
+      );
+      await chmod(
+        realDirectory,
+        unsafeStorage === "permissive parent" ? 0o755 : 0o700,
+      );
+      if (unsafeStorage === "parent symlink") {
+        await symlink(realDirectory, selectedDirectory, "dir");
+      }
+      try {
+        expect(
+          (await readFile(`${realDatabasePath}-wal`)).includes(credential),
+        ).toBe(true);
+        const broker = openSqliteHostPrivateCredentialBroker({
+          databasePath: selectedDatabasePath,
+        });
+        await expect(
+          broker.resolve(
+            { kind: "secret-ref", id: "wordfence-v3-api-key" },
+            async () => {
+              useCalled = true;
+              return "must-not-resolve";
+            },
+          ),
+        ).rejects.toThrow("Host-private credential is unavailable");
+        expect(useCalled).toBe(false);
+      } finally {
+        database.close();
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("returns a typed failure when the local index cannot be opened", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordfence-storage-"));
@@ -431,6 +714,46 @@ describe("WordfenceIntelligenceRefresh", () => {
         status: "failed",
         reason: "storage-failure",
       });
+      expect(resolveCalls).toBe(0);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("returns a typed failure when the production database path is a directory", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "wordfence-storage-"));
+    const databasePath = join(directory, "index-path");
+    let resolveCalls = 0;
+    await mkdir(databasePath, { mode: 0o700 });
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath,
+        artifactDirectory: join(directory, "artifacts"),
+        credentialBroker: {
+          async resolve<T>(): Promise<T> {
+            resolveCalls += 1;
+            throw new Error("must not resolve when storage is unavailable");
+          },
+        },
+      });
+      const expected = {
+        kind: "wordfence-intelligence-result" as const,
+        schemaVersion: 1 as const,
+        status: "failed" as const,
+        reason: "storage-failure" as const,
+      };
+      await expect(
+        refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual(expected);
+      await expect(
+        refresh.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual(expected);
       expect(resolveCalls).toBe(0);
     } finally {
       await rm(directory, { recursive: true, force: true });

@@ -1,5 +1,5 @@
-import { lstat } from "node:fs/promises";
-import { isAbsolute } from "node:path";
+import { lstat, realpath } from "node:fs/promises";
+import { dirname, isAbsolute, resolve } from "node:path";
 
 import Database from "better-sqlite3";
 import { z } from "zod";
@@ -22,6 +22,58 @@ const credentialRowSchema = z.strictObject({
   secret_value: z.string().min(1),
 });
 
+function hasErrorCode(error: unknown, code: string): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === code
+  );
+}
+
+function isOwnedByCurrentUser(uid: number): boolean {
+  const currentUid = process.getuid?.();
+  return currentUid === undefined || uid === currentUid;
+}
+
+async function requireHostPrivateRegularFile(
+  path: string,
+  optional: boolean,
+): Promise<void> {
+  let metadata: Awaited<ReturnType<typeof lstat>>;
+  try {
+    metadata = await lstat(path);
+  } catch (error) {
+    if (optional && hasErrorCode(error, "ENOENT")) {
+      return;
+    }
+    throw error;
+  }
+  if (
+    !metadata.isFile() ||
+    !isOwnedByCurrentUser(metadata.uid) ||
+    (metadata.mode & 0o777) !== 0o600
+  ) {
+    throw new Error("Credential broker storage is not host-private");
+  }
+}
+
+async function requireHostPrivateBrokerStorage(path: string): Promise<void> {
+  const parent = dirname(path);
+  const parentMetadata = await lstat(parent);
+  if (
+    !parentMetadata.isDirectory() ||
+    !isOwnedByCurrentUser(parentMetadata.uid) ||
+    (parentMetadata.mode & 0o777) !== 0o700 ||
+    (await realpath(parent)) !== resolve(parent)
+  ) {
+    throw new Error("Credential broker storage is not host-private");
+  }
+  await requireHostPrivateRegularFile(path, false);
+  await requireHostPrivateRegularFile(`${path}-wal`, true);
+  await requireHostPrivateRegularFile(`${path}-shm`, true);
+}
+
 class SqliteHostPrivateCredentialBroker implements HostPrivateCredentialBroker {
   readonly #databasePath: string;
 
@@ -43,15 +95,7 @@ class SqliteHostPrivateCredentialBroker implements HostPrivateCredentialBroker {
     let credential: string;
     let database: Database.Database | undefined;
     try {
-      const metadata = await lstat(this.#databasePath);
-      const currentUid = process.getuid?.();
-      if (
-        !metadata.isFile() ||
-        (currentUid !== undefined &&
-          (metadata.uid !== currentUid || (metadata.mode & 0o077) !== 0))
-      ) {
-        throw new Error("Credential broker storage is not host-private");
-      }
+      await requireHostPrivateBrokerStorage(this.#databasePath);
       database = new Database(this.#databasePath, {
         readonly: true,
         fileMustExist: true,
