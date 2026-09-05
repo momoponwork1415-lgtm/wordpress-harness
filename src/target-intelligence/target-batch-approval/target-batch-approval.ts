@@ -2,7 +2,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { canonicalJson, sha256Digest } from "../acquisition/canonical-json.js";
-import type { TargetSelectionReceipt } from "../target-selection/contracts.js";
+import {
+  targetSelectionAttemptSchema,
+  type TargetSelectionReceipt,
+} from "../target-selection/contracts.js";
 import {
   TargetBatchApprovalError,
   approvedTargetBatchRefSchema,
@@ -91,7 +94,7 @@ class FileTargetBatchApproval implements TargetBatchApproval {
       return batchRef(existing);
     }
 
-    this.#validateBindings(request);
+    await this.#validateBindings(request);
     this.#validateDecisions(request);
     await this.#validateSupersedes(request);
 
@@ -183,7 +186,7 @@ class FileTargetBatchApproval implements TargetBatchApproval {
     return batch;
   }
 
-  #validateBindings(request: TargetBatchApprovalRequest): void {
+  async #validateBindings(request: TargetBatchApprovalRequest): Promise<void> {
     const attempts = new Set<string>();
     for (const receipt of request.selectionReceipts) {
       if (!verifyReceipt(receipt)) {
@@ -207,6 +210,55 @@ class FileTargetBatchApproval implements TargetBatchApproval {
     }
     if (attempts.size !== 1 || request.modelProfile.family !== "opus") {
       throw new TargetBatchApprovalError("binding-mismatch");
+    }
+
+    const firstReceipt = request.selectionReceipts[0];
+    if (firstReceipt === undefined) {
+      throw new TargetBatchApprovalError("selection-attempt-unverified");
+    }
+    const attemptPath = join(
+      this.#storageDirectory,
+      "target-selection-attempts",
+      `${firstReceipt.attempt.selectionKey}.revision-${firstReceipt.attempt.revision}.json`,
+    );
+    let attempt;
+    try {
+      attempt = targetSelectionAttemptSchema.parse(
+        JSON.parse((await readFile(attemptPath)).toString("utf8")),
+      );
+    } catch {
+      throw new TargetBatchApprovalError("selection-attempt-unverified");
+    }
+    if (attempt.status !== "selected") {
+      throw new TargetBatchApprovalError("selection-attempt-unverified");
+    }
+    const actualAttemptDigest = sha256Digest(attempt);
+    if (
+      request.selectionAttemptRef.digest !== actualAttemptDigest ||
+      request.selectionAttemptRef.id !==
+        `selection-attempt:${actualAttemptDigest.slice(7, 31)}` ||
+      attempt.requestDigest !== sha256Digest(attempt.input) ||
+      canonicalJson(attempt.input.policy) !==
+        canonicalJson(request.selectionPolicy) ||
+      canonicalJson(attempt.input.modelProfile) !==
+        canonicalJson(request.modelProfile)
+    ) {
+      throw new TargetBatchApprovalError("selection-attempt-unverified");
+    }
+    const durableReceipts = new Map(
+      attempt.receipts.map((receipt) => [receipt.candidateId, receipt]),
+    );
+    if (
+      durableReceipts.size !== request.selectionReceipts.length ||
+      request.selectionReceipts.some((receipt) => {
+        const durable = durableReceipts.get(receipt.candidateId);
+        return (
+          durable === undefined ||
+          canonicalJson(durable) !== canonicalJson(receipt)
+        );
+      })
+    ) {
+      throw new TargetBatchApprovalError("selection-attempt-unverified");
     }
   }
 

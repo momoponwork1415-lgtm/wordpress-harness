@@ -141,6 +141,68 @@ async function selectionReceipts(
 }
 
 describe("TargetBatchApproval", () => {
+  it("rejects Selection Receipts that are not bound to a durable Attempt", async () => {
+    const selectionDirectory = await mkdtemp(
+      join(tmpdir(), "target-batch-unbound-selection-"),
+    );
+    const approvalDirectory = await mkdtemp(
+      join(tmpdir(), "target-batch-unbound-approval-"),
+    );
+    try {
+      const selection = await selectionReceipts(selectionDirectory, {
+        selectionKey: "unbound-selection",
+        candidates: [candidate("candidate-unbound")],
+      });
+      const approval = openTargetBatchApproval({
+        storageDirectory: approvalDirectory,
+        clock: () => new Date("2030-09-01T12:00:00.000Z"),
+      });
+
+      await expect(
+        approval.approve({
+          kind: "target-batch-approval-request",
+          schemaVersion: 1,
+          batchKey: "unbound-batch",
+          revision: 1,
+          selectionAttemptRef: selection.attemptRef,
+          selectionReceipts: [...selection.receipts],
+          selectionPolicy,
+          modelProfile,
+          campaignPolicy: { id: "campaign-policy-v1", digest: digest("2") },
+          batchBudget: {
+            kind: "target-batch-budget",
+            schemaVersion: 1,
+            id: "batch-budget-v1",
+            digest: digest("3"),
+            maxTargets: 1,
+            maxActiveCampaigns: 1,
+          },
+          executionWindow: {
+            startsAt: "2030-09-02T00:00:00.000Z",
+            endsAt: "2030-09-03T00:00:00.000Z",
+          },
+          operator: {
+            identity: "human:fixture-operator",
+            decidedAt: "2030-09-01T11:55:00.000Z",
+          },
+          decisions: [
+            {
+              candidateId: "candidate-unbound",
+              decision: "approve",
+              source: "autonomous-selection",
+              reason: "accept the oracle-free selection rationale",
+            },
+          ],
+          approvedOrder: ["candidate-unbound"],
+          orderReason: "single Target batch",
+        }),
+      ).rejects.toMatchObject({ code: "selection-attempt-unverified" });
+    } finally {
+      await rm(selectionDirectory, { recursive: true, force: true });
+      await rm(approvalDirectory, { recursive: true, force: true });
+    }
+  });
+
   it("records one human decision with approval, exclusion, reordering, and a gated nomination", async () => {
     const directory = await mkdtemp(join(tmpdir(), "target-batch-approval-"));
     let currentTime = "2030-09-01T12:00:00.000Z";

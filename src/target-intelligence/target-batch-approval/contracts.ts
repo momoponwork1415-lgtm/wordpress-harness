@@ -139,6 +139,7 @@ export type TargetBatchApprovalErrorCode =
   | "budget-exceeded"
   | "hard-gate-failed"
   | "receipt-integrity-failed"
+  | "selection-attempt-unverified"
   | "revision-conflict"
   | "supersede-invalid"
   | "execution-started";

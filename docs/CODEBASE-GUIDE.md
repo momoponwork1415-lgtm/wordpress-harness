@@ -98,8 +98,8 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 **Interface:** `TargetBatchApproval.approve / inspect`
 
 - **Purpose:** 一つのSelection Attemptの有限なSelection Receipt集合について、人間の承認、除外、順序変更、operator nominationを一回の判断へまとめ、versioned Approved Target Batchにする。
-- **Invariants:** Selection Receipt digest、同一Attempt binding、Selection Policy、Opus Model Profile、Target Observation、programme / disclosure freshness、Campaign Policy、Batch Budget、execution window、human identity / decision time / reasonを固定する。operator-nominated TargetもSelection hard gate通過済みReceiptを必須とする。承認はResearch、Campaign、外部通信を開始しない。
-- **Failures:** Receipt integrity、Attempt / policy / profile binding、decision集合、approved orderの不一致を拒否する。hard gate不通過は人間でもoverrideできず、Batch Budget超過を拒否する。同じbatch key / revisionの異なるinputは`revision-conflict`、変更は開始前の新revision + `supersedes`だけを許可し、開始後は`execution-started`にする。
+- **Invariants:** Selection Receipt digest、durableな完了済みSelection Attempt、Selection Policy、Opus Model Profile、Target Observation、programme / disclosure freshness、Campaign Policy、Batch Budget、execution window、human identity / decision time / reasonを固定する。operator-nominated TargetもSelection hard gate通過済みReceiptを必須とする。承認はResearch、Campaign、外部通信を開始しない。
+- **Failures:** durable Attemptが存在しない、Attempt refまたはReceipt集合が一致しない場合は`selection-attempt-unverified`。Receipt integrity、Attempt / policy / profile binding、decision集合、approved orderの不一致を拒否する。hard gate不通過は人間でもoverrideできず、Batch Budget超過を拒否する。同じbatch key / revisionの異なるinputは`revision-conflict`、変更は開始前の新revision + `supersedes`だけを許可し、開始後は`execution-started`にする。
 - **Status:** content-addressed Batch、revision index、approval / exclusion / reorder / nomination、idempotency、restart replay、supersedeのBehavior Testを実装。
 - **Code / Tests:** [target-batch-approval](../src/target-intelligence/target-batch-approval) · [Behavior Test](../tests/target-intelligence/target-batch-approval.test.ts)
 
