@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import Database from "better-sqlite3";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 
@@ -142,7 +143,7 @@ function failedResult(
 }
 
 describe("CampaignRunner.run source-only Validation", () => {
-  it("records Decision v3 and recovers durable Validator results without provider replay", async () => {
+  it("recovers durable Validator results and replays pre-result-event ledgers", async () => {
     const directory = await mkdtemp(join(tmpdir(), "campaign-validation-"));
     const databasePath = join(directory, "research.sqlite");
     const artifacts = openFileJsonArtifactStore(join(directory, "artifacts"));
@@ -182,9 +183,7 @@ describe("CampaignRunner.run source-only Validation", () => {
     let depthFailure: "none" | "budget-exhausted" = "none";
     let packetDelivery: "success" | "failure" = "failure";
     let candidateIdentitySuffix = "";
-    let injectValidatorCompletionCrash = false;
     let injectUnknownValidatorResult = false;
-    let validatorResultReturnedForCrash = false;
     const deliveredPacketDigests: string[] = [];
     const modelExecution: ModelExecution = {
       run: async (plan) => {
@@ -532,9 +531,6 @@ describe("CampaignRunner.run source-only Validation", () => {
                 }
               : {}),
           });
-          if (injectValidatorCompletionCrash) {
-            validatorResultReturnedForCrash = true;
-          }
           return result;
         }
         throw new Error("Unexpected Attempt role");
@@ -1183,22 +1179,17 @@ describe("CampaignRunner.run source-only Validation", () => {
       });
       expectedValidationRunId = crashRecoveryPlan.runId;
       const crashCallOffset = observedPlans.length;
-      let postResultClockCalls = 0;
-      injectValidatorCompletionCrash = true;
-      validatorResultReturnedForCrash = false;
       const crashingResearch = openResearch({
         databasePath,
-        campaignExecution,
-        clock: () => {
-          if (validatorResultReturnedForCrash) {
-            postResultClockCalls += 1;
-            if (postResultClockCalls === 2) {
+        campaignExecution: {
+          ...campaignExecution,
+          validationAttemptFaultBoundary: {
+            afterResultStored: () => {
               throw new Error(
                 "Injected crash after Validator result persistence",
               );
-            }
-          }
-          return new Date("2026-09-05T00:00:00.000Z");
+            },
+          },
         },
       });
       try {
@@ -1207,7 +1198,6 @@ describe("CampaignRunner.run source-only Validation", () => {
         ).rejects.toThrow("Injected crash after Validator result persistence");
       } finally {
         crashingResearch.close();
-        injectValidatorCompletionCrash = false;
       }
       const callsThroughCrash = observedPlans.slice(crashCallOffset);
       expect(
@@ -1361,20 +1351,15 @@ describe("CampaignRunner.run source-only Validation", () => {
         });
       expectedValidationRunId = invalidStoredResultPlan.runId;
       const invalidResultCallOffset = observedPlans.length;
-      let invalidResultPostResultClockCalls = 0;
-      injectValidatorCompletionCrash = true;
-      validatorResultReturnedForCrash = false;
       const invalidResultCrashResearch = openResearch({
         databasePath,
-        campaignExecution,
-        clock: () => {
-          if (validatorResultReturnedForCrash) {
-            invalidResultPostResultClockCalls += 1;
-            if (invalidResultPostResultClockCalls === 2) {
+        campaignExecution: {
+          ...campaignExecution,
+          validationAttemptFaultBoundary: {
+            afterResultStored: () => {
               throw new Error("Injected crash before invalid result recovery");
-            }
-          }
-          return new Date("2026-09-05T00:00:00.000Z");
+            },
+          },
         },
       });
       try {
@@ -1383,7 +1368,6 @@ describe("CampaignRunner.run source-only Validation", () => {
         ).rejects.toThrow("Injected crash before invalid result recovery");
       } finally {
         invalidResultCrashResearch.close();
-        injectValidatorCompletionCrash = false;
       }
       const invalidResultValidatorPlan = observedPlans
         .slice(invalidResultCallOffset)
@@ -1455,6 +1439,73 @@ describe("CampaignRunner.run source-only Validation", () => {
           .slice(invalidResultCallOffset)
           .filter((attempt) => attempt.role === "validator"),
       ).toHaveLength(1);
+
+      const legacyLedger = new Database(databasePath);
+      try {
+        const storedResultEvent: unknown = legacyLedger
+          .prepare(
+            `SELECT campaign_sequence
+             FROM research_events
+             WHERE campaign_id = ?
+               AND kind = 'campaign.attempt-result-stored'
+               AND json_extract(payload_json, '$.result.runId') = ?`,
+          )
+          .get(input.campaignId, plan.runId);
+        if (
+          typeof storedResultEvent !== "object" ||
+          storedResultEvent === null ||
+          !("campaign_sequence" in storedResultEvent) ||
+          typeof storedResultEvent.campaign_sequence !== "number"
+        ) {
+          throw new Error("Expected one durable Validator result event");
+        }
+        const sequence = storedResultEvent.campaign_sequence;
+        legacyLedger.transaction(() => {
+          legacyLedger
+            .prepare(
+              `DELETE FROM research_events
+               WHERE campaign_id = ? AND campaign_sequence = ?`,
+            )
+            .run(input.campaignId, sequence);
+          legacyLedger
+            .prepare(
+              `UPDATE research_events
+               SET campaign_sequence = -campaign_sequence
+               WHERE campaign_id = ? AND campaign_sequence > ?`,
+            )
+            .run(input.campaignId, sequence);
+          legacyLedger
+            .prepare(
+              `UPDATE research_events
+               SET campaign_sequence = -campaign_sequence - 1
+               WHERE campaign_id = ? AND campaign_sequence < 0`,
+            )
+            .run(input.campaignId);
+        })();
+      } finally {
+        legacyLedger.close();
+      }
+
+      const legacyReplay = openResearch({
+        databasePath,
+        artifactStore: artifacts,
+      });
+      try {
+        await expect(
+          legacyReplay.reader.inspect(input.campaignId, {
+            kind: "run",
+            runId: plan.runId,
+          }),
+        ).resolves.toMatchObject({
+          kind: "run",
+          value: {
+            schemaVersion: 3,
+            validations: [{ status: "ready-for-runtime" }],
+          },
+        });
+      } finally {
+        legacyReplay.close();
+      }
     } finally {
       research.close();
       await rm(directory, { force: true, recursive: true });

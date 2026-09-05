@@ -530,15 +530,17 @@ function semanticValidatorAttemptStoredResult(
   });
 }
 
-async function readStoredValidatorAttemptResult(
-  dependencies: CampaignExecutionDependencies,
+function validateValidatorAttemptResult(
   plan: Extract<ModelAttemptPlan, { schemaVersion: 2; role: "validator" }>,
-  refValue: unknown,
-): Promise<AttemptExecutionResultV2> {
+  input: {
+    readonly ref: unknown;
+    readonly value: unknown;
+    readonly reportedStatus?: unknown;
+  },
+): AttemptExecutionResultV2 {
   const planDigest = sha256Digest(plan);
-  const ref = attemptExecutionResultV2RefSchema.parse(refValue);
-  const raw = await dependencies.artifactStore.readJson(ref.digest);
-  const value = modelAttemptResultV2Schema.parse(raw);
+  const ref = attemptExecutionResultV2RefSchema.parse(input.ref);
+  const value = modelAttemptResultV2Schema.parse(input.value);
   if (
     ref.owner !== "validation" ||
     ref.role !== "validator" ||
@@ -548,11 +550,23 @@ async function readStoredValidatorAttemptResult(
     value.owner !== "validation" ||
     value.role !== "validator" ||
     value.attemptId !== plan.attemptId ||
-    value.planDigest !== planDigest
+    value.planDigest !== planDigest ||
+    (input.reportedStatus !== undefined &&
+      input.reportedStatus !== value.status)
   ) {
     throw new Error(`Validator Attempt result mismatch: ${plan.attemptId}`);
   }
   return { status: value.status, ref, value };
+}
+
+async function readStoredValidatorAttemptResult(
+  dependencies: CampaignExecutionDependencies,
+  plan: Extract<ModelAttemptPlan, { schemaVersion: 2; role: "validator" }>,
+  refValue: unknown,
+): Promise<AttemptExecutionResultV2> {
+  const ref = attemptExecutionResultV2RefSchema.parse(refValue);
+  const value = await dependencies.artifactStore.readJson(ref.digest);
+  return validateValidatorAttemptResult(plan, { ref, value });
 }
 
 function recordedValidationModelExecution(
@@ -653,35 +667,24 @@ function recordedValidationModelExecution(
             `Validator Attempt returned a legacy result: ${plan.attemptId}`,
           );
         }
-        const ref = attemptExecutionResultV2RefSchema.parse(executed.ref);
-        const value = modelAttemptResultV2Schema.parse(executed.value);
-        if (
-          ref.owner !== "validation" ||
-          ref.role !== "validator" ||
-          ref.attemptId !== plan.attemptId ||
-          ref.planDigest !== planDigest ||
-          ref.digest !== sha256Digest(value) ||
-          value.owner !== "validation" ||
-          value.role !== "validator" ||
-          value.attemptId !== plan.attemptId ||
-          value.planDigest !== planDigest ||
-          executed.status !== value.status
-        ) {
-          throw new Error(
-            `Validator Attempt result mismatch: ${plan.attemptId}`,
-          );
-        }
-        const digest = await dependencies.artifactStore.putJson(value);
-        if (digest !== ref.digest) {
+        result = validateValidatorAttemptResult(plan, {
+          ref: executed.ref,
+          value: executed.value,
+          reportedStatus: executed.status,
+        });
+        const digest = await dependencies.artifactStore.putJson(result.value);
+        if (digest !== result.ref.digest) {
           throw new Error(
             `Validator Attempt result CAS mismatch: ${plan.attemptId}`,
           );
         }
-        result = { status: value.status, ref, value };
         await record.recordSemanticCampaignAttemptResult(
           semanticValidatorAttemptStoredResult(intent, result.ref),
         );
       }
+      await dependencies.validationAttemptFaultBoundary?.afterResultStored(
+        intent,
+      );
       await record.recordSemanticCampaignAttemptCompletion(
         semanticAttemptCompletion(intent, result.ref),
       );

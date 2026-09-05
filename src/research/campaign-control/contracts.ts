@@ -1544,6 +1544,11 @@ export interface CampaignExecutionDependencies {
   readonly modelExecution: ModelExecution;
   readonly independentVerifier: IndependentVerifier;
   readonly labControl: LabControl;
+  readonly validationAttemptFaultBoundary?: {
+    afterResultStored(
+      intent: Extract<CampaignAttemptIntentV2, { role: "validator" }>,
+    ): void | Promise<void>;
+  };
   readonly calibrationReview?: CalibrationReview;
   readonly humanReviewPacketDelivery?: HumanReviewPacketDelivery;
   readonly runtimeVerificationPacketDelivery?: RuntimeVerificationPacketDelivery;
