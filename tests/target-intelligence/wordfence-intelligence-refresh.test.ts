@@ -452,6 +452,93 @@ describe("WordfenceIntelligenceRefresh", () => {
     }
   });
 
+  it.each([
+    {
+      status: 429,
+      headers: { "retry-after": "120" },
+      expected: {
+        kind: "wordfence-intelligence-result",
+        schemaVersion: 1,
+        status: "failed",
+        reason: "rate-limited",
+        backoff: {
+          kind: "wordfence-rate-limit-backoff",
+          schemaVersion: 2,
+          automaticRetries: 0,
+          boundedAt: "2030-08-01T00:00:00.000Z",
+          maximumDelaySeconds: 86_400,
+          retryAfter: {
+            kind: "delay-seconds",
+            seconds: 120,
+            capped: false,
+          },
+        },
+      },
+    },
+    {
+      status: 401,
+      headers: {},
+      expected: {
+        kind: "wordfence-intelligence-result",
+        schemaVersion: 1,
+        status: "failed",
+        reason: "authentication-failed",
+      },
+    },
+  ] as const)(
+    "replays an initial $expected.reason failure after restart",
+    async ({ status, headers, expected }) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "wordfence-initial-failure-"),
+      );
+      const databasePath = join(directory, "target-intelligence.sqlite");
+      const credentialBroker: HostPrivateCredentialBroker = {
+        async resolve<T>(
+          _reference: WordfenceSecretRef,
+          use: (credential: string) => Promise<T>,
+        ): Promise<T> {
+          return use("synthetic-initial-failure-credential");
+        },
+      };
+      try {
+        const initial = openWordfenceIntelligenceRefresh({
+          databasePath,
+          artifactDirectory: join(directory, "artifacts"),
+          credentialBroker,
+          fetch: vi.fn<typeof fetch>(async () =>
+            Promise.resolve(new Response(undefined, { status, headers })),
+          ),
+          clock: () => new Date("2030-08-01T00:00:00.000Z"),
+        });
+        await expect(
+          initial.run({
+            kind: "wordfence-intelligence-refresh",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual(expected);
+
+        const replayFetch = vi.fn<typeof fetch>(() =>
+          Promise.reject(new Error("inspection must not retrieve the feed")),
+        );
+        const restarted = openWordfenceIntelligenceRefresh({
+          databasePath,
+          artifactDirectory: join(directory, "artifacts"),
+          credentialBroker,
+          fetch: replayFetch,
+        });
+        await expect(
+          restarted.inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual(expected);
+        expect(replayFetch).not.toHaveBeenCalled();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("does not publish a successful snapshot when freshness-state commit fails", async () => {
     const directory = await mkdtemp(
       join(tmpdir(), "wordfence-atomic-refresh-"),

@@ -298,6 +298,98 @@ describe("WordfenceIntelligence", () => {
     }
   });
 
+  it("replays an explicitly marked legacy record set without re-publishing it", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "wordfence-legacy-replay-"));
+    const databasePath = join(directory, "target-intelligence.sqlite");
+    const artifactDirectory = join(directory, "artifacts");
+    try {
+      const authorization = await knownRecordAuthorization("1.2.0");
+      const authorizationProvider = {
+        resolve: async () => ({
+          status: "authorized" as const,
+          authorization,
+        }),
+      };
+      const original = openWordfenceIntelligence({
+        databasePath,
+        artifactDirectory,
+        adapter: fixtureAdapter(),
+        credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+        knownRecordAuthorizationProvider: authorizationProvider,
+        clock: () => new Date("2030-08-01T00:00:00.000Z"),
+      });
+      const current = await original.refresh({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      if (current.status !== "current") {
+        throw new Error("Expected a current snapshot");
+      }
+      const aggregateRequest = {
+        kind: "wordfence-vulnerability-history-aggregate" as const,
+        schemaVersion: 1 as const,
+        snapshotRef: current.snapshotRef,
+        pluginIdentity: "wporg:fixture-plugin" as const,
+      };
+      const exactRequest = {
+        kind: "wordfence-known-record-inspection" as const,
+        schemaVersion: 2 as const,
+        snapshotRef: current.snapshotRef,
+        pluginIdentity: "wporg:fixture-plugin" as const,
+        verifiedVersion: "1.2.0",
+        canonicalFileManifestDigest: digest("c"),
+        authorizationRef: {
+          kind: "known-record-access-authorization-ref" as const,
+          schemaVersion: 2 as const,
+          id: authorization.id,
+          digest: authorization.digest,
+        },
+      };
+      const expectedAggregate = await original.aggregate(aggregateRequest);
+      const expectedExact = await original.inspectKnownRecords(exactRequest);
+
+      const legacyMigration = new Database(databasePath);
+      legacyMigration.exec(`
+        UPDATE wordfence_intelligence_records
+           SET record_json = json_extract(record_json, '$.record')
+         WHERE json_type(record_json, '$.record') = 'object';
+        DROP TABLE IF EXISTS wordfence_intelligence_record_set_manifests;
+        DROP TABLE IF EXISTS wordfence_intelligence_legacy_record_sets;
+        DROP TABLE IF EXISTS wordfence_intelligence_index_metadata;
+      `);
+      legacyMigration.close();
+
+      const restarted = openWordfenceIntelligence({
+        databasePath,
+        artifactDirectory,
+        adapter: fixtureAdapter(),
+        credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+        knownRecordAuthorizationProvider: authorizationProvider,
+        clock: () => new Date("2030-08-01T00:00:00.000Z"),
+      });
+      await expect(
+        restarted.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual(current);
+      await expect(restarted.aggregate(aggregateRequest)).resolves.toEqual(
+        expectedAggregate,
+      );
+      await expect(
+        restarted.inspectKnownRecords(exactRequest),
+      ).resolves.toEqual(expectedExact);
+      await expect(
+        restarted.refresh({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).rejects.toThrow("Wordfence Intelligence snapshot conflict");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it.each(["missing", "tampered"] as const)(
     "rejects re-publication when persisted snapshot records are %s",
     async (caseName) => {
@@ -374,6 +466,117 @@ describe("WordfenceIntelligence", () => {
             schemaVersion: 1,
           }),
         ).resolves.toEqual(latestResult);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each(["missing", "substituted", "extra"] as const)(
+    "rejects %s record-set corruption before aggregate and exact projection",
+    async (caseName) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "wordfence-projection-integrity-"),
+      );
+      const databasePath = join(directory, "target-intelligence.sqlite");
+      try {
+        const authorization = await knownRecordAuthorization("1.2.0");
+        const intelligence = openWordfenceIntelligence({
+          databasePath,
+          artifactDirectory: join(directory, "artifacts"),
+          adapter: fixtureAdapter(),
+          credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+          knownRecordAuthorizationProvider: {
+            resolve: async () => ({ status: "authorized", authorization }),
+          },
+          clock: () => new Date("2030-08-01T00:00:00.000Z"),
+        });
+        const current = await intelligence.refresh({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        });
+        if (current.status !== "current") {
+          throw new Error("Expected a current snapshot");
+        }
+
+        const corruption = new Database(databasePath);
+        if (caseName === "missing") {
+          corruption
+            .prepare(
+              `DELETE FROM wordfence_intelligence_records
+               WHERE rowid = (
+                 SELECT rowid
+                   FROM wordfence_intelligence_records
+                  WHERE snapshot_digest = ?
+                  ORDER BY plugin_slug, record_id
+                  LIMIT 1
+               )`,
+            )
+            .run(current.snapshotRef.digest);
+        } else if (caseName === "substituted") {
+          corruption
+            .prepare(
+              `UPDATE wordfence_intelligence_records
+                  SET record_json = (
+                    SELECT record_json
+                      FROM wordfence_intelligence_records
+                     WHERE snapshot_digest = ?
+                     ORDER BY plugin_slug DESC, record_id DESC
+                     LIMIT 1
+                  )
+                WHERE rowid = (
+                  SELECT rowid
+                    FROM wordfence_intelligence_records
+                   WHERE snapshot_digest = ?
+                   ORDER BY plugin_slug, record_id
+                   LIMIT 1
+                )`,
+            )
+            .run(current.snapshotRef.digest, current.snapshotRef.digest);
+        } else {
+          corruption
+            .prepare(
+              `INSERT INTO wordfence_intelligence_records (
+                 snapshot_digest, plugin_slug, record_id, record_json
+               )
+               SELECT snapshot_digest, ?, ?, record_json
+                 FROM wordfence_intelligence_records
+                WHERE snapshot_digest = ?
+                ORDER BY plugin_slug, record_id
+                LIMIT 1`,
+            )
+            .run(
+              "extra-plugin",
+              "33333333-3333-4333-8333-333333333333",
+              current.snapshotRef.digest,
+            );
+        }
+        corruption.close();
+
+        await expect(
+          intelligence.aggregate({
+            kind: "wordfence-vulnerability-history-aggregate",
+            schemaVersion: 1,
+            snapshotRef: current.snapshotRef,
+            pluginIdentity: "wporg:fixture-plugin",
+          }),
+        ).rejects.toThrow("Wordfence Intelligence snapshot conflict");
+        await expect(
+          intelligence.inspectKnownRecords({
+            kind: "wordfence-known-record-inspection",
+            schemaVersion: 2,
+            snapshotRef: current.snapshotRef,
+            pluginIdentity: "wporg:fixture-plugin",
+            verifiedVersion: "1.2.0",
+            canonicalFileManifestDigest: digest("c"),
+            authorizationRef: {
+              kind: "known-record-access-authorization-ref",
+              schemaVersion: 2,
+              id: authorization.id,
+              digest: authorization.digest,
+            },
+          }),
+        ).rejects.toThrow("Wordfence Intelligence snapshot conflict");
       } finally {
         await rm(directory, { recursive: true, force: true });
       }

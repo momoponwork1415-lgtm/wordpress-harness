@@ -128,12 +128,46 @@ const snapshotRowSchema = z.strictObject({
   snapshot_json: z.string(),
 });
 
-const recordRowSchema = z.strictObject({ record_json: z.string() });
-
 const snapshotRecordRowSchema = z.strictObject({
   plugin_slug: z.string(),
   record_id: z.string(),
   record_json: z.string(),
+});
+
+const recordSetManifestRowSchema = z.strictObject({
+  manifest_json: z.string(),
+});
+
+const legacyRecordSetRowSchema = z.strictObject({
+  legacy_json: z.string(),
+});
+
+const indexMetadataRowSchema = z.strictObject({
+  schema_version: z.literal(1),
+});
+
+const legacyMigrationSnapshotRowSchema = z.strictObject({
+  snapshot_digest: z.string(),
+  snapshot_json: z.string(),
+});
+
+const recordSetManifestSchema = z.strictObject({
+  kind: z.literal("wordfence-intelligence-record-set-manifest"),
+  schemaVersion: z.literal(1),
+  snapshotDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  parserVersion: z.literal("wordfence-intelligence-production-v3"),
+  normalizedRowCount: z.number().int().nonnegative(),
+  recordSetDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+});
+
+const legacyRecordSetSchema = z.strictObject({
+  kind: z.literal("wordfence-intelligence-legacy-record-set"),
+  schemaVersion: z.literal(1),
+  snapshotDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  snapshotSchemaVersion: z.literal(1),
+  parserVersion: z.literal("wordfence-intelligence-production-v3"),
+  recordFormat: z.literal("record-only-v1"),
+  integrity: z.literal("unbound-read-only"),
 });
 
 const refreshStateRowSchema = z.strictObject({ state_json: z.string() });
@@ -241,6 +275,111 @@ function rawDigest(bytes: Uint8Array): string {
 
 function shortId(prefix: string, digest: string): string {
   return `${prefix}:${digest.slice(7, 31)}`;
+}
+
+function recordSetDigest(
+  snapshotDigest: string,
+  records: readonly WordfenceStoredPluginRecord[],
+): string {
+  const hash = createHash("sha256");
+  hash.update(
+    canonicalJson({
+      kind: "wordfence-intelligence-normalized-record-set",
+      schemaVersion: 1,
+      snapshotDigest,
+      normalizedRowCount: records.length,
+    }),
+  );
+  for (const stored of records) {
+    hash.update("\n");
+    hash.update(canonicalJson(stored));
+  }
+  return `sha256:${hash.digest("hex")}`;
+}
+
+function recordSetManifest(
+  snapshot: WordfenceIntelligenceSnapshot,
+  reference: WordfenceIntelligenceSnapshotRef,
+  records: readonly WordfenceStoredPluginRecord[],
+) {
+  return recordSetManifestSchema.parse({
+    kind: "wordfence-intelligence-record-set-manifest",
+    schemaVersion: 1,
+    snapshotDigest: reference.digest,
+    parserVersion: snapshot.source.parserVersion,
+    normalizedRowCount: records.length,
+    recordSetDigest: recordSetDigest(reference.digest, records),
+  });
+}
+
+function legacyRecordSet(
+  snapshot: WordfenceIntelligenceSnapshot,
+  reference: WordfenceIntelligenceSnapshotRef,
+) {
+  return legacyRecordSetSchema.parse({
+    kind: "wordfence-intelligence-legacy-record-set",
+    schemaVersion: 1,
+    snapshotDigest: reference.digest,
+    snapshotSchemaVersion: snapshot.schemaVersion,
+    parserVersion: snapshot.source.parserVersion,
+    recordFormat: "record-only-v1",
+    integrity: "unbound-read-only",
+  });
+}
+
+function initializeRecordSetStorage(database: Database.Database): void {
+  const transaction = database.transaction(() => {
+    const metadata = indexMetadataRowSchema.optional().parse(
+      database
+        .prepare(
+          `SELECT schema_version
+           FROM wordfence_intelligence_index_metadata
+          WHERE singleton = 1`,
+        )
+        .get(),
+    );
+    if (metadata !== undefined) {
+      return;
+    }
+    const legacySnapshots = legacyMigrationSnapshotRowSchema.array().parse(
+      database
+        .prepare(
+          `SELECT s.snapshot_digest, s.snapshot_json
+           FROM wordfence_intelligence_snapshots s
+           LEFT JOIN wordfence_intelligence_record_set_manifests m
+             ON m.snapshot_digest = s.snapshot_digest
+          WHERE m.snapshot_digest IS NULL
+          ORDER BY s.snapshot_digest`,
+        )
+        .all(),
+    );
+    const insertLegacy = database.prepare(
+      `INSERT INTO wordfence_intelligence_legacy_record_sets (
+         snapshot_digest, legacy_json
+       ) VALUES (?, ?)`,
+    );
+    for (const row of legacySnapshots) {
+      const snapshot = wordfenceIntelligenceSnapshotSchema.parse(
+        JSON.parse(row.snapshot_json),
+      );
+      const reference = snapshotReference(snapshot);
+      if (reference.digest !== row.snapshot_digest) {
+        throw new SnapshotConflictError();
+      }
+      insertLegacy.run(
+        reference.digest,
+        canonicalJson(legacyRecordSet(snapshot, reference)),
+      );
+    }
+    database
+      .prepare(
+        `INSERT INTO wordfence_intelligence_index_metadata (
+           singleton, schema_version
+         ) VALUES (1, 1)`,
+      )
+      .run();
+  });
+  transaction.immediate();
 }
 
 function hasErrorCode(error: unknown, code: string): boolean {
@@ -794,7 +933,20 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
           singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
           state_json TEXT NOT NULL
         ) STRICT;
+        CREATE TABLE IF NOT EXISTS wordfence_intelligence_record_set_manifests (
+          snapshot_digest TEXT PRIMARY KEY,
+          manifest_json TEXT NOT NULL
+        ) STRICT;
+        CREATE TABLE IF NOT EXISTS wordfence_intelligence_legacy_record_sets (
+          snapshot_digest TEXT PRIMARY KEY,
+          legacy_json TEXT NOT NULL
+        ) STRICT;
+        CREATE TABLE IF NOT EXISTS wordfence_intelligence_index_metadata (
+          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+          schema_version INTEGER NOT NULL
+        ) STRICT;
       `);
+      initializeRecordSetStorage(database);
     } catch (error) {
       database.close();
       throw error;
@@ -927,9 +1079,6 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       wordfenceIntelligenceInspectionRequestSchema.parse(requestValue);
     const transaction = this.#database.transaction(() => {
       const result = this.#inspectSnapshot(request);
-      if (result.status !== "current") {
-        return result;
-      }
       const row = refreshStateRowSchema.optional().parse(
         this.#database
           .prepare(
@@ -945,6 +1094,21 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       const state = productionRefreshStateSchema.parse(
         JSON.parse(row.state_json),
       );
+      if (result.status === "failed") {
+        if (
+          result.reason === "not-refreshed" &&
+          state.currentSnapshotDigest === undefined
+        ) {
+          return state.latestRefresh.result;
+        }
+        if (result.reason === "not-refreshed") {
+          throw new SnapshotConflictError();
+        }
+        return result;
+      }
+      if (result.status === "stale") {
+        return result;
+      }
       if (state.currentSnapshotDigest !== result.snapshotRef.digest) {
         return result;
       }
@@ -962,9 +1126,10 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   ): Promise<VulnerabilityHistoryAggregate> {
     const request =
       vulnerabilityHistoryAggregateRequestSchema.parse(requestValue);
-    this.#readSnapshot(request.snapshotRef);
+    const snapshot = this.#readSnapshot(request.snapshotRef);
     const records = this.#records(
-      request.snapshotRef.digest,
+      snapshot,
+      request.snapshotRef,
       request.pluginIdentity.slice("wporg:".length),
     );
     const published = records.flatMap((record) =>
@@ -1007,9 +1172,10 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     ) {
       throw new WordfenceKnownRecordAccessError();
     }
-    this.#readSnapshot(request.snapshotRef);
+    const snapshot = this.#readSnapshot(request.snapshotRef);
     const records = this.#records(
-      request.snapshotRef.digest,
+      snapshot,
+      request.snapshotRef,
       request.pluginIdentity.slice("wporg:".length),
     ).filter((record) =>
       record.affectedVersionIntervals.some((interval) =>
@@ -1091,9 +1257,19 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
             reference.digest,
             stored.pluginSlug,
             stored.record.recordId,
-            canonicalJson(stored.record),
+            canonicalJson(stored),
           );
         }
+        this.#database
+          .prepare(
+            `INSERT INTO wordfence_intelligence_record_set_manifests (
+               snapshot_digest, manifest_json
+             ) VALUES (?, ?)`,
+          )
+          .run(
+            reference.digest,
+            canonicalJson(recordSetManifest(snapshot, reference, records)),
+          );
       } else {
         if (
           existing.snapshot_id !== reference.id ||
@@ -1101,7 +1277,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
         ) {
           throw new SnapshotConflictError();
         }
-        this.#assertStoredRecords(reference.digest, records);
+        this.#assertStoredRecords(snapshot, reference, records);
       }
       this.#database
         .prepare(
@@ -1125,33 +1301,22 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   }
 
   #assertStoredRecords(
-    snapshotDigest: string,
+    snapshot: WordfenceIntelligenceSnapshot,
+    reference: WordfenceIntelligenceSnapshotRef,
     records: readonly WordfenceStoredPluginRecord[],
   ): void {
-    const persisted = snapshotRecordRowSchema.array().parse(
-      this.#database
-        .prepare(
-          `SELECT plugin_slug, record_id, record_json
-           FROM wordfence_intelligence_records
-          WHERE snapshot_digest = ?
-          ORDER BY plugin_slug, record_id`,
-        )
-        .all(snapshotDigest),
-    );
-    const expected = records.map((stored) => ({
-      plugin_slug: stored.pluginSlug,
-      record_id: stored.record.recordId,
-      record_json: canonicalJson(stored.record),
-    }));
+    const validated = this.#validatedRecordSet(snapshot, reference);
+    if (validated.kind === "legacy-record-only-v1") {
+      throw new SnapshotConflictError();
+    }
+    const persisted = validated.records;
     if (
-      persisted.length !== expected.length ||
-      persisted.some((row, index) => {
-        const candidate = expected[index];
+      persisted.length !== records.length ||
+      persisted.some((stored, index) => {
+        const candidate = records[index];
         return (
           candidate === undefined ||
-          row.plugin_slug !== candidate.plugin_slug ||
-          row.record_id !== candidate.record_id ||
-          row.record_json !== candidate.record_json
+          canonicalJson(stored) !== canonicalJson(candidate)
         );
       })
     ) {
@@ -1268,22 +1433,116 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   }
 
   #records(
-    snapshotDigest: string,
+    snapshot: WordfenceIntelligenceSnapshot,
+    reference: WordfenceIntelligenceSnapshotRef,
     pluginSlug: string,
   ): readonly WordfenceKnownRecord[] {
-    const rows = recordRowSchema.array().parse(
-      this.#database
-        .prepare(
-          `SELECT record_json
-           FROM wordfence_intelligence_records
-          WHERE snapshot_digest = ? AND plugin_slug = ?
-          ORDER BY record_id`,
-        )
-        .all(snapshotDigest, pluginSlug),
-    );
-    return rows.map((row) =>
-      wordfenceKnownRecordSchema.parse(JSON.parse(row.record_json)),
-    );
+    return this.#validatedRecordSet(snapshot, reference)
+      .records.filter((stored) => stored.pluginSlug === pluginSlug)
+      .map((stored) => stored.record);
+  }
+
+  #validatedRecordSet(
+    snapshot: WordfenceIntelligenceSnapshot,
+    reference: WordfenceIntelligenceSnapshotRef,
+  ):
+    | {
+        readonly kind: "manifest-v1";
+        readonly records: readonly WordfenceStoredPluginRecord[];
+      }
+    | {
+        readonly kind: "legacy-record-only-v1";
+        readonly records: readonly WordfenceStoredPluginRecord[];
+      } {
+    try {
+      const manifestRow = recordSetManifestRowSchema.optional().parse(
+        this.#database
+          .prepare(
+            `SELECT manifest_json
+             FROM wordfence_intelligence_record_set_manifests
+            WHERE snapshot_digest = ?`,
+          )
+          .get(reference.digest),
+      );
+      const legacyRow = legacyRecordSetRowSchema.optional().parse(
+        this.#database
+          .prepare(
+            `SELECT legacy_json
+             FROM wordfence_intelligence_legacy_record_sets
+            WHERE snapshot_digest = ?`,
+          )
+          .get(reference.digest),
+      );
+      const rows = snapshotRecordRowSchema.array().parse(
+        this.#database
+          .prepare(
+            `SELECT plugin_slug, record_id, record_json
+             FROM wordfence_intelligence_records
+            WHERE snapshot_digest = ?
+            ORDER BY plugin_slug, record_id`,
+          )
+          .all(reference.digest),
+      );
+      if ((manifestRow === undefined) === (legacyRow === undefined)) {
+        throw new SnapshotConflictError();
+      }
+      if (manifestRow !== undefined) {
+        const manifest = recordSetManifestSchema.parse(
+          JSON.parse(manifestRow.manifest_json),
+        );
+        const records = rows.map((row) => {
+          const stored = wordfenceStoredPluginRecordSchema.parse(
+            JSON.parse(row.record_json),
+          );
+          if (
+            stored.pluginSlug !== row.plugin_slug ||
+            stored.record.recordId !== row.record_id
+          ) {
+            throw new SnapshotConflictError();
+          }
+          return stored;
+        });
+        const expectedManifest = recordSetManifest(
+          snapshot,
+          reference,
+          records,
+        );
+        if (canonicalJson(manifest) !== canonicalJson(expectedManifest)) {
+          throw new SnapshotConflictError();
+        }
+        return { kind: "manifest-v1", records };
+      }
+      if (legacyRow === undefined) {
+        throw new SnapshotConflictError();
+      }
+      const legacy = legacyRecordSetSchema.parse(
+        JSON.parse(legacyRow.legacy_json),
+      );
+      if (
+        canonicalJson(legacy) !==
+        canonicalJson(legacyRecordSet(snapshot, reference))
+      ) {
+        throw new SnapshotConflictError();
+      }
+      const records = rows.map((row) => {
+        const record = wordfenceKnownRecordSchema.parse(
+          JSON.parse(row.record_json),
+        );
+        if (record.recordId !== row.record_id) {
+          throw new SnapshotConflictError();
+        }
+        return wordfenceStoredPluginRecordSchema.parse({
+          pluginSlug: row.plugin_slug,
+          record,
+        });
+      });
+      return { kind: "legacy-record-only-v1", records };
+    } catch (error) {
+      if (error instanceof SnapshotConflictError) {
+        throw error;
+      }
+      throw new SnapshotConflictError();
+    }
   }
 }
 
