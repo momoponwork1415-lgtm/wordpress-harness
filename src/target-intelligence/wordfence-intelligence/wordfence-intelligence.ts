@@ -5,6 +5,7 @@ import {
   lstat,
   mkdir,
   open,
+  readdir,
   realpath,
   unlink,
   type FileHandle,
@@ -76,8 +77,33 @@ import { currentOwnerUid } from "./owner-identity.js";
 
 const DEFAULT_MAXIMUM_FEED_BYTES = 256_000_000;
 const MAXIMUM_RETRY_AFTER_SECONDS = 86_400;
+const PRODUCTION_REFRESH_ATTEMPT_LEASE_SECONDS = 300;
 const DEFAULT_SOURCE_URL =
   "https://www.wordfence.com/api/intelligence/v3/vulnerabilities/production";
+
+const wordfenceIndexTableDefinitions = {
+  wordfence_intelligence_snapshots:
+    "CREATE TABLE wordfence_intelligence_snapshots (snapshot_digest TEXT PRIMARY KEY, snapshot_id TEXT NOT NULL UNIQUE, snapshot_json TEXT NOT NULL) STRICT",
+  wordfence_intelligence_records:
+    "CREATE TABLE wordfence_intelligence_records (snapshot_digest TEXT NOT NULL, plugin_slug TEXT NOT NULL, record_id TEXT NOT NULL, record_json TEXT NOT NULL, PRIMARY KEY (snapshot_digest, plugin_slug, record_id)) STRICT",
+  wordfence_intelligence_current:
+    "CREATE TABLE wordfence_intelligence_current (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), snapshot_digest TEXT NOT NULL) STRICT",
+  wordfence_intelligence_refresh_state:
+    "CREATE TABLE wordfence_intelligence_refresh_state (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), state_json TEXT NOT NULL) STRICT",
+  wordfence_intelligence_refresh_attempts:
+    "CREATE TABLE wordfence_intelligence_refresh_attempts (sequence INTEGER PRIMARY KEY AUTOINCREMENT, attempted_at TEXT NOT NULL, current_snapshot_digest TEXT) STRICT",
+  wordfence_intelligence_refresh_order:
+    "CREATE TABLE wordfence_intelligence_refresh_order (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), publication_sequence INTEGER NOT NULL CHECK (publication_sequence >= 0), latest_completed_sequence INTEGER NOT NULL CHECK (latest_completed_sequence >= publication_sequence)) STRICT",
+  wordfence_intelligence_record_set_manifests:
+    "CREATE TABLE wordfence_intelligence_record_set_manifests (snapshot_digest TEXT PRIMARY KEY, manifest_json TEXT NOT NULL) STRICT",
+  wordfence_intelligence_legacy_record_sets:
+    "CREATE TABLE wordfence_intelligence_legacy_record_sets (snapshot_digest TEXT PRIMARY KEY, legacy_json TEXT NOT NULL) STRICT",
+  wordfence_intelligence_index_metadata:
+    "CREATE TABLE wordfence_intelligence_index_metadata (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), schema_version INTEGER NOT NULL) STRICT",
+} as const;
+
+const productionStorageTableDefinition =
+  "CREATE TABLE wordfence_intelligence_production_storage (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format_json TEXT NOT NULL) STRICT";
 
 const rawVersionIntervalSchema = z.object({
   from_version: z.string().min(1).max(64),
@@ -215,6 +241,25 @@ const refreshOrderRowSchema = z.strictObject({
 const sqliteSequenceRowSchema = z.strictObject({
   seq: z.number().int().nonnegative(),
 });
+
+const sqliteSchemaRowSchema = z.strictObject({
+  name: z.string(),
+  sql: z.string(),
+});
+
+const productionStorageRowSchema = z.strictObject({
+  format_json: z.string(),
+});
+
+const productionStorageFormatSchema = z.strictObject({
+  kind: z.literal("wordfence-intelligence-production-storage-format"),
+  schemaVersion: z.literal(1),
+  refreshAttemptLeaseSeconds: z.literal(
+    PRODUCTION_REFRESH_ATTEMPT_LEASE_SECONDS,
+  ),
+});
+
+type ProductionStorageFormat = z.infer<typeof productionStorageFormatSchema>;
 
 const productionCompletedRefreshStateSchema = z.strictObject({
   kind: z.literal("wordfence-intelligence-production-refresh-state"),
@@ -458,6 +503,220 @@ function legacyRecordSet(
   });
 }
 
+function schemaCreationSql(includeProductionStorage: boolean): string {
+  const definitions = [
+    ...Object.values(wordfenceIndexTableDefinitions),
+    ...(includeProductionStorage ? [productionStorageTableDefinition] : []),
+  ];
+  return definitions
+    .map((definition) =>
+      definition.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "),
+    )
+    .join(";\n");
+}
+
+function normalizedSchemaSql(sql: string): string {
+  return sql
+    .replace(/\s+/gu, " ")
+    .replace(/\s*([(),])\s*/gu, "$1")
+    .trim();
+}
+
+function requireWordfenceSchema(
+  database: Database.Database,
+  includeProductionStorage: boolean,
+): void {
+  const expected = new Map(
+    [
+      ...Object.entries(wordfenceIndexTableDefinitions),
+      ...(includeProductionStorage
+        ? ([
+            [
+              "wordfence_intelligence_production_storage",
+              productionStorageTableDefinition,
+            ],
+          ] as const)
+        : []),
+    ].map(([name, sql]) => [name, normalizedSchemaSql(sql)]),
+  );
+  const rows = sqliteSchemaRowSchema.array().parse(
+    database
+      .prepare(
+        `SELECT name, sql
+           FROM sqlite_schema
+          WHERE type = 'table'
+            AND name NOT LIKE 'sqlite_%'
+          ORDER BY name`,
+      )
+      .all(),
+  );
+  if (
+    rows.length !== expected.size ||
+    rows.some((row) => expected.get(row.name) !== normalizedSchemaSql(row.sql))
+  ) {
+    throw new SnapshotConflictError();
+  }
+  const metadata = indexMetadataRowSchema.array().parse(
+    database
+      .prepare(
+        `SELECT schema_version
+           FROM wordfence_intelligence_index_metadata
+          WHERE singleton = 1`,
+      )
+      .all(),
+  );
+  if (metadata.length !== 1 || metadata[0]?.schema_version !== 1) {
+    throw new SnapshotConflictError();
+  }
+}
+
+function productionStorageFormat(): ProductionStorageFormat {
+  return productionStorageFormatSchema.parse({
+    kind: "wordfence-intelligence-production-storage-format",
+    schemaVersion: 1,
+    refreshAttemptLeaseSeconds: PRODUCTION_REFRESH_ATTEMPT_LEASE_SECONDS,
+  });
+}
+
+function requireModernProductionStorage(
+  database: Database.Database,
+): ProductionStorageFormat {
+  requireWordfenceSchema(database, true);
+  const markerRows = productionStorageRowSchema.array().parse(
+    database
+      .prepare(
+        `SELECT format_json
+           FROM wordfence_intelligence_production_storage
+          WHERE singleton = 1`,
+      )
+      .all(),
+  );
+  if (markerRows.length !== 1) {
+    throw new SnapshotConflictError();
+  }
+  const marker = productionStorageFormatSchema.parse(
+    JSON.parse(markerRows[0]?.format_json ?? ""),
+  );
+  if (canonicalJson(marker) !== markerRows[0]?.format_json) {
+    throw new SnapshotConflictError();
+  }
+  const orders = refreshOrderRowSchema.array().parse(
+    database
+      .prepare(
+        `SELECT publication_sequence, latest_completed_sequence
+           FROM wordfence_intelligence_refresh_order
+          WHERE singleton = 1`,
+      )
+      .all(),
+  );
+  const allocators = sqliteSequenceRowSchema.array().parse(
+    database
+      .prepare(
+        `SELECT seq
+           FROM sqlite_sequence
+          WHERE name = 'wordfence_intelligence_refresh_attempts'`,
+      )
+      .all(),
+  );
+  if (orders.length !== 1 || allocators.length !== 1) {
+    throw new SnapshotConflictError();
+  }
+  return marker;
+}
+
+function requireLegacyProductionStorage(database: Database.Database): void {
+  requireWordfenceSchema(database, false);
+  const orderCount = z.strictObject({ count: z.number().int() }).parse(
+    database
+      .prepare(
+        `SELECT COUNT(*) AS count
+           FROM wordfence_intelligence_refresh_order`,
+      )
+      .get(),
+  ).count;
+  const attemptCount = z.strictObject({ count: z.number().int() }).parse(
+    database
+      .prepare(
+        `SELECT COUNT(*) AS count
+           FROM wordfence_intelligence_refresh_attempts`,
+      )
+      .get(),
+  ).count;
+  const allocatorCount = z.strictObject({ count: z.number().int() }).parse(
+    database
+      .prepare(
+        `SELECT COUNT(*) AS count
+           FROM sqlite_sequence
+          WHERE name = 'wordfence_intelligence_refresh_attempts'`,
+      )
+      .get(),
+  ).count;
+  if (orderCount !== 0 || attemptCount !== 0 || allocatorCount !== 0) {
+    throw new SnapshotConflictError();
+  }
+}
+
+function initializeProductionStorage(database: Database.Database): void {
+  const transaction = database.transaction(() => {
+    database.exec(schemaCreationSql(true));
+    initializeRecordSetStorage(database);
+    database
+      .prepare(
+        `INSERT INTO wordfence_intelligence_refresh_order (
+           singleton, publication_sequence, latest_completed_sequence
+         ) VALUES (1, 0, 0)`,
+      )
+      .run();
+    database
+      .prepare(
+        `INSERT INTO sqlite_sequence (name, seq)
+         VALUES ('wordfence_intelligence_refresh_attempts', 0)`,
+      )
+      .run();
+    database
+      .prepare(
+        `INSERT INTO wordfence_intelligence_production_storage (
+           singleton, format_json
+         ) VALUES (1, ?)`,
+      )
+      .run(canonicalJson(productionStorageFormat()));
+  });
+  transaction.immediate();
+}
+
+function migrateLegacyProductionStorage(database: Database.Database): void {
+  const transaction = database.transaction(() => {
+    requireLegacyProductionStorage(database);
+    database.exec(
+      productionStorageTableDefinition.replace(
+        "CREATE TABLE ",
+        "CREATE TABLE IF NOT EXISTS ",
+      ),
+    );
+    database
+      .prepare(
+        `INSERT INTO wordfence_intelligence_refresh_order (
+           singleton, publication_sequence, latest_completed_sequence
+         ) VALUES (1, 0, 0)`,
+      )
+      .run();
+    database
+      .prepare(
+        `INSERT INTO sqlite_sequence (name, seq)
+         VALUES ('wordfence_intelligence_refresh_attempts', 0)`,
+      )
+      .run();
+    database
+      .prepare(
+        `INSERT INTO wordfence_intelligence_production_storage (
+           singleton, format_json
+         ) VALUES (1, ?)`,
+      )
+      .run(canonicalJson(productionStorageFormat()));
+  });
+  transaction.immediate();
+}
+
 function initializeRecordSetStorage(database: Database.Database): void {
   const transaction = database.transaction(() => {
     const metadata = indexMetadataRowSchema.optional().parse(
@@ -607,6 +866,11 @@ interface ProductionIndexIdentity {
   readonly directory: HostPrivateFileIdentity;
   readonly shm: HostPrivateFileIdentity | undefined;
   readonly wal: HostPrivateFileIdentity | undefined;
+}
+
+interface PreparedProductionStorage {
+  readonly indexIdentity: ProductionIndexIdentity;
+  readonly mode: "new-production" | "legacy-production" | "modern-production";
 }
 
 function requireHostPrivateDirectoryMetadata(metadata: Stats): void {
@@ -778,6 +1042,52 @@ async function requireOwnedRealDirectory(path: string): Promise<void> {
   }
 }
 
+async function inspectPinnedSqlite<T>(
+  path: string,
+  inspection: (database: Database.Database) => T,
+): Promise<T> {
+  const handle = await open(
+    path,
+    fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK,
+  );
+  try {
+    const before = await handle.stat();
+    if (!before.isFile() || !isOwnedByCurrentUser(before.uid)) {
+      throw new HostPrivateStorageError();
+    }
+    let database: Database.Database | undefined;
+    try {
+      database = new Database(`/proc/self/fd/${handle.fd}`, {
+        fileMustExist: true,
+        readonly: true,
+      });
+      const result = inspection(database);
+      const after = await handle.stat();
+      if (
+        !after.isFile() ||
+        !isOwnedByCurrentUser(after.uid) ||
+        after.dev !== before.dev ||
+        after.ino !== before.ino
+      ) {
+        throw new HostPrivateStorageError();
+      }
+      return result;
+    } catch (error) {
+      if (
+        error instanceof SnapshotConflictError ||
+        error instanceof HostPrivateStorageError
+      ) {
+        throw error;
+      }
+      throw new SnapshotConflictError();
+    } finally {
+      database?.close();
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
 async function prepareHostPrivateSqliteStorage(path: string): Promise<void> {
   if (!isAbsolute(path)) {
     throw new HostPrivateStorageError();
@@ -946,7 +1256,7 @@ async function prepareProductionStorage(
   databasePath: string,
   artifactDirectory: string,
   adoptLegacyStorage: boolean,
-): Promise<ProductionIndexIdentity> {
+): Promise<PreparedProductionStorage> {
   const rawDirectory = join(artifactDirectory, "wordfence-intelligence-v3");
   const databaseExists = await selectedPathExists(databasePath);
   const walExists = await selectedPathExists(`${databasePath}-wal`);
@@ -966,18 +1276,40 @@ async function prepareProductionStorage(
     } else {
       await secureHostPrivateDirectory(rawDirectory);
     }
-    return productionIndexIdentity(databasePath, false);
+    return {
+      indexIdentity: await productionIndexIdentity(databasePath, false),
+      mode: "new-production",
+    };
   }
 
   if (adoptLegacyStorage) {
-    if (walExists || shmExists || rawDirectoryExists) {
+    if (walExists || shmExists) {
       throw new HostPrivateStorageError();
     }
     await requireOwnedRealDirectory(dirname(databasePath));
     await requireOwnedRegularFile(databasePath);
+    await inspectPinnedSqlite(databasePath, (database) => {
+      if (database.pragma("journal_mode", { simple: true }) !== "delete") {
+        throw new SnapshotConflictError();
+      }
+      requireLegacyProductionStorage(database);
+    });
+    if (rawDirectoryExists) {
+      await requireHostPrivateDirectorySelection(rawDirectory);
+      if ((await readdir(rawDirectory)).length !== 0) {
+        throw new SnapshotConflictError();
+      }
+    }
     await prepareHostPrivateSqliteStorage(databasePath);
-    await secureHostPrivateDirectory(rawDirectory);
-    return productionIndexIdentity(databasePath, false);
+    if (rawDirectoryExists) {
+      await requireHostPrivateDirectory(rawDirectory);
+    } else {
+      await secureHostPrivateDirectory(rawDirectory);
+    }
+    return {
+      indexIdentity: await productionIndexIdentity(databasePath, false),
+      mode: "legacy-production",
+    };
   }
 
   if (!rawDirectoryExists) {
@@ -988,7 +1320,13 @@ async function prepareProductionStorage(
   await hostPrivateRegularFileSelection(`${databasePath}-wal`, true);
   await hostPrivateRegularFileSelection(`${databasePath}-shm`, true);
   await requireHostPrivateDirectorySelection(rawDirectory);
-  return productionIndexIdentity(databasePath, false);
+  await inspectPinnedSqlite(databasePath, (database) => {
+    requireModernProductionStorage(database);
+  });
+  return {
+    indexIdentity: await productionIndexIdentity(databasePath, false),
+    mode: "modern-production",
+  };
 }
 
 async function requireProductionStorage(
@@ -1690,6 +2028,9 @@ export function createWordfenceIntelligenceV3FetchAdapter(
   return new FetchWordfenceIntelligenceV3Adapter(options);
 }
 
+type WordfenceStorageOpenMode =
+  "local" | "new-production" | "legacy-production" | "modern-production";
+
 class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   readonly #database: Database.Database;
   readonly #artifactDirectory: string;
@@ -1701,10 +2042,11 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     | undefined;
   readonly #clock: () => Date;
   readonly #productionComposition: boolean;
+  readonly #productionStorageFormat: ProductionStorageFormat | undefined;
 
   constructor(
     options: OpenWordfenceIntelligenceOptions,
-    productionComposition = false,
+    storageOpenMode: WordfenceStorageOpenMode = "local",
   ) {
     this.#artifactDirectory = options.artifactDirectory;
     this.#adapter = options.adapter;
@@ -1713,63 +2055,34 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     this.#knownRecordAuthorizationProvider =
       options.knownRecordAuthorizationProvider;
     this.#clock = options.clock ?? (() => new Date());
-    this.#productionComposition = productionComposition;
+    this.#productionComposition = storageOpenMode !== "local";
     const database = new Database(options.databasePath);
+    let productionFormat: ProductionStorageFormat | undefined;
     try {
-      database.pragma("journal_mode = WAL");
       database.pragma("busy_timeout = 5000");
-      database.exec(`
-        CREATE TABLE IF NOT EXISTS wordfence_intelligence_snapshots (
-          snapshot_digest TEXT PRIMARY KEY,
-          snapshot_id TEXT NOT NULL UNIQUE,
-          snapshot_json TEXT NOT NULL
-        ) STRICT;
-        CREATE TABLE IF NOT EXISTS wordfence_intelligence_records (
-          snapshot_digest TEXT NOT NULL,
-          plugin_slug TEXT NOT NULL,
-          record_id TEXT NOT NULL,
-          record_json TEXT NOT NULL,
-          PRIMARY KEY (snapshot_digest, plugin_slug, record_id)
-        ) STRICT;
-        CREATE TABLE IF NOT EXISTS wordfence_intelligence_current (
-          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-          snapshot_digest TEXT NOT NULL
-        ) STRICT;
-        CREATE TABLE IF NOT EXISTS wordfence_intelligence_refresh_state (
-          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-          state_json TEXT NOT NULL
-        ) STRICT;
-        CREATE TABLE IF NOT EXISTS wordfence_intelligence_refresh_attempts (
-          sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-          attempted_at TEXT NOT NULL,
-          current_snapshot_digest TEXT
-        ) STRICT;
-        CREATE TABLE IF NOT EXISTS wordfence_intelligence_refresh_order (
-          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-          publication_sequence INTEGER NOT NULL
-            CHECK (publication_sequence >= 0),
-          latest_completed_sequence INTEGER NOT NULL
-            CHECK (latest_completed_sequence >= publication_sequence)
-        ) STRICT;
-        CREATE TABLE IF NOT EXISTS wordfence_intelligence_record_set_manifests (
-          snapshot_digest TEXT PRIMARY KEY,
-          manifest_json TEXT NOT NULL
-        ) STRICT;
-        CREATE TABLE IF NOT EXISTS wordfence_intelligence_legacy_record_sets (
-          snapshot_digest TEXT PRIMARY KEY,
-          legacy_json TEXT NOT NULL
-        ) STRICT;
-        CREATE TABLE IF NOT EXISTS wordfence_intelligence_index_metadata (
-          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-          schema_version INTEGER NOT NULL
-        ) STRICT;
-      `);
-      initializeRecordSetStorage(database);
+      if (storageOpenMode === "local") {
+        database.pragma("journal_mode = WAL");
+        database.exec(schemaCreationSql(false));
+        initializeRecordSetStorage(database);
+      } else if (storageOpenMode === "new-production") {
+        initializeProductionStorage(database);
+        productionFormat = productionStorageFormat();
+      } else if (storageOpenMode === "legacy-production") {
+        migrateLegacyProductionStorage(database);
+        productionFormat = productionStorageFormat();
+      } else {
+        productionFormat = requireModernProductionStorage(database);
+      }
+      if (storageOpenMode !== "local") {
+        database.pragma("journal_mode = WAL");
+        database.exec("BEGIN IMMEDIATE; COMMIT");
+      }
     } catch (error) {
       database.close();
       throw error;
     }
     this.#database = database;
+    this.#productionStorageFormat = productionFormat;
   }
 
   close(): void {
@@ -2011,6 +2324,14 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     request: WordfenceIntelligenceInspectionRequest,
   ): WordfenceIntelligenceResult {
     const result = this.#inspectSnapshot(request);
+    if (result.status === "current" || result.status === "stale") {
+      if (
+        this.#validatedRecordSet(result.snapshot, result.snapshotRef).kind !==
+        "manifest-v1"
+      ) {
+        throw new SnapshotConflictError();
+      }
+    }
     const currentReference = this.#currentReference();
     if (
       request.snapshotRef !== undefined &&
@@ -2018,9 +2339,6 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
         request.snapshotRef.id !== currentReference.id ||
         request.snapshotRef.digest !== currentReference.digest)
     ) {
-      if (result.status === "current" || result.status === "stale") {
-        this.#validatedRecordSet(result.snapshot, result.snapshotRef);
-      }
       return result;
     }
     this.#requireProductionRefreshBindings(currentReference?.digest);
@@ -2119,6 +2437,9 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       return;
     }
     const snapshot = this.#readSnapshot(reference);
+    if (this.#validatedRecordSet(snapshot, reference).kind !== "manifest-v1") {
+      throw new SnapshotConflictError();
+    }
     await verifyStoredArtifact(directory, snapshot.source.contentDigest);
   }
 
@@ -2420,7 +2741,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   }
 
   #recordRefreshStart():
-    ProductionRefreshAttemptToken | WordfenceIntelligenceFailure | undefined {
+    ProductionRefreshAttemptToken | WordfenceIntelligenceResult | undefined {
     if (!this.#productionComposition) {
       return undefined;
     }
@@ -2428,8 +2749,81 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       const transaction = this.#database.transaction(() => {
         const currentSnapshotDigest = this.#currentReference()?.digest;
         this.#requireProductionRefreshBindings(currentSnapshotDigest);
-        this.#ensureRefreshOrder(currentSnapshotDigest);
         const attemptedAt = this.#clock().toISOString();
+        const format = this.#productionStorageFormat;
+        if (format === undefined) {
+          throw new SnapshotConflictError();
+        }
+        const order = this.#requireRefreshOrder();
+        const activeAttempts = refreshAttemptRowSchema.array().parse(
+          this.#database
+            .prepare(
+              `SELECT sequence, attempted_at, current_snapshot_digest
+                 FROM wordfence_intelligence_refresh_attempts
+                ORDER BY sequence`,
+            )
+            .all(),
+        );
+        const attemptedAtMillis = Date.parse(attemptedAt);
+        const leaseMillis = format.refreshAttemptLeaseSeconds * 1_000;
+        if (
+          activeAttempts.some(
+            (attempt) =>
+              Date.parse(attempt.attempted_at) + leaseMillis >
+              attemptedAtMillis,
+          )
+        ) {
+          return this.#productionProjection({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          });
+        }
+        const recoveredAttempt = activeAttempts.at(-1);
+        if (recoveredAttempt !== undefined) {
+          const deletion = this.#database
+            .prepare("DELETE FROM wordfence_intelligence_refresh_attempts")
+            .run();
+          if (deletion.changes !== activeAttempts.length) {
+            throw new SnapshotConflictError();
+          }
+          if (recoveredAttempt.sequence > order.publication_sequence) {
+            const state = productionSequencedRefreshStateSchema.parse({
+              kind: "wordfence-intelligence-production-refresh-state",
+              schemaVersion: 2,
+              attemptSequence: recoveredAttempt.sequence,
+              ...(currentSnapshotDigest === undefined
+                ? {}
+                : { currentSnapshotDigest }),
+              latestRefresh: {
+                kind: "wordfence-intelligence-refresh-attempt",
+                schemaVersion: 1,
+                attemptedAt: recoveredAttempt.attempted_at,
+                result: failure("storage-failure"),
+              },
+            });
+            this.#database
+              .prepare(
+                `INSERT INTO wordfence_intelligence_refresh_state (
+                   singleton, state_json
+                 ) VALUES (1, ?)
+                 ON CONFLICT(singleton) DO UPDATE SET
+                   state_json = excluded.state_json`,
+              )
+              .run(canonicalJson(state));
+          }
+          this.#database
+            .prepare(
+              `UPDATE wordfence_intelligence_refresh_order
+                  SET latest_completed_sequence = ?
+                WHERE singleton = 1`,
+            )
+            .run(
+              Math.max(
+                order.latest_completed_sequence,
+                recoveredAttempt.sequence,
+              ),
+            );
+        }
         const insertion = this.#database
           .prepare(
             `INSERT INTO wordfence_intelligence_refresh_attempts (
@@ -2591,56 +2985,28 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     );
   }
 
-  #ensureRefreshOrder(
-    currentSnapshotDigest: string | undefined,
-  ): z.infer<typeof refreshOrderRowSchema> {
-    const existing = this.#refreshOrder();
-    if (existing !== undefined) {
-      return existing;
+  #requireRefreshOrder(): z.infer<typeof refreshOrderRowSchema> {
+    const order = this.#refreshOrder();
+    if (order === undefined) {
+      throw new SnapshotConflictError();
     }
-    const activeAttempts = refreshAttemptRowSchema.array().parse(
-      this.#database
-        .prepare(
-          `SELECT sequence, attempted_at, current_snapshot_digest
-             FROM wordfence_intelligence_refresh_attempts
-            ORDER BY sequence`,
-        )
-        .all(),
-    );
-    const allocatedSequence = this.#allocatedRefreshSequence();
-    const firstActiveSequence = activeAttempts[0]?.sequence;
-    const publicationSequence =
-      currentSnapshotDigest === undefined
-        ? 0
-        : firstActiveSequence === undefined
-          ? allocatedSequence
-          : Math.max(0, firstActiveSequence - 1);
-    const order = refreshOrderRowSchema.parse({
-      publication_sequence: publicationSequence,
-      latest_completed_sequence: publicationSequence,
-    });
-    this.#database
-      .prepare(
-        `INSERT INTO wordfence_intelligence_refresh_order (
-           singleton, publication_sequence, latest_completed_sequence
-         ) VALUES (1, ?, ?)`,
-      )
-      .run(order.publication_sequence, order.latest_completed_sequence);
     return order;
   }
 
   #allocatedRefreshSequence(): number {
-    return (
-      sqliteSequenceRowSchema.optional().parse(
-        this.#database
-          .prepare(
-            `SELECT seq
-               FROM sqlite_sequence
-              WHERE name = 'wordfence_intelligence_refresh_attempts'`,
-          )
-          .get(),
-      )?.seq ?? 0
+    const allocator = sqliteSequenceRowSchema.optional().parse(
+      this.#database
+        .prepare(
+          `SELECT seq
+             FROM sqlite_sequence
+            WHERE name = 'wordfence_intelligence_refresh_attempts'`,
+        )
+        .get(),
     );
+    if (allocator === undefined) {
+      throw new SnapshotConflictError();
+    }
+    return allocator.seq;
   }
 
   #requireActiveAttempt(attempt: ProductionRefreshAttemptToken): void {
@@ -2688,16 +3054,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     const allocatedSequence = this.#allocatedRefreshSequence();
     const order = this.#refreshOrder();
     if (order === undefined) {
-      if (
-        state?.schemaVersion === 2 ||
-        attempts.length > 0 ||
-        (allocatedSequence > 0 &&
-          currentSnapshotDigest === undefined &&
-          state === undefined)
-      ) {
-        throw new SnapshotConflictError();
-      }
-      return;
+      throw new SnapshotConflictError();
     }
     const activeSequence = attempts.at(-1)?.sequence ?? 0;
     const newerAttempts = attempts.filter(
@@ -3002,27 +3359,27 @@ export function openWordfenceIntelligenceRefresh(
         throw new HostPrivateStorageError();
       }
       if (intelligence === undefined) {
-        const preparedIndexIdentity = await prepareProductionStorage(
+        const preparedStorage = await prepareProductionStorage(
           intelligenceOptions.databasePath,
           intelligenceOptions.artifactDirectory,
           legacyStorageAdoption !== undefined,
         );
         const candidate = new SqliteWordfenceIntelligence(
           intelligenceOptions,
-          true,
+          preparedStorage.mode,
         );
         let openedIndexIdentity: ProductionIndexIdentity;
         try {
           await secureCreatedSqliteSidecars(
             intelligenceOptions.databasePath,
-            preparedIndexIdentity,
+            preparedStorage.indexIdentity,
           );
           openedIndexIdentity = await productionIndexIdentity(
             intelligenceOptions.databasePath,
             true,
           );
           requirePreparedIndexIdentity(
-            preparedIndexIdentity,
+            preparedStorage.indexIdentity,
             openedIndexIdentity,
           );
         } catch (error) {
