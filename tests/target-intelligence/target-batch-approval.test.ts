@@ -157,7 +157,7 @@ describe("TargetBatchApproval", () => {
   it("inspects a legacy v1 Batch through a read-only reason-code projection", async () => {
     const directory = await mkdtemp(join(tmpdir(), "target-batch-legacy-"));
     try {
-      const fixture = await createLegacyApprovedTargetBatchFixture(directory);
+      const fixture = await createLegacyApprovedTargetBatchFixture();
       const approval = openTargetBatchApproval({
         storageDirectory: directory,
         selectionResolver: {
@@ -166,14 +166,15 @@ describe("TargetBatchApproval", () => {
           },
         },
       });
+      const migratedRef = await approval.migrateLegacyBatch(fixture.batch);
 
-      const projected = await approval.inspect(fixture.ref);
+      const projected = await approval.inspect(migratedRef);
       expect(projected).toMatchObject({
         kind: "approved-target-batch-legacy-projection",
         schemaVersion: 1,
         sourceArtifact: {
-          id: fixture.ref.id,
-          digest: fixture.ref.digest,
+          id: migratedRef.id,
+          digest: migratedRef.digest,
         },
         approvedTargets: [
           {
@@ -193,7 +194,7 @@ describe("TargetBatchApproval", () => {
           },
         },
       });
-      await expect(restarted.inspect(fixture.ref)).resolves.toEqual(projected);
+      await expect(restarted.inspect(migratedRef)).resolves.toEqual(projected);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

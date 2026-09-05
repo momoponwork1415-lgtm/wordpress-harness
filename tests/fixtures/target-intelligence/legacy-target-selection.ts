@@ -1,10 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-
-import {
-  canonicalJson,
-  sha256Digest,
-} from "../../../src/target-intelligence/acquisition/canonical-json.js";
+import { sha256Digest } from "../../../src/target-intelligence/acquisition/canonical-json.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 
@@ -147,9 +141,7 @@ export async function createLegacyTargetSelectionFixture(
   };
 }
 
-export async function createLegacyApprovedTargetBatchFixture(
-  storageDirectory: string,
-) {
+export async function createLegacyApprovedTargetBatchFixture() {
   const selection = await createLegacyTargetSelectionFixture();
   const decision = {
     candidateId: selection.receipt.candidateId,
@@ -205,24 +197,7 @@ export async function createLegacyApprovedTargetBatchFixture(
     id: `approved-batch:${batchDigest.slice(7, 31)}`,
     digest: batchDigest,
   };
-  await mkdir(join(storageDirectory, "approved-target-batches", "artifacts"), {
-    recursive: true,
-  });
-  await writeFile(
-    join(
-      storageDirectory,
-      "approved-target-batches",
-      "artifacts",
-      `${batchDigest.slice(7)}.json`,
-    ),
-    canonicalJson(batch),
-  );
   return {
-    ref: {
-      kind: "approved-target-batch-ref" as const,
-      schemaVersion: 1 as const,
-      id: batch.id,
-      digest: batch.digest,
-    },
+    batch,
   };
 }

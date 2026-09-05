@@ -96,8 +96,8 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 ### Target Batch Approval
 
 - **Purpose:** 一つのSelection Attemptの有限なSelection Receipt集合について、人間の承認、除外、順序変更、operator nominationを一回の判断へまとめ、versioned Approved Target Batchにする。
-- **Interface:** `TargetBatchApproval.approve / inspect`（`TargetSelectionApprovalResolver` portを要求）
-- **Invariants:** Target Selectionが検証したdurable Attempt、Selection-owned verification ref / Receipt、Selection Policy、Opus Model Profile、Target Observation、programme / disclosure freshness、Campaign Policy、Batch Budget、execution window、human identity / decision time / 列挙理由を固定する。手動追加はApproval requestのnominationとしてだけ表現し、Selection resolverのhard gateとdurable receiptを必須にする。caller生成Receiptや名称変更をauthorityにしない。v1 Batchは自由記述を列挙codeへ縮退した読取専用projectionにし、v2 writerと混在させない。承認はResearch、Campaign、外部通信を開始しない。
+- **Interface:** `TargetBatchApproval.migrateLegacyBatch / approve / inspect`（`TargetSelectionApprovalResolver` portを要求）
+- **Invariants:** Target Selectionが検証したdurable Attempt、Selection-owned verification ref / Receipt、Selection Policy、Opus Model Profile、Target Observation、programme / disclosure freshness、Campaign Policy、Batch Budget、execution window、human identity / decision time / 列挙理由を固定する。手動追加はApproval requestのnominationとしてだけ表現し、Selection resolverのhard gateとdurable receiptを必須にする。caller生成Receiptや名称変更をauthorityにしない。v1 Batchは公開migration seamで一度だけ取込み、自由記述を列挙codeへ縮退した読取専用projectionにし、v2 writerと混在させない。承認はResearch、Campaign、外部通信を開始しない。
 - **Failure semantics:** resolverがdurable Attemptを検証できない場合は`selection-attempt-unverified`。resolver結果とAttempt / policy / profile binding、decision集合、approved orderの不一致を拒否する。hard gate不通過は人間でもoverrideできず、Batch Budget超過を拒否する。同じbatch key / revisionの異なるinputは`revision-conflict`、変更は開始前の新revision + `supersedes`だけを許可し、開始後は`execution-started`にする。
 - **Behavior Test:** [Target Batch Approval](../tests/target-intelligence/target-batch-approval.test.ts)
 - **Status:** v2 content-addressed Batch、v1 read-only migration projection、revision index、approval / exclusion / reorder / approval-time nomination、idempotency、restart replay、supersedeのBehavior Testを実装。

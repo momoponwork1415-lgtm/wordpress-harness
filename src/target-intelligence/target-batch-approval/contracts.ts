@@ -264,6 +264,9 @@ export class TargetBatchApprovalError extends Error {
 }
 
 export interface TargetBatchApproval {
+  migrateLegacyBatch(
+    artifact: unknown,
+  ): Promise<ReadableApprovedTargetBatchRef>;
   approve(request: TargetBatchApprovalRequest): Promise<ApprovedTargetBatchRef>;
   inspect(
     ref: ReadableApprovedTargetBatchRef,

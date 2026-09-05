@@ -8,6 +8,7 @@ import {
   approvedTargetBatchRefSchema,
   approvedTargetBatchSchema,
   legacyApprovedTargetBatchProjectionSchema,
+  legacyApprovedTargetBatchRefSchema,
   legacyApprovedTargetBatchSchema,
   readableApprovedTargetBatchRefSchema,
   targetBatchApprovalRequestSchema,
@@ -125,6 +126,36 @@ class FileTargetBatchApproval implements TargetBatchApproval {
     this.#storageDirectory = options.storageDirectory;
     this.#selectionResolver = options.selectionResolver;
     this.#clock = options.clock ?? (() => new Date());
+  }
+
+  async migrateLegacyBatch(
+    artifactValue: unknown,
+  ): Promise<ReadableApprovedTargetBatchRef> {
+    const batch = legacyApprovedTargetBatchSchema.parse(artifactValue);
+    verifyLegacyBatch(batch);
+    const ref = legacyApprovedTargetBatchRefSchema.parse({
+      kind: "approved-target-batch-ref",
+      schemaVersion: 1,
+      id: batch.id,
+      digest: batch.digest,
+    });
+    const directory = join(
+      this.#storageDirectory,
+      "approved-target-batches",
+      "artifacts",
+    );
+    await mkdir(directory, { recursive: true });
+    const path = join(directory, `${batch.digest.slice(7)}.json`);
+    const bytes = Buffer.from(canonicalJson(batch), "utf8");
+    try {
+      await writeFile(path, bytes, { flag: "wx" });
+    } catch (error) {
+      if (!hasErrorCode(error, "EEXIST")) throw error;
+      if (!(await readFile(path)).equals(bytes)) {
+        throw new Error("Legacy Approved Target Batch migration conflict");
+      }
+    }
+    return ref;
   }
 
   async approve(
