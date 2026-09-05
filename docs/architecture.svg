@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1080" viewBox="0 0 1800 1080" role="img" aria-labelledby="title desc">
   <title id="title">WordPress Semantic Security Research Harness whole-system architecture</title>
-  <desc id="desc">Target Intelligence, Research, and Human OS connected by versioned handoffs, with model isolation, durable records, source-only validation, human verification, and external action authorization.</desc>
+  <desc id="desc">Autonomous target selection, human batch approval, unattended Opus research, source validation, AI reproduction, mandatory human reproduction, report approval, and human submission across three ownership contexts.</desc>
   <defs>
     <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
       <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#172033" flood-opacity="0.12" />
@@ -33,9 +33,9 @@
 
   <rect width="1800" height="1080" fill="#ffffff" />
   <text x="42" y="49" class="title">WordPress Semantic Security Research Harness</text>
-  <text x="42" y="77" class="subtitle">One system · three ownership contexts · two human-gated boundaries</text>
+  <text x="42" y="77" class="subtitle">Autonomous selection · unattended research · human-approved report · human submission</text>
   <rect x="40" y="100" width="1720" height="58" rx="12" fill="#172033" />
-  <text x="900" y="135" text-anchor="middle" class="mission">North Star: semantic discovery → source screen → AI reproduction → mandatory fresh human reproduction</text>
+  <text x="900" y="135" text-anchor="middle" class="mission">Operating loop: select → approve batch → discover broken semantics → reproduce → understand → human verify → approve report → human submit</text>
 
   <g filter="url(#shadow)">
     <rect x="40" y="194" width="330" height="580" rx="16" fill="#f8fbff" stroke="#4d86c6" stroke-width="2" />
@@ -56,29 +56,34 @@
 
   <!-- Target Intelligence -->
   <g>
-    <rect x="66" y="270" width="278" height="66" rx="11" fill="white" stroke="#8c98aa" />
-    <text x="205" y="295" text-anchor="middle" class="module-title">Target Sources</text>
-    <text x="205" y="317" text-anchor="middle" class="module-sub">WordPress.org / approved premium source</text>
+    <rect x="66" y="260" width="278" height="56" rx="11" fill="white" stroke="#8c98aa" />
+    <text x="205" y="283" text-anchor="middle" class="module-title">Ecosystem Observation</text>
+    <text x="205" y="302" text-anchor="middle" class="module-sub">WordPress.org · programmes · disclosure routes</text>
 
-    <rect x="66" y="368" width="278" height="66" rx="11" fill="white" stroke="#4d86c6" stroke-width="1.6" />
-    <text x="205" y="393" text-anchor="middle" class="module-title" fill="#173b64">Eligibility &amp; Selection</text>
-    <text x="205" y="415" text-anchor="middle" class="module-sub">oracle separation · ranking</text>
+    <rect x="66" y="338" width="278" height="58" rx="11" fill="white" stroke="#4d86c6" stroke-width="1.6" />
+    <text x="205" y="361" text-anchor="middle" class="module-title" fill="#173b64">Autonomous Target Selection</text>
+    <text x="205" y="381" text-anchor="middle" class="module-sub">oracle-free reasons · diverse Candidate Batch</text>
 
-    <rect x="66" y="466" width="278" height="70" rx="11" fill="white" stroke="#4d86c6" stroke-width="1.6" />
-    <text x="205" y="492" text-anchor="middle" class="module-title" fill="#173b64">Acquisition &amp; Canonicalization</text>
-    <text x="205" y="514" text-anchor="middle" class="module-sub">identity · version · immutable files</text>
+    <rect x="66" y="418" width="278" height="58" rx="11" fill="#eaf3ff" stroke="#4d86c6" stroke-width="1.8" />
+    <text x="205" y="441" text-anchor="middle" class="module-title" fill="#173b64">Human Batch Approval</text>
+    <text x="205" y="461" text-anchor="middle" class="module-sub">approve · exclude · reorder · nominate</text>
 
-    <ellipse cx="132" cy="630" rx="64" ry="13" fill="#d7e9ff" stroke="#4d86c6" />
-    <rect x="68" y="630" width="128" height="55" fill="#d7e9ff" stroke="#4d86c6" />
-    <ellipse cx="132" cy="685" rx="64" ry="13" fill="#d7e9ff" stroke="#4d86c6" />
-    <text x="132" y="652" text-anchor="middle" class="module-title" font-size="12">Target Intelligence</text>
-    <text x="132" y="670" text-anchor="middle" class="module-sub">Record</text>
+    <rect x="66" y="498" width="278" height="72" rx="11" fill="white" stroke="#4d86c6" stroke-width="1.6" />
+    <text x="205" y="523" text-anchor="middle" class="module-title" fill="#173b64">Freshness &amp; Campaign Dispatch</text>
+    <text x="205" y="544" text-anchor="middle" class="module-sub">durable queue · target isolation</text>
+    <text x="205" y="560" text-anchor="middle" class="small">many waiting · about 5 active</text>
 
-    <path d="M226 612h104v83H226z" fill="#fff4cc" stroke="#c79a20" stroke-width="1.5" />
-    <path d="M306 612l24 24h-24z" fill="#f0d988" stroke="#c79a20" />
-    <text x="278" y="648" text-anchor="middle" class="module-title" font-size="12">Target Intake</text>
-    <text x="278" y="667" text-anchor="middle" class="module-sub">Packet</text>
-    <text x="278" y="683" text-anchor="middle" class="small">versioned handoff</text>
+    <ellipse cx="132" cy="644" rx="64" ry="13" fill="#d7e9ff" stroke="#4d86c6" />
+    <rect x="68" y="644" width="128" height="55" fill="#d7e9ff" stroke="#4d86c6" />
+    <ellipse cx="132" cy="699" rx="64" ry="13" fill="#d7e9ff" stroke="#4d86c6" />
+    <text x="132" y="666" text-anchor="middle" class="module-title" font-size="12">History / Receipts</text>
+    <text x="132" y="684" text-anchor="middle" class="module-sub">resume · dedupe</text>
+
+    <path d="M226 626h104v83H226z" fill="#fff4cc" stroke="#c79a20" stroke-width="1.5" />
+    <path d="M306 626l24 24h-24z" fill="#f0d988" stroke="#c79a20" />
+    <text x="278" y="662" text-anchor="middle" class="module-title" font-size="12">Target Intake</text>
+    <text x="278" y="681" text-anchor="middle" class="module-sub">Packet</text>
+    <text x="278" y="697" text-anchor="middle" class="small">versioned handoff</text>
   </g>
 
   <!-- Research modules -->
@@ -101,7 +106,7 @@
 
     <rect x="676" y="423" width="190" height="70" rx="11" fill="#f7f4ff" stroke="#7457c5" stroke-width="1.6" />
     <text x="771" y="449" text-anchor="middle" class="module-title" fill="#3f2d7d">Model Execution</text>
-    <text x="771" y="471" text-anchor="middle" class="module-sub">provider · process · tool binding</text>
+    <text x="771" y="471" text-anchor="middle" class="module-sub">Opus capacity · process · tool binding</text>
 
     <rect x="896" y="423" width="190" height="70" rx="11" fill="#f7f4ff" stroke="#7457c5" stroke-width="1.6" />
     <text x="991" y="449" text-anchor="middle" class="module-title" fill="#3f2d7d">Read-only Source Gateway</text>
@@ -133,41 +138,49 @@
 
   <!-- Human OS -->
   <g>
-    <rect x="1416" y="270" width="318" height="66" rx="11" fill="white" stroke="#3a9567" stroke-width="1.6" />
-    <text x="1575" y="296" text-anchor="middle" class="module-title" fill="#205e42">AI Reproduction</text>
-    <text x="1575" y="318" text-anchor="middle" class="module-sub">confirmed → Triage Packet · inconclusive → Escalation</text>
+    <rect x="1416" y="258" width="318" height="58" rx="11" fill="white" stroke="#3a9567" stroke-width="1.6" />
+    <text x="1575" y="281" text-anchor="middle" class="module-title" fill="#205e42">AI Reproduction</text>
+    <text x="1575" y="301" text-anchor="middle" class="module-sub">Triage Packet · inconclusive Escalation</text>
 
-    <rect x="1416" y="368" width="318" height="74" rx="11" fill="white" stroke="#3a9567" stroke-width="1.6" />
-    <text x="1575" y="395" text-anchor="middle" class="module-title" fill="#205e42">Mandatory Human Reproduction</text>
-    <text x="1575" y="417" text-anchor="middle" class="module-sub">normal queue · separate fresh instance · same recipe</text>
+    <rect x="1416" y="338" width="318" height="58" rx="11" fill="white" stroke="#3a9567" stroke-width="1.6" />
+    <text x="1575" y="361" text-anchor="middle" class="module-title" fill="#205e42">Vulnerability Understanding</text>
+    <text x="1575" y="381" text-anchor="middle" class="module-sub">source route · impact · scenario · recipe</text>
 
-    <rect x="1416" y="474" width="150" height="66" rx="11" fill="#d8f1e3" stroke="#3a9567" stroke-width="1.6" />
-    <text x="1491" y="500" text-anchor="middle" class="module-title" fill="#205e42">Finding</text>
-    <text x="1491" y="521" text-anchor="middle" class="module-sub">human promotion only</text>
+    <rect x="1416" y="418" width="318" height="66" rx="11" fill="white" stroke="#3a9567" stroke-width="1.8" />
+    <text x="1575" y="443" text-anchor="middle" class="module-title" fill="#205e42">Mandatory Human Reproduction</text>
+    <text x="1575" y="464" text-anchor="middle" class="module-sub">separate fresh instance · same exact recipe</text>
 
-    <ellipse cx="1659" cy="480" rx="75" ry="12" fill="#d8f1e3" stroke="#3a9567" />
-    <rect x="1584" y="480" width="150" height="48" fill="#d8f1e3" stroke="#3a9567" />
-    <ellipse cx="1659" cy="528" rx="75" ry="12" fill="#d8f1e3" stroke="#3a9567" />
-    <text x="1659" y="509" text-anchor="middle" class="module-title" font-size="12" fill="#205e42">Human OS Record</text>
+    <rect x="1416" y="506" width="150" height="58" rx="11" fill="#d8f1e3" stroke="#3a9567" stroke-width="1.6" />
+    <text x="1491" y="530" text-anchor="middle" class="module-title" fill="#205e42">Finding</text>
+    <text x="1491" y="550" text-anchor="middle" class="module-sub">human promotion only</text>
 
-    <path d="M1416 580h150v80h-150z" fill="#fff4cc" stroke="#c79a20" stroke-width="1.5" />
-    <path d="M1542 580l24 24h-24z" fill="#f0d988" stroke="#c79a20" />
-    <text x="1491" y="613" text-anchor="middle" class="module-title" font-size="12" fill="#5c4610">Evidence Request</text>
-    <text x="1491" y="634" text-anchor="middle" class="module-sub">specific proof gap</text>
+    <ellipse cx="1659" cy="512" rx="75" ry="12" fill="#d8f1e3" stroke="#3a9567" />
+    <rect x="1584" y="512" width="150" height="40" fill="#d8f1e3" stroke="#3a9567" />
+    <ellipse cx="1659" cy="552" rx="75" ry="12" fill="#d8f1e3" stroke="#3a9567" />
+    <text x="1659" y="538" text-anchor="middle" class="module-title" font-size="12" fill="#205e42">Human OS Record</text>
 
-    <rect x="1584" y="580" width="150" height="80" rx="11" fill="white" stroke="#3a9567" stroke-width="1.6" />
-    <text x="1659" y="608" text-anchor="middle" class="module-title" font-size="12" fill="#205e42">External Action</text>
-    <text x="1659" y="627" text-anchor="middle" class="module-title" font-size="12" fill="#205e42">Authorization</text>
-    <text x="1659" y="646" text-anchor="middle" class="module-sub">separate approval</text>
+    <rect x="1416" y="586" width="318" height="66" rx="11" fill="#e8f7ef" stroke="#3a9567" stroke-width="1.8" />
+    <text x="1575" y="611" text-anchor="middle" class="module-title" fill="#205e42">AI Report + Human Approval</text>
+    <text x="1575" y="632" text-anchor="middle" class="module-sub">PoC · Description · programme form staging</text>
+
+    <path d="M1416 674h150v64h-150z" fill="#fff4cc" stroke="#c79a20" stroke-width="1.5" />
+    <path d="M1542 674l24 24h-24z" fill="#f0d988" stroke="#c79a20" />
+    <text x="1491" y="701" text-anchor="middle" class="module-title" font-size="12" fill="#5c4610">Evidence Request</text>
+    <text x="1491" y="721" text-anchor="middle" class="module-sub">specific proof gap</text>
+
+    <rect x="1584" y="674" width="150" height="64" rx="11" fill="white" stroke="#3a9567" stroke-width="1.6" />
+    <text x="1659" y="699" text-anchor="middle" class="module-title" font-size="12" fill="#205e42">Human Submit</text>
+    <text x="1659" y="719" text-anchor="middle" class="module-sub">explicit authorization</text>
   </g>
 
   <!-- Internal and handoff edges -->
-  <path d="M205 336v32" class="edge-blue" />
-  <path d="M205 434v32" class="edge-blue" />
-  <path d="M205 536v60H132v20" class="edge-blue" />
-  <path d="M205 536v38h73v38" class="edge-gold" />
-  <path d="M330 653h84v-348h42" class="edge-gold" />
-  <text x="375" y="639" text-anchor="middle" class="label" fill="#8a6815">versioned</text>
+  <path d="M205 316v22" class="edge-blue" />
+  <path d="M205 396v22" class="edge-blue" />
+  <path d="M205 476v22" class="edge-blue" />
+  <path d="M205 570v58H132v16" class="edge-blue" />
+  <path d="M205 570v38h73v18" class="edge-gold" />
+  <path d="M330 667h84v-362h42" class="edge-gold" />
+  <text x="375" y="653" text-anchor="middle" class="label" fill="#8a6815">versioned</text>
 
   <path d="M646 305h30" class="edge-purple" />
   <path d="M866 305h30" class="edge-purple" />
@@ -187,12 +200,13 @@
 
   <path d="M1306 625h58v-322h52" class="edge-gold" />
   <text x="1361" y="612" text-anchor="middle" class="label" fill="#8a6815">versioned</text>
-  <path d="M1575 336v32" class="edge-green" />
-  <path d="M1575 442v32h-84" class="edge-green" />
-  <path d="M1575 442v38h84" class="edge-green" />
-  <path d="M1491 540v40" class="edge-gold" />
-  <path d="M1566 507h18" class="edge-green" />
-  <path d="M1566 507h50v73" class="edge-green" />
+  <path d="M1575 316v22" class="edge-green" />
+  <path d="M1575 396v22" class="edge-green" />
+  <path d="M1575 484v22h-84" class="edge-green" />
+  <path d="M1566 535h18" class="edge-green" />
+  <path d="M1491 564v22h84" class="edge-green" />
+  <path d="M1575 652v22h84" class="edge-green" />
+  <path d="M1491 484v190" class="edge-gold" />
 
   <!-- External actors and feedback -->
   <g>
@@ -210,12 +224,13 @@
   </g>
   <path d="M771 672v86h24v84" class="edge-red" />
   <path d="M795 842v-168h-24" class="edge-red" />
-  <path d="M1659 660v111h-57v71" class="edge-green" />
-  <path d="M1491 660v120H551v-440" class="edge-gold" stroke-dasharray="8 6" />
+  <path d="M1659 738v33h-57v71" class="edge-green" />
+  <path d="M1491 738v42H551v-440" class="edge-gold" stroke-dasharray="8 6" />
   <text x="1000" y="796" text-anchor="middle" class="label" fill="#8a6815">Evidence Request → new finite research</text>
-  <path d="M125 836v-70h80V434" class="edge-muted" />
-  <path d="M158 892h1210v-487h48" class="edge-muted" />
+  <path d="M125 836v-70h80V476" class="edge-muted" />
+  <path d="M158 892h1210v-441h48" class="edge-muted" />
+  <path d="M158 904h1260v-285" class="edge-muted" />
 
   <rect x="260" y="1000" width="1280" height="54" rx="12" fill="#f2f5f9" stroke="#c4ccd8" />
-  <text x="900" y="1033" text-anchor="middle" class="ownership">Harness: process, provenance, budget, persistence · Agents: research decisions · Humans: Findings and external actions</text>
+  <text x="900" y="1033" text-anchor="middle" class="ownership">Harness: process, provenance, budget, persistence · Agents: selection and research proposals · Humans: execution approval, Findings, reports, external actions</text>
 </svg>

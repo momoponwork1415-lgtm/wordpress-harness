@@ -37,12 +37,14 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 
 - strict TypeScriptのmodular monolithとし、`Target Intelligence -> Research -> Human OS`をprimary flowとする。
 - context間はversioned handoff contractだけを渡し、別contextのstorageや内部moduleを直接参照しない。
+- Target Intelligenceはoracle-freeな事実から候補を自律選定する。人間がApproved Target Batchを作るまでResearchへdispatchせず、実行直前にversionとsourceのfreshnessを再確認する。
 - ResearchはCampaign Control、Source Understanding、Exploration、Validation、Model Execution、Research Recordの6 Moduleで構成する。
 - Model Executionはprovider/process/tool bindingを所有するが研究判断を所有しない。
 - ExplorationはFinderのfile、CWE、手順を固定しない。最大4個の独立research thesisを保ち、支持数やmodel多数決でcandidateを捨てない。
 - Surface Map、PHP Program Index、AST、Semgrep、CodeQLは補助toolであり探索空間ではない。
 - ResearchのValidationはWave BarrierとRoot Evaluation後に一つのfreshなsource-only Attemptで明白な反証だけを除き、`ready-for-runtime`をRuntime Verification Packetへ渡す。Researchは`rejected`またはFindingを作らない。
 - Human OSのAI Reproductionはfreshな隔離環境で先に再現を試みる。AI成功時のTriage Reproduction Packetを人間が別のfresh環境で必ず再実行し、成功した時だけFindingへ昇格する。
+- AIは脆弱性の理解とSubmission Draft作成を支援できるが、人間のfresh再実行、Draft承認、最後のSubmitを代行しない。
 - SQLi、XSS等のclassはReproduction Recipeのsuccess criterionを助けるが、固定Adapterへの対応をcandidate admissionの条件にしない。
 
 ## Change discipline

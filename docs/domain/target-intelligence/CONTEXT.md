@@ -1,6 +1,6 @@
 # Target Intelligence
 
-WordPress ecosystemの観測から、調査価値と取得可能性を評価し、oracle-freeなResearchへ渡せる対象を選ぶcontext。
+WordPress ecosystemを観測し、oracle-freeなTargetを自律選定して人間のBatch承認後にResearchへdispatchするcontext。
 
 ## Language
 
@@ -33,8 +33,8 @@ Oracle FactからCVE、脆弱version、CWE構成、affected function、advisory�
 _Avoid_: Selection Fact、Vulnerability profile、Research hint
 
 **Selection Policy**:
-許可範囲、取得可能性、潜在impact、到達可能な攻撃面、利用規模、鮮度、調査履歴から、重複せず多様なProspective Targetを選ぶversion固定した判断基準。programme適格性は外部提出価値を高めるが、技術的な調査価値を置き換えない。Programme Opportunity Bandまたは優先Programmeへの適格性は同等候補のtie-breakerにだけ使い、推定報奨額、特定CWEまたはsinkを主要目的やquotaにしない。同じvendor、plugin family、用途、規模、権限modelまたはintegrationだけでCandidate集合を埋めない。
-_Avoid_: Ranking formula、Research priority
+provenance、取得可能性、利用規模、更新鮮度、公開integration、調査履歴から、重複せず多様なProspective Targetを自律選定するversion固定した判断基準。hard gate、Programme Opportunity Band、Research Value Band、diversity、stable tie-breakerの順で理由を示す。sourceのsemantic解析、疑わしいsymbol、CWE、sink、既知route、推定報奨額を選定根拠にしない。
+_Avoid_: Vulnerability scan、Opaque score、Research procedure
 
 **Target Candidate**:
 Selection Policyを満たす可能性があり、取得または人間reviewの対象になったpluginとversionの組。
@@ -49,7 +49,7 @@ _Avoid_: Directory name、Plugin title、Bare slug
 _Avoid_: Out-of-scope Target、False positive、Rejected Candidate
 
 **Selection Receipt**:
-Target Candidateを採用、保留、拒否した結論を、使用したSelection Fact、policy version、理由に結び付けた記録。採用結論はCampaign開始命令ではなく、人間がTarget AcquisitionとResearch開始を承認するための入力である。Researchへ渡す場合は採用結論、policy version、oracle-freeな理由だけを公開する。
+Target IntelligenceがTarget Candidateを採用、保留、拒否した結論を、使用したSelection Fact、Selection Attempt、policy version、理由、不確実性に結び付けた記録。採用結論はCampaign開始命令ではなく、人間がCandidate Batchを判断する入力である。Researchへ渡す場合は採用結論、policy version、oracle-freeな理由だけを公開する。
 _Avoid_: Score、Approval
 
 **Candidate Pool**:
@@ -57,8 +57,20 @@ Programmeごとに分割せず、少なくとも一つのProgrammeで提出可�
 _Avoid_: Programme queue、Campaign list、Duplicate Target set
 
 **Candidate Batch**:
-Candidate Poolから同じSelection Policyで一度に人間へ提示する有限なTarget Candidate集合。Research同時実行数またはProgramme別queueではなく、batch sizeの拡大には先行batchの完走率、Human Verification負荷、外部programme outcomeを使う。
+Candidate Poolから同じSelection Policyで一度に人間へ提示する有限なTarget Candidate集合。3件pilot後は多数Targetを含められるが、Research同時実行数またはProgramme別queueではない。batch sizeの拡大には先行batchの完走率、Human Verification負荷、外部programme outcomeを使う。
 _Avoid_: Campaign Wave、Submission batch、Leaderboard quota
+
+**Approved Target Batch**:
+Candidate Batchについて、人間がCandidateごとの理由、欠損、freshness、Research Historyを確認し、承認、除外、順序変更、手動候補追加を記録したversionedな実行許可。Campaign Policy、Model Profile、Batch Budget、execution windowを固定するが、承認だけではResearchを開始しない。
+_Avoid_: Selection Receipt、Automatic approval、Campaign Queue
+
+**Target Campaign Dispatch**:
+Approved Target Batchをdurable queueへ入れ、Targetごとの実行直前freshness、取得、Target Intakeを確認してResearchへ渡すTarget Intelligenceの運行。待機件数とactive Campaign数を分け、初期pilot後は約5 active Campaignをpolicyで許可する。versionやsourceをsilentに差し替えず、systemic failureでは新規開始を止める。
+_Avoid_: Research Campaign Control、Model capacity、Automatic selection
+
+**Campaign Coverage Receipt**:
+ResearchのCampaign identity、Target binding、開始・進行・terminal時刻、`active / coverage-closed / incomplete / failed`を、Finding、Hypothesis、candidate、transcriptから切り離してTarget Intelligenceへ返すversioned handoff。Research Historyのresume、already-covered、follow-upにだけ使う。
+_Avoid_: Research Ledger、Finding outcome、Coverage proof
 
 **Target Acquisition**:
 選ばれたplugin sourceと配布metadataを、provenanceを失わずResearchへ受け渡せる状態にする行為。
@@ -97,5 +109,5 @@ _Avoid_: Manual Campaign、Guided Research、Target recommendation
 _Avoid_: Skip、Import error、Finding status
 
 **Target Intake Packet**:
-プラグイン識別子、主プラグインファイル、正規インストールディレクトリ、プラグイン配置識別子、照合済みversion、取得原本、正規化ファイル一覧、provenance、Selection Receiptを結び、Oracle Factを除外したResearch向けの不変handoff。
+プラグイン識別子、主プラグインファイル、正規インストールディレクトリ、プラグイン配置識別子、照合済みversion、取得原本、正規化ファイル一覧、provenance、Selection Receipt、Approved Target Batch参照を結び、Oracle Factを除外したResearch向けの不変handoff。
 _Avoid_: Target Snapshot、Raw intelligence

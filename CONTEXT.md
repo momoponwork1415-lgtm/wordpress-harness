@@ -16,6 +16,10 @@ _Avoid_: Scan、Run
 Campaignと各Attemptのquery、source scan / response bytes、turn、token、structured output、実行時間、Attempt数、Work Wave数、並列数のhard ceilingと、Validation専用予約を開始前に固定した制約。消費目標ではなく、ceiling到達をClosureまたはfalse positiveへ読み替えず、provider usage、token、推定金額をhigh-impact recall低下の自動最適化目標にしない。
 _Avoid_: Cost estimate、Token quota、Open-ended budget
 
+**Model Capacity Policy**:
+複数CampaignのAttemptについて、provider別と全体のactive上限、role優先度、lease、backoffをversion固定した実行制約。初期baselineはOpus単一modelとし、利用可能なquotaを有限workへ使う一方、Validationやterminal処理を新規Finderで飢餓させない。Budget Envelope、model多数決または未観測token残量の推測ではない。
+_Avoid_: Campaign budget、Token burn target、Model roster
+
 **Follow-up Campaign**:
 未完了CampaignのTarget identityと未解決gapを参照しつつ、新しい予算枠と構成版を独立に固定した新しいCampaign。元Campaignの予算延長または上書きではない。
 _Avoid_: Resume、Budget extension、Retry run
@@ -63,14 +67,6 @@ _Avoid_: Redaction only、Prompt secrecy、Benchmark tuning
 **False-positive Rejection Policy**:
 実在するsource route、attacker premise、既存防御、因果関係、実害を反証するための、版付きで検証可能な技術基準。Wordfenceの公式な共通誤検出例を主な入力とするが、programmeのinstall数、researcher tier、報奨条件は含めない。
 _Avoid_: Programme scope、Blocklist、Model confidence
-
-**Programme Identity**:
-外部提出先を安定して識別するidentity。PatchstackとWordfenceを別Programmeとして扱い、programme名、web form URLまたは運営vendor名だけに依存しない。
-_Avoid_: Vendor Identity、Submission URL、Research scope
-
-**Programme Eligibility Snapshot**:
-一つのProgramme Identityについて、取得時点の対象asset、vulnerability class、attacker role、active installation threshold、researcher tier、除外条件をsource URLとcontent digestへ固定した外部programme規則。Target選定とFinding後の提出適格性に使い、技術的真偽を決めない。
-_Avoid_: Finding policy、Current web page、Research scope
 
 **Source Evidence Query**:
 一つのFinderまたはCritic Attemptが同じTarget Snapshot内のdefinition、usage、caller、callee、wrapper、guard、stateまたはsource rangeを追うために行う、TargetFileManifestとSource Tool Policyへ拘束された一時的な読み取り。Surface Mapを変更しない。
@@ -237,7 +233,7 @@ _Avoid_: Filler work、Zero-finding lane
 _Avoid_: Finder type、Vulnerability agent、Fixed procedure
 
 **Strategy Portfolio**:
-Work Wave内で異なる開始lens、research thesis、model familyを意図的に組み合わせ、既知パターンへの収束と探索重複を抑える割当集合。各Finderの自由なpivotを制限しない。
+Work Wave内で異なる開始lensとresearch thesisを組み合わせ、既知パターンへの収束と探索重複を抑える割当集合。Model Profileはpolicyで固定し、初期Opus-only baselineでも各Finderのsession、conversation、scratch、thesisを分離する。各Finderの自由なpivotを制限しない。
 _Avoid_: Same-prompt voting、Model ensemble、Vulnerability checklist
 
 **Wildcard Strategy**:
@@ -271,10 +267,6 @@ _Avoid_: CLI process、Session、Retry
 **Independent Validation Attempt**:
 同じValidation Candidateを、Finder、Criticまたは別Validatorのconversation、scratch、verdictを使わず、fresh contextとread-only source toolで共通Validation Rubricへ照らす試行。Target code、build、testまたはruntime attackを実行しない。
 _Avoid_: Finder self-review、Runtime Verification、Vote
-
-**Model Separation Exception**:
-Frontier reviewで異なるmodel familyを割り当てられず、同じfamilyを再利用した理由と影響を残す記録。
-_Avoid_: Silent fallback、Equivalent independence
 
 **Segment**:
 一つのAttempt内で起動した一回のprovider CLI process。分類済み一時障害から同じsessionをresumeするたびに新しいSegmentを追加する。

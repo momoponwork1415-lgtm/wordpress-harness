@@ -8,10 +8,10 @@
         <mxCell id="title" value="WordPress Semantic Security Research Harness" style="text;html=1;align=left;verticalAlign=middle;fontSize=28;fontStyle=1;fontColor=#172033;" vertex="1" parent="1">
           <mxGeometry x="40" y="20" width="900" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="subtitle" value="One system · three ownership contexts · two human-gated boundaries" style="text;html=1;align=left;verticalAlign=middle;fontSize=14;fontColor=#526078;" vertex="1" parent="1">
+        <mxCell id="subtitle" value="One system · three ownership contexts · human approval before execution, Finding, and submission" style="text;html=1;align=left;verticalAlign=middle;fontSize=14;fontColor=#526078;" vertex="1" parent="1">
           <mxGeometry x="40" y="60" width="900" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="mission" value="North Star: discover high-impact broken security semantics → source screen → AI reproduction → mandatory fresh human reproduction" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#172033;strokeColor=#172033;fontColor=#FFFFFF;fontSize=14;fontStyle=1;spacing=12;" vertex="1" parent="1">
+        <mxCell id="mission" value="Operating loop: autonomous oracle-free selection → human batch approval → unattended research → fresh human reproduction → approved report → human submission" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#172033;strokeColor=#172033;fontColor=#FFFFFF;fontSize=14;fontStyle=1;spacing=12;" vertex="1" parent="1">
           <mxGeometry x="40" y="100" width="1720" height="55" as="geometry" />
         </mxCell>
 
@@ -25,20 +25,23 @@
           <mxGeometry x="1390" y="190" width="370" height="580" as="geometry" />
         </mxCell>
 
-        <mxCell id="sources" value="Target Sources&#xa;WordPress.org / approved premium source" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8C98AA;fontColor=#273449;fontSize=13;spacing=10;" vertex="1" parent="ti">
-          <mxGeometry x="25" y="70" width="280" height="65" as="geometry" />
+        <mxCell id="sources" value="Ecosystem Observation&#xa;WordPress.org · programme metadata · history" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8C98AA;fontColor=#273449;fontSize=13;spacing=10;" vertex="1" parent="ti">
+          <mxGeometry x="25" y="60" width="280" height="56" as="geometry" />
         </mxCell>
-        <mxCell id="selection" value="Eligibility &amp; Selection&#xa;oracle separation · ranking" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4D86C6;fontColor=#173B64;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="ti">
-          <mxGeometry x="25" y="165" width="280" height="65" as="geometry" />
+        <mxCell id="selection" value="Autonomous Target Selection&#xa;coarse oracle-free facts · rationale · ranking" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4D86C6;fontColor=#173B64;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="ti">
+          <mxGeometry x="25" y="138" width="280" height="58" as="geometry" />
         </mxCell>
-        <mxCell id="acquisition" value="Acquisition &amp; Canonicalization&#xa;identity · version · immutable files" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4D86C6;fontColor=#173B64;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="ti">
-          <mxGeometry x="25" y="260" width="280" height="70" as="geometry" />
+        <mxCell id="batch-approval" value="Human Batch Approval&#xa;approve · exclude · reorder · nominate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3A9567;fontColor=#205E42;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="ti">
+          <mxGeometry x="25" y="218" width="280" height="58" as="geometry" />
+        </mxCell>
+        <mxCell id="acquisition" value="Freshness &amp; Campaign Dispatch&#xa;identity · version · immutable files · about 5 active" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4D86C6;fontColor=#173B64;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="ti">
+          <mxGeometry x="25" y="298" width="280" height="72" as="geometry" />
         </mxCell>
         <mxCell id="ti-record" value="Target Intelligence Record" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#D7E9FF;strokeColor=#4D86C6;fontColor=#173B64;fontSize=12;fontStyle=1;" vertex="1" parent="ti">
-          <mxGeometry x="25" y="385" width="125" height="70" as="geometry" />
+          <mxGeometry x="25" y="450" width="125" height="70" as="geometry" />
         </mxCell>
         <mxCell id="intake" value="Target Intake Packet&#xa;versioned handoff" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#FFF4CC;strokeColor=#C79A20;fontColor=#5C4610;fontSize=12;fontStyle=1;spacing=8;" vertex="1" parent="ti">
-          <mxGeometry x="175" y="385" width="130" height="80" as="geometry" />
+          <mxGeometry x="175" y="440" width="130" height="80" as="geometry" />
         </mxCell>
 
         <mxCell id="campaign" value="Campaign Control&#xa;lifecycle · budget · replay" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
@@ -53,7 +56,7 @@
         <mxCell id="validation" value="Validation&#xa;1 fresh source screen · no reject" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
           <mxGeometry x="685" y="70" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="execution" value="Model Execution&#xa;provider · process · tool binding" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7F4FF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
+        <mxCell id="execution" value="Model Execution&#xa;Opus capacity · process · tool binding" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7F4FF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
           <mxGeometry x="245" y="220" width="190" height="70" as="geometry" />
         </mxCell>
         <mxCell id="gateway" value="Read-only Source Gateway&#xa;list · search · read" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7F4FF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
@@ -73,22 +76,28 @@
         </mxCell>
 
         <mxCell id="human-queue" value="AI Reproduction&#xa;confirmed → Triage Packet · inconclusive → Escalation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3A9567;fontColor=#205E42;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="human">
-          <mxGeometry x="25" y="70" width="320" height="65" as="geometry" />
+          <mxGeometry x="25" y="58" width="320" height="58" as="geometry" />
         </mxCell>
-        <mxCell id="human-verify" value="Mandatory Human Reproduction&#xa;normal queue · separate fresh instance · same recipe" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3A9567;fontColor=#205E42;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="human">
-          <mxGeometry x="25" y="165" width="320" height="75" as="geometry" />
+        <mxCell id="understanding" value="Vulnerability Understanding&#xa;route · broken semantics · impact · scenario" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3A9567;fontColor=#205E42;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="human">
+          <mxGeometry x="25" y="138" width="320" height="58" as="geometry" />
+        </mxCell>
+        <mxCell id="human-verify" value="Mandatory Human Reproduction&#xa;separate fresh instance · same recipe" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3A9567;fontColor=#205E42;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="human">
+          <mxGeometry x="25" y="218" width="320" height="66" as="geometry" />
         </mxCell>
         <mxCell id="finding" value="Finding&#xa;human promotion only" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D8F1E3;strokeColor=#3A9567;fontColor=#205E42;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="human">
-          <mxGeometry x="25" y="270" width="150" height="65" as="geometry" />
+          <mxGeometry x="25" y="306" width="150" height="58" as="geometry" />
         </mxCell>
         <mxCell id="human-record" value="Human OS Record" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#D8F1E3;strokeColor=#3A9567;fontColor=#205E42;fontSize=12;fontStyle=1;" vertex="1" parent="human">
-          <mxGeometry x="195" y="270" width="150" height="65" as="geometry" />
+          <mxGeometry x="195" y="306" width="150" height="58" as="geometry" />
+        </mxCell>
+        <mxCell id="report-review" value="AI Report + Human Approval&#xa;PoC · Description · fact/inference split" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3A9567;fontColor=#205E42;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="human">
+          <mxGeometry x="25" y="386" width="320" height="66" as="geometry" />
         </mxCell>
         <mxCell id="evidence-request" value="Evidence Request&#xa;specific proof gap" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#FFF4CC;strokeColor=#C79A20;fontColor=#5C4610;fontSize=12;fontStyle=1;spacing=8;" vertex="1" parent="human">
-          <mxGeometry x="25" y="375" width="150" height="75" as="geometry" />
+          <mxGeometry x="25" y="474" width="150" height="64" as="geometry" />
         </mxCell>
-        <mxCell id="authorization" value="External Action Authorization&#xa;separate explicit approval" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3A9567;fontColor=#205E42;fontSize=12;fontStyle=1;spacing=10;" vertex="1" parent="human">
-          <mxGeometry x="195" y="375" width="150" height="75" as="geometry" />
+        <mxCell id="authorization" value="Human Submit&#xa;staged form · explicit final action" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3A9567;fontColor=#205E42;fontSize=12;fontStyle=1;spacing=10;" vertex="1" parent="human">
+          <mxGeometry x="195" y="474" width="150" height="64" as="geometry" />
         </mxCell>
 
         <mxCell id="operator" value="Human Operator" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;fontSize=12;fontColor=#273449;" vertex="1" parent="1">
@@ -101,12 +110,13 @@
           <mxGeometry x="1475" y="830" width="250" height="70" as="geometry" />
         </mxCell>
 
-        <mxCell id="ownership" value="Harness: process, provenance, budget, persistence   ·   Agents: research decisions   ·   Humans: Findings and external actions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F5F9;strokeColor=#C4CCD8;fontColor=#273449;fontSize=13;fontStyle=1;spacing=12;" vertex="1" parent="1">
+        <mxCell id="ownership" value="Harness: process, provenance, budget, persistence   ·   Agents: selection and research proposals   ·   Humans: execution approval, Findings, reports, external actions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F5F9;strokeColor=#C4CCD8;fontColor=#273449;fontSize=13;fontStyle=1;spacing=12;" vertex="1" parent="1">
           <mxGeometry x="260" y="955" width="1280" height="55" as="geometry" />
         </mxCell>
 
         <mxCell id="e-sources-selection" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#4D86C6;strokeWidth=2;" edge="1" parent="ti" source="sources" target="selection"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e-selection-acquisition" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#4D86C6;strokeWidth=2;" edge="1" parent="ti" source="selection" target="acquisition"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-selection-approval" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#4D86C6;strokeWidth=2;" edge="1" parent="ti" source="selection" target="batch-approval"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-approval-acquisition" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#4D86C6;strokeWidth=2;" edge="1" parent="ti" source="batch-approval" target="acquisition"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e-acquisition-record" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#4D86C6;" edge="1" parent="ti" source="acquisition" target="ti-record"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e-acquisition-intake" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#C79A20;strokeWidth=2;" edge="1" parent="ti" source="acquisition" target="intake"><mxGeometry relative="1" as="geometry" /></mxCell>
 
@@ -126,16 +136,19 @@
         <mxCell id="e-validation-record" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#7457C5;dashed=1;" edge="1" parent="research" source="validation" target="record"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e-validation-packet" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#C79A20;strokeWidth=2;" edge="1" parent="research" source="validation" target="review-packet"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e-packet-queue" value="versioned" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#C79A20;strokeWidth=2;fontSize=10;" edge="1" parent="1" source="review-packet" target="human-queue"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e-queue-verify" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#3A9567;strokeWidth=2;" edge="1" parent="human" source="human-queue" target="human-verify"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-queue-understanding" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#3A9567;strokeWidth=2;" edge="1" parent="human" source="human-queue" target="understanding"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-understanding-verify" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#3A9567;strokeWidth=2;" edge="1" parent="human" source="understanding" target="human-verify"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e-verify-finding" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#3A9567;strokeWidth=2;" edge="1" parent="human" source="human-verify" target="finding"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e-verify-record" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#3A9567;" edge="1" parent="human" source="human-verify" target="human-record"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e-finding-record" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#3A9567;" edge="1" parent="human" source="finding" target="human-record"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e-verify-evidence" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#C79A20;dashed=1;" edge="1" parent="human" source="human-verify" target="evidence-request"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e-finding-auth" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#3A9567;" edge="1" parent="human" source="finding" target="authorization"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-finding-report" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#3A9567;strokeWidth=2;" edge="1" parent="human" source="finding" target="report-review"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-report-auth" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#3A9567;strokeWidth=2;" edge="1" parent="human" source="report-review" target="authorization"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e-agent-provider" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;startArrow=block;startFill=1;endArrow=block;endFill=1;strokeColor=#C85B51;dashed=1;" edge="1" parent="1" source="agent" target="provider"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e-auth-external" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#3A9567;strokeWidth=2;" edge="1" parent="1" source="authorization" target="external"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e-operator-selection" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#64748B;dashed=1;" edge="1" parent="1" source="operator" target="selection"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-operator-selection" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#64748B;dashed=1;" edge="1" parent="1" source="operator" target="batch-approval"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e-operator-verify" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#64748B;dashed=1;" edge="1" parent="1" source="operator" target="human-verify"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-operator-report" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#64748B;dashed=1;" edge="1" parent="1" source="operator" target="report-review"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="e-evidence-campaign" value="new finite research" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#C79A20;dashed=1;fontSize=10;" edge="1" parent="1" source="evidence-request" target="campaign"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1360" y="790" /><mxPoint x="540" y="790" /></Array></mxGeometry></mxCell>
       </root>
     </mxGraphModel>

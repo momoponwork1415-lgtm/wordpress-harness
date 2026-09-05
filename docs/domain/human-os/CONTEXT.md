@@ -1,6 +1,6 @@
 # Human OS
 
-Researchから受け取ったsource-validated candidateをAIがfresh環境で再現し、人間が別のfresh環境で必ず再実行してFinding、不足証拠、外部行動を判断するcontext。web画面の名称ではなく、runtime evidence、triage queue、decision systemを指す。
+Researchから受け取ったsource-validated candidateをAIがfresh環境で再現し、人間がAIの理解支援を使いながら別fresh環境で必ず再実行して、Finding、report、外部行動を判断するcontext。web画面の名称ではなく、runtime evidence、triage queue、decision systemを指す。
 
 ## Language
 
@@ -24,8 +24,12 @@ _Avoid_: Sanitized summary、Transcript、Submission Draft
 Runtime Verification Packet、runtime-confirmedなAI Reproduction、Reproduction Recipe、Private Evidence Bundle参照を結び付けた人間向けhandoff。人間が別fresh instanceで同じ主張を再実行するための入力であり、Findingではない。
 _Avoid_: Runtime Verification Packet、Human Review Packet、Finding
 
+**Vulnerability Understanding Response**:
+Triage Reproduction Packet、Runtime Verification Packet、Private Evidence Bundle、manifest-bound sourceを根拠に、broken security semantics、source route、attacker premise、confirmed Security Effect、plausible abuse scenario、Recipeの意味を人間へ説明するAI応答。確認済み事実、artifactからの推論、仮説を分離し、人間のfresh再実行またはReview Dispositionを代替しない。
+_Avoid_: Model verdict、Finding、Report approval
+
 **Human Review Case**:
-一つのRuntime Verification Packetと、それに対するAI Reproduction、Triage Reproduction Packet、Human Verification、Evidence Request、Review Dispositionの履歴を結び付けるappend-only review単位。
+一つのRuntime Verification Packetと、それに対するAI Reproduction、Triage Reproduction Packet、Vulnerability Understanding Response、Human Verification、Evidence Request、Review Dispositionの履歴を結び付けるappend-only review単位。
 _Avoid_: Ticket、Finding、Research Run
 
 **Human Verification Queue**:
@@ -141,8 +145,12 @@ _Avoid_: Campaign upgrade、Patch diff oracle、Mutable Target Snapshot
 _Avoid_: Campaign timeline、Auto-submit timer、Research deadline
 
 **Submission Draft Packet**:
-一つのverified Finding、Triage Reproduction Packet、Human Verification、Programme Assignment、対象version、影響、exact reproduction、必要なsanitized evidenceを提出先固有formへ変換できる自己完結draft。Human Verification後に作り、External Action Authorizationまたは送信を意味しない。
-_Avoid_: Human Review Packet、Submitted Report、Form State
+一つのverified Finding、Triage Reproduction Packet、Human Verification、Vulnerability Understanding Response、Programme Assignment、対象version、root cause、source route、confirmed impact、plausible abuse scenario、exact reproduction、sanitized evidenceをversioned templateへ固定したAI生成draft。Human Verification後に作り、人間の承認、External Action Authorizationまたは送信を意味しない。
+_Avoid_: Approved Submission Draft、Submitted Report、Form State
+
+**Approved Submission Draft**:
+人間がSubmission Draft PacketのPoC、Description、前提、version、impactを確認し、必要な修正とrevisionを記録して承認した提出準備artifact。承認済みrevisionだけをProgramme固有Form Stagerへ渡し、承認後の変更は再承認を要求する。SubmitまたはProgramme受理を意味しない。
+_Avoid_: Submission Draft Packet、External Action Authorization、Submitted Report
 
 **Known Duplicate Disposition**:
 Findingを対象plugin、affected versionの重なり、Causal Identityによって既知脆弱性と照合し、新規、重複または判定不能と根拠へ固定した外部行動用の判定。Researchの探索またはValidationへ逆流させない。
