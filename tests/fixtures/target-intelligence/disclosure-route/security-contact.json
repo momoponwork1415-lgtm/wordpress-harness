@@ -1,0 +1,16 @@
+{
+  "kind": "disclosure-route-source-document",
+  "schemaVersion": 1,
+  "claim": {
+    "routeKind": "security-contact-only",
+    "checkedScopes": ["wordpress-plugin", "public-release"],
+    "submissionRoute": {
+      "kind": "email",
+      "address": "security@vendor.example"
+    },
+    "conditions": {
+      "exclusivity": "unspecified",
+      "disclosure": "unspecified"
+    }
+  }
+}

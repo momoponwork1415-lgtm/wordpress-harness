@@ -1,0 +1,16 @@
+{
+  "kind": "disclosure-route-source-document",
+  "schemaVersion": 1,
+  "claim": {
+    "routeKind": "delegated-vdp",
+    "checkedScopes": ["wordpress-plugin", "public-release"],
+    "submissionRoute": {
+      "kind": "web-form",
+      "url": "https://patchstack.example/vdp/report"
+    },
+    "conditions": {
+      "exclusivity": "unspecified",
+      "disclosure": "programme-coordinated"
+    }
+  }
+}

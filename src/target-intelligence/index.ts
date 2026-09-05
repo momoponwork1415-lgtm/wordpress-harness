@@ -1,4 +1,5 @@
 export * from "./acquisition/index.js";
+export * from "./disclosure-route/index.js";
 export * from "./patchstack-programme/index.js";
 export * from "./programme-intelligence/index.js";
 export * from "./research-history/index.js";

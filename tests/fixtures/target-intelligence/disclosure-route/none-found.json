@@ -1,0 +1,13 @@
+{
+  "kind": "disclosure-route-source-document",
+  "schemaVersion": 1,
+  "claim": {
+    "routeKind": "none-found",
+    "checkedScopes": ["wordpress-plugin", "public-release"],
+    "submissionRoute": { "kind": "none" },
+    "conditions": {
+      "exclusivity": "unspecified",
+      "disclosure": "unspecified"
+    }
+  }
+}
