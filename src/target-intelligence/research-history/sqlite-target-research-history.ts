@@ -3,7 +3,12 @@ import { z } from "zod";
 
 import { canonicalJson, sha256Digest } from "../acquisition/canonical-json.js";
 import {
+  targetResearchPurposeByCampaignKind,
+  targetResearchReasonByIntentionalCampaignKind,
+} from "./campaign-codes.js";
+import {
   legacyTargetResearchAdmissionRequestSchema,
+  legacyTargetResearchHistoryArtifactSchema,
   legacyTargetResearchHistoryRecordInputSchema,
   targetResearchAdmissionRequestSchema,
   targetResearchHistoryRecordInputSchema,
@@ -108,24 +113,18 @@ function projectDefinition(
     return stored.request.campaign;
   }
   const definition = stored.request.campaign;
-  const purpose = {
-    prospective: "prospective-security-research",
-    "development-cohort": "development-cohort-evaluation",
-    calibration: "selection-calibration",
-    "independent-repeat": "independent-recall-repeat",
-  } as const;
   const reason =
     definition.kind === "prospective"
       ? definition.runOrdinal > 1
         ? "incomplete-source-frontier-follow-up"
         : undefined
-      : purpose[definition.kind];
+      : targetResearchReasonByIntentionalCampaignKind[definition.kind];
   return {
     kind: definition.kind,
     runOrdinal: definition.runOrdinal,
     policy: definition.policy,
     profile: definition.profile,
-    purpose: purpose[definition.kind],
+    purpose: targetResearchPurposeByCampaignKind[definition.kind],
     ...(reason === undefined ? {} : { reason }),
     ...(definition.followUp === undefined
       ? {}
@@ -245,6 +244,75 @@ class SqliteTargetResearchHistory implements TargetResearchHistory {
         payload_json TEXT NOT NULL
       ) STRICT;
     `);
+  }
+
+  async migrateLegacyArtifact(artifactValue: unknown): Promise<void> {
+    const artifact =
+      legacyTargetResearchHistoryArtifactSchema.parse(artifactValue);
+    const transact = this.#database.transaction(() => {
+      const current = project(this.#selectEvents());
+      if (
+        [...current.campaigns.values()].some(
+          (campaign) => campaign.historySchemaVersion !== 1,
+        )
+      ) {
+        throw new Error(
+          "Legacy Target Research History cannot be mixed with the v2 writer",
+        );
+      }
+      const campaignIds = new Map<string, string>();
+      for (const entry of artifact.entries) {
+        let stored: StoredEvent;
+        if (entry.kind === "campaign-selected") {
+          if (campaignIds.has(entry.campaignKey)) {
+            throw new Error(
+              "Legacy Target Research campaign key is duplicated",
+            );
+          }
+          const targetId = shortId(
+            "target",
+            targetIdentityDigest(entry.request),
+          );
+          const campaignDigest = campaignIdentityDigest(entry.request);
+          const campaignId = shortId("campaign", campaignDigest);
+          campaignIds.set(entry.campaignKey, campaignId);
+          stored = {
+            kind: "target-research-campaign-selected",
+            schemaVersion: 1,
+            targetId,
+            campaignId,
+            campaignDigest,
+            request: entry.request,
+          };
+        } else {
+          const campaignId = campaignIds.get(entry.campaignKey);
+          if (campaignId === undefined) {
+            throw new Error(
+              "Legacy Target Research record precedes its Campaign selection",
+            );
+          }
+          stored = {
+            kind: "target-research-campaign-recorded",
+            schemaVersion: 1,
+            input: {
+              kind: "target-research-history-record",
+              schemaVersion: 1,
+              campaignId,
+              event: entry.event,
+            },
+          };
+        }
+        const eventDigest = sha256Digest(stored);
+        const existing = this.#selectEvent(eventDigest);
+        if (existing === undefined) {
+          this.#append(stored, entry.occurredAt);
+        } else if (existing.occurred_at !== entry.occurredAt) {
+          throw new Error("Legacy Target Research event time conflicts");
+        }
+      }
+      project(this.#selectEvents());
+    });
+    transact();
   }
 
   async admit(

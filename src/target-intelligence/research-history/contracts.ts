@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  targetResearchPurposeByCampaignKind,
+  targetResearchReasonByIntentionalCampaignKind,
+} from "./campaign-codes.js";
+
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const identifierSchema = z
   .string()
@@ -14,6 +19,12 @@ const pluginIdentitySchema = z
 
 const immutableIdentitySchema = z.strictObject({
   id: identifierSchema,
+  digest: digestSchema,
+});
+
+export const targetResearchProgressRefSchema = z.strictObject({
+  kind: z.literal("target-research-progress-ref"),
+  schemaVersion: z.literal(1),
   digest: digestSchema,
 });
 
@@ -126,12 +137,8 @@ export const targetResearchCampaignDefinitionSchema = z
       .optional(),
   })
   .superRefine((definition, context) => {
-    const expectedPurpose = {
-      prospective: "prospective-security-research",
-      "development-cohort": "development-cohort-evaluation",
-      calibration: "selection-calibration",
-      "independent-repeat": "independent-recall-repeat",
-    }[definition.kind];
+    const expectedPurpose =
+      targetResearchPurposeByCampaignKind[definition.kind];
     if (definition.purpose !== expectedPurpose) {
       context.addIssue({
         code: "custom",
@@ -139,12 +146,10 @@ export const targetResearchCampaignDefinitionSchema = z
         message: "Campaign kind and purpose must agree",
       });
     }
-    const expectedReason = {
-      prospective: undefined,
-      "development-cohort": "development-cohort-evaluation",
-      calibration: "selection-calibration",
-      "independent-repeat": "independent-recall-repeat",
-    }[definition.kind];
+    const expectedReason =
+      definition.kind === "prospective"
+        ? undefined
+        : targetResearchReasonByIntentionalCampaignKind[definition.kind];
     if (definition.kind !== "prospective" && definition.reason === undefined) {
       context.addIssue({
         code: "custom",
@@ -223,7 +228,7 @@ export const targetResearchHistoryRecordInputSchema = z.strictObject({
     z.strictObject({ kind: z.literal("campaign-started") }),
     z.strictObject({
       kind: z.literal("campaign-progressed"),
-      progressRef: immutableIdentitySchema,
+      progressRef: targetResearchProgressRefSchema,
     }),
     z.strictObject({
       kind: z.literal("campaign-completed"),
@@ -244,26 +249,51 @@ export const legacyTargetResearchAdmissionRequestSchema = z.strictObject({
   campaign: legacyTargetResearchCampaignDefinitionSchema,
 });
 
+export const legacyTargetResearchHistoryEventSchema = z.union([
+  z.strictObject({ kind: z.literal("campaign-started") }),
+  z.strictObject({
+    kind: z.literal("campaign-progressed"),
+    progressId: identifierSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("campaign-completed"),
+    terminalStatus: z.literal("coverage-closed"),
+  }),
+  z.strictObject({
+    kind: z.literal("campaign-completed"),
+    terminalStatus: z.literal("incomplete"),
+    reason: z.string().trim().min(1).max(512),
+  }),
+]);
+
 export const legacyTargetResearchHistoryRecordInputSchema = z.strictObject({
   kind: z.literal("target-research-history-record"),
   schemaVersion: z.literal(1),
   campaignId: identifierSchema,
-  event: z.union([
-    z.strictObject({ kind: z.literal("campaign-started") }),
-    z.strictObject({
-      kind: z.literal("campaign-progressed"),
-      progressId: identifierSchema,
-    }),
-    z.strictObject({
-      kind: z.literal("campaign-completed"),
-      terminalStatus: z.literal("coverage-closed"),
-    }),
-    z.strictObject({
-      kind: z.literal("campaign-completed"),
-      terminalStatus: z.literal("incomplete"),
-      reason: z.string().trim().min(1).max(512),
-    }),
-  ]),
+  event: legacyTargetResearchHistoryEventSchema,
+});
+
+export const legacyTargetResearchHistoryArtifactSchema = z.strictObject({
+  kind: z.literal("target-research-legacy-history-artifact"),
+  schemaVersion: z.literal(1),
+  entries: z
+    .array(
+      z.union([
+        z.strictObject({
+          kind: z.literal("campaign-selected"),
+          campaignKey: identifierSchema,
+          occurredAt: z.string().datetime({ offset: true }),
+          request: legacyTargetResearchAdmissionRequestSchema,
+        }),
+        z.strictObject({
+          kind: z.literal("campaign-recorded"),
+          campaignKey: identifierSchema,
+          occurredAt: z.string().datetime({ offset: true }),
+          event: legacyTargetResearchHistoryEventSchema,
+        }),
+      ]),
+    )
+    .min(1),
 });
 
 export type TargetResearchIdentity = z.infer<
@@ -277,6 +307,9 @@ export type TargetResearchAdmissionRequest = z.infer<
 >;
 export type TargetResearchHistoryRecordInput = z.infer<
   typeof targetResearchHistoryRecordInputSchema
+>;
+export type TargetResearchLegacyHistoryArtifact = z.infer<
+  typeof legacyTargetResearchHistoryArtifactSchema
 >;
 
 export interface TargetResearchCampaign {
@@ -345,6 +378,7 @@ export interface RecordTargetResearchHistoryResult {
 }
 
 export interface TargetResearchHistory {
+  migrateLegacyArtifact(artifact: unknown): Promise<void>;
   admit(
     request: TargetResearchAdmissionRequest,
   ): Promise<TargetResearchAdmission>;

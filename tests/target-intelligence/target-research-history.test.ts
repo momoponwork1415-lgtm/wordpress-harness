@@ -132,7 +132,11 @@ describe("TargetResearchHistory", () => {
           campaignId: admitted.campaign.id,
           event: {
             kind: "campaign-progressed",
-            progressRef: { id: "wave-1", digest: digest("6") },
+            progressRef: {
+              kind: "target-research-progress-ref",
+              schemaVersion: 1,
+              digest: digest("6"),
+            },
           },
         }),
       ).resolves.toMatchObject({
@@ -187,14 +191,17 @@ describe("TargetResearchHistory", () => {
     const directory = await mkdtemp(join(tmpdir(), "target-history-legacy-"));
     const databasePath = join(directory, "target-intelligence.sqlite");
     try {
-      const fixture = createLegacyTargetResearchHistoryFixture(databasePath);
+      const fixture = createLegacyTargetResearchHistoryFixture();
       const history = openTargetResearchHistory({ databasePath });
+      await history.migrateLegacyArtifact(fixture.artifact);
 
       const admission = await history.admit(prospectiveAdmission);
+      if (admission.status !== "follow-up-required") {
+        throw new Error("Expected the legacy Campaign to require follow-up");
+      }
       expect(admission).toMatchObject({
         status: "follow-up-required",
         campaign: {
-          id: fixture.campaignId,
           historySchemaVersion: 1,
           definition: { purpose: "prospective-security-research" },
           terminalReason: "legacy-unclassified",
@@ -206,15 +213,20 @@ describe("TargetResearchHistory", () => {
         history.record({
           kind: "target-research-history-record",
           schemaVersion: 2,
-          campaignId: fixture.campaignId,
+          campaignId: admission.campaign.id,
           event: {
             kind: "campaign-progressed",
-            progressRef: { id: "wave-2", digest: digest("7") },
+            progressRef: {
+              kind: "target-research-progress-ref",
+              schemaVersion: 1,
+              digest: digest("7"),
+            },
           },
         }),
       ).rejects.toThrow("v1 and v2 writers cannot mix");
 
       const restarted = openTargetResearchHistory({ databasePath });
+      await restarted.migrateLegacyArtifact(fixture.artifact);
       await expect(restarted.admit(prospectiveAdmission)).resolves.toEqual(
         admission,
       );
@@ -503,6 +515,22 @@ describe("TargetResearchHistory", () => {
         campaignId: cleanAdmission.campaign.id,
         event: { kind: "campaign-started" },
       });
+      await expect(
+        Reflect.apply(history.record, history, [
+          {
+            kind: "target-research-history-record",
+            schemaVersion: 2,
+            campaignId: cleanAdmission.campaign.id,
+            event: {
+              kind: "campaign-progressed",
+              progressRef: {
+                id: "CVE-2030-0001-known-route",
+                digest: digest("8"),
+              },
+            },
+          },
+        ]),
+      ).rejects.toThrow("progressRef");
       await expect(
         Reflect.apply(history.record, history, [
           {

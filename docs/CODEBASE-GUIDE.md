@@ -9,7 +9,7 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Product stage | Status | Remaining |
 | --- | --- | --- |
 | Target Acquisition / Intake | local directory、WordPress.org archive、selection / rankingを実装済み | premium acquisition |
-| Vulnerability Intelligence | Wordfence Intelligence v3のlocal indexとoracle-separated projectionを実装済み | Patchstack source取得方式の決定 |
+| Vulnerability Intelligence | Wordfence Intelligence v3のlocal indexとoracle-separated projectionを実装済み | なし（Wordfence-only方針を#102で確定済み） |
 | Semantic Research | v6 initial Wave、Decision@3、conditional Depth実行まで実装済み | Missing-link / Closure |
 | Source-only Validation | v6 single fresh Attemptと4 dispositionを実装済み | Frontier Gapの次Wave |
 | Runtime handoff | Runtime Verification Packet v2とCAS-first handoffを実装済み | AI Reproduction intake |
@@ -47,7 +47,7 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 
 - **Purpose:** Rules / Terms、report form、leaderboard、mVDP directory、marketing pageの5 Intelligence Sourceを優先順付きで取得・parseし、programme-neutralなProgramme Eligibility Snapshotへ統合する。
 - **Interface:** `createPatchstackProgrammeAdapters -> ProgrammePolicySourceAdapter[]`
-- **Invariants:** Rulesをeligibilityの正本とし、lower-precedence sourceで上書きしない。latest stable、3年以内更新、active-install threshold、attacker role、mVDP例外をeligibilityへ固定する。mVDP directoryはrequired sourceとし、directory membership条件と適用される例外をprogramme-neutralな`directoryEligibilityRules`へ変換する。directory ruleはRulesのauthorization conditionが存在する場合だけ有効にする。Monthly CompetitionとZerodayを別のFinding-only reward routeにし、XP factor、contribution share、rejection-rate reduction、monthly poolをsource digestへbindする。named plugin、CVE、affected version、researcher detailsをnormalized policyへ含めない。
+- **Invariants:** Rulesをeligibilityの正本とし、lower-precedence sourceで上書きしない。latest stable、3年以内更新、active-install threshold、attacker role、mVDP例外をeligibilityへ固定する。mVDP directoryはrequired sourceとし、directory membership条件と適用される例外をprogramme-neutralなeligibility ruleへ変換する。directory ruleはRulesのauthorization conditionが存在する場合だけ有効にする。Monthly CompetitionとZerodayを別のFinding-only reward routeにし、XP factor、contribution share、rejection-rate reduction、monthly poolをsource digestへbindする。named plugin、CVE、affected version、researcher detailsをnormalized policyへ含めない。
 - **Failure semantics:** required Intelligence Source取得失敗は`stale`、必須rule、mVDP membership / exceptionまたはstrict page contract不成立は`parse-failed`、directory ruleがRulesにない例外を主張する場合を含むsource間の実質的矛盾は`policy-conflict`。marketing表示だけでRulesを置き換えない。
 - **Behavior Test:** [Patchstack Programme Adapter](../tests/target-intelligence/patchstack-programme-adapter.test.ts)
 - **Status:** 5-source group parse、mVDP membership / exception projection、source provenance、reward-route分離、conflict / stale / driftのsanitized fixture Behavior Testを実装。
@@ -76,8 +76,8 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 ### Target Research History
 
 - **Purpose:** Plugin Identity、verified version、Canonical File Manifest digestでTargetを固定し、Campaignの選定、進行、terminal statusをappend-onlyに記録して重複Researchを制御する。
-- **Interface:** `TargetResearchHistory.admit / record`
-- **Invariants:** activeは既存Campaignへresumeし、Coverage Closedは通常のprospective選定を`already-covered`にする。Incomplete後のprospective再実行は元Campaignと理由codeを固定したfollow-upだけを許可する。同じplugin/versionの異なるManifest digestはprovenance conflict、新しいverified versionは別Targetにする。v2 writerはCampaign purpose、理由、progressを列挙codeまたはcontent-bound refだけで受け付け、Oracle Factを自由記述として保存しない。v1 eventは読取専用でreplayし、自由記述をpublic projectionへ出さず、v2 eventを追記しない。Research Ledgerを参照せず、保存rowをruntime validationしてからpublic projectionをreplayする。
+- **Interface:** `TargetResearchHistory.migrateLegacyArtifact / admit / record`
+- **Invariants:** activeは既存Campaignへresumeし、Coverage Closedは通常のprospective選定を`already-covered`にする。Incomplete後のprospective再実行は元Campaignと理由codeを固定したfollow-upだけを許可する。同じplugin/versionの異なるManifest digestはprovenance conflict、新しいverified versionは別Targetにする。v2 writerはCampaign purposeと理由を列挙code、progressを意味を持つIDのないversioned content digestだけで受け付け、Oracle Factを自由記述として保存しない。v1 eventはversioned public migration artifactから取込み、読取専用でreplayし、自由記述をpublic projectionへ出さず、v2 eventを追記しない。Research Ledgerを参照せず、保存rowをruntime validationしてからpublic projectionをreplayする。
 - **Failure semantics:** admission判断は`new / resume / already-covered / follow-up-required / provenance-conflict`。不正contract、保存row、Campaign binding、lifecycle順序、v1 / v2 writer混在、durable write failureだけをerrorにする。
 - **Behavior Test:** [Target Research History](../tests/target-intelligence/target-research-history.test.ts)
 - **Status:** Target Intelligence専用SQLite eventからCampaign viewをreplayする。v1 replay migration projectionとv2-only writeを実装。Development Cohort、calibration、意図的な独立反復はkind、run ordinal、理由を固定して許可する。
