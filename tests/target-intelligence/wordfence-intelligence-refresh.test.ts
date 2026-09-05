@@ -120,6 +120,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 });
 
 import {
+  knownRecordAccessAuthorizationSchema,
   openWordfenceIntelligence,
   openSqliteHostPrivateCredentialBroker,
   openWordfenceIntelligenceRefresh,
@@ -139,6 +140,35 @@ const fixturePath = join(
   "wordfence-intelligence-v3",
   "production.json",
 );
+const digest = (character: string): string => `sha256:${character.repeat(64)}`;
+
+async function knownRecordAuthorization() {
+  const fixture = JSON.parse(
+    await readFile(
+      join(
+        import.meta.dirname,
+        "..",
+        "fixtures",
+        "target-intelligence",
+        "wordfence-intelligence-v3",
+        "known-record-authorizations.json",
+      ),
+      "utf8",
+    ),
+  ) as unknown;
+  const authorization = knownRecordAccessAuthorizationSchema
+    .array()
+    .parse(fixture)
+    .find(
+      (candidate) =>
+        candidate.subject.verifiedVersion === "1.2.0" &&
+        candidate.subject.canonicalFileManifestDigest === digest("c"),
+    );
+  if (authorization === undefined) {
+    throw new Error("Missing sanitized known-record authorization fixture");
+  }
+  return authorization;
+}
 
 async function filesBelow(directory: string): Promise<readonly string[]> {
   const paths: string[] = [];
@@ -328,6 +358,333 @@ async function createFixedMainLegacyWordfenceStorage(
 }
 
 describe("WordfenceIntelligenceRefresh", () => {
+  it("reads a production snapshot through the existing inspection and aggregate seams", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-production-existing-reads-"),
+    );
+    const databasePath = join(directory, "index", "target-intelligence.sqlite");
+    const artifactDirectory = join(directory, "artifacts");
+    const bytes = await readFile(fixturePath);
+    let productionCredentialResolutions = 0;
+    const productionFetch = vi.fn<typeof fetch>(async () =>
+      Promise.resolve(new Response(bytes, { status: 200 })),
+    );
+    try {
+      const production = openWordfenceIntelligenceRefresh({
+        databasePath,
+        artifactDirectory,
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            productionCredentialResolutions += 1;
+            return use("synthetic-existing-read-credential");
+          },
+        },
+        fetch: productionFetch,
+        clock: () => new Date("2030-08-01T00:00:00.000Z"),
+      });
+      const current = await production.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      if (current.status !== "current") {
+        throw new Error("Expected a production current snapshot");
+      }
+      expect(productionCredentialResolutions).toBe(1);
+      expect(productionFetch).toHaveBeenCalledOnce();
+
+      const localFeed = vi.fn(async () => {
+        throw new Error("production-backed reads must not retrieve the feed");
+      });
+      const options = {
+        databasePath,
+        artifactDirectory,
+        adapter: { sourceUrl, retrieveProductionFeed: localFeed },
+        credential: {
+          kind: "secret-ref" as const,
+          id: "wordfence-v3-api-key" as const,
+        },
+      };
+      const reader = openWordfenceIntelligence(options);
+      const request = {
+        kind: "wordfence-vulnerability-history-aggregate" as const,
+        schemaVersion: 1 as const,
+        snapshotRef: current.snapshotRef,
+        pluginIdentity: "wporg:fixture-plugin" as const,
+      };
+      const expectedAggregate = {
+        kind: "vulnerability-history-aggregate" as const,
+        schemaVersion: 1 as const,
+        pluginIdentity: "wporg:fixture-plugin" as const,
+        snapshotRef: current.snapshotRef,
+        recordCount: 2,
+        disclosureDensity: {
+          kind: "records-per-published-year" as const,
+          publishedYears: 2,
+          value: 1,
+        },
+        lastPublishedAt: "2029-02-20T08:30:00.000Z",
+      };
+
+      await expect(
+        reader.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual(current);
+      await expect(reader.aggregate(request)).resolves.toEqual(
+        expectedAggregate,
+      );
+      await expect(
+        openWordfenceIntelligence(options).aggregate(request),
+      ).resolves.toEqual(expectedAggregate);
+      expect(JSON.stringify(expectedAggregate)).not.toMatch(
+        /CVE-|"(?:cwe|cvss|affectedVersionIntervals|patchedVersions|verifiedVersion|versions?|routes?)"/i,
+      );
+      expect(localFeed).not.toHaveBeenCalled();
+      expect(productionCredentialResolutions).toBe(1);
+      expect(productionFetch).toHaveBeenCalledOnce();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("gates production known-record reads and validates their raw artifact after restart", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-production-known-record-read-"),
+    );
+    const databasePath = join(directory, "index", "target-intelligence.sqlite");
+    const artifactDirectory = join(directory, "artifacts");
+    const bytes = await readFile(fixturePath);
+    const localFeed = vi.fn(async () => {
+      throw new Error("known-record reads must not retrieve the feed");
+    });
+    try {
+      const production = openWordfenceIntelligenceRefresh({
+        databasePath,
+        artifactDirectory,
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            return use("synthetic-known-record-read-credential");
+          },
+        },
+        fetch: vi.fn<typeof fetch>(async () =>
+          Promise.resolve(new Response(bytes, { status: 200 })),
+        ),
+      });
+      const current = await production.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      if (current.status !== "current") {
+        throw new Error("Expected a production current snapshot");
+      }
+      const authorization = await knownRecordAuthorization();
+      const request = {
+        kind: "wordfence-known-record-inspection" as const,
+        schemaVersion: 2 as const,
+        snapshotRef: current.snapshotRef,
+        pluginIdentity: "wporg:fixture-plugin" as const,
+        verifiedVersion: "1.2.0",
+        canonicalFileManifestDigest: digest("c"),
+        authorizationRef: {
+          kind: "known-record-access-authorization-ref" as const,
+          schemaVersion: 2 as const,
+          id: authorization.id,
+          digest: authorization.digest,
+        },
+      };
+      const options = {
+        databasePath,
+        artifactDirectory,
+        adapter: { sourceUrl, retrieveProductionFeed: localFeed },
+        credential: {
+          kind: "secret-ref" as const,
+          id: "wordfence-v3-api-key" as const,
+        },
+      };
+      const projection = await openWordfenceIntelligence({
+        ...options,
+        knownRecordAuthorizationProvider: {
+          resolve: async () => ({
+            status: "authorized" as const,
+            authorization,
+          }),
+        },
+      }).inspectKnownRecords(request);
+      expect(projection).toMatchObject({
+        verifiedFindingRef: authorization.verifiedFindingRef,
+        purpose: "known-duplicate-disposition",
+      });
+      expect(projection.records.map((record) => record.recordId)).toEqual([
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+      ]);
+      await expect(
+        openWordfenceIntelligence({
+          ...options,
+          knownRecordAuthorizationProvider: {
+            resolve: async () => ({ status: "denied" as const }),
+          },
+        }).inspectKnownRecords(request),
+      ).rejects.toMatchObject({ code: "known-record-access-denied" });
+
+      const artifactPath = join(
+        artifactDirectory,
+        "wordfence-intelligence-v3",
+        `${current.snapshot.source.contentDigest.slice("sha256:".length)}.json`,
+      );
+      await chmod(artifactPath, 0o600);
+      await writeFile(artifactPath, Buffer.from("sanitized-corruption"));
+      await expect(
+        openWordfenceIntelligence({
+          ...options,
+          knownRecordAuthorizationProvider: {
+            resolve: async () => ({
+              status: "authorized" as const,
+              authorization,
+            }),
+          },
+        }).inspectKnownRecords(request),
+      ).rejects.toThrow("Wordfence Intelligence artifact conflict");
+      expect(localFeed).not.toHaveBeenCalled();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not transfer production ownership to local access when the marker table is deleted", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-deleted-production-marker-"),
+    );
+    const databasePath = join(directory, "index", "target-intelligence.sqlite");
+    const artifactDirectory = join(directory, "artifacts");
+    const bytes = await readFile(fixturePath);
+    let brokerCalls = 0;
+    const productionFetch = vi.fn<typeof fetch>(async () =>
+      Promise.resolve(new Response(bytes, { status: 200 })),
+    );
+    const localFeed = vi.fn(async () => {
+      throw new Error("a production-owned store must not retrieve locally");
+    });
+    const authorizationProvider = vi.fn(async () => ({
+      status: "denied" as const,
+    }));
+    try {
+      const production = openWordfenceIntelligenceRefresh({
+        databasePath,
+        artifactDirectory,
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            brokerCalls += 1;
+            return use("synthetic-deleted-marker-credential");
+          },
+        },
+        fetch: productionFetch,
+      });
+      const current = await production.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      if (current.status !== "current") {
+        throw new Error("Expected a production current snapshot");
+      }
+
+      const markerDeletion = new Database(databasePath);
+      markerDeletion.exec(
+        "DROP TABLE wordfence_intelligence_production_storage",
+      );
+      markerDeletion.pragma("wal_checkpoint(TRUNCATE)");
+      const currentPointer = z
+        .strictObject({ snapshot_digest: z.string() })
+        .parse(
+          markerDeletion
+            .prepare(
+              `SELECT snapshot_digest
+                 FROM wordfence_intelligence_current
+                WHERE singleton = 1`,
+            )
+            .get(),
+        );
+      markerDeletion.close();
+      const rawDirectory = join(artifactDirectory, "wordfence-intelligence-v3");
+      const rawPathsBefore = await readdir(rawDirectory);
+      const rawBytesBefore = await Promise.all(
+        rawPathsBefore.map((name) => readFile(join(rawDirectory, name))),
+      );
+      const databaseBytesBefore = await readFile(databasePath);
+      const walBytesBefore = await readFile(`${databasePath}-wal`);
+
+      const local = openWordfenceIntelligence({
+        databasePath,
+        artifactDirectory,
+        adapter: { sourceUrl, retrieveProductionFeed: localFeed },
+        credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+        knownRecordAuthorizationProvider: {
+          resolve: authorizationProvider,
+        },
+      });
+      await expect(
+        local.refresh({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).rejects.toThrow("Wordfence Intelligence snapshot conflict");
+      await expect(
+        local.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).rejects.toThrow("Wordfence Intelligence snapshot conflict");
+      await expect(
+        local.aggregate({
+          kind: "wordfence-vulnerability-history-aggregate",
+          schemaVersion: 1,
+          snapshotRef: current.snapshotRef,
+          pluginIdentity: "wporg:fixture-plugin",
+        }),
+      ).rejects.toThrow("Wordfence Intelligence snapshot conflict");
+
+      expect(localFeed).not.toHaveBeenCalled();
+      expect(authorizationProvider).not.toHaveBeenCalled();
+      expect(brokerCalls).toBe(1);
+      expect(productionFetch).toHaveBeenCalledOnce();
+      expect(await readFile(databasePath)).toEqual(databaseBytesBefore);
+      expect(await readFile(`${databasePath}-wal`)).toEqual(walBytesBefore);
+      expect(await readdir(rawDirectory)).toEqual(rawPathsBefore);
+      const rawBytesAfter = await Promise.all(
+        rawPathsBefore.map((name) => readFile(join(rawDirectory, name))),
+      );
+      expect(rawBytesAfter).toEqual(rawBytesBefore);
+      const verification = new Database(databasePath, {
+        fileMustExist: true,
+        readonly: true,
+      });
+      expect(
+        z.strictObject({ snapshot_digest: z.string() }).parse(
+          verification
+            .prepare(
+              `SELECT snapshot_digest
+                   FROM wordfence_intelligence_current
+                  WHERE singleton = 1`,
+            )
+            .get(),
+        ),
+      ).toEqual(currentPointer);
+      verification.close();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("rejects local refresh writes to a production-owned store", async () => {
     const directory = await mkdtemp(
       join(tmpdir(), "wordfence-local-production-boundary-"),
