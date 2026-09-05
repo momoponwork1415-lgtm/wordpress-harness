@@ -44,3 +44,32 @@ export type {
   ProvisionedSetupStageObservation,
   ProvisionedTargetRuntimeIdentity,
 } from "./human-verification-environment.js";
+export {
+  defineHumanReviewCase,
+  defineHumanVerificationRecord,
+  evidenceRequestSchema,
+  findingSchema,
+  humanReviewCaseId,
+  humanReviewCaseSchema,
+  humanReviewDispositionSchema,
+  humanReviewMechanismDigest,
+  humanVerificationRecordSchema,
+  humanVerificationResultSchema,
+} from "./human-verification-contracts.js";
+export type {
+  EvidenceRequest,
+  Finding,
+  HumanReviewCase,
+  HumanReviewDisposition,
+  HumanVerificationEnvironmentBinding,
+  HumanVerificationRecord,
+  HumanVerificationRecordIdentity,
+  HumanVerificationResult,
+} from "./human-verification-contracts.js";
+export { openHumanVerification } from "./human-verification.js";
+export type {
+  HumanReviewCaseView,
+  HumanVerification,
+  HumanVerificationQueueView,
+  OpenHumanVerificationOptions,
+} from "./human-verification.js";

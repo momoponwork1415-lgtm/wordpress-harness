@@ -2,7 +2,9 @@ export { openValidation } from "./validation.js";
 export { projectValidationFrontierGap } from "./validation-frontier-gap.js";
 export {
   humanReproductionSketchSchema,
+  defineHumanReviewPacketDeliveryRequest,
   humanReviewPacketDeliveryReceiptSchema,
+  humanReviewPacketDeliveryRequestSchema,
   humanReviewPacketHandoffSchema,
   humanReviewPacketPreparationFailureSchema,
   humanReviewPacketRefSchema,
@@ -35,6 +37,7 @@ export type {
   HumanReviewPacket,
   HumanReviewPacketDelivery,
   HumanReviewPacketDeliveryReceipt,
+  HumanReviewPacketDeliveryRequest,
   HumanReviewPacketHandoff,
   HumanReviewPacketPreparationFailure,
   HumanReviewPacketPreparationResult,

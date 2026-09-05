@@ -159,12 +159,56 @@ export const humanReviewPacketRefSchema = z.strictObject({
   manifestDigest: digestSchema,
 });
 
-export const humanReviewPacketDeliveryReceiptSchema = z.strictObject({
-  kind: z.literal("human-review-packet-delivery-receipt"),
+const humanReviewPacketDeliveryRequestIdentitySchema = z.strictObject({
+  kind: z.literal("human-review-packet-delivery-request"),
   schemaVersion: z.literal(1),
-  packetDigest: digestSchema,
-  receiptDigest: digestSchema,
+  campaignId: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+  runId: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+  packet: humanReviewPacketSchema,
 });
+
+export const humanReviewPacketDeliveryRequestSchema =
+  humanReviewPacketDeliveryRequestIdentitySchema
+    .extend({ digest: digestSchema })
+    .superRefine((request, context) => {
+      const { digest: _digest, ...identity } = request;
+      if (request.digest !== sha256Digest(identity)) {
+        context.addIssue({
+          code: "custom",
+          path: ["digest"],
+          message: "Human Review Packet Delivery Request digest mismatch",
+        });
+      }
+    });
+
+export const humanReviewPacketDeliveryReceiptSchema = z
+  .strictObject({
+    kind: z.literal("human-review-packet-delivery-receipt"),
+    schemaVersion: z.literal(1),
+    deliveryRequestDigest: digestSchema,
+    packetDigest: digestSchema,
+    caseId: digestSchema,
+    admission: z.enum(["active", "human-deferred"]),
+    receiptDigest: digestSchema,
+  })
+  .superRefine((receipt, context) => {
+    const { receiptDigest: _receiptDigest, ...identity } = receipt;
+    if (receipt.receiptDigest !== sha256Digest(identity)) {
+      context.addIssue({
+        code: "custom",
+        path: ["receiptDigest"],
+        message: "Human Review Packet Delivery Receipt digest mismatch",
+      });
+    }
+  });
 
 export const humanReviewPacketHandoffSchema = z.strictObject({
   kind: z.literal("human-review-packet-handoff"),
@@ -198,6 +242,9 @@ export type HumanReviewPacketRef = z.infer<typeof humanReviewPacketRefSchema>;
 export type HumanReviewPacketDeliveryReceipt = z.infer<
   typeof humanReviewPacketDeliveryReceiptSchema
 >;
+export type HumanReviewPacketDeliveryRequest = z.infer<
+  typeof humanReviewPacketDeliveryRequestSchema
+>;
 export type HumanReviewPacketHandoff = z.infer<
   typeof humanReviewPacketHandoffSchema
 >;
@@ -206,7 +253,9 @@ export type HumanReviewPacketPreparationFailure = z.infer<
 >;
 
 export interface HumanReviewPacketDelivery {
-  deliver(packet: HumanReviewPacket): Promise<HumanReviewPacketDeliveryReceipt>;
+  deliver(
+    request: HumanReviewPacketDeliveryRequest,
+  ): Promise<HumanReviewPacketDeliveryReceipt>;
 }
 
 export type HumanReviewPacketPreparationResult =
@@ -256,6 +305,22 @@ export function referenceHumanReviewPacket(
     candidateId: packet.candidate.id,
     targetSnapshotDigest: packet.target.digest,
     manifestDigest: packet.manifest.digest,
+  });
+}
+
+export function defineHumanReviewPacketDeliveryRequest(input: {
+  readonly campaignId: string;
+  readonly runId: string;
+  readonly packet: HumanReviewPacket;
+}): HumanReviewPacketDeliveryRequest {
+  const identity = humanReviewPacketDeliveryRequestIdentitySchema.parse({
+    kind: "human-review-packet-delivery-request",
+    schemaVersion: 1,
+    ...input,
+  });
+  return humanReviewPacketDeliveryRequestSchema.parse({
+    ...identity,
+    digest: sha256Digest(identity),
   });
 }
 

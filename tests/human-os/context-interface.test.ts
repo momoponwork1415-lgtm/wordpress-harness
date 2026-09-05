@@ -10,6 +10,8 @@ describe("Human OS context Interface", () => {
     expect(humanOsContext).toHaveProperty(
       "humanVerificationEnvironmentRequestSchema",
     );
+    expect(humanOsContext).toHaveProperty("openHumanVerification");
+    expect(humanOsContext).toHaveProperty("humanReviewCaseSchema");
     expect(humanOsContext).not.toHaveProperty("openSqliteHumanOsRecord");
     expect(humanOsContext).not.toHaveProperty("openFileHumanOsArtifactStore");
   });

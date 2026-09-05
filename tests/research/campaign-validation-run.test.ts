@@ -545,19 +545,23 @@ describe("CampaignRunner.run source-only Validation", () => {
           },
         },
         humanReviewPacketDelivery: {
-          deliver: async (packet) => {
+          deliver: async (request) => {
+            const packet = request.packet;
             deliveredPacketDigests.push(sha256Digest(packet));
             if (packetDelivery === "failure") {
               throw new Error("Injected Human OS delivery failure");
             }
-            return {
-              kind: "human-review-packet-delivery-receipt",
-              schemaVersion: 1,
+            const receiptIdentity = {
+              kind: "human-review-packet-delivery-receipt" as const,
+              schemaVersion: 1 as const,
+              deliveryRequestDigest: request.digest,
               packetDigest: sha256Digest(packet),
-              receiptDigest: sha256Digest({
-                packetId: packet.id,
-                status: "admitted",
-              }),
+              caseId: sha256Digest({ packetId: packet.id }),
+              admission: "active" as const,
+            };
+            return {
+              ...receiptIdentity,
+              receiptDigest: sha256Digest(receiptIdentity),
             };
           },
         },

@@ -11,11 +11,11 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Manual Target Intake | local directoryは実装済み | archive acquisition、selection / ranking |
 | Semantic Research | v6 initial Wave、Decision@3、conditional Depth実行まで実装済み | Missing-link / Closure |
 | Source-only Validation | v6、tool-free Risk Assessmentへ接続済み | Frontier Gapの次Wave |
-| Human Review Packet | versioned PacketとCAS-first handoffを実装済み | Human OS queue admission |
-| Human Verification | Packet-bound Environment Builderを実装済み | queue、human disposition |
-| Finding | legacy automated Findingのみ | Human Verification gate |
+| Human Review Packet | versioned PacketとCAS-first handoffを実装済み | — |
+| Human Verification | Environment、有限queue、human dispositionを実装済み | 実Target smoke |
+| Finding | Human Verification gateを実装済み | Prospective Campaignでの成立実測 |
 
-現在のproduction sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / source-only Validation -> Risk Assessment / Human Review Packet -> durable handoff`である。Human OSはPacket-bound requestをfresh disposable environmentへ構築し、Dispositionを独立したCAS / Recordへ保存できる。v6 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Packet delivery failureはPacketを保持したままResearch failureと分ける。Missing-link / Closureはlegacy v5に実装済みだがv6へ未接続。
+現在のproduction sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / source-only Validation -> Risk Assessment / Human Review Packet -> Human Verification Queue / Finding gate`である。Human OSはPacket-bound requestをfresh disposable environmentへ構築し、Dispositionを独立したCAS / Recordへ保存できる。v6 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Packet delivery failureはPacketを保持したままResearch failureと分ける。Missing-link / Closureはlegacy v5に実装済みだがv6へ未接続。
 
 完成度をpercentでは表さない。v0.1にはv6 Depth / Closure、Review Packet、Human Verification、Development Cohort再基準化、異なる3件のoracle-free Prospective Campaignが必要である。
 
@@ -133,11 +133,11 @@ Internal Module。immutable CAS artifact、append-only Ledger event、checkpoint
 
 **Interface:** `HumanVerification.admit`、`HumanVerification.record`
 
-- 一Campaign最大3 unique mechanismをactive queueへ入れる。超過はHuman Deferredとして保持する。
-- 人間がfresh environment、実Target interface、attacker premise、Security Effectを確認する。
-- dispositionは`verified-finding / rejected / more-evidence-required / blocked`。
-- Findingを作れるのは`verified-finding`だけ。外部報告は別承認。
-- **Status:** 未実装。
+- **Purpose:** source-validated Packetを有限queueへ取り込み、人間のfresh VerificationからFindingまたは理由付きnegativeまで閉じる。
+- **Invariants:** 同じPacket digestを同じCaseへ収束させ、一Campaign最大3 unique mechanismをactiveにする。超過はHuman Deferredとして保持する。Recordはhuman identity、時刻、Packet-bound environment、attacker role、実Target interfaceの手順とsanitized observation、Security Effectを固定する。
+- **Failure semantics:** dispositionは`verified-finding / rejected / more-evidence-required / blocked`を区別する。environment / assistant failureは`rejected`にせず、`more-evidence-required`はversioned Evidence Requestを作る。
+- **Finding gate:** `verified-finding`だけがFindingを生成する。生成時のexternal actionは`not-authorized`であり、report、vendor contact、公開は別承認を必要とする。
+- **Status / Tests:** queue、Human Review Case、Verification Record、Finding / Evidence Request、Human OS replayを実装 · [code](../src/human-os/human-verification.ts), [tests](../tests/human-os/human-verification.test.ts)
 
 ### Legacy Verification
 

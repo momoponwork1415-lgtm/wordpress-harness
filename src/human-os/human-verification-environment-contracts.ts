@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-import { targetSnapshotRefSchema } from "../research/contracts.js";
-import { targetFileManifestRefSchema } from "../research/source-mapping/contracts.js";
 import {
   humanReviewPacketSchema,
   type HumanReviewPacket,
@@ -239,8 +237,8 @@ export const externalDependencyGrantSchema =
 export const humanVerificationTargetSchema = z.strictObject({
   kind: z.literal("human-verification-target"),
   schemaVersion: z.literal(1),
-  snapshot: targetSnapshotRefSchema,
-  manifest: targetFileManifestRefSchema,
+  snapshot: humanReviewPacketSchema.shape.target,
+  manifest: humanReviewPacketSchema.shape.manifest,
   sourceArtifact: z.strictObject({
     kind: z.literal("content-addressed-target-source"),
     mediaType: z.literal("application/zip"),
@@ -433,8 +431,8 @@ export const targetRuntimeIdentitySchema = z.strictObject({
   kind: z.literal("human-verification-target-runtime-identity"),
   schemaVersion: z.literal(1),
   requestDigest: digestSchema,
-  targetSnapshot: targetSnapshotRefSchema,
-  manifest: targetFileManifestRefSchema,
+  targetSnapshot: humanReviewPacketSchema.shape.target,
+  manifest: humanReviewPacketSchema.shape.manifest,
   sourceArtifactDigest: digestSchema,
   runtimeProfileDigest: digestSchema,
   observedWordpressVersion: versionSchema,

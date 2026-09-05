@@ -105,6 +105,7 @@ import {
   type ValidationRecord,
 } from "../validation/index.js";
 import {
+  defineHumanReviewPacketDeliveryRequest,
   humanReviewPacketDeliveryReceiptSchema,
   humanReviewPacketHandoffSchema,
   humanReviewPacketPreparationFailureSchema,
@@ -1311,10 +1312,16 @@ async function prepareCurrentHumanReviewPackets(
       };
     } else {
       try {
+        const deliveryRequest = defineHumanReviewPacketDeliveryRequest({
+          campaignId: plan.campaignId,
+          runId: plan.runId,
+          packet,
+        });
         const receipt = humanReviewPacketDeliveryReceiptSchema.parse(
-          await dependencies.humanReviewPacketDelivery.deliver(packet),
+          await dependencies.humanReviewPacketDelivery.deliver(deliveryRequest),
         );
         delivery =
+          receipt.deliveryRequestDigest === deliveryRequest.digest &&
           receipt.packetDigest === packetRecord.packet.digest
             ? { status: "delivered", receipt }
             : { status: "delivery-failed", reason: "delivery-failed" };
