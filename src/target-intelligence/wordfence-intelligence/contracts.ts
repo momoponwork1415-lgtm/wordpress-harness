@@ -73,19 +73,20 @@ export const immutableFindingRefSchema = z.strictObject({
 
 export const knownRecordAccessAuthorizationRefSchema = z.strictObject({
   kind: z.literal("known-record-access-authorization-ref"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   id: identifierSchema,
   digest: digestSchema,
 });
 
 const knownRecordAccessAuthorizationBodySchema = z.strictObject({
   kind: z.literal("known-record-access-authorization"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   verifiedFindingRef: immutableFindingRefSchema,
   purpose: z.literal("known-duplicate-disposition"),
   subject: z.strictObject({
     pluginIdentity: pluginIdentitySchema,
     verifiedVersion: versionSchema,
+    canonicalFileManifestDigest: digestSchema,
   }),
   authorizedAt: z.string().datetime({ offset: true }),
 });
@@ -98,10 +99,11 @@ export const knownRecordAccessAuthorizationSchema =
 
 export const wordfenceKnownRecordInspectionRequestSchema = z.strictObject({
   kind: z.literal("wordfence-known-record-inspection"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   snapshotRef: wordfenceIntelligenceSnapshotRefSchema,
   pluginIdentity: pluginIdentitySchema,
   verifiedVersion: versionSchema,
+  canonicalFileManifestDigest: digestSchema,
   authorizationRef: knownRecordAccessAuthorizationRefSchema,
 });
 
@@ -156,9 +158,10 @@ export const wordfenceStoredPluginRecordSchema = z.strictObject({
 
 export const wordfenceKnownRecordProjectionSchema = z.strictObject({
   kind: z.literal("wordfence-known-record-projection"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   pluginIdentity: pluginIdentitySchema,
   verifiedVersion: versionSchema,
+  canonicalFileManifestDigest: digestSchema,
   snapshotRef: wordfenceIntelligenceSnapshotRefSchema,
   authorizationRef: knownRecordAccessAuthorizationRefSchema,
   verifiedFindingRef: immutableFindingRefSchema,
@@ -226,8 +229,17 @@ export interface WordfenceIntelligenceV3Adapter {
   ): Promise<WordfenceIntelligenceSourceResponse>;
 }
 
-export interface KnownRecordAccessAuthorizationVerifier {
-  verify(reference: KnownRecordAccessAuthorizationRef): Promise<unknown>;
+export type KnownRecordAccessAuthorizationResolution =
+  | {
+      readonly status: "authorized";
+      readonly authorization: unknown;
+    }
+  | { readonly status: "denied" };
+
+export interface KnownRecordAccessAuthorizationProvider {
+  resolve(
+    reference: KnownRecordAccessAuthorizationRef,
+  ): Promise<KnownRecordAccessAuthorizationResolution>;
 }
 
 export class WordfenceKnownRecordAccessError extends Error {
@@ -284,7 +296,7 @@ export interface OpenWordfenceIntelligenceOptions {
   readonly adapter: WordfenceIntelligenceV3Adapter;
   readonly credential: WordfenceSecretRef;
   readonly maximumFeedBytes?: number;
-  readonly knownRecordAuthorizationVerifier?: KnownRecordAccessAuthorizationVerifier;
+  readonly knownRecordAuthorizationProvider?: KnownRecordAccessAuthorizationProvider;
   readonly clock?: () => Date;
 }
 

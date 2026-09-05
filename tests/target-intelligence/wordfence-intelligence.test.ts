@@ -21,10 +21,13 @@ const fixturePath = join(
 );
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 
-function knownRecordAuthorization(verifiedVersion: string) {
+function knownRecordAuthorization(
+  verifiedVersion: string,
+  canonicalFileManifestDigest = digest("c"),
+) {
   const body = {
     kind: "known-record-access-authorization" as const,
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     verifiedFindingRef: {
       id: "verified-finding:fixture",
       digest: digest("f"),
@@ -33,6 +36,7 @@ function knownRecordAuthorization(verifiedVersion: string) {
     subject: {
       pluginIdentity: "wporg:fixture-plugin",
       verifiedVersion,
+      canonicalFileManifestDigest,
     },
     authorizedAt: "2030-08-02T00:00:00.000Z",
   };
@@ -68,8 +72,8 @@ describe("WordfenceIntelligence", () => {
         artifactDirectory: join(directory, "artifacts"),
         adapter: fixtureAdapter(),
         credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
-        knownRecordAuthorizationVerifier: {
-          verify: async () => authorization,
+        knownRecordAuthorizationProvider: {
+          resolve: async () => ({ status: "authorized", authorization }),
         },
         clock: () => new Date("2030-08-01T00:00:00.000Z"),
       });
@@ -127,22 +131,24 @@ describe("WordfenceIntelligence", () => {
 
       const known = await intelligence.inspectKnownRecords({
         kind: "wordfence-known-record-inspection",
-        schemaVersion: 1,
+        schemaVersion: 2,
         snapshotRef: refreshed.snapshotRef,
         pluginIdentity: "wporg:fixture-plugin",
         verifiedVersion: "1.2.0",
+        canonicalFileManifestDigest: digest("c"),
         authorizationRef: {
           kind: "known-record-access-authorization-ref",
-          schemaVersion: 1,
+          schemaVersion: 2,
           id: authorization.id,
           digest: authorization.digest,
         },
       });
       expect(known).toMatchObject({
         kind: "wordfence-known-record-projection",
-        schemaVersion: 1,
+        schemaVersion: 2,
         pluginIdentity: "wporg:fixture-plugin",
         verifiedVersion: "1.2.0",
+        canonicalFileManifestDigest: digest("c"),
         records: [
           {
             recordId: "11111111-1111-4111-8111-111111111111",
@@ -373,8 +379,8 @@ describe("WordfenceIntelligence", () => {
   it("requires verified-Finding authorization and applies affected-version interval boundaries", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordfence-interval-"));
     try {
-      const authorizations = ["1.4.1", "2.0.0", "2.0"].map(
-        knownRecordAuthorization,
+      const authorizations = ["1.4.1", "2.0.0", "2.0"].map((version) =>
+        knownRecordAuthorization(version),
       );
       const authorization = authorizations[0];
       if (authorization === undefined) {
@@ -385,12 +391,16 @@ describe("WordfenceIntelligence", () => {
         artifactDirectory: join(directory, "artifacts"),
         adapter: fixtureAdapter(),
         credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
-        knownRecordAuthorizationVerifier: {
-          verify: async (ref) =>
-            authorizations.find(
+        knownRecordAuthorizationProvider: {
+          resolve: async (ref) => {
+            const matched = authorizations.find(
               (candidate) =>
                 candidate.id === ref.id && candidate.digest === ref.digest,
-            ),
+            );
+            return matched === undefined
+              ? { status: "denied" as const }
+              : { status: "authorized" as const, authorization: matched };
+          },
         },
       });
       const refreshed = await intelligence.refresh({
@@ -402,12 +412,13 @@ describe("WordfenceIntelligence", () => {
       }
       const base = {
         kind: "wordfence-known-record-inspection" as const,
-        schemaVersion: 1 as const,
+        schemaVersion: 2 as const,
         snapshotRef: refreshed.snapshotRef,
         pluginIdentity: "wporg:fixture-plugin",
+        canonicalFileManifestDigest: digest("c"),
         authorizationRef: {
           kind: "known-record-access-authorization-ref" as const,
-          schemaVersion: 1 as const,
+          schemaVersion: 2 as const,
           id: authorization.id,
           digest: authorization.digest,
         },
@@ -459,6 +470,14 @@ describe("WordfenceIntelligence", () => {
         Reflect.apply(intelligence.inspectKnownRecords, intelligence, [
           selfAssertedFinding,
         ]),
+      ).rejects.toMatchObject({ code: "known-record-access-denied" });
+
+      await expect(
+        intelligence.inspectKnownRecords({
+          ...base,
+          canonicalFileManifestDigest: digest("9"),
+          verifiedVersion: "1.4.1",
+        }),
       ).rejects.toMatchObject({ code: "known-record-access-denied" });
 
       await expect(

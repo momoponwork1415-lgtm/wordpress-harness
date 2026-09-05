@@ -474,8 +474,8 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   readonly #adapter: WordfenceIntelligenceV3Adapter;
   readonly #credential: WordfenceSecretRef;
   readonly #maximumFeedBytes: number;
-  readonly #knownRecordAuthorizationVerifier:
-    | OpenWordfenceIntelligenceOptions["knownRecordAuthorizationVerifier"]
+  readonly #knownRecordAuthorizationProvider:
+    | OpenWordfenceIntelligenceOptions["knownRecordAuthorizationProvider"]
     | undefined;
   readonly #clock: () => Date;
 
@@ -486,8 +486,8 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     this.#credential = wordfenceSecretRefSchema.parse(options.credential);
     this.#maximumFeedBytes =
       options.maximumFeedBytes ?? DEFAULT_MAXIMUM_FEED_BYTES;
-    this.#knownRecordAuthorizationVerifier =
-      options.knownRecordAuthorizationVerifier;
+    this.#knownRecordAuthorizationProvider =
+      options.knownRecordAuthorizationProvider;
     this.#clock = options.clock ?? (() => new Date());
     if (
       !Number.isSafeInteger(this.#maximumFeedBytes) ||
@@ -649,7 +649,9 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     );
     if (
       authorization.subject.pluginIdentity !== request.pluginIdentity ||
-      authorization.subject.verifiedVersion !== request.verifiedVersion
+      authorization.subject.verifiedVersion !== request.verifiedVersion ||
+      authorization.subject.canonicalFileManifestDigest !==
+        request.canonicalFileManifestDigest
     ) {
       throw new WordfenceKnownRecordAccessError();
     }
@@ -664,9 +666,10 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     );
     return wordfenceKnownRecordProjectionSchema.parse({
       kind: "wordfence-known-record-projection",
-      schemaVersion: 1,
+      schemaVersion: 2,
       pluginIdentity: request.pluginIdentity,
       verifiedVersion: request.verifiedVersion,
+      canonicalFileManifestDigest: request.canonicalFileManifestDigest,
       snapshotRef: request.snapshotRef,
       authorizationRef: request.authorizationRef,
       verifiedFindingRef: authorization.verifiedFindingRef,
@@ -678,13 +681,17 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
   async #verifyKnownRecordAuthorization(
     reference: KnownRecordAccessAuthorizationRef,
   ): Promise<KnownRecordAccessAuthorization> {
-    if (this.#knownRecordAuthorizationVerifier === undefined) {
+    if (this.#knownRecordAuthorizationProvider === undefined) {
       throw new WordfenceKnownRecordAccessError();
     }
     let unvalidated: unknown;
     try {
-      unvalidated =
-        await this.#knownRecordAuthorizationVerifier.verify(reference);
+      const resolution =
+        await this.#knownRecordAuthorizationProvider.resolve(reference);
+      if (resolution.status !== "authorized") {
+        throw new Error("Known-record access was denied");
+      }
+      unvalidated = resolution.authorization;
     } catch {
       throw new WordfenceKnownRecordAccessError();
     }

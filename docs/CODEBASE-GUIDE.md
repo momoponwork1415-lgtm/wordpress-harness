@@ -106,9 +106,9 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 ### Wordfence Vulnerability Intelligence
 
 - **Purpose:** Wordfence Intelligence v3 Production Intelligence Sourceを不変snapshotとlocal indexへ変換し、Target選定用の弱いVulnerability History AggregateとFinding後専用のknown-record projectionを分離する。
-- **Interface:** `WordfenceIntelligence.refresh / inspect / aggregate / inspectKnownRecords`
-- **Invariants:** complete response、source URL、取得時刻、raw response digest、parser versionをsnapshotへ固定し、全recordとWordfence / MITRE attributionのvalidation成功後だけcurrent pointerをtransaction更新する。選定projectionはplugin単位の件数、公開年密度、最終公開時刻だけを返し、CVE、CWE、CVSS、affected / patched versionを含めない。exact recordはverified Finding、Target identity、version、`known-duplicate-disposition` purposeへbindしたversioned authorizationを公開verifierで解決できる場合だけ返す。caller自己申告のFinding refはauthorizationにしない。Bearer値はSecretRef resolverの内側だけで使用する。
-- **Failure semantics:** 404、auth failure、429、network failure、partial response、schema drift、copyright / license metadata欠落をtyped failureにする。失敗refreshは既存current pointerを変更しない。authorizationが欠落、不正またはquery subjectと不一致なら`known-record-access-denied`にする。
+- **Interface:** `WordfenceIntelligence.refresh / inspect / aggregate / inspectKnownRecords`、`KnownRecordAccessAuthorizationProvider`
+- **Invariants:** complete response、source URL、取得時刻、raw response digest、parser versionをsnapshotへ固定し、全recordとWordfence / MITRE attributionのvalidation成功後だけcurrent pointerをtransaction更新する。選定projectionはplugin単位の件数、公開年密度、最終公開時刻だけを返し、CVE、CWE、CVSS、affected / patched versionを含めない。exact recordはverified Finding、Plugin Identity、verified version、Canonical File Manifest digest、`known-duplicate-disposition` purposeへbindしたv2 authorizationを公開providerが`authorized`として解決できる場合だけ返す。caller自己申告のFinding refまたはartifactをauthorizationにせず、Human OS storageを参照しない。Bearer値はSecretRef resolverの内側だけで使用する。
+- **Failure semantics:** 404、auth failure、429、network failure、partial response、schema drift、copyright / license metadata欠落をtyped failureにする。失敗refreshは既存current pointerを変更しない。provider不在 / denial、authorization integrity不一致、Plugin Identity / version / Manifest digest不一致は`known-record-access-denied`にする。
 - **Behavior Test:** [Wordfence Vulnerability Intelligence](../tests/target-intelligence/wordfence-intelligence.test.ts)
 - **Status:** bounded production fetch Adapter、sanitized fixture Adapter、Store / replay、affected-version interval query、oracle-separated aggregateを実装。
 - **Code:** [wordfence-intelligence](../src/target-intelligence/wordfence-intelligence)
