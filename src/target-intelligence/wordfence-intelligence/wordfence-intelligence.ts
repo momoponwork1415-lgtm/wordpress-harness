@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { link, mkdir, open, readFile, unlink } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 
 import Database from "better-sqlite3";
 import { z } from "zod";
@@ -277,20 +277,44 @@ function shortId(prefix: string, digest: string): string {
   return `${prefix}:${digest.slice(7, 31)}`;
 }
 
+function compareCanonicalIdentifiers(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function compareStoredRecords(
+  left: WordfenceStoredPluginRecord,
+  right: WordfenceStoredPluginRecord,
+): number {
+  const pluginOrder = compareCanonicalIdentifiers(
+    left.pluginSlug,
+    right.pluginSlug,
+  );
+  return pluginOrder === 0
+    ? compareCanonicalIdentifiers(left.record.recordId, right.record.recordId)
+    : pluginOrder;
+}
+
+function canonicalRecordOrder(
+  records: readonly WordfenceStoredPluginRecord[],
+): readonly WordfenceStoredPluginRecord[] {
+  return [...records].sort(compareStoredRecords);
+}
+
 function recordSetDigest(
   snapshotDigest: string,
   records: readonly WordfenceStoredPluginRecord[],
 ): string {
+  const orderedRecords = canonicalRecordOrder(records);
   const hash = createHash("sha256");
   hash.update(
     canonicalJson({
       kind: "wordfence-intelligence-normalized-record-set",
       schemaVersion: 1,
       snapshotDigest,
-      normalizedRowCount: records.length,
+      normalizedRowCount: orderedRecords.length,
     }),
   );
-  for (const stored of records) {
+  for (const stored of orderedRecords) {
     hash.update("\n");
     hash.update(canonicalJson(stored));
   }
@@ -392,15 +416,40 @@ function hasErrorCode(error: unknown, code: string): boolean {
 }
 
 async function persistBytes(path: string, bytes: Uint8Array): Promise<void> {
+  const temporaryPath = join(
+    dirname(path),
+    `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`,
+  );
+  let ownsTemporaryPath = false;
   try {
-    await writeFile(path, bytes, { flag: "wx" });
-  } catch (error) {
-    if (!hasErrorCode(error, "EEXIST")) {
-      throw error;
+    const handle = await open(temporaryPath, "wx", 0o600);
+    ownsTemporaryPath = true;
+    try {
+      await handle.writeFile(bytes);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    try {
+      await link(temporaryPath, path);
+    } catch (error) {
+      if (!hasErrorCode(error, "EEXIST")) {
+        throw error;
+      }
     }
     const existing = await readFile(path);
     if (!existing.equals(bytes)) {
       throw new ArtifactConflictError();
+    }
+  } finally {
+    if (ownsTemporaryPath) {
+      try {
+        await unlink(temporaryPath);
+      } catch (error) {
+        if (!hasErrorCode(error, "ENOENT")) {
+          throw error;
+        }
+      }
     }
   }
 }
@@ -589,13 +638,7 @@ function normalizeFeed(bytes: Uint8Array): {
       );
     }
   }
-  const records = [...recordsByIdentity.values()];
-  records.sort((left, right) => {
-    if (left.pluginSlug !== right.pluginSlug) {
-      return left.pluginSlug < right.pluginSlug ? -1 : 1;
-    }
-    return left.record.recordId < right.record.recordId ? -1 : 1;
-  });
+  const records = canonicalRecordOrder([...recordsByIdentity.values()]);
   return { recordCount: entries.length, records };
 }
 
@@ -1309,11 +1352,12 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     if (validated.kind === "legacy-record-only-v1") {
       throw new SnapshotConflictError();
     }
-    const persisted = validated.records;
+    const persisted = canonicalRecordOrder(validated.records);
+    const expected = canonicalRecordOrder(records);
     if (
-      persisted.length !== records.length ||
+      persisted.length !== expected.length ||
       persisted.some((stored, index) => {
-        const candidate = records[index];
+        const candidate = expected[index];
         return (
           candidate === undefined ||
           canonicalJson(stored) !== canonicalJson(candidate)
@@ -1478,8 +1522,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
           .prepare(
             `SELECT plugin_slug, record_id, record_json
              FROM wordfence_intelligence_records
-            WHERE snapshot_digest = ?
-            ORDER BY plugin_slug, record_id`,
+            WHERE snapshot_digest = ?`,
           )
           .all(reference.digest),
       );
@@ -1490,18 +1533,20 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
         const manifest = recordSetManifestSchema.parse(
           JSON.parse(manifestRow.manifest_json),
         );
-        const records = rows.map((row) => {
-          const stored = wordfenceStoredPluginRecordSchema.parse(
-            JSON.parse(row.record_json),
-          );
-          if (
-            stored.pluginSlug !== row.plugin_slug ||
-            stored.record.recordId !== row.record_id
-          ) {
-            throw new SnapshotConflictError();
-          }
-          return stored;
-        });
+        const records = canonicalRecordOrder(
+          rows.map((row) => {
+            const stored = wordfenceStoredPluginRecordSchema.parse(
+              JSON.parse(row.record_json),
+            );
+            if (
+              stored.pluginSlug !== row.plugin_slug ||
+              stored.record.recordId !== row.record_id
+            ) {
+              throw new SnapshotConflictError();
+            }
+            return stored;
+          }),
+        );
         const expectedManifest = recordSetManifest(
           snapshot,
           reference,
@@ -1524,18 +1569,20 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       ) {
         throw new SnapshotConflictError();
       }
-      const records = rows.map((row) => {
-        const record = wordfenceKnownRecordSchema.parse(
-          JSON.parse(row.record_json),
-        );
-        if (record.recordId !== row.record_id) {
-          throw new SnapshotConflictError();
-        }
-        return wordfenceStoredPluginRecordSchema.parse({
-          pluginSlug: row.plugin_slug,
-          record,
-        });
-      });
+      const records = canonicalRecordOrder(
+        rows.map((row) => {
+          const record = wordfenceKnownRecordSchema.parse(
+            JSON.parse(row.record_json),
+          );
+          if (record.recordId !== row.record_id) {
+            throw new SnapshotConflictError();
+          }
+          return wordfenceStoredPluginRecordSchema.parse({
+            pluginSlug: row.plugin_slug,
+            record,
+          });
+        }),
+      );
       return { kind: "legacy-record-only-v1", records };
     } catch (error) {
       if (error instanceof SnapshotConflictError) {

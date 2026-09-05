@@ -1,4 +1,12 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -237,6 +245,253 @@ describe("WordfenceIntelligence", () => {
             patchedVersions: ["2.0.0"],
           },
         ],
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("uses one canonical Unicode ordering for manifest publication and replay", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-unicode-ordering-"),
+    );
+    const databasePath = join(directory, "target-intelligence.sqlite");
+    const artifactDirectory = join(directory, "artifacts");
+    const feed = JSON.parse(await readFile(fixturePath, "utf8")) as Record<
+      string,
+      Record<string, unknown>
+    >;
+    const first = feed["11111111-1111-4111-8111-111111111111"];
+    const software = first?.software;
+    const template = Array.isArray(software) ? software[0] : undefined;
+    if (
+      !Array.isArray(software) ||
+      typeof template !== "object" ||
+      template === null
+    ) {
+      throw new Error("Fixture lost its first software record");
+    }
+    software.push(
+      {
+        ...template,
+        name: "Sanitized supplementary-plane extension",
+        slug: "sanitized-\u{10000}",
+      },
+      {
+        ...template,
+        name: "Sanitized private-use extension",
+        slug: "sanitized-\uE000",
+      },
+    );
+    const bytes = Buffer.from(JSON.stringify(feed));
+    const adapter: WordfenceIntelligenceV3Adapter = {
+      sourceUrl: fixtureAdapter().sourceUrl,
+      retrieveProductionFeed: async () => ({
+        status: 200,
+        sourceUrl: fixtureAdapter().sourceUrl,
+        complete: true,
+        bytes,
+      }),
+    };
+    try {
+      const original = openWordfenceIntelligence({
+        databasePath,
+        artifactDirectory,
+        adapter,
+        credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+      });
+      const current = await original.refresh({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      if (current.status !== "current") {
+        throw new Error("Expected a current snapshot");
+      }
+      const request = {
+        kind: "wordfence-vulnerability-history-aggregate" as const,
+        schemaVersion: 1 as const,
+        snapshotRef: current.snapshotRef,
+        pluginIdentity: "wporg:fixture-plugin" as const,
+      };
+      const expected = {
+        kind: "vulnerability-history-aggregate",
+        schemaVersion: 1,
+        pluginIdentity: "wporg:fixture-plugin",
+        snapshotRef: current.snapshotRef,
+        recordCount: 2,
+        disclosureDensity: {
+          kind: "records-per-published-year",
+          publishedYears: 2,
+          value: 1,
+        },
+        lastPublishedAt: "2029-02-20T08:30:00.000Z",
+      };
+      await expect(original.aggregate(request)).resolves.toEqual(expected);
+
+      const restarted = openWordfenceIntelligence({
+        databasePath,
+        artifactDirectory,
+        adapter,
+        credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+      });
+      await expect(restarted.aggregate(request)).resolves.toEqual(expected);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    { name: "high", slug: "sanitized-\uD800" },
+    { name: "low", slug: "sanitized-\uDC00" },
+  ])(
+    "rejects a lone $name surrogate in a software identifier",
+    async ({ slug }) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "wordfence-malformed-unicode-"),
+      );
+      const feed = JSON.parse(await readFile(fixturePath, "utf8")) as Record<
+        string,
+        Record<string, unknown>
+      >;
+      const first = feed["11111111-1111-4111-8111-111111111111"];
+      const software = first?.software;
+      const entry = Array.isArray(software) ? software[0] : undefined;
+      if (typeof entry !== "object" || entry === null) {
+        throw new Error("Fixture lost its first software record");
+      }
+      entry.slug = slug;
+      try {
+        const base = fixtureAdapter();
+        const intelligence = openWordfenceIntelligence({
+          databasePath: join(directory, "target-intelligence.sqlite"),
+          artifactDirectory: join(directory, "artifacts"),
+          adapter: {
+            ...base,
+            retrieveProductionFeed: async () => ({
+              status: 200,
+              sourceUrl: base.sourceUrl,
+              complete: true,
+              bytes: Buffer.from(JSON.stringify(feed)),
+            }),
+          },
+          credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+        });
+        await expect(
+          intelligence.refresh({
+            kind: "wordfence-intelligence-refresh",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual({
+          ...resultEnvelope,
+          status: "failed",
+          reason: "schema-drift",
+        });
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("publishes concurrent raw CAS writers without exposing a partial final artifact", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-concurrent-raw-cas-"),
+    );
+    const artifactDirectory = join(directory, "artifacts");
+    const feed = JSON.parse(await readFile(fixturePath, "utf8")) as Record<
+      string,
+      Record<string, unknown>
+    >;
+    const first = feed["11111111-1111-4111-8111-111111111111"];
+    if (first === undefined) {
+      throw new Error("Fixture lost its first record");
+    }
+    first.description = "sanitized-large-content".repeat(750_000);
+    const bytes = Buffer.from(JSON.stringify(feed));
+    const adapter: WordfenceIntelligenceV3Adapter = {
+      sourceUrl: fixtureAdapter().sourceUrl,
+      retrieveProductionFeed: async () => ({
+        status: 200,
+        sourceUrl: fixtureAdapter().sourceUrl,
+        complete: true,
+        bytes,
+      }),
+    };
+    const openWriter = (name: string) =>
+      openWordfenceIntelligence({
+        databasePath: join(directory, `${name}.sqlite`),
+        artifactDirectory,
+        adapter,
+        credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+        clock: () => new Date("2030-08-01T00:00:00.000Z"),
+      });
+    try {
+      const request = {
+        kind: "wordfence-intelligence-refresh" as const,
+        schemaVersion: 1 as const,
+      };
+      const [left, right] = await Promise.all([
+        openWriter("left").refresh(request),
+        openWriter("right").refresh(request),
+      ]);
+      expect(left.status).toBe("current");
+      expect(right).toEqual(left);
+      if (left.status !== "current") {
+        throw new Error("Expected a current snapshot");
+      }
+      const rawDirectory = join(artifactDirectory, "wordfence-intelligence-v3");
+      const artifactName = `${left.snapshot.source.contentDigest.slice(7)}.json`;
+      expect(await readdir(rawDirectory)).toEqual([artifactName]);
+      const persisted = await readFile(join(rawDirectory, artifactName));
+      expect(persisted.byteLength).toBe(bytes.byteLength);
+      expect(persisted.equals(bytes)).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a partial final CAS artifact and cleans only its own temporary file", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-partial-raw-cas-"),
+    );
+    const artifactDirectory = join(directory, "artifacts");
+    const rawDirectory = join(artifactDirectory, "wordfence-intelligence-v3");
+    const bytes = await readFile(fixturePath);
+    const artifactName = `${createHash("sha256").update(bytes).digest("hex")}.json`;
+    const artifactPath = join(rawDirectory, artifactName);
+    const unrelatedTemporaryName = `.${artifactName}.unowned.tmp`;
+    const unrelatedTemporaryPath = join(rawDirectory, unrelatedTemporaryName);
+    const partial = Buffer.from('{"partial":');
+    const unrelated = Buffer.from("unrelated-owned-content");
+    await mkdir(rawDirectory, { recursive: true });
+    await writeFile(artifactPath, partial);
+    await writeFile(unrelatedTemporaryPath, unrelated);
+    try {
+      const intelligence = openWordfenceIntelligence({
+        databasePath: join(directory, "target-intelligence.sqlite"),
+        artifactDirectory,
+        adapter: fixtureAdapter(),
+        credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
+      });
+      await expect(
+        intelligence.refresh({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).rejects.toThrow("Wordfence Intelligence artifact conflict");
+      expect(await readFile(artifactPath)).toEqual(partial);
+      expect(await readFile(unrelatedTemporaryPath)).toEqual(unrelated);
+      expect((await readdir(rawDirectory)).sort()).toEqual(
+        [artifactName, unrelatedTemporaryName].sort(),
+      );
+      await expect(
+        intelligence.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).resolves.toEqual({
+        ...resultEnvelope,
+        status: "failed",
+        reason: "not-refreshed",
       });
     } finally {
       await rm(directory, { recursive: true, force: true });

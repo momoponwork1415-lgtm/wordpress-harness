@@ -8,11 +8,31 @@ const identifierSchema = z
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
 const pluginIdentitySchema = z.string().regex(/^wporg:[a-z0-9][a-z0-9-]*$/);
 const versionSchema = z.string().min(1).max(64);
+
+function containsOnlyUnicodeScalars(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const trailing = value.charCodeAt(index + 1);
+      if (index + 1 >= value.length || trailing < 0xdc00 || trailing > 0xdfff) {
+        return false;
+      }
+      index += 1;
+      continue;
+    }
+    if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export const wordfenceSoftwareIdentifierSchema = z
   .string()
   .min(1)
   .max(192)
-  .regex(/^[^\u0000-\u001f\u007f]+$/u);
+  .regex(/^[^\u0000-\u001f\u007f]+$/u)
+  .refine(containsOnlyUnicodeScalars);
 
 export const wordfenceSecretRefSchema = z.strictObject({
   kind: z.literal("secret-ref"),
