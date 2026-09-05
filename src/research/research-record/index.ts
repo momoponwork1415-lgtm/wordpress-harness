@@ -10,4 +10,6 @@ export type {
   ResearchRecord,
   SemanticFinderCheckpointRecordView,
   SemanticIterationDecisionRecordViewV3,
+  ValidationIntent,
+  ValidationIntentRecordView,
 } from "./contracts.js";

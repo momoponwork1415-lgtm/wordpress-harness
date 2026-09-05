@@ -34,6 +34,7 @@ export {
   materializeMissingLinkWaves,
   referenceSemanticMissingLinkWavePlan,
 } from "./semantic-missing-link-wave.js";
+export { attachApproachFamilyValidationIntentsV3 } from "./semantic-approach-family-validation-v3.js";
 export {
   approachFamilyOpeningDecisionRefSchema,
   approachFamilyRefSchema,
@@ -56,7 +57,6 @@ export {
   approachFamilyV3Schema,
   projectInitialApproachFamilyRegistryV3,
   projectApproachFamilyRegistryV3,
-  referenceApproachFamilyV3,
   referenceSemanticIterationDecisionV3,
   semanticIterationDecisionRefV3Schema,
 } from "./semantic-approach-family-registry-v3.js";

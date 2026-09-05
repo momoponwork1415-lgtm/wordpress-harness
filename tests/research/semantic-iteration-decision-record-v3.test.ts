@@ -14,6 +14,10 @@ import {
   openFileJsonArtifactStore,
   openSqliteResearchRecord,
 } from "../../src/research/research-record/index.js";
+import {
+  validationCandidateId,
+  validationCandidateSchema,
+} from "../../src/research/validation/index.js";
 import { createCampaignInput } from "../fixtures/campaign.js";
 
 const digest = (value: string): string => sha256Digest(value);
@@ -208,21 +212,33 @@ describe("Research Record Iteration Decision v3", () => {
         approachFamilies: [family],
         actions: [
           {
-            kind: "admit-depth",
+            kind: "admit-validation",
             approachFamily: familyRef,
             subjects: [subject],
             admission: {
-              kind: "depth-admission",
-              schemaVersion: 2,
-              id: digest("depth-admission"),
+              kind: "validation-admission",
+              schemaVersion: 1,
+              id: digest("validation-admission"),
               target: input.targetSnapshot,
               manifest,
               wave,
-              highImpactPotential:
-                "The privileged consumer may alter identity.",
-              composition: "Trace the state into identity mutation.",
-              falsifier: "No privileged consumer uses this state.",
-              nextAction: "Inspect identity-mutating consumers.",
+              hypothesis: subject,
+              brokenSecurityProperty: "state-ownership",
+              causalRoute: [
+                {
+                  ordinal: 1,
+                  claim: "A public writer feeds a privileged state consumer.",
+                  evidence: [
+                    {
+                      path: "plugin.php",
+                      fileDigest: digest("plugin.php"),
+                      startLine: 1,
+                      endLine: 4,
+                    },
+                  ],
+                },
+              ],
+              reason: "The complete source route warrants fresh validation.",
             },
           },
         ],
@@ -254,12 +270,82 @@ describe("Research Record Iteration Decision v3", () => {
         artifactStore.readJson(first.registry.digest),
       ).resolves.toEqual(registry!.value);
 
+      const candidateIdentity = {
+        target: input.targetSnapshot,
+        manifest,
+        attackerPremise: "unauthenticated" as const,
+        brokenSecurityProperty: "state-ownership",
+        causalRoute: [
+          {
+            ordinal: 1,
+            claim: "A public writer feeds a privileged state consumer.",
+            evidence: [
+              {
+                path: "plugin.php",
+                fileDigest: digest("plugin.php"),
+                startLine: 1,
+                endLine: 4,
+              },
+            ],
+          },
+        ],
+      };
+      const candidate = validationCandidateSchema.parse({
+        kind: "validation-candidate",
+        schemaVersion: 1,
+        id: validationCandidateId(candidateIdentity),
+        ...candidateIdentity,
+        origins: [
+          {
+            subjectDigest: subject.digest,
+            rootEvaluationDigest: first.decision.digest,
+            approachFamilyId: registry!.value.families[0]!.id,
+          },
+        ],
+      });
+      const intended = await record.recordValidationIntents(
+        input.campaignId,
+        plan.runId,
+        [candidate],
+      );
+      const intendedReplay = await record.recordValidationIntents(
+        input.campaignId,
+        plan.runId,
+        [candidate],
+      );
+      expect(intendedReplay).toEqual(intended);
+      expect(intended).toHaveLength(1);
+      expect(intended[0]).toMatchObject({
+        ledgerHead: first.ledgerHead + 1,
+        intent: {
+          validationId: candidate.id,
+          candidate: { id: candidate.id },
+          approachFamilyIds: [registry!.value.families[0]!.id],
+        },
+      });
+      await expect(
+        artifactStore.readJson(intended[0]!.intent.candidate.digest),
+      ).resolves.toEqual(candidate);
+      const pendingRegistry = await record.readApproachFamilyRegistryV3(
+        input.campaignId,
+        plan.runId,
+      );
+      expect(pendingRegistry?.value.families[0]?.pendingValidations).toEqual([
+        candidate.id,
+      ]);
+      await expect(
+        artifactStore.readJson(pendingRegistry!.ref.digest),
+      ).resolves.toEqual(pendingRegistry!.value);
+
       record.close();
       const reopened = openSqliteResearchRecord({ databasePath });
       try {
         await expect(
           reopened.readApproachFamilyRegistryV3(input.campaignId, plan.runId),
-        ).resolves.toEqual(registry);
+        ).resolves.toEqual(pendingRegistry);
+        await expect(
+          reopened.listValidationIntents(input.campaignId, plan.runId),
+        ).resolves.toEqual(intended);
       } finally {
         reopened.close();
       }

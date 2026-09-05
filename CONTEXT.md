@@ -312,6 +312,10 @@ _Avoid_: Heuristic score、Model confidence、Finding
 Wave BarrierとRoot Evaluationを通過し、exact duplicateをまとめた一つのSource-bound Hypothesisまたはsource-bound Chain Proposal。Validationの開始単位であり、FindingまたはHuman Review Packetではない。
 _Avoid_: Finder checkpoint、Finding、Scanner alert
 
+**Validation Intent**:
+Root Evaluationがadmitしたexact Validation CandidateをCASへ固定し、起動前にCampaign、Run、全origin Approach Familyへbindした追記型の実行意思。重複起動を防ぎ、Familyのpending ValidationをLedgerから再構築する。
+_Avoid_: Validator output、Validation Disposition、Mutable queue row
+
 **Validation Threat Context**:
 versioned WordPress threat baseline、Permitted Attacker、Target Snapshot metadata、公開surface、主張するbroken security property、明示的なtechnical exclusionをValidation Candidateへbindした入力。programme eligibilityまたは既知Findingを含めない。
 _Avoid_: Programme scope、Target oracle、Unversioned threat model

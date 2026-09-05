@@ -2,7 +2,9 @@ export { openValidation } from "./validation.js";
 export {
   validationAttemptOutputSchema,
   validationCandidateId,
+  validationCandidateRefSchema,
   validationCandidateSchema,
+  referenceValidationCandidate,
   validationCriteria,
   validationCriterionSchema,
   validationPlanSchema,
@@ -18,6 +20,7 @@ export type {
   Validation,
   ValidationAttemptOutput,
   ValidationCandidate,
+  ValidationCandidateRef,
   ValidationCandidateIdentityInput,
   ValidationPlan,
   ValidationRecord,

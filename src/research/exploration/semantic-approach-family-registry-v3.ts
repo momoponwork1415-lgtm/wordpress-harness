@@ -144,25 +144,6 @@ export function referenceSemanticIterationDecisionV3(
   });
 }
 
-export function referenceApproachFamilyV3(
-  value: ApproachFamilyV3,
-): ApproachFamilyRefV3 {
-  const family = approachFamilyV3Schema.parse(value);
-  return approachFamilyRefV3Schema.parse({
-    kind: family.kind,
-    schemaVersion: family.schemaVersion,
-    id: family.id,
-    digest: sha256Digest(family),
-    targetSnapshotDigest: family.target.digest,
-    manifestDigest: family.manifest.digest,
-    openingDecisionDigest: family.openingDecision.digest,
-    openingAdmissionDigest: family.openingAdmission.digest,
-    state: family.state,
-    pendingValidations: family.pendingValidations.length,
-    validationOutcomes: family.validationOutcomes.length,
-  });
-}
-
 export function projectApproachFamilyRegistryV3(input: {
   readonly campaignId: string;
   readonly runId: string;

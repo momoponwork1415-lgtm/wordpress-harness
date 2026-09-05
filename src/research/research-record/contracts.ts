@@ -40,6 +40,10 @@ import type {
   VerificationRecordView,
 } from "../verification/contracts.js";
 import type { CampaignProgressView } from "../campaign-progress-contracts.js";
+import type {
+  ValidationCandidate,
+  ValidationCandidateRef,
+} from "../validation/contracts.js";
 
 export interface PreparationRecord {
   readonly campaignId: string;
@@ -146,6 +150,15 @@ export interface ResearchRecord {
     campaignId: string,
     runId: string,
   ): Promise<ApproachFamilyRegistryRecordViewV3 | undefined>;
+  recordValidationIntents(
+    campaignId: string,
+    runId: string,
+    candidates: readonly ValidationCandidate[],
+  ): Promise<readonly ValidationIntentRecordView[]>;
+  listValidationIntents(
+    campaignId: string,
+    runId: string,
+  ): Promise<readonly ValidationIntentRecordView[]>;
   recordVerificationStart(
     plan: VerificationPlan,
   ): Promise<RecordVerificationStartResult>;
@@ -257,6 +270,25 @@ export interface SemanticIterationDecisionRecordViewV3 {
 export interface ApproachFamilyRegistryRecordViewV3 {
   readonly ref: ApproachFamilyRegistryRefV3;
   readonly value: ApproachFamilyRegistryV3;
+}
+
+export interface ValidationIntent {
+  readonly kind: "validation-intent";
+  readonly schemaVersion: 1;
+  readonly id: string;
+  readonly campaignId: string;
+  readonly runId: string;
+  readonly validationId: string;
+  readonly candidate: ValidationCandidateRef;
+  readonly approachFamilyIds: readonly string[];
+  readonly rootEvaluationDigests: readonly string[];
+}
+
+export interface ValidationIntentRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly intent: ValidationIntent;
+  readonly registry: ApproachFamilyRegistryRefV3;
 }
 
 export interface OpenResearchRecordOptions {

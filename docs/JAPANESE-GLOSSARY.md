@@ -151,6 +151,7 @@
 | --- | --- |
 | Preflight Disposition | 事前検査結果 |
 | Validation Candidate | Wave BarrierとRoot Evaluationを通過し、独立したsource検査へ送る候補 |
+| Validation Intent | exact candidateをCASへ固定し、起動前にCampaignと全origin Familyへbindする追記型の実行意思 |
 | Validation Threat Context | WordPress threat baseline、許可attacker、Target、claimed property、technical exclusionを固定する文脈 |
 | Validation Rubric | source integrity、reachability/premise、broken control、causal route/effect、counterevidence/proof gapの共通評価基準 |
 | Validation Queue | exact dedupe済みcandidateを保持するResearch所有の待機集合 |

@@ -125,6 +125,31 @@ export const validationCandidateSchema = z
     }
   });
 
+export const validationCandidateRefSchema = z.strictObject({
+  kind: z.literal("validation-candidate"),
+  schemaVersion: z.literal(1),
+  id: digestSchema,
+  digest: digestSchema,
+  targetSnapshotDigest: digestSchema,
+  manifestDigest: digestSchema,
+  origins: z.number().int().positive().max(64),
+});
+
+export function referenceValidationCandidate(
+  input: ValidationCandidate,
+): ValidationCandidateRef {
+  const candidate = validationCandidateSchema.parse(input);
+  return validationCandidateRefSchema.parse({
+    kind: candidate.kind,
+    schemaVersion: candidate.schemaVersion,
+    id: candidate.id,
+    digest: sha256Digest(candidate),
+    targetSnapshotDigest: candidate.target.digest,
+    manifestDigest: candidate.manifest.digest,
+    origins: candidate.origins.length,
+  });
+}
+
 const validationThreatContextIdentityFields = {
   kind: z.literal("validation-threat-context"),
   schemaVersion: z.literal(1),
@@ -505,6 +530,9 @@ export const validationRecordRefSchema = z.strictObject({
 });
 
 export type ValidationCandidate = z.infer<typeof validationCandidateSchema>;
+export type ValidationCandidateRef = z.infer<
+  typeof validationCandidateRefSchema
+>;
 export type ValidationThreatContext = z.infer<
   typeof validationThreatContextSchema
 >;

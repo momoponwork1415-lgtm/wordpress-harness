@@ -65,6 +65,7 @@ import {
   referenceSemanticIterationDecisionV3,
   semanticIterationDecisionRefV3Schema,
 } from "../exploration/semantic-approach-family-registry-v3.js";
+import { attachApproachFamilyValidationIntentsV3 } from "../exploration/semantic-approach-family-validation-v3.js";
 import {
   advanceApproachFamilyRegistry,
   approachFamilyEvidenceAttachmentSchema,
@@ -104,6 +105,12 @@ import type {
   CampaignProgressView,
 } from "../campaign-progress-contracts.js";
 import { modelAttemptResultV2Schema } from "../model-execution/contracts.js";
+import {
+  referenceValidationCandidate,
+  validationCandidateRefSchema,
+  validationCandidateSchema,
+  type ValidationCandidate,
+} from "../validation/contracts.js";
 import type { ModelAttemptUsageV2 } from "../model-attempt-usage-contracts.js";
 import { canonicalJson, sha256Digest } from "./canonical-json.js";
 import type {
@@ -121,10 +128,16 @@ import type {
   SemanticFinderCheckpointRecordView,
   SemanticIterationDecisionRecordView,
   SemanticIterationDecisionRecordViewV3,
+  ValidationIntent,
+  ValidationIntentRecordView,
   JsonArtifactStore,
 } from "./contracts.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
 
 const MEBIBYTE = 1024 * 1024;
 const GIBIBYTE = 1024 * MEBIBYTE;
@@ -317,6 +330,25 @@ const semanticIterationDecidedPayloadV3Schema = z.strictObject({
   registry: approachFamilyRegistryRefV3Schema,
 });
 
+const validationIntentSchema = z.strictObject({
+  kind: z.literal("validation-intent"),
+  schemaVersion: z.literal(1),
+  id: digestSchema,
+  campaignId: z.string().min(1).max(128),
+  runId: z.string().min(1).max(128),
+  validationId: digestSchema,
+  candidate: validationCandidateRefSchema,
+  approachFamilyIds: z.array(digestSchema).min(1).max(64),
+  rootEvaluationDigests: z.array(digestSchema).min(1).max(64),
+});
+
+const validationIntendedPayloadSchema = z.strictObject({
+  runId: z.string().min(1).max(128),
+  predecessorRegistryDigest: digestSchema,
+  intents: z.array(validationIntentSchema).min(1).max(64),
+  registry: approachFamilyRegistryRefV3Schema,
+});
+
 const semanticDepthIterationDecidedPayloadV1Schema = z.strictObject({
   runId: z.string().min(1).max(128),
   predecessorRegistryDigest: digestSchema,
@@ -419,6 +451,7 @@ interface LedgerProjection {
     string,
     ApproachFamilyRegistryRecordViewV3
   >;
+  readonly validationIntents: ReadonlyMap<string, ValidationIntentRecordView>;
   readonly verifications: ReadonlyMap<string, StoredVerification>;
 }
 
@@ -1829,6 +1862,211 @@ class SqliteResearchRecord implements ResearchRecord {
     );
   }
 
+  async recordValidationIntents(
+    campaignId: string,
+    runId: string,
+    values: readonly ValidationCandidate[],
+  ): Promise<readonly ValidationIntentRecordView[]> {
+    const candidates = z
+      .array(validationCandidateSchema)
+      .min(1)
+      .max(64)
+      .parse(values);
+    if (
+      new Set(candidates.map((candidate) => candidate.id)).size !==
+      candidates.length
+    ) {
+      throw new Error(
+        "Validation intent candidates must be exact-deduplicated",
+      );
+    }
+    if (this.#artifactStore === undefined) {
+      throw new Error("Validation intent requires an Artifact Store");
+    }
+    const rows = this.#readRows(campaignId);
+    if (rows.length === 0) {
+      throw new Error(`Campaign not found: ${campaignId}`);
+    }
+    const ledger = this.#decodeLedger(campaignId, rows);
+    const run = ledger.semanticRuns.get(runId);
+    const registry = ledger.approachFamilyRegistriesV3.get(runId);
+    if (
+      run === undefined ||
+      run.completed !== undefined ||
+      registry === undefined ||
+      ledger.approachFamilyRegistries.has(runId) ||
+      candidates.some(
+        (candidate) =>
+          canonicalJson(candidate.target) !== canonicalJson(run.plan.target) ||
+          canonicalJson(candidate.manifest) !==
+            canonicalJson(run.plan.manifest),
+      )
+    ) {
+      throw new CampaignRunConflictError(campaignId, runId);
+    }
+
+    const decisions = new Map<string, IterationDecisionV3>();
+    for (const decisionDigest of new Set(
+      candidates.flatMap((candidate) =>
+        candidate.origins.map((origin) => origin.rootEvaluationDigest),
+      ),
+    )) {
+      if (
+        !ledger.semanticIterationDecisionsV3.has(decisionDigest) ||
+        !registry.value.decisions.some(
+          (decision) => decision.digest === decisionDigest,
+        )
+      ) {
+        throw new CampaignRunConflictError(campaignId, runId);
+      }
+      const rawDecision = await this.#artifactStore.readJson(decisionDigest);
+      if (sha256Digest(rawDecision) !== decisionDigest) {
+        throw new Error("Validation intent Decision CAS mismatch");
+      }
+      decisions.set(
+        decisionDigest,
+        iterationDecisionV3Schema.parse(rawDecision),
+      );
+    }
+
+    const families = new Map(
+      registry.value.families.map((family) => [family.id, family]),
+    );
+    const intents: ValidationIntent[] = [];
+    for (const candidate of [...candidates].sort((left, right) =>
+      compareText(left.id, right.id),
+    )) {
+      for (const origin of candidate.origins) {
+        const decision = decisions.get(origin.rootEvaluationDigest);
+        const family = families.get(origin.approachFamilyId);
+        if (
+          decision === undefined ||
+          family === undefined ||
+          !decision.actions.some(
+            (action) =>
+              action.kind === "admit-validation" &&
+              action.approachFamily.id === family.openingAdmission.id &&
+              action.admission.hypothesis.digest === origin.subjectDigest &&
+              action.admission.brokenSecurityProperty ===
+                candidate.brokenSecurityProperty &&
+              canonicalJson(action.admission.causalRoute) ===
+                canonicalJson(candidate.causalRoute),
+          )
+        ) {
+          throw new Error("Validation intent is not admitted by its Decision");
+        }
+      }
+      const candidateRef = referenceValidationCandidate(candidate);
+      const storedCandidateDigest =
+        await this.#artifactStore.putJson(candidate);
+      if (storedCandidateDigest !== candidateRef.digest) {
+        throw new Error("Validation Candidate CAS mismatch");
+      }
+      const approachFamilyIds = [
+        ...new Set(candidate.origins.map((origin) => origin.approachFamilyId)),
+      ].sort(compareText);
+      const rootEvaluationDigests = [
+        ...new Set(
+          candidate.origins.map((origin) => origin.rootEvaluationDigest),
+        ),
+      ].sort(compareText);
+      const identity = {
+        kind: "validation-intent" as const,
+        schemaVersion: 1 as const,
+        campaignId,
+        runId,
+        validationId: candidate.id,
+      };
+      intents.push(
+        validationIntentSchema.parse({
+          ...identity,
+          id: sha256Digest(identity),
+          candidate: candidateRef,
+          approachFamilyIds,
+          rootEvaluationDigests,
+        }),
+      );
+    }
+    const projected = attachApproachFamilyValidationIntentsV3({
+      registry: registry.value,
+      intents,
+    });
+    const storedRegistryDigest = await this.#artifactStore.putJson(
+      projected.value,
+    );
+    if (storedRegistryDigest !== projected.ref.digest) {
+      throw new Error("Validation intent Registry CAS mismatch");
+    }
+
+    const transact = this.#database.transaction(
+      (): readonly ValidationIntentRecordView[] => {
+        const currentRows = this.#readRows(campaignId);
+        const current = this.#decodeLedger(campaignId, currentRows);
+        const existing = intents.map((intent) =>
+          current.validationIntents.get(intent.id),
+        );
+        if (existing.some((record) => record !== undefined)) {
+          if (
+            existing.some(
+              (record, index) =>
+                record === undefined ||
+                canonicalJson(record.intent) !== canonicalJson(intents[index]),
+            )
+          ) {
+            throw new CampaignRunConflictError(campaignId, runId);
+          }
+          return existing.flatMap((record) =>
+            record === undefined ? [] : [record],
+          );
+        }
+        const currentRun = current.semanticRuns.get(runId);
+        const currentRegistry = current.approachFamilyRegistriesV3.get(runId);
+        if (
+          currentRun === undefined ||
+          currentRun.completed !== undefined ||
+          currentRegistry?.ref.digest !== registry.ref.digest
+        ) {
+          throw new CampaignRunConflictError(campaignId, runId);
+        }
+        const occurredAt = this.#clock().toISOString();
+        const ledgerHead = currentRows.length + 1;
+        this.#insertEvent(
+          campaignId,
+          ledgerHead,
+          "validation.intended",
+          occurredAt,
+          {
+            runId,
+            predecessorRegistryDigest: registry.ref.digest,
+            intents,
+            registry: projected.ref,
+          },
+          1,
+        );
+        return intents.map((intent) => ({
+          ledgerHead,
+          occurredAt,
+          intent,
+          registry: projected.ref,
+        }));
+      },
+    );
+    return transact();
+  }
+
+  async listValidationIntents(
+    campaignId: string,
+    runId: string,
+  ): Promise<readonly ValidationIntentRecordView[]> {
+    const rows = this.#readRows(campaignId);
+    if (rows.length === 0) return [];
+    return [...this.#decodeLedger(campaignId, rows).validationIntents.values()]
+      .filter((record) => record.intent.runId === runId)
+      .sort((left, right) =>
+        compareText(left.intent.validationId, right.intent.validationId),
+      );
+  }
+
   async recordSemanticDepthIteration(
     campaignId: string,
     runId: string,
@@ -2327,6 +2565,7 @@ class SqliteResearchRecord implements ResearchRecord {
       string,
       ApproachFamilyRegistryRecordViewV3
     >();
+    const validationIntents = new Map<string, ValidationIntentRecordView>();
     const verifications = new Map<string, StoredVerification>();
     for (const event of rows.slice(1)) {
       if (event.kind === "campaign.prepared") {
@@ -2641,6 +2880,74 @@ class SqliteResearchRecord implements ResearchRecord {
           registry: payload.registry,
         });
         approachFamilyRegistries.set(payload.runId, registry);
+        continue;
+      }
+      if (event.kind === "validation.intended") {
+        if (event.schema_version !== 1) {
+          throw new UnsupportedLedgerSchemaError(
+            event.kind,
+            event.schema_version,
+          );
+        }
+        const payload = validationIntendedPayloadSchema.parse(
+          this.#parsePayload(event),
+        );
+        const run = semanticRuns.get(payload.runId);
+        const previous = approachFamilyRegistriesV3.get(payload.runId);
+        if (
+          run === undefined ||
+          run.completed !== undefined ||
+          previous === undefined ||
+          previous.ref.digest !== payload.predecessorRegistryDigest ||
+          new Set(payload.intents.map((intent) => intent.id)).size !==
+            payload.intents.length ||
+          payload.intents.some((intent) => {
+            const identity = {
+              kind: intent.kind,
+              schemaVersion: intent.schemaVersion,
+              campaignId: intent.campaignId,
+              runId: intent.runId,
+              validationId: intent.validationId,
+            };
+            return (
+              intent.id !== sha256Digest(identity) ||
+              intent.campaignId !== campaignId ||
+              intent.runId !== payload.runId ||
+              intent.validationId !== intent.candidate.id ||
+              intent.candidate.targetSnapshotDigest !==
+                run.plan.target.digest ||
+              intent.candidate.manifestDigest !== run.plan.manifest.digest ||
+              new Set(intent.rootEvaluationDigests).size !==
+                intent.rootEvaluationDigests.length ||
+              intent.rootEvaluationDigests.some(
+                (digest) =>
+                  !semanticIterationDecisionsV3.has(digest) ||
+                  !previous.value.decisions.some(
+                    (decision) => decision.digest === digest,
+                  ),
+              ) ||
+              validationIntents.has(intent.id)
+            );
+          })
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        const projected = attachApproachFamilyValidationIntentsV3({
+          registry: previous.value,
+          intents: payload.intents,
+        });
+        if (canonicalJson(projected.ref) !== canonicalJson(payload.registry)) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        for (const intent of payload.intents) {
+          validationIntents.set(intent.id, {
+            ledgerHead: event.campaign_sequence,
+            occurredAt: event.occurred_at,
+            intent,
+            registry: payload.registry,
+          });
+        }
+        approachFamilyRegistriesV3.set(payload.runId, projected);
         continue;
       }
       if (event.kind === "exploration.depth-iteration-decided") {
@@ -3122,6 +3429,7 @@ class SqliteResearchRecord implements ResearchRecord {
       semanticIterationDecisionsV3,
       approachFamilyRegistries,
       approachFamilyRegistriesV3,
+      validationIntents,
       verifications,
     };
   }
