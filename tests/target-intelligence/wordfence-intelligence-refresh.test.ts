@@ -18,8 +18,18 @@ import Database from "better-sqlite3";
 import { describe, expect, it, vi } from "vitest";
 
 const filesystemFault = vi.hoisted<{
+  beforeFirstSidecarChmod: (() => void) | undefined;
+  directoryCloseFailuresRemaining: number;
+  directoryClosePath: string | undefined;
   directorySyncPath: string | undefined;
-}>(() => ({ directorySyncPath: undefined }));
+  firstSidecarChmodPath: string | undefined;
+}>(() => ({
+  beforeFirstSidecarChmod: undefined,
+  directoryCloseFailuresRemaining: 0,
+  directoryClosePath: undefined,
+  directorySyncPath: undefined,
+  firstSidecarChmodPath: undefined,
+}));
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
@@ -32,6 +42,35 @@ vi.mock("node:fs/promises", async (importOriginal) => {
           configurable: true,
           value: async () => {
             const error = new Error("synthetic directory sync failure");
+            Object.defineProperty(error, "code", { value: "EIO" });
+            throw error;
+          },
+        });
+      }
+      if (String(args[0]) === filesystemFault.firstSidecarChmodPath) {
+        const chmod = handle.chmod.bind(handle);
+        Object.defineProperty(handle, "chmod", {
+          configurable: true,
+          value: async (mode: number) => {
+            const observe = filesystemFault.beforeFirstSidecarChmod;
+            filesystemFault.beforeFirstSidecarChmod = undefined;
+            filesystemFault.firstSidecarChmodPath = undefined;
+            observe?.();
+            await chmod(mode);
+          },
+        });
+      }
+      if (
+        String(args[0]) === filesystemFault.directoryClosePath &&
+        filesystemFault.directoryCloseFailuresRemaining > 0
+      ) {
+        filesystemFault.directoryCloseFailuresRemaining -= 1;
+        const close = handle.close.bind(handle);
+        Object.defineProperty(handle, "close", {
+          configurable: true,
+          value: async () => {
+            await close();
+            const error = new Error("synthetic directory close failure");
             Object.defineProperty(error, "code", { value: "EIO" });
             throw error;
           },
@@ -407,6 +446,119 @@ describe("WordfenceIntelligenceRefresh", () => {
     }
   });
 
+  it.each(["run", "inspect"] as const)(
+    "returns a typed storage failure when the %s publication-directory handle cannot close",
+    async (operation) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "wordfence-cas-close-failure-"),
+      );
+      const rawDirectory = join(
+        directory,
+        "artifacts",
+        "wordfence-intelligence-v3",
+      );
+      try {
+        const refresh = openWordfenceIntelligenceRefresh({
+          databasePath: join(directory, "index", "target-intelligence.sqlite"),
+          artifactDirectory: join(directory, "artifacts"),
+          credentialBroker: {
+            async resolve<T>(
+              _reference: WordfenceSecretRef,
+              use: (credential: string) => Promise<T>,
+            ): Promise<T> {
+              return use("synthetic-close-failure-credential");
+            },
+          },
+          fetch: vi.fn<typeof fetch>(async () =>
+            Promise.resolve(
+              new Response(await readFile(fixturePath), { status: 200 }),
+            ),
+          ),
+        });
+        await expect(
+          refresh.run({
+            kind: "wordfence-intelligence-refresh",
+            schemaVersion: 1,
+          }),
+        ).resolves.toMatchObject({ status: "current" });
+
+        filesystemFault.directoryClosePath = rawDirectory;
+        filesystemFault.directoryCloseFailuresRemaining = 1;
+        const result =
+          operation === "run"
+            ? refresh.run({
+                kind: "wordfence-intelligence-refresh",
+                schemaVersion: 1,
+              })
+            : refresh.inspect({
+                kind: "wordfence-intelligence-inspection",
+                schemaVersion: 1,
+              });
+        await expect(result).resolves.toEqual({
+          kind: "wordfence-intelligence-result",
+          schemaVersion: 1,
+          status: "failed",
+          reason: "storage-failure",
+        });
+      } finally {
+        filesystemFault.directoryCloseFailuresRemaining = 0;
+        filesystemFault.directoryClosePath = undefined;
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("preserves an earlier refresh failure when its directory handle cannot close", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-cas-close-primary-failure-"),
+    );
+    const rawDirectory = join(
+      directory,
+      "artifacts",
+      "wordfence-intelligence-v3",
+    );
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(await readFile(fixturePath), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(undefined, { status: 404 }));
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath: join(directory, "index", "target-intelligence.sqlite"),
+        artifactDirectory: join(directory, "artifacts"),
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            return use("synthetic-close-primary-failure-credential");
+          },
+        },
+        fetch: fetchMock,
+      });
+      await expect(
+        refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).resolves.toMatchObject({ status: "current" });
+
+      filesystemFault.directoryClosePath = rawDirectory;
+      filesystemFault.directoryCloseFailuresRemaining = 1;
+      await expect(
+        refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).resolves.toMatchObject({ status: "failed", reason: "not-found" });
+    } finally {
+      filesystemFault.directoryCloseFailuresRemaining = 0;
+      filesystemFault.directoryClosePath = undefined;
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("creates the production SQLite index and sidecars as owner-only storage", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordfence-private-index-"));
     const indexDirectory = join(directory, "index");
@@ -542,6 +694,108 @@ describe("WordfenceIntelligenceRefresh", () => {
     },
   );
 
+  it.each(
+    (["run", "inspect"] as const).flatMap((operation) =>
+      (["index directory", "database"] as const).map(
+        (replacement) => [operation, replacement] as const,
+      ),
+    ),
+  )(
+    "rejects cached %s after secure %s replacement and preserves restart state",
+    async (operation, replacement) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "wordfence-private-index-replacement-"),
+      );
+      const indexDirectory = join(directory, "index");
+      const displacedIndexDirectory = join(directory, "displaced-index");
+      const databasePath = join(indexDirectory, "target-intelligence.sqlite");
+      const displacedDatabasePath = join(
+        indexDirectory,
+        "displaced-target-intelligence.sqlite",
+      );
+      let resolveCalls = 0;
+      let substitute: Database.Database | undefined;
+      const credentialBroker: HostPrivateCredentialBroker = {
+        async resolve<T>(
+          _reference: WordfenceSecretRef,
+          use: (credential: string) => Promise<T>,
+        ): Promise<T> {
+          resolveCalls += 1;
+          return use("synthetic-index-replacement-credential");
+        },
+      };
+      const options = {
+        databasePath,
+        artifactDirectory: join(directory, "artifacts"),
+        credentialBroker,
+        fetch: vi.fn<typeof fetch>(async () =>
+          Promise.resolve(
+            new Response(await readFile(fixturePath), { status: 200 }),
+          ),
+        ),
+      };
+      try {
+        const refresh = openWordfenceIntelligenceRefresh(options);
+        await expect(
+          refresh.run({
+            kind: "wordfence-intelligence-refresh",
+            schemaVersion: 1,
+          }),
+        ).resolves.toMatchObject({ status: "current" });
+
+        if (replacement === "index directory") {
+          await rename(indexDirectory, displacedIndexDirectory);
+          await mkdir(indexDirectory, { mode: 0o700 });
+        } else {
+          await rename(databasePath, displacedDatabasePath);
+          await rename(`${databasePath}-wal`, `${displacedDatabasePath}-wal`);
+          await rename(`${databasePath}-shm`, `${displacedDatabasePath}-shm`);
+        }
+        substitute = new Database(databasePath);
+        substitute.pragma("journal_mode = WAL");
+        substitute.exec("CREATE TABLE replacement_marker (value TEXT) STRICT");
+        await chmod(indexDirectory, 0o700);
+        await chmod(databasePath, 0o600);
+        await chmod(`${databasePath}-wal`, 0o600);
+        await chmod(`${databasePath}-shm`, 0o600);
+
+        const result =
+          operation === "run"
+            ? await refresh.run({
+                kind: "wordfence-intelligence-refresh",
+                schemaVersion: 1,
+              })
+            : await refresh.inspect({
+                kind: "wordfence-intelligence-inspection",
+                schemaVersion: 1,
+              });
+        expect(result).toEqual({
+          kind: "wordfence-intelligence-result",
+          schemaVersion: 1,
+          status: "failed",
+          reason: "storage-failure",
+        });
+        expect(resolveCalls).toBe(1);
+
+        const restarted = openWordfenceIntelligenceRefresh(options);
+        await expect(
+          restarted.inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual({
+          kind: "wordfence-intelligence-result",
+          schemaVersion: 1,
+          status: "failed",
+          reason: "not-refreshed",
+        });
+      } finally {
+        substitute?.close();
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("secures an existing owner-controlled production SQLite index before use", async () => {
     const directory = await mkdtemp(
       join(tmpdir(), "wordfence-existing-private-index-"),
@@ -580,6 +834,67 @@ describe("WordfenceIntelligenceRefresh", () => {
         expect(metadata.mode & 0o777).toBe(0o600);
       }
     } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("protects pre-existing SQLite sidecars before production schema access", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-existing-private-sidecars-"),
+    );
+    const indexDirectory = join(directory, "index");
+    const databasePath = join(indexDirectory, "target-intelligence.sqlite");
+    await mkdir(indexDirectory, { mode: 0o755 });
+    const existing = new Database(databasePath);
+    existing.pragma("journal_mode = WAL");
+    existing.exec("CREATE TABLE pre_existing_marker (value TEXT) STRICT");
+    await chmod(indexDirectory, 0o755);
+    await chmod(databasePath, 0o644);
+    await chmod(`${databasePath}-wal`, 0o644);
+    await chmod(`${databasePath}-shm`, 0o644);
+    let schemaExistedBeforeSidecarProtection: boolean | undefined;
+    filesystemFault.firstSidecarChmodPath = `${databasePath}-wal`;
+    filesystemFault.beforeFirstSidecarChmod = () => {
+      schemaExistedBeforeSidecarProtection =
+        existing
+          .prepare(
+            `SELECT name
+               FROM sqlite_master
+              WHERE type = 'table'
+                AND name = 'wordfence_intelligence_snapshots'`,
+          )
+          .get() !== undefined;
+    };
+    try {
+      const refresh = openWordfenceIntelligenceRefresh({
+        databasePath,
+        artifactDirectory: join(directory, "artifacts"),
+        credentialBroker: {
+          async resolve<T>(): Promise<T> {
+            throw new Error("inspection must not resolve a credential");
+          },
+        },
+      });
+      await expect(
+        refresh.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).resolves.toMatchObject({ status: "failed", reason: "not-refreshed" });
+
+      expect(schemaExistedBeforeSidecarProtection).toBe(false);
+      expect((await lstat(indexDirectory)).mode & 0o777).toBe(0o700);
+      for (const path of [
+        databasePath,
+        `${databasePath}-wal`,
+        `${databasePath}-shm`,
+      ]) {
+        expect((await lstat(path)).mode & 0o777).toBe(0o600);
+      }
+    } finally {
+      filesystemFault.beforeFirstSidecarChmod = undefined;
+      filesystemFault.firstSidecarChmodPath = undefined;
+      existing.close();
       await rm(directory, { recursive: true, force: true });
     }
   });

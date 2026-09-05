@@ -519,6 +519,18 @@ interface PinnedHostPrivateDirectory {
   readonly path: string;
 }
 
+interface HostPrivateFileIdentity {
+  readonly device: number;
+  readonly inode: number;
+}
+
+interface ProductionIndexIdentity {
+  readonly database: HostPrivateFileIdentity;
+  readonly directory: HostPrivateFileIdentity;
+  readonly shm: HostPrivateFileIdentity | undefined;
+  readonly wal: HostPrivateFileIdentity | undefined;
+}
+
 function requireHostPrivateDirectoryMetadata(metadata: Stats): void {
   if (
     !metadata.isDirectory() ||
@@ -661,7 +673,10 @@ async function secureHostPrivateSqliteFiles(path: string): Promise<void> {
   await secureHostPrivateRegularFile(`${path}-shm`, false);
 }
 
-async function requireHostPrivateRegularFile(path: string): Promise<void> {
+async function hostPrivateRegularFileIdentity(
+  path: string,
+  optional = false,
+): Promise<HostPrivateFileIdentity | undefined> {
   let handle: FileHandle;
   try {
     handle = await open(
@@ -669,6 +684,9 @@ async function requireHostPrivateRegularFile(path: string): Promise<void> {
       fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK,
     );
   } catch (error) {
+    if (optional && hasErrorCode(error, "ENOENT")) {
+      return undefined;
+    }
     if (hasErrorCode(error, "ELOOP")) {
       throw new HostPrivateStorageError();
     }
@@ -683,28 +701,106 @@ async function requireHostPrivateRegularFile(path: string): Promise<void> {
     ) {
       throw new HostPrivateStorageError();
     }
+    return { device: metadata.dev, inode: metadata.ino };
   } finally {
     await handle.close();
+  }
+}
+
+function sameFileIdentity(
+  left: HostPrivateFileIdentity | undefined,
+  right: HostPrivateFileIdentity | undefined,
+): boolean {
+  return (
+    left !== undefined &&
+    right !== undefined &&
+    left.device === right.device &&
+    left.inode === right.inode
+  );
+}
+
+function requirePreparedIndexIdentity(
+  prepared: ProductionIndexIdentity,
+  opened: ProductionIndexIdentity,
+): void {
+  if (
+    !sameFileIdentity(prepared.directory, opened.directory) ||
+    !sameFileIdentity(prepared.database, opened.database) ||
+    (prepared.wal !== undefined &&
+      !sameFileIdentity(prepared.wal, opened.wal)) ||
+    (prepared.shm !== undefined && !sameFileIdentity(prepared.shm, opened.shm))
+  ) {
+    throw new HostPrivateStorageError();
+  }
+}
+
+function requireMatchingIndexIdentity(
+  expected: ProductionIndexIdentity,
+  selected: ProductionIndexIdentity,
+): void {
+  if (
+    !sameFileIdentity(expected.directory, selected.directory) ||
+    !sameFileIdentity(expected.database, selected.database) ||
+    !sameFileIdentity(expected.wal, selected.wal) ||
+    !sameFileIdentity(expected.shm, selected.shm)
+  ) {
+    throw new HostPrivateStorageError();
+  }
+}
+
+async function productionIndexIdentity(
+  databasePath: string,
+  requireSidecars: boolean,
+): Promise<ProductionIndexIdentity> {
+  const indexDirectory = await openPinnedHostPrivateDirectory(
+    dirname(databasePath),
+  );
+  try {
+    const database = await hostPrivateRegularFileIdentity(databasePath);
+    const wal = await hostPrivateRegularFileIdentity(
+      `${databasePath}-wal`,
+      !requireSidecars,
+    );
+    const shm = await hostPrivateRegularFileIdentity(
+      `${databasePath}-shm`,
+      !requireSidecars,
+    );
+    if (
+      database === undefined ||
+      (requireSidecars && (wal === undefined || shm === undefined))
+    ) {
+      throw new HostPrivateStorageError();
+    }
+    return {
+      database,
+      directory: {
+        device: indexDirectory.device,
+        inode: indexDirectory.inode,
+      },
+      shm,
+      wal,
+    };
+  } finally {
+    await indexDirectory.handle.close();
   }
 }
 
 async function requireProductionStorage(
   databasePath: string,
   artifactDirectory: string,
-): Promise<PinnedHostPrivateDirectory> {
-  const indexDirectory = await openPinnedHostPrivateDirectory(
-    dirname(databasePath),
-  );
-  try {
-    await requireHostPrivateRegularFile(databasePath);
-    await requireHostPrivateRegularFile(`${databasePath}-wal`);
-    await requireHostPrivateRegularFile(`${databasePath}-shm`);
-    return await openPinnedHostPrivateDirectory(
+  expectedIndexIdentity: ProductionIndexIdentity,
+): Promise<{
+  readonly artifactDirectory: PinnedHostPrivateDirectory;
+  readonly indexIdentity: ProductionIndexIdentity;
+}> {
+  const indexIdentity = await productionIndexIdentity(databasePath, true);
+  requireMatchingIndexIdentity(expectedIndexIdentity, indexIdentity);
+  return {
+    artifactDirectory: await openPinnedHostPrivateDirectory(
       join(artifactDirectory, "wordfence-intelligence-v3"),
-    );
-  } finally {
-    await indexDirectory.handle.close();
-  }
+    ),
+    indexIdentity,
+  };
 }
 
 async function verifyHostPrivateArtifact(
@@ -1990,6 +2086,29 @@ export function openWordfenceIntelligence(
   return new SqliteWordfenceIntelligence(options);
 }
 
+async function usePinnedProductionDirectory(
+  directory: PinnedHostPrivateDirectory,
+  operation: () => Promise<WordfenceIntelligenceResult>,
+): Promise<WordfenceIntelligenceResult> {
+  let result: WordfenceIntelligenceResult;
+  try {
+    result = await operation();
+  } catch (error) {
+    try {
+      await directory.handle.close();
+    } catch {
+      // Preserve the primary operation failure.
+    }
+    throw error;
+  }
+  try {
+    await directory.handle.close();
+  } catch {
+    return result.status === "failed" ? result : failure("storage-failure");
+  }
+  return result;
+}
+
 export function openWordfenceIntelligenceRefresh(
   options: OpenWordfenceIntelligenceRefreshOptions,
 ): WordfenceIntelligenceRefresh {
@@ -2014,6 +2133,7 @@ export function openWordfenceIntelligenceRefresh(
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   };
   let intelligence: SqliteWordfenceIntelligence | undefined;
+  let indexIdentity: ProductionIndexIdentity | undefined;
   const initialize = async (): Promise<
     | {
         readonly artifactDirectory: PinnedHostPrivateDirectory;
@@ -2024,6 +2144,11 @@ export function openWordfenceIntelligenceRefresh(
     try {
       if (intelligence === undefined) {
         await prepareHostPrivateSqliteStorage(intelligenceOptions.databasePath);
+        await secureHostPrivateSqliteFiles(intelligenceOptions.databasePath);
+        const preparedIndexIdentity = await productionIndexIdentity(
+          intelligenceOptions.databasePath,
+          false,
+        );
         await requireHostPrivateDirectory(
           join(
             intelligenceOptions.artifactDirectory,
@@ -2034,28 +2159,46 @@ export function openWordfenceIntelligenceRefresh(
           intelligenceOptions,
           true,
         );
+        let openedIndexIdentity: ProductionIndexIdentity;
         try {
           await secureHostPrivateSqliteFiles(intelligenceOptions.databasePath);
+          openedIndexIdentity = await productionIndexIdentity(
+            intelligenceOptions.databasePath,
+            true,
+          );
+          requirePreparedIndexIdentity(
+            preparedIndexIdentity,
+            openedIndexIdentity,
+          );
         } catch (error) {
           candidate.close();
           throw error;
         }
         if (intelligence === undefined) {
           intelligence = candidate;
+          indexIdentity = openedIndexIdentity;
         } else {
           candidate.close();
         }
       }
-      const artifactDirectory = await requireProductionStorage(
+      const expectedIndexIdentity = indexIdentity;
+      if (expectedIndexIdentity === undefined) {
+        throw new HostPrivateStorageError();
+      }
+      const storage = await requireProductionStorage(
         intelligenceOptions.databasePath,
         intelligenceOptions.artifactDirectory,
+        expectedIndexIdentity,
       );
       const current = intelligence;
       if (current === undefined) {
-        await artifactDirectory.handle.close();
+        await storage.artifactDirectory.handle.close();
         throw new HostPrivateStorageError();
       }
-      return { artifactDirectory, intelligence: current };
+      return {
+        artifactDirectory: storage.artifactDirectory,
+        intelligence: current,
+      };
     } catch (error) {
       if (isStorageFailure(error)) {
         return undefined;
@@ -2070,16 +2213,14 @@ export function openWordfenceIntelligenceRefresh(
       if (current === undefined) {
         return failure("storage-failure");
       }
-      try {
-        return wordfenceIntelligenceResultSchema.parse(
+      return usePinnedProductionDirectory(current.artifactDirectory, async () =>
+        wordfenceIntelligenceResultSchema.parse(
           await current.intelligence.refresh(
             request,
             current.artifactDirectory,
           ),
-        );
-      } finally {
-        await current.artifactDirectory.handle.close();
-      }
+        ),
+      );
     },
     inspect: async (request) => {
       wordfenceIntelligenceInspectionRequestSchema.parse(request);
@@ -2088,16 +2229,18 @@ export function openWordfenceIntelligenceRefresh(
         return failure("storage-failure");
       }
       try {
-        return wordfenceIntelligenceResultSchema.parse(
-          await current.intelligence.inspectProduction(request),
+        return await usePinnedProductionDirectory(
+          current.artifactDirectory,
+          async () =>
+            wordfenceIntelligenceResultSchema.parse(
+              await current.intelligence.inspectProduction(request),
+            ),
         );
       } catch (error) {
         if (isStorageFailure(error)) {
           return failure("storage-failure");
         }
         throw error;
-      } finally {
-        await current.artifactDirectory.handle.close();
       }
     },
   };
