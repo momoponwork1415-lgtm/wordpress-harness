@@ -2552,6 +2552,9 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     }
     const order = this.#refreshOrder();
     if (order === undefined) {
+      if (state?.schemaVersion === 2 || attempts.length > 0) {
+        throw new SnapshotConflictError();
+      }
       return;
     }
     if (order.publication_sequence > 0 && currentSnapshotDigest === undefined) {

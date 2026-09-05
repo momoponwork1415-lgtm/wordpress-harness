@@ -185,6 +185,51 @@ function controlledFetch(): {
   };
 }
 
+function refreshOrderingState(databasePath: string): unknown {
+  const database = new Database(databasePath, { readonly: true });
+  try {
+    return {
+      attempts: database
+        .prepare(
+          `SELECT sequence, attempted_at, current_snapshot_digest
+             FROM wordfence_intelligence_refresh_attempts
+            ORDER BY sequence`,
+        )
+        .all(),
+      current: database
+        .prepare(
+          `SELECT singleton, snapshot_digest
+             FROM wordfence_intelligence_current
+            ORDER BY singleton`,
+        )
+        .all(),
+      order: database
+        .prepare(
+          `SELECT singleton, publication_sequence, latest_completed_sequence
+             FROM wordfence_intelligence_refresh_order
+            ORDER BY singleton`,
+        )
+        .all(),
+      sequence: database
+        .prepare(
+          `SELECT name, seq
+             FROM sqlite_sequence
+            WHERE name = 'wordfence_intelligence_refresh_attempts'`,
+        )
+        .all(),
+      state: database
+        .prepare(
+          `SELECT singleton, state_json
+             FROM wordfence_intelligence_refresh_state
+            ORDER BY singleton`,
+        )
+        .all(),
+    };
+  } finally {
+    database.close();
+  }
+}
+
 describe("WordfenceIntelligenceRefresh", () => {
   it("publishes raw CAS bytes only in a protected immutable regular file", async () => {
     const directory = await mkdtemp(
@@ -3527,6 +3572,279 @@ describe("WordfenceIntelligenceRefresh", () => {
         });
       } finally {
         pendingFetch.respond(new Response(validBytes, { status: 200 }));
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("rejects a missing refresh order bound to sequenced stale state before retrieval", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-missing-sequenced-refresh-order-"),
+    );
+    const databasePath = join(directory, "target-intelligence.sqlite");
+    const artifactDirectory = join(directory, "artifacts");
+    const validBytes = await readFile(fixturePath);
+    const credentialBroker: HostPrivateCredentialBroker = {
+      async resolve<T>(
+        _reference: WordfenceSecretRef,
+        use: (credential: string) => Promise<T>,
+      ): Promise<T> {
+        return use("synthetic-missing-sequenced-order-credential");
+      },
+    };
+    try {
+      const seed = openWordfenceIntelligenceRefresh({
+        databasePath,
+        artifactDirectory,
+        credentialBroker,
+        fetch: vi
+          .fn<typeof fetch>()
+          .mockResolvedValueOnce(new Response(validBytes, { status: 200 }))
+          .mockResolvedValueOnce(new Response(undefined, { status: 404 })),
+        clock: () => new Date("2030-08-01T00:00:00.000Z"),
+      });
+      await seed.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      await seed.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+
+      const corruption = new Database(databasePath);
+      corruption.exec("DELETE FROM wordfence_intelligence_refresh_order");
+      corruption.close();
+      const before = refreshOrderingState(databasePath);
+      let resolveCalls = 0;
+      const fetchMock = vi.fn<typeof fetch>(async () =>
+        Promise.resolve(new Response(validBytes, { status: 200 })),
+      );
+      const restarted = openWordfenceIntelligenceRefresh({
+        databasePath,
+        artifactDirectory,
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            resolveCalls += 1;
+            return use("must-not-resolve-missing-order-credential");
+          },
+        },
+        fetch: fetchMock,
+        clock: () => new Date("2030-08-02T00:00:00.000Z"),
+      });
+
+      await expect(
+        restarted.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).rejects.toThrow("Wordfence Intelligence snapshot conflict");
+      await expect(
+        restarted.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).rejects.toThrow("Wordfence Intelligence snapshot conflict");
+      expect(resolveCalls).toBe(0);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(refreshOrderingState(databasePath)).toEqual(before);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a missing refresh order with an active attempt before retrieval", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wordfence-missing-active-refresh-order-"),
+    );
+    const databasePath = join(directory, "target-intelligence.sqlite");
+    const artifactDirectory = join(directory, "artifacts");
+    const validBytes = await readFile(fixturePath);
+    const pendingFetch = controlledFetch();
+    const credentialBroker: HostPrivateCredentialBroker = {
+      async resolve<T>(
+        _reference: WordfenceSecretRef,
+        use: (credential: string) => Promise<T>,
+      ): Promise<T> {
+        return use("synthetic-missing-active-order-credential");
+      },
+    };
+    let pendingRun: Promise<unknown> | undefined;
+    try {
+      const seed = openWordfenceIntelligenceRefresh({
+        databasePath,
+        artifactDirectory,
+        credentialBroker,
+        fetch: vi
+          .fn<typeof fetch>()
+          .mockResolvedValueOnce(new Response(validBytes, { status: 200 }))
+          .mockImplementationOnce(pendingFetch.fetch),
+        clock: () => new Date("2030-08-01T00:00:00.000Z"),
+      });
+      await seed.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      pendingRun = seed.run({
+        kind: "wordfence-intelligence-refresh",
+        schemaVersion: 1,
+      });
+      await pendingFetch.started;
+
+      const corruption = new Database(databasePath);
+      corruption.exec("DELETE FROM wordfence_intelligence_refresh_order");
+      corruption.close();
+      const before = refreshOrderingState(databasePath);
+      let resolveCalls = 0;
+      const fetchMock = vi.fn<typeof fetch>(async () =>
+        Promise.resolve(new Response(validBytes, { status: 200 })),
+      );
+      const restarted = openWordfenceIntelligenceRefresh({
+        databasePath,
+        artifactDirectory,
+        credentialBroker: {
+          async resolve<T>(
+            _reference: WordfenceSecretRef,
+            use: (credential: string) => Promise<T>,
+          ): Promise<T> {
+            resolveCalls += 1;
+            return use("must-not-resolve-missing-order-credential");
+          },
+        },
+        fetch: fetchMock,
+        clock: () => new Date("2030-08-02T00:00:00.000Z"),
+      });
+
+      await expect(
+        restarted.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        }),
+      ).rejects.toThrow("Wordfence Intelligence snapshot conflict");
+      await expect(
+        restarted.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        }),
+      ).rejects.toThrow("Wordfence Intelligence snapshot conflict");
+      expect(resolveCalls).toBe(0);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(refreshOrderingState(databasePath)).toEqual(before);
+    } finally {
+      pendingFetch.respond(new Response(undefined, { status: 404 }));
+      await pendingRun?.catch(() => undefined);
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["clean uninitialized", "legacy v1 stale"] as const)(
+    "initializes refresh order for %s state",
+    async (startingState) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "wordfence-safe-refresh-order-initialization-"),
+      );
+      const databasePath = join(directory, "target-intelligence.sqlite");
+      const artifactDirectory = join(directory, "artifacts");
+      const validBytes = await readFile(fixturePath);
+      const credentialBroker: HostPrivateCredentialBroker = {
+        async resolve<T>(
+          _reference: WordfenceSecretRef,
+          use: (credential: string) => Promise<T>,
+        ): Promise<T> {
+          return use("synthetic-safe-order-initialization-credential");
+        },
+      };
+      const expectedSequence = startingState === "clean uninitialized" ? 1 : 2;
+      try {
+        if (startingState === "legacy v1 stale") {
+          const seed = openWordfenceIntelligenceRefresh({
+            databasePath,
+            artifactDirectory,
+            credentialBroker,
+            fetch: vi.fn<typeof fetch>(async () =>
+              Promise.resolve(new Response(validBytes, { status: 200 })),
+            ),
+            clock: () => new Date("2030-08-01T00:00:00.000Z"),
+          });
+          const current = await seed.run({
+            kind: "wordfence-intelligence-refresh",
+            schemaVersion: 1,
+          });
+          if (current.status !== "current") {
+            throw new Error("Expected a legacy current snapshot");
+          }
+          const legacy = new Database(databasePath);
+          legacy
+            .prepare(
+              `INSERT INTO wordfence_intelligence_refresh_state (
+                 singleton, state_json
+               ) VALUES (1, ?)`,
+            )
+            .run(
+              JSON.stringify({
+                kind: "wordfence-intelligence-production-refresh-state",
+                schemaVersion: 1,
+                currentSnapshotDigest: current.snapshotRef.digest,
+                latestRefresh: {
+                  kind: "wordfence-intelligence-refresh-attempt",
+                  schemaVersion: 1,
+                  attemptedAt: "2030-08-01T00:00:00.000Z",
+                  result: {
+                    kind: "wordfence-intelligence-result",
+                    schemaVersion: 1,
+                    status: "failed",
+                    reason: "not-found",
+                  },
+                },
+              }),
+            );
+          legacy.exec("DELETE FROM wordfence_intelligence_refresh_order");
+          legacy.close();
+        }
+
+        let resolveCalls = 0;
+        const fetchMock = vi.fn<typeof fetch>(async () =>
+          Promise.resolve(new Response(validBytes, { status: 200 })),
+        );
+        const refresh = openWordfenceIntelligenceRefresh({
+          databasePath,
+          artifactDirectory,
+          credentialBroker: {
+            async resolve<T>(
+              _reference: WordfenceSecretRef,
+              use: (credential: string) => Promise<T>,
+            ): Promise<T> {
+              resolveCalls += 1;
+              return use("synthetic-safe-order-initialization-credential");
+            },
+          },
+          fetch: fetchMock,
+          clock: () => new Date("2030-08-02T00:00:00.000Z"),
+        });
+
+        await expect(
+          refresh.run({
+            kind: "wordfence-intelligence-refresh",
+            schemaVersion: 1,
+          }),
+        ).resolves.toMatchObject({ status: "current" });
+        expect(resolveCalls).toBe(1);
+        expect(fetchMock).toHaveBeenCalledOnce();
+        expect(refreshOrderingState(databasePath)).toMatchObject({
+          attempts: [],
+          order: [
+            {
+              singleton: 1,
+              publication_sequence: expectedSequence,
+              latest_completed_sequence: expectedSequence,
+            },
+          ],
+          state: [],
+        });
+      } finally {
         await rm(directory, { recursive: true, force: true });
       }
     },
