@@ -11,7 +11,7 @@
         <mxCell id="subtitle" value="One system · three ownership contexts · two human-gated boundaries" style="text;html=1;align=left;verticalAlign=middle;fontSize=14;fontColor=#526078;" vertex="1" parent="1">
           <mxGeometry x="40" y="60" width="900" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="mission" value="North Star: discover high-impact broken security semantics → reject obvious false positives with source-only Validation → hand a bounded packet to fresh Human Verification" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#172033;strokeColor=#172033;fontColor=#FFFFFF;fontSize=14;fontStyle=1;spacing=12;" vertex="1" parent="1">
+        <mxCell id="mission" value="North Star: discover high-impact broken security semantics → source screen → AI reproduction → mandatory fresh human reproduction" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#172033;strokeColor=#172033;fontColor=#FFFFFF;fontSize=14;fontStyle=1;spacing=12;" vertex="1" parent="1">
           <mxGeometry x="40" y="100" width="1720" height="55" as="geometry" />
         </mxCell>
 
@@ -50,7 +50,7 @@
         <mxCell id="exploration" value="Exploration&#xa;theses · hypotheses · conditional Depth" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
           <mxGeometry x="465" y="70" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="validation" value="Validation&#xa;2 fresh attempts · conditional 3rd · synthesis" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
+        <mxCell id="validation" value="Validation&#xa;1 fresh source screen · no reject" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
           <mxGeometry x="685" y="70" width="190" height="70" as="geometry" />
         </mxCell>
         <mxCell id="execution" value="Model Execution&#xa;provider · process · tool binding" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7F4FF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
@@ -68,14 +68,14 @@
         <mxCell id="agent" value="Agent Sandbox&#xa;fresh context · isolated scratch · no ambient shell/network" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#FFF2F1;strokeColor=#C85B51;fontColor=#7B2F2A;fontSize=12;fontStyle=1;spacing=10;" vertex="1" parent="research">
           <mxGeometry x="245" y="360" width="190" height="90" as="geometry" />
         </mxCell>
-        <mxCell id="review-packet" value="Human Review Packet&#xa;source route · controls · risk · runtime uncertainty" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#FFF4CC;strokeColor=#C79A20;fontColor=#5C4610;fontSize=12;fontStyle=1;spacing=8;" vertex="1" parent="research">
+        <mxCell id="review-packet" value="Runtime Verification Packet&#xa;route · premise · effect · runtime uncertainty" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#FFF4CC;strokeColor=#C79A20;fontColor=#5C4610;fontSize=12;fontStyle=1;spacing=8;" vertex="1" parent="research">
           <mxGeometry x="685" y="360" width="190" height="90" as="geometry" />
         </mxCell>
 
-        <mxCell id="human-queue" value="Human Verification Queue&#xa;max 3 active unique mechanisms" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3A9567;fontColor=#205E42;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="human">
+        <mxCell id="human-queue" value="AI Reproduction&#xa;confirmed → Triage Packet · inconclusive → Escalation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3A9567;fontColor=#205E42;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="human">
           <mxGeometry x="25" y="70" width="320" height="65" as="geometry" />
         </mxCell>
-        <mxCell id="human-verify" value="Fresh Human Verification&#xa;disposable isolated runtime · real Target interface" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3A9567;fontColor=#205E42;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="human">
+        <mxCell id="human-verify" value="Mandatory Human Reproduction&#xa;normal queue · separate fresh instance · same recipe" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3A9567;fontColor=#205E42;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="human">
           <mxGeometry x="25" y="165" width="320" height="75" as="geometry" />
         </mxCell>
         <mxCell id="finding" value="Finding&#xa;human promotion only" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D8F1E3;strokeColor=#3A9567;fontColor=#205E42;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="human">

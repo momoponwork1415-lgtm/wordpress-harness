@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0123
 supersedes: 0007, 0008, 0067, 0068, 0085, 0119, 0121
 ---
 

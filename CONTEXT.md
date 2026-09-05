@@ -64,8 +64,12 @@ _Avoid_: Redaction only、Prompt secrecy、Benchmark tuning
 実在するsource route、attacker premise、既存防御、因果関係、実害を反証するための、版付きで検証可能な技術基準。Wordfenceの公式な共通誤検出例を主な入力とするが、programmeのinstall数、researcher tier、報奨条件は含めない。
 _Avoid_: Programme scope、Blocklist、Model confidence
 
-**Wordfence Eligibility Snapshot**:
-取得時点のWordfence Bug Bounty Programの対象asset、vulnerability class、attacker role、active installation threshold、researcher tier、除外条件をsource URLとcontent digestへ固定した外部programme規則。Target選定とFinding後の提出適格性に使い、技術的真偽を決めない。
+**Programme Identity**:
+外部提出先を安定して識別するidentity。PatchstackとWordfenceを別Programmeとして扱い、programme名、web form URLまたは運営vendor名だけに依存しない。
+_Avoid_: Vendor Identity、Submission URL、Research scope
+
+**Programme Eligibility Snapshot**:
+一つのProgramme Identityについて、取得時点の対象asset、vulnerability class、attacker role、active installation threshold、researcher tier、除外条件をsource URLとcontent digestへ固定した外部programme規則。Target選定とFinding後の提出適格性に使い、技術的真偽を決めない。
 _Avoid_: Finding policy、Current web page、Research scope
 
 **Source Evidence Query**:
@@ -101,7 +105,7 @@ Boundary PairのCase role、期待条件、評価対象をResearch workerから�
 _Avoid_: Finder hint、Campaign Policy、Known-vulnerability prompt
 
 **Calibration Review**:
-同じCausal Identityのpositive `ready-for-human`、patched Disproved、正常機能維持、oracle-free negativeの非昇格が揃ったかを判定するprivate評価。脆弱性の探索、ValidationまたはHuman Verificationではない。
+同じCausal Identityのpositive `ready-for-runtime`、patched Disproved、正常機能維持、oracle-free negativeの非昇格が揃ったかを判定するprivate評価。脆弱性の探索、ValidationまたはHuman Verificationではない。
 _Avoid_: Validation、Human Verification、Finder review、Model judge
 
 **Boundary Pair Evidence**:
@@ -121,7 +125,7 @@ _Avoid_: Production scan、Live exploitation、Benchmark run
 _Avoid_: Low-privilege user、Normal user
 
 **Frontier Discovery Capability**:
-既知脆弱性のoracleなしに、Permitted Attackerからhigh-impactなsecurity-property破壊へ至る未知routeをsource semanticsから発見し、独立Validation、Human Review Packet、Human Verificationまで到達できる能力。RCEまたは同等のsite-wide compromiseは最上位impactだが唯一の成功条件ではなく、ATO、PrivEsc、unauthenticated SQLi、強いStored XSS、arbitrary file operation、object injection等を含む。
+既知脆弱性のoracleなしに、Permitted Attackerからhigh-impactなsecurity-property破壊へ至る未知routeをsource semanticsから発見し、独立Validation、Runtime Verification Packet、AI Reproduction、人間のfresh再実行まで到達できる能力。RCEまたは同等のsite-wide compromiseは最上位impactだが唯一の成功条件ではなく、ATO、PrivEsc、unauthenticated SQLi、強いStored XSS、arbitrary file operation、object injection等を含む。
 _Avoid_: RCE detector、Sink coverage、CWE recall、Static rule coverage
 
 **Researcher Reference**:
@@ -309,7 +313,7 @@ Hypothesisのsymbol実在、entry到達性、権限・nonce等の防御、securi
 _Avoid_: Heuristic score、Model confidence、Finding
 
 **Validation Candidate**:
-Wave BarrierとRoot Evaluationを通過し、exact duplicateをまとめた一つのSource-bound Hypothesisまたはsource-bound Chain Proposal。Validationの開始単位であり、FindingまたはHuman Review Packetではない。
+Wave BarrierとRoot Evaluationを通過し、exact duplicateをまとめた一つのSource-bound Hypothesisまたはsource-bound Chain Proposal。Validationの開始単位であり、FindingまたはRuntime Verification Packetではない。
 _Avoid_: Finder checkpoint、Finding、Scanner alert
 
 **Validation Intent**:
@@ -325,32 +329,28 @@ _Avoid_: Programme scope、Target oracle、Unversioned threat model
 _Avoid_: Score threshold、CWE checklist、Majority vote
 
 **Validation Queue**:
-Root Evaluation後のValidation Candidateをstable identityとBudget Envelopeへbindした待機集合。通常は二つのIndependent Validation Attemptを開始し、material conflict時だけ三つ目を追加する。予算内で実行されないことは却下または削除を意味しない。
+Root Evaluation後のValidation Candidateをstable identityとBudget Envelopeへbindした待機集合。exact duplicateをまとめた後、一つのIndependent Validation Attemptを開始する。予算内で実行されないことは却下または削除を意味しない。
 _Avoid_: Finder checkpoint queue、Finding Queue、FIFO
 
-**Validation Synthesis**:
-同じValidation Candidateに対するIndependent Validation Attemptのrubric結果を、source toolなしのfresh contextで統合する判断。新しいevidenceまたはrouteを書き足さず、多数決ではなく参照可能な根拠と反証からValidation Dispositionを作る。
-_Avoid_: Validator vote、Source research、Finding promotion
-
 **Validation Disposition**:
-Validation Synthesisがcandidate全体へ付ける`ready-for-human`、`needs-research`、`disproven`、`rejected`または`validation-pending`の理由付きterminalまたは保留判断。severityとRisk Assessmentを含めない。
+一つのIndependent Validation Attemptから決定的に投影する`ready-for-runtime`、`needs-research`、`disproven`または`validation-pending`の理由付きterminalまたは保留判断。決定的なsource contradictionだけを`disproven`とし、不確実性をnegativeへ丸めず、severityとRisk Assessmentを含めない。
 _Avoid_: Finding、Human decision、Confidence label
 
 **Validation Frontier Gap**:
-`needs-research`のValidation Synthesisが選んだ一つのValidator Attemptの具体的proof gapを、元のValidation Candidateと全origin Approach Familyへ結び付けた不変artifact。Finder Attempt、Work Lease、Work Waveのprovenanceを持たず、新しいApproach Familyを開始しない。
+`needs-research`のValidation Attemptが示した具体的proof gapを、元のValidation Candidateと全origin Approach Familyへ結び付けた不変artifact。Finder Attempt、Work Lease、Work Waveのprovenanceを持たず、新しいApproach Familyを開始しない。
 _Avoid_: New Family、Finder checkpoint、Free-form research request
 
-**Ready-for-human**:
-Validation Rubricの全criterionがpassし、残るunknownがruntime reproductionだけであるValidation Disposition。FindingまたはHuman Verification成功を意味しない。
-_Avoid_: Confirmed、Verified Finding、Approved
+**Ready-for-runtime**:
+決定的なsource反証がなく、attacker premise、Security Effect、runtimeで試せるrouteがあるValidation Disposition。全rubric pass、runtime成立またはHuman Verification成功を意味しない。
+_Avoid_: Ready-for-human、Confirmed、Verified Finding
 
 **Risk Assessment**:
-Validation Synthesis後にattacker role、prerequisite、exposed surface、security effect、configuration、blast radiusを構造化したartifact。Validityを変更せず、programme eligibilityまたは外部行動を判断しない。
+一つのValidation recordと、それにbindされたValidation Candidate / Threat Contextからattacker role、prerequisite、exposed surface、security effect、configuration、blast radiusを追加model callなしで決定的に投影したartifact。Validityを変更せず、programme eligibilityまたは外部行動を判断しない。
 _Avoid_: Validation verdict、CVSS-only ranking、Programme Disposition
 
-**Human Review Packet**:
-一つのReady-for-human candidateについてTarget/version、Manifest、deduped Hypothesis、attacker premise、source route、調べたcontrol、Validation AttemptとSynthesis、runtime uncertainty、Risk Assessment、reproduction sketchをdigest固定したHuman OSへのversioned handoff。raw transcript、credential、内部推論を含めない。
-_Avoid_: Finding、Report、Transcript
+**Runtime Verification Packet**:
+一つのReady-for-runtime candidateについてTarget/version、Manifest、attacker premise、source route、調べたcontrol、一つのValidation Attempt、runtime uncertainty、Risk Assessment、reproduction sketchを自己完結にdigest固定したHuman OSへのversioned handoff。Human OSはResearch storageを直接参照せずこのPacketだけからAI Reproductionを開始できる。Findingまたは人間向け再現手順ではない。
+_Avoid_: Triage Reproduction Packet、Finding、Transcript
 
 **Skeptic Review**:
 成立主張を崩す観点から、attacker premise、到達可能性、既存防御、因果関係、scopeを独立に再確認するreview。
@@ -361,8 +361,8 @@ root cause、attacker-controlled primitive、破壊されるsecurity propertyの
 _Avoid_: File match、Vulnerability-class match
 
 **Legacy Automated Finding**:
-ADR 0122より前のVerification schemaで、source再導出、Witness、Causal Control、Lab bindingから自動生成されたread-only Finding record。元のLedger上の意味を維持するが、新policyのFinding、Ready-for-humanまたはHuman Verificationへ再解釈しない。
-_Avoid_: Current Finding、Ready-for-human、Migrated Finding
+ADR 0122より前のVerification schemaで、source再導出、Witness、Causal Control、Lab bindingから自動生成されたread-only Finding record。元のLedger上の意味を維持するが、新policyのFinding、Ready-for-runtimeまたはHuman Verificationへ再解釈しない。
+_Avoid_: Current Finding、Ready-for-runtime、Migrated Finding
 
 **Calibration Fingerprint**:
 同じBoundary Pairのterminal candidateを異なるAttemptやModel Profileの間で照合するため、Target Snapshot、Evidence Routeのsource anchorとHuman Verification結果を固定した構造的identity。modelが生成したCausal Identityの文言または既知答えを探索へ渡すものではない。
@@ -381,7 +381,7 @@ _Avoid_: Blocked、Rejected
 _Avoid_: Timeout、Zero findings、Agent done、Map complete
 
 **Incomplete Campaign**:
-予算、tool、provider、Root Evaluation不成立、または証拠不足により、active research thesis、strong frontier、未解決gap、Validation Candidateのいずれかを残して停止したResearch状態。Review Packetが存在していても残workがあればIncompleteになり得る。脆弱性がないという結論ではない。
+予算、tool、provider、Root Evaluation不成立、または証拠不足により、active research thesis、strong frontier、未解決gap、Validation Candidateのいずれかを残して停止したResearch状態。Runtime Verification Packetが存在していても残workがあればIncompleteになり得る。脆弱性がないという結論ではない。
 _Avoid_: Completed、No vulnerabilities、Failed run
 
 **Closure Record**:

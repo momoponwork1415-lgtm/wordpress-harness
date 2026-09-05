@@ -1,73 +1,86 @@
-# Knowledge: reference harness observability
+# Knowledge: reference harness comparison
 
 Status: implementation-checked external reference, 2026-09-05
 
-## Scope
+## Conclusion
 
-比較対象は公式の公開sourceに限定した。
+設計方向は妥当である。Argusのcontrol properties、Anthropicの探索と検証の分離、Codex Securityのdurable contract、AVDHのfresh ValidationとHuman handoffを組み合わせており、完全独自ではない。
 
-| Harness | Repository snapshot |
+弱いのは設計原則ではなく実証である。v6のMissing-link / Closure、実Target Prospective Campaign、Target Intelligenceが未完であり、high recall、false-positive率、human負荷、costをまだ比較できない（[Codebase Guide](../CODEBASE-GUIDE.md)）。
+
+## Fixed sources
+
+| Reference | Checked source |
 | --- | --- |
-| Anthropic | [`anthropics/defending-code-reference-harness`](https://github.com/anthropics/defending-code-reference-harness/tree/d3bea6b5793b5f3d59a75ebe69a58efa88383145), `d3bea6b5793b5f3d59a75ebe69a58efa88383145`, 2026-08-06 |
-| OpenAI Codex Security | [`openai/codex-security`](https://github.com/openai/codex-security/tree/f2ec53dcc93ce8e3d9b322c6d9bd3c9d8724bdf2), `f2ec53dcc93ce8e3d9b322c6d9bd3c9d8724bdf2`, 2026-09-04 |
+| Wordfence Argus | [official article, 2026-08-27](https://www.wordfence.com/blog/2026/08/wordfence-argus-moving-beyond-human-research-capability/) |
+| Anthropic | [`defending-code-reference-harness@d3bea6b`](https://github.com/anthropics/defending-code-reference-harness/tree/d3bea6b5793b5f3d59a75ebe69a58efa88383145) |
+| OpenAI | [`codex-security@c829688`](https://github.com/openai/codex-security/tree/c8296885fbbf593edc1b405dc49859496b2bd8e4) |
+| Current harness | [Research Design](../RESEARCH-DESIGN.md), [Architecture](../ARCHITECTURE.md), [Codebase Guide](../CODEBASE-GUIDE.md) |
 
-OpenAIは公開repositoryが存在するため、installed plugin artifactのLOCをrepository LOCの代用にはしていない。
+Argusの公式記事は10動詞、model-agnostic方針、目的だけを公開し、内部architecture、prompt、model、harness designは非公開としている。したがって実装方式の優劣は比較できない。
 
-## Implementation comparison
+## Where the design comes from
 
-| Concern | Anthropic reference harness | OpenAI Codex Security |
+| Source | Adopted here | Intentional deviation |
 | --- | --- | --- |
-| Live progress | [`agent.py`](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/agent.py#L113-L132)がtool名と主要argumentまたはtext previewをstderrへ出し、25 assistant messagesごとにheartbeatを出す。`cli.py`はphase開始、完了時間、message数、resume回数を表示する。 | [`cli.ts`](https://github.com/openai/codex-security/blob/f2ec53dcc93ce8e3d9b322c6d9bd3c9d8724bdf2/sdk/typescript/src/cli.ts#L6746-L7005)がinteractive dashboardとplain progressを切り替え、phase、worker数、reviewed files、token、estimated cost、retry reasonを表示する。[`worker-progress.ts`](https://github.com/openai/codex-security/blob/f2ec53dcc93ce8e3d9b322c6d9bd3c9d8724bdf2/sdk/typescript/src/worker-progress.ts)と[`deep-progress.ts`](https://github.com/openai/codex-security/blob/f2ec53dcc93ce8e3d9b322c6d9bd3c9d8724bdf2/sdk/typescript/src/deep-progress.ts)がworker phaseと独立reviewの進捗をtyped stateとして扱う。 |
-| Debug/event log | [`agent.py`](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/agent.py#L294-L358)がClaude `stream-json`を到着時にraw JSONL transcriptへ追記する。tool resultはサイズ制限だけで、内容redactionではない。 | [`scan-logs.ts`](https://github.com/openai/codex-security/blob/f2ec53dcc93ce8e3d9b322c6d9bd3c9d8724bdf2/sdk/typescript/src/scan-logs.ts)がrootとchild workerのCodex session JSONLを関連付けてsaved eventsを再構成する。`--verbose`は[`cli.ts`](https://github.com/openai/codex-security/blob/f2ec53dcc93ce8e3d9b322c6d9bd3c9d8724bdf2/sdk/typescript/src/cli.ts#L6567-L6597)のstructured lifecycle diagnosticsをstderrへ出す。公式CLI referenceも[`scans logs`](https://learn.chatgpt.com/docs/security/cli/reference#codex-security-scans-logs)を「redactされない完全なsaved session events」として区別する。 |
-| Persisted state/artifacts | transcript、`result.json`、`found_bugs.jsonl`、`focus_areas.json`、reportを段階的に保存する。[Pipeline docs](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/pipeline.md#watching-a-run)はfailed/killed runでもtranscriptが残るとする。 | Workbench SQLiteがscan status、monotonic progress、artifact path、cost/historyを保持する（[`workbench_schema.py`](https://github.com/openai/codex-security/blob/f2ec53dcc93ce8e3d9b322c6d9bd3c9d8724bdf2/plugins/codex-security/scripts/workbench_schema.py#L34-L81)、[`workbench_progress.py`](https://github.com/openai/codex-security/blob/f2ec53dcc93ce8e3d9b322c6d9bd3c9d8724bdf2/plugins/codex-security/scripts/workbench_progress.py#L156-L314)）。canonical terminal bundleはmanifest、findings、coverageで、stopped runもpartial artifactsを保持する（[`scan-contract.md`](https://github.com/openai/codex-security/blob/f2ec53dcc93ce8e3d9b322c6d9bd3c9d8724bdf2/plugins/codex-security/references/scan-contract.md#L1-L48)）。 |
-| Token/cost | raw transcriptの各turnに`usage`が残るが、reference implementationにrun全体のtoken/cost集計またはcost UIはない。docsはrate-limit sizingの目安を示すだけである。 | session JSONLをpollしてroot/child usageを集計し、input、cached input、output、estimated USDをlive表示・結果保存する。cost limitはestimateで、超過時にもpartial outputを保持する（[`api.ts`](https://github.com/openai/codex-security/blob/f2ec53dcc93ce8e3d9b322c6d9bd3c9d8724bdf2/sdk/typescript/src/api.ts#L981-L1123)）。 |
-| Interrupt/replay | transient failureは同じClaude sessionを最大20回`--resume`する。batch resumeはterminal runをskipしてfailed/nonterminal runを再試行する。`error_max_turns`は意図的にterminal（[`agent.py`](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/agent.py#L268-L280)、[Pipeline docs](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/pipeline.md#resume-on-error)）。 | [`cli.ts`](https://github.com/openai/codex-security/blob/f2ec53dcc93ce8e3d9b322c6d9bd3c9d8724bdf2/sdk/typescript/src/cli.ts#L6607-L6641)は最初のsignalでgraceful abort、次のsignalでforce exitを行う。Deep worker checkpointはretry、cancel、failureを跨いでimmutableに保持される（[`scan-artifacts.md`](https://github.com/openai/codex-security/blob/f2ec53dcc93ce8e3d9b322c6d9bd3c9d8724bdf2/plugins/codex-security/references/scan-artifacts.md#L39-L47)）。 |
-| Sensitive data | raw transcriptを保存する。sandbox、egress、credential mount制限が主なboundaryである。 | verbose diagnostics/persisted failureは[`safeErrorMessage`](https://github.com/openai/codex-security/blob/f2ec53dcc93ce8e3d9b322c6d9bd3c9d8724bdf2/sdk/typescript/src/errors.ts#L8-L24)を使う一方、live session detailsと`scans logs`はrawである。[`SECURITY.md`](https://github.com/openai/codex-security/blob/f2ec53dcc93ce8e3d9b322c6d9bd3c9d8724bdf2/SECURITY.md#L53-L105)はprivate stateをOS accountと別のsecurity boundaryとは扱わず、不要なenvironment credentialを渡さないよう求める。 |
+| Argus | `confine / constrain / focus / motivate / parallelize / hypothesize / verify / record / prioritize / iterate`をCampaign全体のcontrol propertyにする | 10段pipelineや内部実装を推測しない（[Research Design](../RESEARCH-DESIGN.md)、lines 28-43） |
+| Anthropic | Recon、独立run、candidateのunion、Discoveryとfresh Verificationの分離、partial chainをfresh runへ戻す（[best practices](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L19-L78)） | 完全Map、agent shell、Research中のtarget実行を必須にしない。C/C++ pipelineのASAN PoC → fresh Gradeとは異なる（[pipeline](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/pipeline.md#L40-L84)） |
+| Codex Security | immutable target identity、partial outcome、coverage、checkpoint、canonical artifactとprojectionの分離（[scan contract](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/plugins/codex-security/references/scan-contract.md#L1-L48)） | 汎用repository/diff scannerではなく、prospective WordPress CampaignとHuman OSまでを所有する。ResearchはFindingを作らない |
+| AVDH | Discoveryから独立したfresh Validation、source-bound反証、最後のhuman dynamic verification（[official architecture](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review)） | 複数ValidatorとSynthesisは採らず、一つのsource screen、AI Reproduction、別fresh環境での必須Human Reproductionへ進む（[ADR 0123](../adr/0123-use-one-source-validation-before-ai-assisted-human-verification.md)） |
 
-Anthropicのdurability説明には実装差がある。module docstringと`run_agent` docstringは各messageを`fsync`すると記すが、確認した実装は[`write()`後の`flush()`だけ](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/agent.py#L340-L347)であり、repository内に`os.fsync`呼び出しはない。process kill後に読み取り可能であることと、power lossまで耐えるdurabilityは同一ではない。
+独自性が高いのは次である。
 
-## Harness implication
+- vulnerability oracleとprogramme/payout情報をResearchから隔離するprospective Campaign。
+- `Target Intelligence -> Research -> Human OS`のversioned handoffと、人間だけがFindingを昇格するownership。
+- sink/CWE quotaではなくbroken security semanticsとstrong semantic frontierからconditional Depthへ進む設計。
+- 支持数や多数決でminority candidateを捨てず、negative、blocked、unknownもLedger / CASへ残す設計。
 
-このHarnessにもdebug observabilityは必要である。採用する最小形は次の分離とする。
+## Argus ten-verb fit
 
-- operator progressはCampaign、attempt、role、phase、terminal state、elapsed time、input/cached/output token、estimated cost、durable checkpointだけを表示する。
-- providerのraw event/transcriptはprompt改善と研究診断に有用なので、private debug artifactとして保存可能にする。ただしGit外または`.private`配下へ置き、Ledger/CASやFinding contractの代用にはしない。
-- replayはdebug logではなくcanonical Ledgerとimmutable artifactから決め、terminal attemptをskipし、nonterminal attemptだけを再開またはfresh retryする。
-- observability writerのfailureで研究runを失敗させない。costはまずestimateと診断telemetryとして収集し、探索能力を削るhard budgetの根拠にはしない。
+| Verb | Current fit | Assessment |
+| --- | --- | --- |
+| Confine | manifest-bound source tools、credential/network分離、gVisor Human environment | Strong |
+| Constrain | scope、tool、parallelism、USD/time/Wave ceilingをmodel外で強制 | Strong |
+| Focus | high-impact goalや具体的Gapを与え、file/CWE/手順を固定しない | Strong |
+| Motivate | high-impact semantic recallを最優先する | Policyは明確、Prospective実績は未測定 |
+| Parallelize | Recon + Baseline、最大4 independent thesis | Initial Waveは実装済み |
+| Hypothesize | premise、route、impact、unknown、falsifierをtyped artifact化 | Strong |
+| Verify | single fresh source screen、AI Reproduction、別fresh環境での必須Human Reproduction | 移行中。runtime成立率とHuman再現率のProspective実測は未完 |
+| Record | append-only Ledger、immutable CAS、checkpoint、replay | Strong |
+| Prioritize | Root EvaluationとDepth Admission | Research内は実装、Target selectionは未実装 |
+| Iterate | Synthesis、Critic、Missing-link、Closure | Missing-link / Closureがv6未接続 |
 
-つまり、Anthropicのraw transcriptによる追跡性とOpenAIのtyped progress、cost集計、partial-result recoveryを組み合わせる。ただしEvidenceの正本は引き続きResearch Recordであり、UIやdebug streamではない。
+Argusの“iterate hard and fast”まで含めると、現Harnessはまだ不合格である。重いartifact chainとHuman gateを持つ以上、同等のtempoは実測で示す必要がある。
 
-## LOC snapshot
+## Comparison
 
-`cloc` 2.06のcode linesを数えた。`Authored repository`はGit tracked filesからdependency、generated bundle、example、asset、target、test fixture、lockfileを除外し、test、docs、skill/prompt instructionは含めた。`Core runtime`は実行pathへ限定し、test、fixture、example、README、data-only JSON/YAML/TOMLを除外した。
+| Concern | Anthropic | Codex Security | Current harness |
+| --- | --- | --- | --- |
+| Exploration | threat modelからsurfaceを分割 | parent mapping + independent audit。Deepはcomplete Standard scanを反復（[Deep](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/plugins/codex-security/skills/deep-security-scan/SKILL.md#L1-L14)） | raw-source thesisを自由化し、Mapは補助。minority routeを保持 |
+| Validation | cheap deterministic gate、category別route、fresh executable grader | proportionateなPoC/test/debuggerを優先し、無理ならstatic proof gap（[Validation](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/plugins/codex-security/skills/validation/SKILL.md#L27-L44)） | 一つのsource screen後、AIがclass別またはgeneric Recipeを作り、人間が別fresh環境で同じRecipeを必ず再実行 |
+| State | transcriptと段階artifactを逐次保存 | sealed manifest/findings/coverage、stopped partialを保持 | event-level Ledger + CAS。最も細かいが最も重い |
+| Completion | executable finding/report | explicit coverage completeness | evidence-backed Closure設計だがv6未接続 |
+| Human boundary | external report前にreal releaseで再現 | reportable Findingをscanが生成 | AI evidence reviewだけでは昇格せず、人間のfresh再実行だけがFindingを生成 |
+| Product maturity | autonomous C/C++ reference pipeline | CLI、SDK、bulk scan、findings/dedupe service、複数provider（[README](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/README.md#L23-L92)） | thin CLI、Claude Adapterのみ、Target Intelligence未完 |
 
-| Repository | Authored repository | Core runtime |
-| --- | ---: | ---: |
-| Anthropic reference harness | 14,040 LOC / 99 files | 4,108 LOC / 37 files |
-| OpenAI Codex Security | 223,127 LOC / 551 files | 66,096 LOC / 162 files |
+## Concrete weaknesses
 
-Repository rootで実行した再現commandは次の通り。
+1. **Coverage / Iterateが未完成。** v6 Missing-link / Closureがつながっていない。Argusの`iterate`とCodex Securityのhonest coverageに対する最大の差である。
+2. **設計を証明するprospective dataがない。** 既知CVE再現やcontract testだけではoracle-free recall、FP、costを評価できない。
+3. **source screenと二段runtime reproductionのバランスが未検証。** source側のmodel costは下がるが、AIのruntime成立率、人間の再現率、Escalation Queue量、review時間をProspectiveで測れていない。
+4. **model-agnosticはinterfaceだけ。** ArgusとCodex Securityはmodel/provider切替を公開しているが、現実装はClaude Adapterだけである（[Codebase Guide](../CODEBASE-GUIDE.md)、lines 100-110）。
+5. **control planeが研究実績に先行している。** fine-grained schema、Ledger、CAS、fresh role分離は安全だが、targets/hourやreview minutesを改善する証拠がなければ過剰設計になる。
+6. **外側はdeepだが内側のSeamが広い。** `openResearch`はrunner / readerだけを公開する一方、internal `ResearchRecord`は旧版を含む多数の操作を持つ。early Prospective前にcurrent writeとlegacy read/replayを分離する。
 
-```bash
-git ls-files \
-  | grep -Ev '(^|/)(node_modules|dist|build|coverage|fixtures?|targets|examples?|assets|__pycache__)(/|$)|(^|/)(package-lock|pnpm-lock)\.yaml$|\.pyc$|\.br\.part-[0-9]+$' \
-  > /tmp/authored-files.txt
-npx --yes cloc --json --list-file=/tmp/authored-files.txt
-```
+次はsingle source screen、AI Reproduction、mandatory Human Reproductionを小さなvertical sliceで接続し、Coverage Closureや三件cohortを待たず実Target一件を回す。`candidate -> ready-for-runtime -> runtime-confirmed -> verified-finding`率、human rejection理由、setup-blocked率、review時間、candidate当たりcost、coverage unknownを測り、その後にmapping / closure policyとcost ablationを決める。SQLiやXSS等のclass別Recipeはsuccess criterionを明確にするために使い、固定Adapter対応をcandidateの入場条件にはしない。
 
-OpenAIのAuthored repository計測だけは上の除外式へgenerated bundle `|^plugins/codex-security/mcp/server\.mjs$`を追加した。Core runtimeは次のpath listで計測した。
+## Operational observability
 
-```bash
-# Anthropic
-git ls-files harness dnr_harness scripts bin \
-  | grep -Ev '(^|/)(tests?|fixtures?|examples?|assets|__pycache__)(/|$)|(^|/)README\.md$|\.pyc$' \
-  > /tmp/core-files.txt
-npx --yes cloc --json --list-file=/tmp/core-files.txt
+Anthropicのraw transcript追跡とCodex Securityのtyped progress、cost、partial-result recoveryを組み合わせる方針は妥当である。ただしEvidenceの正本はdebug streamではなくResearch Recordとする。
 
-# OpenAI
-git ls-files sdk/typescript/src sdk/typescript/dashboard sdk/typescript/bin \
-  plugins/codex-security/scripts plugins/codex-security/mcp-app docker \
-  | grep -Ev '(^|/)(tests?|tests-ts|fixtures?|examples?|assets|evals?|__pycache__)(/|$)|(^|/)README\.md$|(^|/)(package-lock|pnpm-lock)\.yaml$|\.pyc$|\.br\.part-[0-9]+$|^plugins/codex-security/mcp/server\.mjs$' \
-  > /tmp/core-files.txt
-npx --yes cloc --json --exclude-lang=JSON,YAML,TOML --list-file=/tmp/core-files.txt
-```
+| Reference | Useful practice |
+| --- | --- |
+| Anthropic | tool/text preview、heartbeat、raw JSONL、resume。実装は`flush()`であり`fsync()`ではない（[`agent.py`](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/agent.py#L340-L347)） |
+| Codex Security | typed worker progress、token/cost、graceful abort、immutable checkpoint、raw scan logs |
+
+2026-09-04の参考計測では、Anthropicはauthored 14,040 LOC / core 4,108 LOC、Codex Security `f2ec53d`はauthored 223,127 LOC / core 66,096 LOCだった。規模は機能範囲を示すだけで、設計品質の比較値にはしない。

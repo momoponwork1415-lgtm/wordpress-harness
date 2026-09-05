@@ -4,7 +4,7 @@ Status: accepted research policy, 2026-09-05
 
 ## Goal
 
-既知脆弱性のoracleなしに、high-impactなbroken security semanticsを高recallで発見する。独立したsource-only Validationで明らかなfalse positiveを抑え、Human Review Packetからfresh Human Verificationまで閉じる。
+既知脆弱性のoracleなしに、high-impactなbroken security semanticsを高recallで発見する。一回のsource-only Validationで明らかなfalse positiveを抑え、Runtime Verification PacketからAI Reproductionと人間のmandatory fresh reproductionまで閉じる。
 
 **Do not optimize for sinks. Optimize for broken security semantics.**
 
@@ -37,7 +37,7 @@ Cost削減はrecall baseline確立後のablationで行う。
 | Motivate | 重大candidateとhigh-impact frontierの両方を追う |
 | Parallelize | 独立thesisを結果非共有で並行する |
 | Hypothesize | premise、route、impact、unknown、falsifierをartifact化する |
-| Verify | fresh source Validationとfresh Human Verificationを分ける |
+| Verify | single fresh source screen、AI Reproduction、人間のmandatory fresh reproductionを分ける |
 | Record | positive、negative、blocked、unknown、Fragmentを記録する |
 | Prioritize | impact、premise、novelty、frontier、costから次workを選ぶ |
 | Iterate | Synthesis、Critic、Missing-link Waveで具体的Gapを閉じる |
@@ -51,7 +51,7 @@ Cost削減はrecall baseline確立後のablationで行う。
 | systemを把握して探索を分割する | source-aware Reconで独立thesisを作る。Mapやfile集合を境界にしない |
 | modelへcontext toolを渡す | Snapshot-bound `list / search / read`を使う |
 | DiscoveryとValidationを分ける | conversation、scratch、verdictを共有しない |
-| validatorへ投資する | 2 fresh Attempt、conditional third、tool-free Synthesisを使う |
+| validatorへ投資する | 一つのfresh source Attemptで明白な矛盾を除き、AIと人間の独立runtime reproductionへ予算を移す |
 | Finder / Critic / Judgeを分ける | Depth roleをfresh Attemptへ分離する |
 | independent runのunionを取る | 多数決ではなくsource-bound candidateの和集合を保つ |
 | partial chainをfresh runへ返す | Frontier GapをMissing-link Waveへ渡す |
@@ -78,9 +78,11 @@ Surface Map、PHP Program Index、AST、Semgrep、CodeQLはnavigation、evidence
 3. 支持数、model confidence、到着順でcandidateを捨てない。
 4. 一つのcandidate後もstrong frontierがあれば終了しない。
 5. Depth Admissionはknown final impactではなくhigh-impact potentialで決める。
-6. ValidationはFindingを作らない。Findingへの昇格は人間だけが行う。
+6. Validationは`rejected`またはFindingを作らず、`ready-for-runtime`をRuntime Verification Packetへ渡す。
 7. budget exhaustion、validation-pending、setup-blockedをnegativeへ丸めない。
 8. Map-first v1とlegacy Verificationはread/replay互換に限る。
+9. Coverage policy未決のno-finding Campaignをsafeまたはcoverage-closedと表現しない。
+10. AI Reproduction成功だけを通常のHuman Verification Queueへ送り、人間は別fresh instanceで必ず再実行する。
 
 ## Change gate
 
@@ -98,6 +100,6 @@ Surface Map、PHP Program Index、AST、Semgrep、CodeQLはnavigation、evidence
 - [Google Cloud / Mandiant — Agentic Source Code Review](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review)
 - [Anthropic — Defending Code Reference Harness](https://github.com/anthropics/defending-code-reference-harness/blob/main/docs/best-practices.md)
 - [Wordfence — Wordfence Argus](https://www.wordfence.com/blog/2026/08/wordfence-argus-moving-beyond-human-research-capability/)
-- [ADR 0117](adr/0117-optimize-for-high-impact-semantic-recall.md) · [ADR 0122](adr/0122-separate-source-validation-from-human-verification.md)
+- [ADR 0117](adr/0117-optimize-for-high-impact-semantic-recall.md) · [ADR 0123](adr/0123-use-one-source-validation-before-ai-assisted-human-verification.md)
 
 darooの公開portfolioはmechanism breadthの水準確認にだけ使う。非公開methodを推測せず、CVE、patch、payloadをprospective workerへ渡さない。AnthropicとCodex Securityの実装比較は[Knowledge](knowledge/reference-harness-observability.md)に置く。
