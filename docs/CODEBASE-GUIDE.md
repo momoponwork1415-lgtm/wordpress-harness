@@ -12,8 +12,8 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Semantic Research | v6 initial Wave、Decision@3、conditional Depth実行まで実装済み | Missing-link / Closure |
 | Source-only Validation | v6、tool-free Risk Assessmentへ接続済み | Frontier Gapの次Wave |
 | Human Review Packet | versioned PacketとCAS-first handoffを実装済み | — |
-| Human Verification | Environment、有限queue、human dispositionを実装済み | 実Target smoke |
-| Finding | Human Verification gateを実装済み | Prospective Campaignでの成立実測 |
+| Human Verification | Environment、有限queue、human disposition、known-plugin E2E smokeを完走 | Prospective Campaignでの運用 |
+| Finding | Human Verification gateとknown-pluginでの成立を実測済み | Prospective Campaignでの成立実測 |
 
 現在のproduction sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / source-only Validation -> Risk Assessment / Human Review Packet -> Human Verification Queue / Finding gate`である。Human OSはPacket-bound requestをfresh disposable environmentへ構築し、Dispositionを独立したCAS / Recordへ保存できる。v6 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Packet delivery failureはPacketを保持したままResearch failureと分ける。Missing-link / Closureはlegacy v5に実装済みだがv6へ未接続。
 
