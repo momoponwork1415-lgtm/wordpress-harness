@@ -10,6 +10,7 @@ import {
   type OpenSqliteHostPrivateCredentialBrokerOptions,
   type WordfenceSecretRef,
 } from "./contracts.js";
+import { currentOwnerUid } from "./owner-identity.js";
 
 const expectedSecretRef = "wordfence-v3-api-key";
 const expectedProvider = "wordfence";
@@ -32,8 +33,8 @@ function hasErrorCode(error: unknown, code: string): boolean {
 }
 
 function isOwnedByCurrentUser(uid: number): boolean {
-  const currentUid = process.getuid?.();
-  return currentUid === undefined || uid === currentUid;
+  const currentUid = currentOwnerUid();
+  return currentUid !== undefined && uid === currentUid;
 }
 
 async function requireHostPrivateRegularFile(
@@ -95,6 +96,9 @@ class SqliteHostPrivateCredentialBroker implements HostPrivateCredentialBroker {
     let credential: string;
     let database: Database.Database | undefined;
     try {
+      if (currentOwnerUid() === undefined) {
+        throw new Error("Current owner identity is unavailable");
+      }
       await requireHostPrivateBrokerStorage(this.#databasePath);
       database = new Database(this.#databasePath, {
         readonly: true,

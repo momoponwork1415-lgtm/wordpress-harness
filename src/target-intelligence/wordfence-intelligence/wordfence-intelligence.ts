@@ -71,6 +71,7 @@ import {
   type WordfenceSecretRef,
   type WordfenceStoredPluginRecord,
 } from "./contracts.js";
+import { currentOwnerUid } from "./owner-identity.js";
 
 const DEFAULT_MAXIMUM_FEED_BYTES = 256_000_000;
 const MAXIMUM_RETRY_AFTER_SECONDS = 86_400;
@@ -521,8 +522,8 @@ function hasErrorCode(error: unknown, code: string): boolean {
 }
 
 function isOwnedByCurrentUser(uid: number): boolean {
-  const currentUid = process.getuid?.();
-  return currentUid === undefined || uid === currentUid;
+  const currentUid = currentOwnerUid();
+  return currentUid !== undefined && uid === currentUid;
 }
 
 async function requireRealDirectory(path: string): Promise<void> {
@@ -2818,6 +2819,9 @@ export function openWordfenceIntelligenceRefresh(
     | undefined
   > => {
     try {
+      if (currentOwnerUid() === undefined) {
+        throw new HostPrivateStorageError();
+      }
       if (intelligence === undefined) {
         await prepareHostPrivateSqliteStorage(intelligenceOptions.databasePath);
         await secureHostPrivateSqliteFiles(intelligenceOptions.databasePath);
