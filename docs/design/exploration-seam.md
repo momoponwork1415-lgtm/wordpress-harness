@@ -6,7 +6,7 @@ Status: accepted design; ADR 0113, ADR 0114, ADR 0117, ADR 0120, ADR 0122 are au
 
 Explorationは、固定Target Snapshotから独立したresearch ideaを進め、反証可能なHypothesis、再利用可能なRoute Fragment、明示的なgapへ変換し、重大HypothesisをValidationへ、strong semantic frontierをDepth Admissionへ送るResearch内部Moduleである。Validation disposition、Finding昇格、runtime操作、provider process、Target取得を所有しない。
 
-現在の実装状態、file、Behavior Testは[Codebase Guide](../CODEBASE-GUIDE.md)だけを正本とする。Target別成否は[experiments](../experiments/README.md)へ置く。
+現在の実装状態、file、Behavior Testは[Codebase Guide](../CODEBASE-GUIDE.md)だけを正本とする。Target別の公開可能な成否は[Knowledge](../knowledge/)へ置く。
 
 ## Seam and Interface
 

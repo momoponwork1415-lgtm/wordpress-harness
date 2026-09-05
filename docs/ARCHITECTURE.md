@@ -133,11 +133,25 @@ Findingを生成できるのはHuman OSだけである。人間はPacketと一�
 - Human Verificationだけがfreshな使い捨て隔離環境で実Target interfaceを使う。
 - credential、private Target、transcript、PoC、未公開FindingをGitやReview Packetへ含めない。
 
-## 10. Where to go next
+## 10. Capability order
+
+runtime flowと実装順は一致しない。capabilityは次の順に閉じる。日付、進捗率、実装file、次のticketはここへ置かず、Codebase GuideとGitHub Issuesを正本とする。
+
+| Order | Capability | Completion condition | Deliberately later |
+| --- | --- | --- | --- |
+| 1 | Closed mechanics | finite work、typed failure、artifact integrity、crash recovery、replayが一Targetで閉じる | 未知発見能力の評価 |
+| 2 | Prospective semantic research | oracle-freeな最新Targetから重大Hypothesisまたはstrong frontierを得る | 完全なMap、多数Target |
+| 3 | Conditional depth | Fragment、Synthesis、Critic、missing-link workがrouteまたは根拠付きstopへ収束する | 全Targetへの常時Depth |
+| 4 | Validation and Human Verification | fresh source reviewからPacketを作り、人間だけがFindingへ昇格する | submission、vendor連絡 |
+| 5 | Target Intelligence | 手動経路を残してeligibility、ranking、acquisitionを自動化する | Research判断との混合 |
+| 6 | Breadth and cost optimization | recallを落とさないablationで多数Targetへscaleする | costを理由にしたrecall低下 |
+
+現在のTargetはWordPress pluginである。Themes、WordPress Core、自動submission、vendor communication、patch generation、dashboardは最初のproduct goalではない。
+
+## 11. Where to go next
 
 - 現在動く範囲、source path、Behavior Test: [Codebase Guide](CODEBASE-GUIDE.md)
 - research policyと外部referenceの採用方法: [Research Design](RESEARCH-DESIGN.md)
-- capabilityの実装順: [Roadmap](ROADMAP.md)
 - ModuleのInterface、不変条件、failure semantics: [Design index](design/README.md)
 - contextとhandoff vocabulary: [Context Map](../CONTEXT-MAP.md)
 - 次の有限workと受入条件: [GitHub Issues](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues)

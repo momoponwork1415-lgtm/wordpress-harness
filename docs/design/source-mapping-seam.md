@@ -102,4 +102,4 @@ Testは`build(input)`、manifest-boundなsource query、immutable viewを観測�
 
 source queryのBehavior Testは、root / directoryとchildren / recursive、trailing slashなしのdirectory、stable paginationで重複または欠落がないこと、partial searchをnot-foundへ丸めないこと、read continuationを連結するとrequested bytesへ戻ること、canonicalな不存在、path escape、digest mismatchをそれぞれ別resultにすること、invalid cursorでsourceを読まないこと、同じlogical queryがprovider Adapterに依存しないことを観測する。公開可能な実Targetでもroot / directory Listが予期せずpolicy denyにならず、escapeだけが外部read前に拒否されることを確認する。query数とbyte数の具体的上限値はCampaign policyが所有する。
 
-探索全体での位置づけは[Research Design](../RESEARCH-DESIGN.md)、現在のgeneratorと実装pathは[Codebase Guide](../CODEBASE-GUIDE.md)、対象別の実測は[Experiments](../experiments/README.md)を正本とする。
+探索全体での位置づけは[Research Design](../RESEARCH-DESIGN.md)、現在のgeneratorと実装pathは[Codebase Guide](../CODEBASE-GUIDE.md)、対象別の公開実測は[Knowledge](../knowledge/)へ置く。

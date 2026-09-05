@@ -1,4 +1,4 @@
-# Security harness observability reference
+# Knowledge: reference harness observability
 
 Status: implementation-checked external reference, 2026-09-05
 
