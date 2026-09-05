@@ -205,9 +205,29 @@ const refreshAttemptRowSchema = z.strictObject({
     .nullable(),
 });
 
+const refreshOrderRowSchema = z.strictObject({
+  publication_sequence: z.number().int().nonnegative(),
+  latest_completed_sequence: z.number().int().nonnegative(),
+});
+
+const sqliteSequenceRowSchema = z.strictObject({
+  seq: z.number().int().nonnegative(),
+});
+
 const productionCompletedRefreshStateSchema = z.strictObject({
   kind: z.literal("wordfence-intelligence-production-refresh-state"),
   schemaVersion: z.literal(1),
+  currentSnapshotDigest: z
+    .string()
+    .regex(/^sha256:[a-f0-9]{64}$/)
+    .optional(),
+  latestRefresh: wordfenceIntelligenceRefreshAttemptSchema,
+});
+
+const productionSequencedRefreshStateSchema = z.strictObject({
+  kind: z.literal("wordfence-intelligence-production-refresh-state"),
+  schemaVersion: z.literal(2),
+  attemptSequence: z.number().int().positive(),
   currentSnapshotDigest: z
     .string()
     .regex(/^sha256:[a-f0-9]{64}$/)
@@ -225,7 +245,8 @@ const productionRefreshInProgressStateSchema = z.strictObject({
   attemptedAt: z.iso.datetime({ offset: true }),
 });
 
-const productionRefreshStateSchema = z.discriminatedUnion("kind", [
+const productionRefreshStateSchema = z.union([
+  productionSequencedRefreshStateSchema,
   productionCompletedRefreshStateSchema,
   productionRefreshInProgressStateSchema,
 ]);
@@ -1593,6 +1614,13 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
           attempted_at TEXT NOT NULL,
           current_snapshot_digest TEXT
         ) STRICT;
+        CREATE TABLE IF NOT EXISTS wordfence_intelligence_refresh_order (
+          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+          publication_sequence INTEGER NOT NULL
+            CHECK (publication_sequence >= 0),
+          latest_completed_sequence INTEGER NOT NULL
+            CHECK (latest_completed_sequence >= publication_sequence)
+        ) STRICT;
         CREATE TABLE IF NOT EXISTS wordfence_intelligence_record_set_manifests (
           snapshot_digest TEXT PRIMARY KEY,
           manifest_json TEXT NOT NULL
@@ -2075,6 +2103,16 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     productionAttempt: ProductionRefreshAttemptToken | undefined,
   ): void {
     const transaction = this.#database.transaction(() => {
+      let refreshOrder: z.infer<typeof refreshOrderRowSchema> | undefined;
+      if (productionAttempt !== undefined) {
+        const currentSnapshotDigest = this.#currentReference()?.digest;
+        this.#requireProductionRefreshBindings(currentSnapshotDigest);
+        this.#requireActiveAttempt(productionAttempt);
+        refreshOrder = this.#refreshOrder();
+        if (refreshOrder === undefined) {
+          throw new SnapshotConflictError();
+        }
+      }
       const snapshotJson = canonicalJson(snapshot);
       const existing = this.#snapshotRow(reference.digest);
       if (existing === undefined) {
@@ -2117,36 +2155,91 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
         }
         this.#assertStoredRecords(snapshot, reference, records);
       }
-      this.#database
-        .prepare(
-          `INSERT INTO wordfence_intelligence_current (
-             singleton, snapshot_digest
-           ) VALUES (1, ?)
-           ON CONFLICT(singleton) DO UPDATE SET
-             snapshot_digest = excluded.snapshot_digest`,
-        )
-        .run(reference.digest);
-      if (productionAttempt !== undefined) {
+      if (productionAttempt === undefined) {
         this.#database
           .prepare(
-            `DELETE FROM wordfence_intelligence_refresh_attempts
-                  WHERE sequence <= ?`,
+            `INSERT INTO wordfence_intelligence_current (
+               singleton, snapshot_digest
+             ) VALUES (1, ?)
+             ON CONFLICT(singleton) DO UPDATE SET
+               snapshot_digest = excluded.snapshot_digest`,
           )
-          .run(productionAttempt.sequence);
+          .run(reference.digest);
+        return;
+      }
+      if (refreshOrder === undefined) {
+        throw new SnapshotConflictError();
+      }
+      const deletion = this.#database
+        .prepare(
+          `DELETE FROM wordfence_intelligence_refresh_attempts
+                WHERE sequence = ?`,
+        )
+        .run(productionAttempt.sequence);
+      if (deletion.changes !== 1) {
+        throw new SnapshotConflictError();
+      }
+      const publishes =
+        productionAttempt.sequence >= refreshOrder.publication_sequence;
+      const publicationSequence = publishes
+        ? productionAttempt.sequence
+        : refreshOrder.publication_sequence;
+      if (publishes) {
+        this.#database
+          .prepare(
+            `INSERT INTO wordfence_intelligence_current (
+               singleton, snapshot_digest
+             ) VALUES (1, ?)
+             ON CONFLICT(singleton) DO UPDATE SET
+               snapshot_digest = excluded.snapshot_digest`,
+          )
+          .run(reference.digest);
         this.#database
           .prepare(
             `UPDATE wordfence_intelligence_refresh_attempts
-                SET current_snapshot_digest = ?
-              WHERE sequence > ?`,
+                SET current_snapshot_digest = ?`,
           )
-          .run(reference.digest, productionAttempt.sequence);
-        this.#database
-          .prepare(
-            `DELETE FROM wordfence_intelligence_refresh_state
-             WHERE singleton = 1`,
-          )
-          .run();
+          .run(reference.digest);
+        const state = this.#refreshState();
+        if (
+          state?.schemaVersion === 2 &&
+          state.attemptSequence > productionAttempt.sequence
+        ) {
+          this.#database
+            .prepare(
+              `UPDATE wordfence_intelligence_refresh_state
+                  SET state_json = ?
+                WHERE singleton = 1`,
+            )
+            .run(
+              canonicalJson({
+                ...state,
+                currentSnapshotDigest: reference.digest,
+              }),
+            );
+        } else {
+          this.#database
+            .prepare(
+              `DELETE FROM wordfence_intelligence_refresh_state
+               WHERE singleton = 1`,
+            )
+            .run();
+        }
       }
+      this.#database
+        .prepare(
+          `UPDATE wordfence_intelligence_refresh_order
+              SET publication_sequence = ?,
+                  latest_completed_sequence = ?
+            WHERE singleton = 1`,
+        )
+        .run(
+          publicationSequence,
+          Math.max(
+            refreshOrder.latest_completed_sequence,
+            productionAttempt.sequence,
+          ),
+        );
     });
     transaction.immediate();
   }
@@ -2196,6 +2289,7 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
       const transaction = this.#database.transaction(() => {
         const currentSnapshotDigest = this.#currentReference()?.digest;
         this.#requireProductionRefreshBindings(currentSnapshotDigest);
+        this.#ensureRefreshOrder(currentSnapshotDigest);
         const attemptedAt = this.#clock().toISOString();
         const insertion = this.#database
           .prepare(
@@ -2232,37 +2326,88 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     try {
       const transaction = this.#database.transaction(() => {
         const currentSnapshotDigest = this.#currentReference()?.digest;
-        const state = productionCompletedRefreshStateSchema.parse({
-          kind: "wordfence-intelligence-production-refresh-state",
-          schemaVersion: 1,
-          ...(currentSnapshotDigest === undefined
-            ? {}
-            : { currentSnapshotDigest }),
-          latestRefresh: {
-            kind: "wordfence-intelligence-refresh-attempt",
+        if (productionAttempt === undefined) {
+          const state = productionCompletedRefreshStateSchema.parse({
+            kind: "wordfence-intelligence-production-refresh-state",
             schemaVersion: 1,
-            attemptedAt:
-              productionAttempt?.attemptedAt ?? this.#clock().toISOString(),
-            result: parsed,
-          },
-        });
-        if (productionAttempt !== undefined) {
+            ...(currentSnapshotDigest === undefined
+              ? {}
+              : { currentSnapshotDigest }),
+            latestRefresh: {
+              kind: "wordfence-intelligence-refresh-attempt",
+              schemaVersion: 1,
+              attemptedAt: this.#clock().toISOString(),
+              result: parsed,
+            },
+          });
           this.#database
             .prepare(
-              `DELETE FROM wordfence_intelligence_refresh_attempts
-                    WHERE sequence = ?`,
+              `INSERT INTO wordfence_intelligence_refresh_state (
+                 singleton, state_json
+               ) VALUES (1, ?)
+               ON CONFLICT(singleton) DO UPDATE SET
+                 state_json = excluded.state_json`,
             )
-            .run(productionAttempt.sequence);
+            .run(canonicalJson(state));
+          return;
+        }
+        this.#requireProductionRefreshBindings(currentSnapshotDigest);
+        this.#requireActiveAttempt(productionAttempt);
+        const order = this.#refreshOrder();
+        if (order === undefined) {
+          throw new SnapshotConflictError();
+        }
+        const deletion = this.#database
+          .prepare(
+            `DELETE FROM wordfence_intelligence_refresh_attempts
+                  WHERE sequence = ?`,
+          )
+          .run(productionAttempt.sequence);
+        if (deletion.changes !== 1) {
+          throw new SnapshotConflictError();
+        }
+        const existingState = this.#refreshState();
+        if (
+          productionAttempt.sequence > order.publication_sequence &&
+          (existingState?.schemaVersion !== 2 ||
+            productionAttempt.sequence >= existingState.attemptSequence)
+        ) {
+          const state = productionSequencedRefreshStateSchema.parse({
+            kind: "wordfence-intelligence-production-refresh-state",
+            schemaVersion: 2,
+            attemptSequence: productionAttempt.sequence,
+            ...(currentSnapshotDigest === undefined
+              ? {}
+              : { currentSnapshotDigest }),
+            latestRefresh: {
+              kind: "wordfence-intelligence-refresh-attempt",
+              schemaVersion: 1,
+              attemptedAt: productionAttempt.attemptedAt,
+              result: parsed,
+            },
+          });
+          this.#database
+            .prepare(
+              `INSERT INTO wordfence_intelligence_refresh_state (
+                 singleton, state_json
+               ) VALUES (1, ?)
+               ON CONFLICT(singleton) DO UPDATE SET
+                 state_json = excluded.state_json`,
+            )
+            .run(canonicalJson(state));
         }
         this.#database
           .prepare(
-            `INSERT INTO wordfence_intelligence_refresh_state (
-               singleton, state_json
-             ) VALUES (1, ?)
-             ON CONFLICT(singleton) DO UPDATE SET
-               state_json = excluded.state_json`,
+            `UPDATE wordfence_intelligence_refresh_order
+                SET latest_completed_sequence = ?
+              WHERE singleton = 1`,
           )
-          .run(canonicalJson(state));
+          .run(
+            Math.max(
+              order.latest_completed_sequence,
+              productionAttempt.sequence,
+            ),
+          );
       });
       transaction.immediate();
       return parsed;
@@ -2274,10 +2419,8 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
     }
   }
 
-  #requireProductionRefreshBindings(
-    currentSnapshotDigest: string | undefined,
-  ): void {
-    const stateRow = refreshStateRowSchema.optional().parse(
+  #refreshState(): z.infer<typeof productionRefreshStateSchema> | undefined {
+    const row = refreshStateRowSchema.optional().parse(
       this.#database
         .prepare(
           `SELECT state_json
@@ -2286,10 +2429,89 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
         )
         .get(),
     );
-    if (stateRow !== undefined) {
-      const state = productionRefreshStateSchema.parse(
-        JSON.parse(stateRow.state_json),
-      );
+    return row === undefined
+      ? undefined
+      : productionRefreshStateSchema.parse(JSON.parse(row.state_json));
+  }
+
+  #refreshOrder(): z.infer<typeof refreshOrderRowSchema> | undefined {
+    return refreshOrderRowSchema.optional().parse(
+      this.#database
+        .prepare(
+          `SELECT publication_sequence, latest_completed_sequence
+             FROM wordfence_intelligence_refresh_order
+            WHERE singleton = 1`,
+        )
+        .get(),
+    );
+  }
+
+  #ensureRefreshOrder(
+    currentSnapshotDigest: string | undefined,
+  ): z.infer<typeof refreshOrderRowSchema> {
+    const existing = this.#refreshOrder();
+    if (existing !== undefined) {
+      return existing;
+    }
+    const activeAttempts = refreshAttemptRowSchema.array().parse(
+      this.#database
+        .prepare(
+          `SELECT sequence, attempted_at, current_snapshot_digest
+             FROM wordfence_intelligence_refresh_attempts
+            ORDER BY sequence`,
+        )
+        .all(),
+    );
+    const sqliteSequence = sqliteSequenceRowSchema.optional().parse(
+      this.#database
+        .prepare(
+          `SELECT seq
+             FROM sqlite_sequence
+            WHERE name = 'wordfence_intelligence_refresh_attempts'`,
+        )
+        .get(),
+    );
+    const firstActiveSequence = activeAttempts[0]?.sequence;
+    const publicationSequence =
+      currentSnapshotDigest === undefined
+        ? 0
+        : firstActiveSequence === undefined
+          ? (sqliteSequence?.seq ?? 0)
+          : Math.max(0, firstActiveSequence - 1);
+    const order = refreshOrderRowSchema.parse({
+      publication_sequence: publicationSequence,
+      latest_completed_sequence: publicationSequence,
+    });
+    this.#database
+      .prepare(
+        `INSERT INTO wordfence_intelligence_refresh_order (
+           singleton, publication_sequence, latest_completed_sequence
+         ) VALUES (1, ?, ?)`,
+      )
+      .run(order.publication_sequence, order.latest_completed_sequence);
+    return order;
+  }
+
+  #requireActiveAttempt(attempt: ProductionRefreshAttemptToken): void {
+    const row = refreshAttemptRowSchema.optional().parse(
+      this.#database
+        .prepare(
+          `SELECT sequence, attempted_at, current_snapshot_digest
+             FROM wordfence_intelligence_refresh_attempts
+            WHERE sequence = ?`,
+        )
+        .get(attempt.sequence),
+    );
+    if (row === undefined || row.attempted_at !== attempt.attemptedAt) {
+      throw new SnapshotConflictError();
+    }
+  }
+
+  #requireProductionRefreshBindings(
+    currentSnapshotDigest: string | undefined,
+  ): void {
+    const state = this.#refreshState();
+    if (state !== undefined) {
       if (state.currentSnapshotDigest !== currentSnapshotDigest) {
         throw new SnapshotConflictError();
       }
@@ -2309,6 +2531,27 @@ class SqliteWordfenceIntelligence implements WordfenceIntelligence {
           (attempt.current_snapshot_digest ?? undefined) !==
           currentSnapshotDigest,
       )
+    ) {
+      throw new SnapshotConflictError();
+    }
+    const order = this.#refreshOrder();
+    if (order === undefined) {
+      return;
+    }
+    if (order.publication_sequence > 0 && currentSnapshotDigest === undefined) {
+      throw new SnapshotConflictError();
+    }
+    if (state?.schemaVersion === 2) {
+      if (
+        state.attemptSequence !== order.latest_completed_sequence ||
+        state.attemptSequence <= order.publication_sequence
+      ) {
+        throw new SnapshotConflictError();
+      }
+    } else if (
+      attempts.length === 0 &&
+      state === undefined &&
+      order.latest_completed_sequence !== order.publication_sequence
     ) {
       throw new SnapshotConflictError();
     }

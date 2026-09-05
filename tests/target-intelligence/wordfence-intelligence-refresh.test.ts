@@ -3169,8 +3169,14 @@ describe("WordfenceIntelligenceRefresh", () => {
       await failedFirstRun;
       successLastFetch.respond(new Response(validBytes, { status: 200 }));
       const successfulLastResult = await successfulLastRun;
+      const restartedAfterSuccessfulLast = openRefresh(
+        vi.fn<typeof fetch>(() =>
+          Promise.reject(new Error("inspection must not retrieve the feed")),
+        ),
+        "2030-08-04T00:00:00.000Z",
+      );
       await expect(
-        successLast.inspect({
+        restartedAfterSuccessfulLast.inspect({
           kind: "wordfence-intelligence-inspection",
           schemaVersion: 1,
         }),
@@ -3239,8 +3245,14 @@ describe("WordfenceIntelligenceRefresh", () => {
         }),
       );
       const failedLastResult = await failedLastRun;
+      const restartedAfterFailureLast = openRefresh(
+        vi.fn<typeof fetch>(() =>
+          Promise.reject(new Error("inspection must not retrieve the feed")),
+        ),
+        "2030-08-06T00:00:00.000Z",
+      );
       await expect(
-        failureLast.inspect({
+        restartedAfterFailureLast.inspect({
           kind: "wordfence-intelligence-inspection",
           schemaVersion: 1,
         }),
@@ -3258,6 +3270,247 @@ describe("WordfenceIntelligenceRefresh", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    { earlier: "failure", later: "success" },
+    { earlier: "success", later: "success" },
+    { earlier: "success", later: "failure" },
+  ] as const)(
+    "orders reverse completion when the later run is $later and the earlier run is $earlier",
+    async ({ earlier, later }) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "wordfence-reverse-refresh-completion-"),
+      );
+      const databasePath = join(directory, "target-intelligence.sqlite");
+      const artifactDirectory = join(directory, "artifacts");
+      const validBytes = await readFile(fixturePath);
+      const credentialBroker: HostPrivateCredentialBroker = {
+        async resolve<T>(
+          _reference: WordfenceSecretRef,
+          use: (credential: string) => Promise<T>,
+        ): Promise<T> {
+          return use("synthetic-reverse-completion-credential");
+        },
+      };
+      const openRefresh = (fetchImplementation: typeof fetch, at: string) =>
+        openWordfenceIntelligenceRefresh({
+          databasePath,
+          artifactDirectory,
+          credentialBroker,
+          fetch: fetchImplementation,
+          clock: () => new Date(at),
+        });
+      const inspectOnly = () =>
+        openRefresh(
+          vi.fn<typeof fetch>(() =>
+            Promise.reject(new Error("inspection must not retrieve the feed")),
+          ),
+          "2030-08-04T00:00:00.000Z",
+        );
+      try {
+        const seed = openRefresh(
+          vi.fn<typeof fetch>(async () =>
+            Promise.resolve(new Response(validBytes, { status: 200 })),
+          ),
+          "2030-08-01T00:00:00.000Z",
+        );
+        const initial = await seed.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        });
+        if (initial.status !== "current") {
+          throw new Error("Expected an initial current snapshot");
+        }
+
+        const earlierFetch = controlledFetch();
+        const laterFetch = controlledFetch();
+        const earlierRefresh = openRefresh(
+          earlierFetch.fetch,
+          "2030-08-02T00:00:00.000Z",
+        );
+        const laterRefresh = openRefresh(
+          laterFetch.fetch,
+          "2030-08-03T00:00:00.000Z",
+        );
+        await earlierRefresh.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        });
+        await laterRefresh.inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        });
+        const earlierRun = earlierRefresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        });
+        await earlierFetch.started;
+        const laterRun = laterRefresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        });
+        await laterFetch.started;
+
+        laterFetch.respond(
+          later === "success"
+            ? new Response(validBytes, { status: 200 })
+            : new Response(undefined, { status: 404 }),
+        );
+        const laterResult = await laterRun;
+        const pendingBase = later === "success" ? laterResult : initial;
+        if (pendingBase.status !== "current") {
+          throw new Error("Expected a current pending base snapshot");
+        }
+        await expect(
+          inspectOnly().inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+        ).resolves.toEqual({
+          ...pendingBase,
+          status: "stale",
+          latestRefresh: {
+            kind: "wordfence-intelligence-refresh-attempt",
+            schemaVersion: 1,
+            attemptedAt: "2030-08-02T00:00:00.000Z",
+            result: {
+              kind: "wordfence-intelligence-result",
+              schemaVersion: 1,
+              status: "failed",
+              reason: "storage-failure",
+            },
+          },
+        });
+
+        earlierFetch.respond(
+          earlier === "success"
+            ? new Response(validBytes, { status: 200 })
+            : new Response(undefined, { status: 404 }),
+        );
+        const earlierResult = await earlierRun;
+        const finalInspection = inspectOnly().inspect({
+          kind: "wordfence-intelligence-inspection",
+          schemaVersion: 1,
+        });
+        if (later === "success") {
+          await expect(finalInspection).resolves.toEqual(laterResult);
+          if (earlierResult.status === "current") {
+            await expect(
+              inspectOnly().inspect({
+                kind: "wordfence-intelligence-inspection",
+                schemaVersion: 1,
+                snapshotRef: earlierResult.snapshotRef,
+              }),
+            ).resolves.toEqual(earlierResult);
+          }
+        } else {
+          if (earlierResult.status !== "current") {
+            throw new Error("Expected the earlier success snapshot");
+          }
+          await expect(finalInspection).resolves.toEqual({
+            ...earlierResult,
+            status: "stale",
+            latestRefresh: {
+              kind: "wordfence-intelligence-refresh-attempt",
+              schemaVersion: 1,
+              attemptedAt: "2030-08-03T00:00:00.000Z",
+              result: laterResult,
+            },
+          });
+        }
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([
+    { mutation: "missing token", outcome: "success" },
+    { mutation: "missing token", outcome: "failure" },
+    { mutation: "mismatched token", outcome: "success" },
+    { mutation: "mismatched token", outcome: "failure" },
+  ] as const)(
+    "rejects $outcome completion with a $mutation",
+    async ({ mutation, outcome }) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "wordfence-refresh-token-integrity-"),
+      );
+      const databasePath = join(directory, "target-intelligence.sqlite");
+      const artifactDirectory = join(directory, "artifacts");
+      const validBytes = await readFile(fixturePath);
+      const pendingFetch = controlledFetch();
+      const credentialBroker: HostPrivateCredentialBroker = {
+        async resolve<T>(
+          _reference: WordfenceSecretRef,
+          use: (credential: string) => Promise<T>,
+        ): Promise<T> {
+          return use("synthetic-refresh-token-integrity-credential");
+        },
+      };
+      const options = {
+        databasePath,
+        artifactDirectory,
+        credentialBroker,
+        fetch: vi
+          .fn<typeof fetch>()
+          .mockResolvedValueOnce(new Response(validBytes, { status: 200 }))
+          .mockImplementationOnce(pendingFetch.fetch),
+        clock: () => new Date("2030-08-01T00:00:00.000Z"),
+      };
+      try {
+        const refresh = openWordfenceIntelligenceRefresh(options);
+        const current = await refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        });
+        if (current.status !== "current") {
+          throw new Error("Expected an initial current snapshot");
+        }
+        const completion = refresh.run({
+          kind: "wordfence-intelligence-refresh",
+          schemaVersion: 1,
+        });
+        await pendingFetch.started;
+
+        const corruption = new Database(databasePath);
+        if (mutation === "missing token") {
+          corruption.exec(
+            "DELETE FROM wordfence_intelligence_refresh_attempts",
+          );
+        } else {
+          corruption
+            .prepare(
+              `UPDATE wordfence_intelligence_refresh_attempts
+                  SET attempted_at = ?`,
+            )
+            .run("2030-08-09T00:00:00.000Z");
+        }
+        corruption.close();
+        pendingFetch.respond(
+          outcome === "success"
+            ? new Response(validBytes, { status: 200 })
+            : new Response(undefined, { status: 404 }),
+        );
+
+        await expect(completion).rejects.toThrow(
+          "Wordfence Intelligence snapshot conflict",
+        );
+        const restarted = openWordfenceIntelligenceRefresh(options);
+        await expect(
+          restarted.inspect({
+            kind: "wordfence-intelligence-inspection",
+            schemaVersion: 1,
+          }),
+        ).resolves.toMatchObject({
+          snapshotRef: current.snapshotRef,
+          status: mutation === "missing token" ? "current" : "stale",
+        });
+      } finally {
+        pendingFetch.respond(new Response(validBytes, { status: 200 }));
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("inspects the snapshot and freshness marker from one committed state", async () => {
     const directory = await mkdtemp(
@@ -3340,6 +3593,14 @@ describe("WordfenceIntelligenceRefresh", () => {
             .prepare(
               `DELETE FROM wordfence_intelligence_refresh_state
                WHERE singleton = 1`,
+            )
+            .run();
+          concurrentPublication
+            .prepare(
+              `UPDATE wordfence_intelligence_refresh_order
+                  SET publication_sequence = 4,
+                      latest_completed_sequence = 4
+                WHERE singleton = 1`,
             )
             .run();
         });
