@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   TargetSelectionModelError,
   openTargetSelection,
+  targetSelectionAttemptSchema,
   type TargetSelectionCandidate,
   type TargetSelectionModel,
   type TargetSelectionRequest,
@@ -130,7 +131,82 @@ function request(
   };
 }
 
+async function selectedAttemptFixture(
+  directory: string,
+  candidates: readonly TargetSelectionCandidate[],
+) {
+  const input = request(candidates);
+  const selection = openTargetSelection({
+    storageDirectory: directory,
+    model: {
+      rank: async (modelInput) => ({
+        kind: "target-selection-model-result",
+        schemaVersion: 1,
+        rankedCandidateIds: modelInput.candidates.map(
+          ({ candidateId }) => candidateId,
+        ),
+        assessments: modelInput.candidates.map(({ candidateId }) => ({
+          candidateId,
+          researchValueBand: "high",
+          uncertaintyBand: "medium",
+          reasonCodes: ["recently-updated"],
+        })),
+      }),
+    },
+    clock: () => new Date("2030-09-01T00:00:00.000Z"),
+  });
+  const selected = await selection.select(input);
+  if (selected.status !== "selected") {
+    throw new Error("Expected a selected Attempt fixture");
+  }
+  const path = join(
+    directory,
+    "target-selection-attempts",
+    "september-selection.revision-1.json",
+  );
+  const stored = targetSelectionAttemptSchema.parse(
+    JSON.parse(await readFile(path, "utf8")),
+  );
+  if (stored.status !== "selected") {
+    throw new Error("Expected a durable selected Attempt fixture");
+  }
+  return { input, path, selected, stored };
+}
+
 describe("TargetSelection", () => {
+  it("creates a durable model-free nomination-only Attempt through the public seam", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "target-selection-nomination-only-"),
+    );
+    let modelCalls = 0;
+    const input = request([]);
+    try {
+      const selection = openTargetSelection({
+        storageDirectory: directory,
+        model: {
+          rank: async () => {
+            modelCalls += 1;
+            throw new Error("nomination-only must not rank");
+          },
+        },
+        clock: () => new Date("2030-09-01T00:00:00.000Z"),
+      });
+      const selected = await selection.select(input);
+
+      expect(selected).toMatchObject({ status: "selected", receipts: [] });
+      expect(modelCalls).toBe(0);
+      const restarted = openTargetSelection({
+        storageDirectory: directory,
+        model: {
+          rank: () => Promise.reject(new Error("must not rank on restart")),
+        },
+      });
+      await expect(restarted.select(input)).resolves.toEqual(selected);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("rejects duplicate Target identities through the public selection seam before ranking", async () => {
     const directory = await mkdtemp(
       join(tmpdir(), "target-selection-duplicate-target-"),
@@ -235,6 +311,165 @@ describe("TargetSelection", () => {
           request([candidate("candidate-one"), candidate("candidate-two")]),
         ),
       ).resolves.toEqual(result);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a durable selected Attempt that omits an autonomous Candidate receipt", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "target-selection-missing-receipt-"),
+    );
+    try {
+      const { input, path, selected, stored } = await selectedAttemptFixture(
+        directory,
+        [candidate("candidate-one"), candidate("candidate-two")],
+      );
+      await writeFile(
+        path,
+        JSON.stringify({ ...stored, receipts: stored.receipts.slice(0, 1) }),
+      );
+
+      const restarted = openTargetSelection({
+        storageDirectory: directory,
+        model: {
+          rank: () => Promise.reject(new Error("must not rank on restart")),
+        },
+      });
+      await expect(restarted.select(input)).rejects.toThrow(
+        "Selected Attempt receipts must exactly cover input Candidate IDs",
+      );
+      await expect(
+        restarted.resolveForApproval({
+          kind: "target-selection-approval-verification-request",
+          schemaVersion: 1,
+          attempt: {
+            ref: selected.attemptRef,
+            selectionKey: input.selectionKey,
+            revision: input.revision,
+          },
+          selectionPolicy: input.policy,
+          modelProfile: input.modelProfile,
+          operatorIdentity: "human:fixture-operator",
+          nominations: [],
+          verifiedAt: "2030-09-01T00:01:00.000Z",
+        }),
+      ).rejects.toThrow(
+        "Selected Attempt receipts must exactly cover input Candidate IDs",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a durable nomination-only Attempt with a model result", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "target-selection-empty-model-result-"),
+    );
+    try {
+      const { input, path, stored } = await selectedAttemptFixture(
+        directory,
+        [],
+      );
+      await writeFile(
+        path,
+        JSON.stringify({
+          ...stored,
+          modelResult: {
+            kind: "target-selection-model-result",
+            schemaVersion: 1,
+            rankedCandidateIds: ["invented-candidate"],
+            assessments: [
+              {
+                candidateId: "invented-candidate",
+                researchValueBand: "high",
+                uncertaintyBand: "high",
+                reasonCodes: ["uncertain-surface"],
+              },
+            ],
+          },
+        }),
+      );
+
+      const restarted = openTargetSelection({
+        storageDirectory: directory,
+        model: {
+          rank: () => Promise.reject(new Error("must not rank on restart")),
+        },
+      });
+      await expect(restarted.select(input)).rejects.toThrow(
+        "Nomination-only Attempt must not contain a model result",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects selected Attempt receipt sets that do not exactly cover input Candidate IDs", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "target-selection-receipt-coverage-"),
+    );
+    try {
+      const { stored } = await selectedAttemptFixture(directory, [
+        candidate("candidate-one"),
+        candidate("candidate-two"),
+      ]);
+      const firstReceipt = stored.receipts[0];
+      if (firstReceipt === undefined) {
+        throw new Error("Expected a receipt fixture");
+      }
+      const extraReceipt = {
+        ...firstReceipt,
+        candidateId: "candidate-extra",
+        candidate: {
+          ...firstReceipt.candidate,
+          candidateId: "candidate-extra",
+        },
+      };
+      const cases = [
+        {
+          name: "empty input with a receipt",
+          value: {
+            ...stored,
+            input: { ...stored.input, candidates: [] },
+            modelResult: undefined,
+            receipts: [firstReceipt],
+          },
+        },
+        { name: "non-empty input with zero receipts", receipts: [] },
+        {
+          name: "non-empty input with a missing receipt",
+          receipts: [firstReceipt],
+        },
+        {
+          name: "non-empty input with an extra receipt",
+          receipts: [...stored.receipts, extraReceipt],
+        },
+        {
+          name: "non-empty input with duplicate receipts",
+          receipts: [firstReceipt, firstReceipt],
+        },
+      ];
+
+      for (const scenario of cases) {
+        const value =
+          "value" in scenario
+            ? scenario.value
+            : { ...stored, receipts: scenario.receipts };
+        const parsed = targetSelectionAttemptSchema.safeParse(value);
+        expect(parsed.success, scenario.name).toBe(false);
+        if (!parsed.success) {
+          expect(parsed.error.issues).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                path: ["receipts"],
+                message:
+                  "Selected Attempt receipts must exactly cover input Candidate IDs",
+              }),
+            ]),
+          );
+        }
+      }
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

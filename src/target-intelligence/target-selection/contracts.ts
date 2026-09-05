@@ -330,7 +330,7 @@ const targetSelectionPendingReasonSchema = z.enum([
   "interrupted",
 ]);
 
-export const targetSelectionAttemptSchema = z.discriminatedUnion("status", [
+const targetSelectionAttemptBodySchema = z.discriminatedUnion("status", [
   z.strictObject({
     kind: z.literal("target-selection-attempt"),
     schemaVersion: z.literal(2),
@@ -362,6 +362,39 @@ export const targetSelectionAttemptSchema = z.discriminatedUnion("status", [
     pendingCandidateIds: z.array(identifierSchema).min(1),
   }),
 ]);
+
+export const targetSelectionAttemptSchema =
+  targetSelectionAttemptBodySchema.superRefine((attempt, context) => {
+    if (attempt.status !== "selected") return;
+    if (
+      attempt.input.candidates.length === 0 &&
+      attempt.modelResult !== undefined
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["modelResult"],
+        message: "Nomination-only Attempt must not contain a model result",
+      });
+    }
+    const candidateIds = attempt.input.candidates
+      .map((candidate) => candidate.candidateId)
+      .sort();
+    const receiptIds = attempt.receipts
+      .map((receipt) => receipt.candidateId)
+      .sort();
+    if (
+      receiptIds.length !== candidateIds.length ||
+      new Set(receiptIds).size !== receiptIds.length ||
+      receiptIds.some((id, index) => id !== candidateIds[index])
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["receipts"],
+        message:
+          "Selected Attempt receipts must exactly cover input Candidate IDs",
+      });
+    }
+  });
 
 const legacyTargetSelectionResearchHistorySchema = z.discriminatedUnion(
   "status",
