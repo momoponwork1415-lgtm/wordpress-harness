@@ -208,6 +208,10 @@ import {
   runtimeVerificationPacketSchema,
 } from "../validation/runtime-verification-packet.js";
 import { canonicalJson, sha256Digest } from "./canonical-json.js";
+import {
+  openVerifiedArtifacts,
+  type VerifiedArtifacts,
+} from "./verified-artifacts.js";
 import type {
   OpenResearchRecordOptions,
   PreparationRecord,
@@ -1216,11 +1220,16 @@ class SqliteResearchRecord
   readonly #database: Database.Database;
   readonly #clock: () => Date;
   readonly #artifactStore: JsonArtifactStore | undefined;
+  readonly #artifacts: VerifiedArtifacts | undefined;
 
   constructor(options: OpenResearchRecordOptions) {
     this.#database = new Database(options.databasePath);
     this.#clock = options.clock ?? (() => new Date());
     this.#artifactStore = options.artifactStore;
+    this.#artifacts =
+      options.artifactStore === undefined
+        ? undefined
+        : openVerifiedArtifacts(options.artifactStore);
     this.#database.pragma("journal_mode = WAL");
     this.#database.pragma("busy_timeout = 5000");
     this.#database.exec(`
@@ -3110,15 +3119,13 @@ class SqliteResearchRecord
     if (queue.items.length === 0) {
       throw new Error("Semantic Depth Work Queue v2 must contain work");
     }
-    if (this.#artifactStore === undefined) {
+    const artifacts = this.#artifacts;
+    if (artifacts === undefined) {
       throw new Error(
         "Semantic Depth Work Queue v2 requires an Artifact Store",
       );
     }
-    const queueArtifactDigest = await this.#artifactStore.putJson(queue);
-    if (queueArtifactDigest !== queueRef.digest) {
-      throw new Error("Semantic Depth Work Queue v2 CAS mismatch");
-    }
+    await artifacts.put("Semantic Depth Work Queue v2", queue, queueRef.digest);
 
     const transact = this.#database.transaction(
       (): SemanticDepthWorkQueueRecordViewV2 => {
@@ -3517,7 +3524,8 @@ class SqliteResearchRecord
         "Validation intent candidates must be exact-deduplicated",
       );
     }
-    if (this.#artifactStore === undefined) {
+    const artifacts = this.#artifacts;
+    if (artifacts === undefined) {
       throw new Error("Validation intent requires an Artifact Store");
     }
     const rows = this.#readRows(campaignId);
@@ -3556,10 +3564,11 @@ class SqliteResearchRecord
       ) {
         throw new CampaignRunConflictError(campaignId, runId);
       }
-      const rawDecision = await this.#artifactStore.readJson(decisionDigest);
-      if (sha256Digest(rawDecision) !== decisionDigest) {
-        throw new Error("Validation intent Decision CAS mismatch");
-      }
+      const rawDecision = await artifacts.read(
+        "Validation intent Decision",
+        z.unknown(),
+        decisionDigest,
+      );
       decisions.set(
         decisionDigest,
         iterationDecisionV3Schema.parse(rawDecision),
@@ -3595,11 +3604,11 @@ class SqliteResearchRecord
         }
       }
       const candidateRef = referenceValidationCandidate(candidate);
-      const storedCandidateDigest =
-        await this.#artifactStore.putJson(candidate);
-      if (storedCandidateDigest !== candidateRef.digest) {
-        throw new Error("Validation Candidate CAS mismatch");
-      }
+      await artifacts.put(
+        "Validation Candidate",
+        candidate,
+        candidateRef.digest,
+      );
       const approachFamilyIds = [
         ...new Set(candidate.origins.map((origin) => origin.approachFamilyId)),
       ].sort(compareText);
@@ -3629,12 +3638,11 @@ class SqliteResearchRecord
       registry: registry.value,
       intents,
     });
-    const storedRegistryDigest = await this.#artifactStore.putJson(
+    await artifacts.put(
+      "Validation intent Registry",
       projected.value,
+      projected.ref.digest,
     );
-    if (storedRegistryDigest !== projected.ref.digest) {
-      throw new Error("Validation intent Registry CAS mismatch");
-    }
 
     const transact = this.#database.transaction(
       (): readonly ValidationIntentRecordView[] => {
