@@ -118,6 +118,24 @@ describe("Verified Artifacts", () => {
     ).rejects.toThrow(ArtifactIntegrityError);
   });
 
+  it("rejects content that is not an artifact at all as an integrity failure", async () => {
+    // A store that answers with something outside JSON did not serve the
+    // artifact addressed. Reported as a shape failure it would read as "the
+    // artifact is the wrong version", sending a caller after the schema.
+    const artifacts = openVerifiedArtifacts({
+      putJson: async () => canonicalDigest(subject),
+      readJson: async () => undefined,
+    });
+
+    await expect(
+      artifacts.read(
+        "Research Thesis",
+        subjectSchema,
+        canonicalDigest(subject),
+      ),
+    ).rejects.toThrow(ArtifactIntegrityError);
+  });
+
   it("reports the schema failure when the artifact is intact but the wrong shape", async () => {
     const store = memoryStore();
     const artifacts = openVerifiedArtifacts(store);

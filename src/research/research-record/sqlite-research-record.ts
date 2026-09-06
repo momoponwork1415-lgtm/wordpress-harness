@@ -212,6 +212,7 @@ import {
   openVerifiedArtifacts,
   type VerifiedArtifacts,
 } from "../../infrastructure/verified-artifacts.js";
+import { rehydrationReason } from "./rehydration-reason.js";
 import type {
   OpenResearchRecordOptions,
   PreparationRecord,
@@ -1746,28 +1747,31 @@ class SqliteResearchRecord
         input.requestedRef.id,
         reason,
       );
-    if (this.#artifactStore === undefined) {
+    const artifacts = this.#artifacts;
+    if (artifacts === undefined) {
       throw fail("artifact-store-unavailable");
     }
 
-    let rawFinding: unknown;
+    let finding: Finding;
     try {
-      rawFinding = await this.#artifactStore.readJson(
+      finding = await artifacts.read(
+        "Finding",
+        findingSchema,
         input.requestedRef.digest,
       );
-    } catch {
-      throw fail("finding-artifact-missing");
+    } catch (error: unknown) {
+      throw fail(
+        rehydrationReason(
+          error,
+          "finding-cas-mismatch",
+          "finding-schema-unsupported",
+          "finding-artifact-missing",
+        ),
+      );
     }
-    if (rawFinding === undefined) {
-      throw fail("finding-artifact-missing");
-    }
-    const parsedFinding = findingSchema.safeParse(rawFinding);
-    if (!parsedFinding.success) throw fail("finding-cas-mismatch");
-    const finding = parsedFinding.data;
     if (
-      sha256Digest(finding) !== input.requestedRef.digest ||
       canonicalJson(referenceFinding(finding)) !==
-        canonicalJson(findingRefSchema.parse(input.requestedRef))
+      canonicalJson(findingRefSchema.parse(input.requestedRef))
     ) {
       throw fail("finding-cas-mismatch");
     }
@@ -1787,24 +1791,26 @@ class SqliteResearchRecord
       currentSourceValidationRecordSchema.safeParse(validationValue);
     if (!validation.success) throw fail("source-validation-missing");
 
-    let rawCandidate: unknown;
+    let candidate: ValidationCandidate;
     try {
-      rawCandidate = await this.#artifactStore.readJson(
+      candidate = await artifacts.read(
+        "Validation Candidate",
+        validationCandidateSchema,
         finding.candidate.digest,
       );
-    } catch {
-      throw fail("candidate-artifact-missing");
+    } catch (error: unknown) {
+      throw fail(
+        rehydrationReason(
+          error,
+          "candidate-cas-mismatch",
+          "candidate-schema-unsupported",
+          "candidate-artifact-missing",
+        ),
+      );
     }
-    if (rawCandidate === undefined) {
-      throw fail("candidate-artifact-missing");
-    }
-    const parsedCandidate = validationCandidateSchema.safeParse(rawCandidate);
-    if (!parsedCandidate.success) throw fail("candidate-cas-mismatch");
-    const candidate = parsedCandidate.data;
     if (
-      sha256Digest(candidate) !== finding.candidate.digest ||
       canonicalJson(referenceValidationCandidate(candidate)) !==
-        canonicalJson(finding.candidate)
+      canonicalJson(finding.candidate)
     ) {
       throw fail("candidate-cas-mismatch");
     }

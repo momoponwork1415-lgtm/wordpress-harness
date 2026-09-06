@@ -101,7 +101,17 @@ class StoreBackedVerifiedArtifacts implements VerifiedArtifacts {
     digest: string,
   ): Promise<z.output<Schema>> {
     const value = await this.#store.readJson(digest);
-    if (canonicalDigest(value) !== digest) {
+    let stored: string;
+    try {
+      stored = canonicalDigest(value);
+    } catch {
+      // Content that cannot be canonically encoded is not an artifact that
+      // failed its schema — it is not an artifact at all, so the store served
+      // something other than what was addressed. Letting the encoder's own
+      // error escape would report that as a shape failure.
+      throw new ArtifactIntegrityError(artifact, digest);
+    }
+    if (stored !== digest) {
       throw new ArtifactIntegrityError(artifact, digest);
     }
     return schema.parse(value);

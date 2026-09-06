@@ -249,13 +249,26 @@ export class CampaignFindingNotFoundError extends Error {
   }
 }
 
+/**
+ * Why a stored Finding could not be rehydrated.
+ *
+ * The three artifact reasons name three different repairs and must not be
+ * substituted for one another: `-missing` says the store could not produce the
+ * artifact, `-cas-mismatch` says it produced content that is not what the
+ * digest addresses, and `-schema-unsupported` says it produced the addressed
+ * content but this generation cannot read it. Reporting corruption as absence
+ * sends an operator to restore a file that is present; reporting a schema move
+ * as corruption sends them to a store that is intact.
+ */
 export type CampaignFindingIntegrityReason =
   | "artifact-store-unavailable"
   | "finding-artifact-missing"
   | "finding-cas-mismatch"
+  | "finding-schema-unsupported"
   | "source-validation-missing"
   | "candidate-artifact-missing"
   | "candidate-cas-mismatch"
+  | "candidate-schema-unsupported"
   | "independent-validation-projection-mismatch";
 
 export class CampaignFindingIntegrityError extends Error {
