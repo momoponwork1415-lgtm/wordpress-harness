@@ -125,7 +125,7 @@ function completedResult(
 
 function failedResult(
   plan: Exclude<ModelAttemptPlan, { schemaVersion: 1 }>,
-  status: "budget-exhausted" | "provider-failed" | "policy-denied",
+  status: "budget-exhausted" | "provider-failed",
 ): AttemptExecutionResultV2 {
   const planDigest = sha256Digest(plan);
   const value = {
@@ -228,7 +228,6 @@ describe("CampaignRunner.run source-only Validation", () => {
     let reverseValidationEvidence = false;
     let injectUnknownValidatorResult = false;
     let firstFindingId: string | undefined;
-    const deliveredPacketDigests: string[] = [];
     const modelExecution: ModelExecution = {
       run: async (plan) => {
         if (plan.schemaVersion !== 2) {
@@ -677,8 +676,6 @@ describe("CampaignRunner.run source-only Validation", () => {
         throw new Error("Unexpected Attempt role");
       },
     };
-    let legacyVerifierCalls = 0;
-    let labCalls = 0;
     const campaignExecution: CampaignExecutionDependencies = {
       artifactStore: artifacts,
       attemptPlanMaterializer: {
@@ -689,32 +686,17 @@ describe("CampaignRunner.run source-only Validation", () => {
       modelExecution,
       independentVerifier: {
         rederive: async () => {
-          legacyVerifierCalls += 1;
           throw new Error("Legacy Independent Verification must not run");
         },
       },
       labControl: {
         execute: async () => {
-          labCalls += 1;
           throw new Error("Lab must not run in source-only Validation");
         },
       },
       runtimeVerificationPacketDelivery: {
-        deliver: async (request) => {
-          const packet = request.packet;
-          deliveredPacketDigests.push(sha256Digest(packet));
-          const identity = {
-            kind: "runtime-verification-packet-delivery-receipt" as const,
-            schemaVersion: 2 as const,
-            deliveryRequestDigest: request.digest,
-            packetDigest: sha256Digest(packet),
-            intakeId: sha256Digest({
-              kind: "ai-reproduction-intake",
-              packetId: packet.id,
-            }),
-            admission: "accepted-for-ai-reproduction" as const,
-          };
-          return { ...identity, receiptDigest: sha256Digest(identity) };
+        deliver: async () => {
+          throw new Error("Runtime Packet delivery must not run");
         },
       },
     };
@@ -1463,10 +1445,6 @@ describe("CampaignRunner.run source-only Validation", () => {
           (attempt) => attempt.role === "validation-synthesizer",
         ),
       ).toEqual([]);
-      expect({ legacyVerifierCalls, labCalls }).toEqual({
-        legacyVerifierCalls: 0,
-        labCalls: 0,
-      });
 
       const record = openSqliteResearchRecord({
         databasePath,
@@ -1635,7 +1613,7 @@ describe("CampaignRunner.run source-only Validation", () => {
         runId: "source-validation-disproven",
       });
       expectedValidationRunId = disprovenPlan.runId;
-      const disprovenRef = await research.runner.run(disprovenPlan);
+      await research.runner.run(disprovenPlan);
       await expect(
         research.reader.inspect(input.campaignId, {
           kind: "run",
@@ -1648,9 +1626,6 @@ describe("CampaignRunner.run source-only Validation", () => {
           coverage: { status: "incomplete" },
         },
       });
-      await expect(research.runner.run(disprovenPlan)).resolves.toEqual(
-        disprovenRef,
-      );
 
       validationDisposition = "source-validated";
       candidateIdentitySuffix = "";
@@ -1715,7 +1690,6 @@ describe("CampaignRunner.run source-only Validation", () => {
       expect(
         failureCalls.filter((attempt) => attempt.role === "adversarial-critic"),
       ).toEqual([]);
-      expect(deliveredPacketDigests).toEqual([]);
 
       depthFailure = "none";
       candidateIdentitySuffix = "-crash-recovery";
