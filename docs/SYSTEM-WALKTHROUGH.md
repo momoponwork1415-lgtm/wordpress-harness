@@ -4,6 +4,8 @@
 
 図は採用した設計のViewであり、全接続の実装完了を表さない。初期利用はTarget選定・Verificationの対話操作を許容する。自動化の完成を初期利用の前提にしない。
 
+現在地を知る場合は先に[Current capability](CODEBASE-GUIDE.md#current-capability)を読む。以下の図は役割と処理を理解するために使い、実装済み・移行中・未接続の判定はCodebase Guide、次の有限workは[Issue #86](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/86)へ戻る。
+
 ## 1. 誰が何を所有するか
 
 [![Target Intelligence、Research、Human OSと外部actorの所有境界](architecture.svg)](architecture.svg)

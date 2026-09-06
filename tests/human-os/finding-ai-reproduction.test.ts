@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  aiReproductionViewSchema,
   aiVerificationRecordSchema,
   defineHumanVerificationEnvironmentPolicy,
   defineHumanVerificationRuntimeProfile,
@@ -672,6 +673,9 @@ describe("AIReproduction.run/read", () => {
   it("keeps an unknown harness failure as an explicit durable in-progress claim", async () => {
     const state = await fixture();
     const request = runRequest();
+    await state.privateStore.putPrivateBytes(
+      new TextEncoder().encode("unrelated private evidence"),
+    );
     const failed = openAIReproduction({
       record: state.record,
       privateArtifactStore: state.privateStore,
@@ -679,6 +683,21 @@ describe("AIReproduction.run/read", () => {
       clock: () => new Date(fixedNow),
     });
     await expect(failed.run(request)).rejects.toThrow("unknown bug");
+
+    expect(await failed.read(request.finding.id)).toMatchObject({
+      kind: "ai-reproduction-view",
+      schemaVersion: 1,
+      status: "result-not-recorded",
+      finding: request.finding,
+      incompleteClaims: [
+        {
+          startedAt: fixedNow,
+          processStatus: "unknown",
+          cleanupStatus: "unknown",
+        },
+      ],
+      records: [],
+    });
 
     const reopenedHarness = { run: vi.fn() };
     const reopened = openAIReproduction({
@@ -695,6 +714,155 @@ describe("AIReproduction.run/read", () => {
       startedAt: fixedNow,
     });
     expect(reopenedHarness.run).not.toHaveBeenCalled();
+    const databasePath = join(state.directory, "human-os.sqlite");
+    const databaseBeforeRead = await readFile(databasePath);
+    const walPath = `${databasePath}-wal`;
+    const walBeforeRead = await readFile(walPath);
+    const publicBeforeRead = await Promise.all(
+      (await readdir(state.publicDirectory)).sort().map(async (name) => ({
+        name,
+        bytes: await readFile(join(state.publicDirectory, name)),
+      })),
+    );
+    const privateDirectory = join(state.directory, "private");
+    const privateBeforeRead = await Promise.all(
+      (await readdir(privateDirectory)).sort().map(async (name) => ({
+        name,
+        bytes: await readFile(join(privateDirectory, name)),
+      })),
+    );
+    const reopenedView = await reopened.read(request.finding.id);
+    expect(reopenedView).toMatchObject({
+      status: "result-not-recorded",
+      incompleteClaims: [
+        {
+          processStatus: "unknown",
+          cleanupStatus: "unknown",
+        },
+      ],
+    });
+    expect(reopenedView).not.toHaveProperty("incompleteClaims.0.claimId");
+    expect(reopenedHarness.run).not.toHaveBeenCalled();
+    expect(await readFile(databasePath)).toEqual(databaseBeforeRead);
+    expect(await readFile(walPath)).toEqual(walBeforeRead);
+    expect(
+      await Promise.all(
+        (await readdir(state.publicDirectory)).sort().map(async (name) => ({
+          name,
+          bytes: await readFile(join(state.publicDirectory, name)),
+        })),
+      ),
+    ).toEqual(publicBeforeRead);
+    expect(
+      await Promise.all(
+        (await readdir(privateDirectory)).sort().map(async (name) => ({
+          name,
+          bytes: await readFile(join(privateDirectory, name)),
+        })),
+      ),
+    ).toEqual(privateBeforeRead);
+  });
+
+  it("distinguishes an unstarted Finding from a completed reproduction", async () => {
+    const state = await fixture();
+    const service = openAIReproduction({
+      record: state.record,
+      privateArtifactStore: state.privateStore,
+      harness: {
+        run: async ({ attempt }) =>
+          experiment(
+            attempt,
+            await state.privateStore.putPrivateBytes(
+              new TextEncoder().encode("completed screenshot bytes"),
+            ),
+          ),
+      },
+      clock: () => new Date(fixedNow),
+    });
+    const request = runRequest();
+
+    expect(await service.read(request.finding.id)).toBeUndefined();
+    const completed = await service.run(request);
+    expect(await service.read(request.finding.id)).toMatchObject({
+      kind: "ai-reproduction-view",
+      schemaVersion: 1,
+      status: "completed",
+      finding: request.finding,
+      records: [{ id: completed.id }],
+      incompleteClaims: [],
+    });
+  });
+
+  it("reports incomplete claims alongside completed Attempts for the same Finding", async () => {
+    const state = await fixture();
+    let calls = 0;
+    const service = openAIReproduction({
+      record: state.record,
+      privateArtifactStore: state.privateStore,
+      harness: {
+        run: async ({ attempt }) => {
+          calls += 1;
+          if (calls === 1) throw new Error("interrupted");
+          return experiment(
+            attempt,
+            await state.privateStore.putPrivateBytes(
+              new TextEncoder().encode("later completed screenshot"),
+            ),
+          );
+        },
+      },
+      clock: () => new Date(fixedNow),
+    });
+    const interrupted = runRequest();
+    await expect(service.run(interrupted)).rejects.toThrow("interrupted");
+    const completedRequest = {
+      ...runRequest(),
+      target: {
+        ...runRequest().target,
+        sourceArtifact: {
+          ...runRequest().target.sourceArtifact,
+          digest: digest("c"),
+        },
+      },
+    };
+    const completed = await service.run(completedRequest);
+
+    const mixedView = await service.read(interrupted.finding.id);
+    expect(mixedView).toMatchObject({
+      status: "completed-with-result-not-recorded",
+      records: [{ id: completed.id }],
+      incompleteClaims: [
+        {
+          startedAt: fixedNow,
+          processStatus: "unknown",
+          cleanupStatus: "unknown",
+        },
+      ],
+    });
+    if (mixedView === undefined) throw new Error("Expected mixed View");
+    expect(() =>
+      aiReproductionViewSchema.parse({
+        ...mixedView,
+        assurance: { ...mixedView.assurance, runtime: ["disproved"] },
+      }),
+    ).toThrow("status does not match stored records");
+    const incomplete = mixedView.incompleteClaims[0];
+    if (incomplete === undefined) throw new Error("Expected incomplete claim");
+    const completedAttempt = mixedView.records[0]?.attempt;
+    if (completedAttempt === undefined)
+      throw new Error("Expected completed Attempt");
+    expect(() =>
+      aiReproductionViewSchema.parse({
+        ...mixedView,
+        incompleteClaims: [incomplete, incomplete],
+      }),
+    ).toThrow("status does not match stored records");
+    expect(() =>
+      aiReproductionViewSchema.parse({
+        ...mixedView,
+        incompleteClaims: [{ ...incomplete, attempt: completedAttempt }],
+      }),
+    ).toThrow("status does not match stored records");
   });
 
   it.each(["Finding", "Attempt"] as const)(
@@ -755,6 +923,8 @@ describe("AIReproduction.run/read", () => {
       listFindingAIReproduction: state.record.listFindingAIReproduction.bind(
         state.record,
       ),
+      listFindingAIReproductionClaims:
+        state.record.listFindingAIReproductionClaims.bind(state.record),
       recordFindingAIReproduction:
         state.record.recordFindingAIReproduction.bind(state.record),
     };

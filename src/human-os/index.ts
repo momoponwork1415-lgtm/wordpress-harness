@@ -1,12 +1,14 @@
 export {
   aiVerificationOutcomeSchema,
   aiVerificationRecordSchema,
+  aiReproductionViewSchema,
   findingAIReproductionAttemptRefSchema,
   findingAIReproductionAttemptSchema,
 } from "./ai-reproduction-contracts.js";
 export type {
   AIVerificationOutcome,
   AIVerificationRecord,
+  AIReproductionView,
   FindingAIReproductionAttempt,
   FindingAIReproductionAttemptRef,
 } from "./ai-reproduction-contracts.js";
@@ -16,7 +18,6 @@ export {
 } from "./ai-reproduction.js";
 export type {
   AIReproduction,
-  AIReproductionView,
   FindingAIReproductionRequest,
   OpenAIReproductionOptions,
 } from "./ai-reproduction.js";

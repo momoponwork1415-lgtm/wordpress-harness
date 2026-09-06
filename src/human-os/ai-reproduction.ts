@@ -9,11 +9,13 @@ import { canonicalHumanOsJson, humanOsDigest } from "./canonical-json.js";
 import {
   defineAIVerificationRecord,
   defineFindingAIReproductionAttempt,
+  aiReproductionViewSchema,
   findingAIReproductionHarnessExecutionSchema,
   findingAIReproductionPrivateSchemas,
   humanOsPrivateArtifactRefSchema,
   referenceFindingAIReproductionAttempt,
   type AIVerificationRecord,
+  type AIReproductionView,
   type FindingAIReproductionAttempt,
   type FindingAIReproductionHarnessExecution,
   type FindingAIReproductionPrivateEvidenceDraft,
@@ -49,17 +51,6 @@ export interface FindingAIReproductionRequest {
   readonly setupPlan: HumanVerificationSetupPlan;
   readonly environmentPolicy: HumanVerificationEnvironmentPolicy;
   readonly grants: readonly ExternalDependencyGrant[];
-}
-
-export interface AIReproductionView {
-  readonly finding: Finding;
-  readonly assurance: {
-    readonly source: "source-validated";
-    readonly runtime: readonly (
-      "runtime-confirmed" | "disproved" | "inconclusive" | "setup-blocked"
-    )[];
-  };
-  readonly records: readonly AIVerificationRecord[];
 }
 
 export interface AIReproduction {
@@ -196,26 +187,61 @@ class DefaultAIReproduction implements AIReproduction {
   }
 
   async read(findingId: string): Promise<AIReproductionView | undefined> {
-    const events = await this.#record.listFindingAIReproduction(findingId);
+    const [events, claims] = await Promise.all([
+      this.#record.listFindingAIReproduction(findingId),
+      this.#record.listFindingAIReproductionClaims(findingId),
+    ]);
     const first = events[0];
-    if (first === undefined) return undefined;
+    const firstClaim = claims[0];
+    if (first === undefined && firstClaim === undefined) return undefined;
+    const finding = first?.finding ?? firstClaim?.finding;
+    if (finding === undefined) return undefined;
     if (
       events.some(
         (event) =>
-          event.finding.id !== first.finding.id ||
-          humanOsDigest(event.finding) !== humanOsDigest(first.finding),
+          event.finding.id !== finding.id ||
+          humanOsDigest(event.finding) !== humanOsDigest(finding),
       )
     ) {
       throw new Error("Finding AI Reproduction replay binding mismatch");
     }
-    return {
-      finding: first.finding,
+    if (
+      claims.some(
+        (claim) =>
+          claim.finding.id !== finding.id ||
+          humanOsDigest(claim.finding) !== humanOsDigest(finding),
+      )
+    ) {
+      throw new Error("Finding AI Reproduction claim replay binding mismatch");
+    }
+    const completedAttemptIds = new Set(
+      events.map((event) => event.attempt.id),
+    );
+    const incompleteClaims = claims
+      .filter((claim) => !completedAttemptIds.has(claim.attempt.id))
+      .map((claim) => ({
+        attempt: referenceFindingAIReproductionAttempt(claim.attempt),
+        startedAt: claim.claim.startedAt,
+        processStatus: "unknown" as const,
+        cleanupStatus: "unknown" as const,
+      }));
+    return aiReproductionViewSchema.parse({
+      kind: "ai-reproduction-view",
+      schemaVersion: 1,
+      status:
+        events.length === 0
+          ? "result-not-recorded"
+          : incompleteClaims.length === 0
+            ? "completed"
+            : "completed-with-result-not-recorded",
+      finding,
       assurance: {
         source: "source-validated",
         runtime: events.map((event) => event.record.outcome.status),
       },
       records: events.map((event) => event.record),
-    };
+      incompleteClaims,
+    });
   }
 
   async #execute(finding: Finding, attempt: FindingAIReproductionAttempt) {

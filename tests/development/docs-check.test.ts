@@ -11,6 +11,34 @@ const docsCheckPath = fileURLToPath(
   new URL("../../scripts/check-docs.mjs", import.meta.url),
 );
 const execFileAsync = promisify(execFile);
+const localGitEnvironmentVariables = [
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_COMMON_DIR",
+  "GIT_CONFIG",
+  "GIT_CONFIG_COUNT",
+  "GIT_CONFIG_PARAMETERS",
+  "GIT_DIR",
+  "GIT_GRAFT_FILE",
+  "GIT_IMPLICIT_WORK_TREE",
+  "GIT_INDEX_FILE",
+  "GIT_INTERNAL_SUPER_PREFIX",
+  "GIT_NO_REPLACE_OBJECTS",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_PREFIX",
+  "GIT_REPLACE_REF_BASE",
+  "GIT_SHALLOW_FILE",
+  "GIT_WORK_TREE",
+] as const;
+
+function createIsolatedGitEnvironment(): NodeJS.ProcessEnv {
+  const environment = { ...process.env };
+
+  for (const variable of localGitEnvironmentVariables) {
+    delete environment[variable];
+  }
+
+  return environment;
+}
 
 interface CommandResult {
   readonly exitCode: number | null;
@@ -22,6 +50,7 @@ async function runDocsCheck(cwd: string): Promise<CommandResult> {
   return await new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [docsCheckPath], {
       cwd,
+      env: createIsolatedGitEnvironment(),
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stderr = "";
@@ -44,7 +73,10 @@ async function runDocsCheck(cwd: string): Promise<CommandResult> {
 
 async function createDocsFixture(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "wordpress-docs-check-"));
-  await execFileAsync("git", ["init", "--quiet"], { cwd: directory });
+  await execFileAsync("git", ["init", "--quiet"], {
+    cwd: directory,
+    env: createIsolatedGitEnvironment(),
+  });
   await mkdir(join(directory, "docs"), { recursive: true });
   await writeFile(join(directory, "CONTEXT.md"), "# Test Context\n", "utf8");
   return directory;
