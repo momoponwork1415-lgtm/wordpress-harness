@@ -1062,7 +1062,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       try {
         await expect(
           missingAttemptReservationWriter.runner.run(reservationBoundaryPlan),
-        ).resolves.toMatchObject({ schemaVersion: 3, decision: "incomplete" });
+        ).resolves.toMatchObject({ schemaVersion: 4, decision: "incomplete" });
       } finally {
         missingAttemptReservationWriter.close();
       }
@@ -2144,7 +2144,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       finderReportedTokenIndex = 0;
       validationCandidateCount = 1;
       validatorReportedTokens = undefined;
-      validationDisposition = "ready-for-runtime";
+      validationDisposition = "source-validated";
       depthFailure = "budget-exhausted";
       failInitialRootAfterAdmission = true;
       candidateIdentitySuffix = "-measured-root-reserve";
@@ -2155,7 +2155,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       expectedValidationRunId = measuredPlan.runId;
       const measuredCallOffset = observedPlans.length;
       await expect(research.runner.run(measuredPlan)).resolves.toMatchObject({
-        schemaVersion: 3,
+        schemaVersion: 4,
         decision: "incomplete",
       });
       await expect(
