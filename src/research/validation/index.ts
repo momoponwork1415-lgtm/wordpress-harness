@@ -1,6 +1,14 @@
 export { openValidation } from "./validation.js";
 export { projectValidationFrontierGap } from "./validation-frontier-gap.js";
 export {
+  findingId,
+  findingRefSchema,
+  findingSchema,
+  projectFinding,
+  referenceFinding,
+} from "./finding.js";
+export type { Finding, FindingRef } from "./finding.js";
+export {
   defineRuntimeVerificationPacketDeliveryRequest,
   prepareRuntimeVerificationPacket,
   referenceRuntimeRiskAssessment,
@@ -46,6 +54,8 @@ export {
   validationAttemptOutputSchema,
   currentValidationPlanSchema,
   singleValidationAttemptOutputSchema,
+  sourceValidationRecordRefSchema,
+  sourceValidationRecordSchema,
   validationCandidateId,
   validationCandidateRefSchema,
   validationCandidateSchema,

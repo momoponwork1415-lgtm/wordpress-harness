@@ -16,8 +16,8 @@ import {
   isWithinCurrentResearchAttackerScope,
 } from "../current-research-attacker-scope.js";
 import {
-  currentValidationRecordSchema,
-  currentValidationRecordRefSchema,
+  sourceValidationRecordSchema,
+  sourceValidationRecordRefSchema,
   currentValidationPlanSchema,
   singleValidationAttemptOutputSchema,
   validationCriteria,
@@ -28,7 +28,7 @@ import {
   type ValidatorAttemptPlan,
 } from "./contracts.js";
 
-type CurrentValidationRecord = z.infer<typeof currentValidationRecordSchema>;
+type CurrentValidationRecord = z.infer<typeof sourceValidationRecordSchema>;
 type ValidatorAttemptRecord = CurrentValidationRecord["validatorAttempt"];
 
 function outputJsonSchema(schema: z.ZodType): Record<string, unknown> {
@@ -74,9 +74,9 @@ function validatorAttempt(
       "Independently inspect the fixed Target source; do not trust discovery wording or use Finder conversation, scratch, or verdicts.",
       "Handle every rubric criterion exactly once as pass, fail, or unknown, with source evidence.",
       "Use needs-research only for a concrete source-decidable proof gap. Runtime reproduction alone is not a source proof gap.",
-      "Include proofGap only for needs-research; omit proofGap for ready-for-runtime and disproven.",
+      "Include proofGap only for needs-research; omit proofGap for source-validated and disproven.",
       "Use disproven only for a decisive source contradiction supported by a failed rubric criterion.",
-      "If no decisive source contradiction exists and the attacker premise, Security Effect, and a concrete runtime-testable route remain, return ready-for-runtime; rubric unknowns are allowed and must be preserved.",
+      "If no decisive source contradiction or source-decidable proof gap exists and the attacker premise, Security Effect, and causal route remain, return source-validated; runtime unknowns are allowed and must be preserved.",
       "Do not return rejected. Do not execute Target code, use a shell, assign severity, vote, or create a Finding.",
       `Validation input: ${canonicalJson({
         candidate: plan.candidate,
@@ -248,16 +248,16 @@ async function storeRecord(
   record: CurrentValidationRecord,
   options: OpenValidationOptions,
 ): Promise<CurrentValidationRecordRef> {
-  const value = currentValidationRecordSchema.parse(record);
+  const value = sourceValidationRecordSchema.parse(record);
   const digest = await options.artifactStore.putJson(value);
   if (digest !== sha256Digest(value)) {
     throw new Error(
       "Validation Record artifact store returned a foreign digest",
     );
   }
-  return currentValidationRecordRefSchema.parse({
+  return sourceValidationRecordRefSchema.parse({
     kind: "validation-record",
-    schemaVersion: 2,
+    schemaVersion: 3,
     validationId: value.validationId,
     candidateId: value.candidateId,
     digest,
@@ -291,7 +291,7 @@ class SingleSourceValidation implements Validation {
       return storeRecord(
         {
           kind: "validation-record",
-          schemaVersion: 2,
+          schemaVersion: 3,
           validationId: plan.validationId,
           candidateId: plan.candidate.id,
           planDigest,
@@ -308,7 +308,7 @@ class SingleSourceValidation implements Validation {
     return storeRecord(
       {
         kind: "validation-record",
-        schemaVersion: 2,
+        schemaVersion: 3,
         validationId: plan.validationId,
         candidateId: plan.candidate.id,
         planDigest,

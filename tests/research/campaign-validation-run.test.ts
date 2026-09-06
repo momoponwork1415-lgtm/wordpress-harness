@@ -182,14 +182,14 @@ describe("CampaignRunner.run source-only Validation", () => {
       readonly ownReservationDurable: boolean;
     }> = [];
     let expectedValidationRunId = "";
-    let validationDisposition: "ready-for-runtime" | "needs-research" =
-      "ready-for-runtime";
+    let validationDisposition:
+      "source-validated" | "needs-research" | "disproven" = "source-validated";
     let depthFailure: "none" | "budget-exhausted" = "none";
-    let packetDelivery: "success" | "failure" = "failure";
     let candidateIdentitySuffix = "";
     let validationCandidateCount = 1;
     let validatorReportedTokens: number | undefined;
     let injectUnknownValidatorResult = false;
+    let firstFindingId: string | undefined;
     const deliveredPacketDigests: string[] = [];
     const modelExecution: ModelExecution = {
       run: async (plan) => {
@@ -531,7 +531,7 @@ describe("CampaignRunner.run source-only Validation", () => {
           }
           const result = completedResult(plan, {
             kind: "validation-attempt-output",
-            schemaVersion: 2,
+            schemaVersion: 3,
             candidateId: plan.assignment.candidateId,
             criteria: criteria.map((criterion) => ({
               criterion,
@@ -539,7 +539,10 @@ describe("CampaignRunner.run source-only Validation", () => {
                 validationDisposition === "needs-research" &&
                 criterion === "reachability-and-premise"
                   ? "unknown"
-                  : "pass",
+                  : validationDisposition === "disproven" &&
+                      criterion === "broken-control"
+                    ? "fail"
+                    : "pass",
               reason: `${plan.attemptId} independently resolved ${criterion}.`,
               evidence: [anchor],
             })),
@@ -623,9 +626,6 @@ describe("CampaignRunner.run source-only Validation", () => {
         deliver: async (request) => {
           const packet = request.packet;
           deliveredPacketDigests.push(sha256Digest(packet));
-          if (packetDelivery === "failure") {
-            throw new Error("Injected Human OS delivery failure");
-          }
           const identity = {
             kind: "runtime-verification-packet-delivery-receipt" as const,
             schemaVersion: 2 as const,
@@ -912,24 +912,25 @@ describe("CampaignRunner.run source-only Validation", () => {
                 },
               ],
             },
-            validations: [{ status: "ready-for-runtime" }],
-            runtimeVerificationPacketFailures: [],
-            runtimeVerificationPackets: [
+            validations: [{ status: "source-validated" }],
+            findings: [
               {
-                packet: {
-                  schemaVersion: 2,
+                kind: "finding",
+                schemaVersion: 1,
+                id: expect.any(String),
+                digest: expect.any(String),
+                validation: {
+                  schemaVersion: 3,
                   candidateId: expect.any(String),
-                },
-                riskAssessment: {
-                  schemaVersion: 2,
-                  candidateId: expect.any(String),
-                },
-                delivery: {
-                  status: "delivery-failed",
-                  reason: "delivery-failed",
                 },
               },
             ],
+            coverage: {
+              kind: "campaign-coverage",
+              schemaVersion: 1,
+              status: "incomplete",
+              reason: "research-work-remains",
+            },
             approachFamilyRegistry: {
               schemaVersion: 3,
               states: { active: 1 },
@@ -1097,8 +1098,8 @@ describe("CampaignRunner.run source-only Validation", () => {
         ).resolves.toMatchObject([
           {
             completion: {
-              validation: { schemaVersion: 2 },
-              disposition: "ready-for-runtime",
+              validation: { schemaVersion: 3 },
+              disposition: "source-validated",
             },
           },
         ]);
@@ -1125,54 +1126,54 @@ describe("CampaignRunner.run source-only Validation", () => {
         if (
           inspected.kind !== "run" ||
           inspected.value.schemaVersion !== 3 ||
-          !("runtimeVerificationPackets" in inspected.value)
+          !("findings" in inspected.value)
         ) {
-          throw new Error(
-            "Expected a current Runtime Verification Packet handoff",
-          );
+          throw new Error("Expected a source-validated Finding");
         }
-        const candidateId =
-          inspected.value.runtimeVerificationPackets?.[0]?.packet.candidateId;
-        if (candidateId === undefined) {
-          throw new Error("Expected a Runtime Verification Packet candidate");
+        const findingRef = inspected.value.findings[0];
+        if (findingRef === undefined) {
+          throw new Error("Expected a source-validated Finding ref");
         }
-        const packet = await record.readRuntimeVerificationPacket(
-          input.campaignId,
-          candidateId,
+        expect(inspected.value).not.toHaveProperty(
+          "runtimeVerificationPackets",
         );
-        expect(packet).toMatchObject({
-          packet: {
-            targetSnapshotDigest: input.targetSnapshot.digest,
-            manifestDigest: prepared.targetFileManifest.digest,
-          },
-          riskAssessment: { validationId: candidateId },
-          handoffs: [
-            {
-              runId: plan.runId,
-              handoff: { delivery: { status: "delivery-failed" } },
-            },
-          ],
-        });
-        if (packet === undefined) throw new Error("Expected Runtime Packet");
+        expect(inspected.value).not.toHaveProperty(
+          "runtimeVerificationPacketFailures",
+        );
+        firstFindingId = findingRef.id;
         await expect(
-          artifacts.readJson(packet.packet.digest),
+          record.readRuntimeVerificationPacket(
+            input.campaignId,
+            findingRef.candidateId,
+          ),
+        ).resolves.toBeUndefined();
+        await expect(
+          artifacts.readJson(findingRef.digest),
         ).resolves.toMatchObject({
+          kind: "finding",
+          schemaVersion: 1,
+          id: findingRef.id,
           target: input.targetSnapshot,
+          manifest: prepared.targetFileManifest,
+          candidate: { id: findingRef.candidateId },
+          validation: { schemaVersion: 3 },
           causalIdentity: { brokenSecurityProperty: "state-ownership" },
           attackerPremise: "unauthenticated",
-          researchBoundary: {
-            sourceOnly: true,
-            exactPayloadIncluded: false,
-            rawRequestIncluded: false,
-            findingEligible: false,
+          brokenSecurityProperty: "state-ownership",
+          sourceRoute: [{ evidence: [anchor] }],
+          sourceEvidence: [anchor],
+          counterevidence: {
+            status: "pass",
+            evidence: [anchor],
           },
         });
-        await expect(
-          artifacts.readJson(packet.riskAssessment.digest),
-        ).resolves.toMatchObject({
-          validationDisposition: "ready-for-runtime",
-          validation: { schemaVersion: 2 },
-        });
+        const completion = await record.listValidationCompletions(
+          input.campaignId,
+          plan.runId,
+        );
+        expect(findingRef.validation).toEqual(
+          completion[0]?.completion.validation,
+        );
       } finally {
         record.close();
       }
@@ -1196,8 +1197,8 @@ describe("CampaignRunner.run source-only Validation", () => {
         needsResearchInspected: {
           value: {
             validations: [{ status: "needs-research" }],
-            runtimeVerificationPackets: [],
-            runtimeVerificationPacketFailures: [],
+            findings: [],
+            coverage: { status: "incomplete" },
             validationFrontierGaps: [
               {
                 kind: "validation-frontier-gap",
@@ -1244,9 +1245,36 @@ describe("CampaignRunner.run source-only Validation", () => {
         needsResearchRecord.close();
       }
 
-      validationDisposition = "ready-for-runtime";
+      validationDisposition = "disproven";
+      candidateIdentitySuffix = "-disproven";
+      const disprovenPlan = campaignDefaultSemanticRunPlanV3Schema.parse({
+        ...plan,
+        runId: "source-validation-disproven",
+      });
+      expectedValidationRunId = disprovenPlan.runId;
+      const disprovenRef = await research.runner.run(disprovenPlan);
+      await expect(
+        research.reader.inspect(input.campaignId, {
+          kind: "run",
+          runId: disprovenPlan.runId,
+        }),
+      ).resolves.toMatchObject({
+        value: {
+          validations: [{ status: "disproven" }],
+          findings: [],
+          coverage: { status: "incomplete" },
+        },
+      });
+      await expect(research.runner.run(disprovenPlan)).resolves.toEqual(
+        disprovenRef,
+      );
+
+      validationDisposition = "source-validated";
+      candidateIdentitySuffix = "";
       depthFailure = "budget-exhausted";
-      packetDelivery = "success";
+      if (firstFindingId === undefined) {
+        throw new Error("Expected the first Finding identity");
+      }
       const failurePlan = campaignDefaultSemanticRunPlanV3Schema.parse({
         ...plan,
         runId: "source-validation-depth-budget-exhausted",
@@ -1282,15 +1310,14 @@ describe("CampaignRunner.run source-only Validation", () => {
               ],
             },
             approachFamilyRegistry: { states: { active: 1 } },
-            runtimeVerificationPacketFailures: [],
-            runtimeVerificationPackets: [
+            findings: [
               {
-                delivery: {
-                  status: "delivered",
-                  receipt: { packetDigest: expect.any(String) },
-                },
+                kind: "finding",
+                schemaVersion: 1,
+                id: firstFindingId,
               },
             ],
+            coverage: { status: "incomplete" },
             decision: {
               kind: "incomplete",
               reason: "research-work-remains",
@@ -1305,13 +1332,9 @@ describe("CampaignRunner.run source-only Validation", () => {
       expect(
         failureCalls.filter((attempt) => attempt.role === "adversarial-critic"),
       ).toEqual([]);
-      expect(deliveredPacketDigests).toHaveLength(2);
-      expect(new Set(deliveredPacketDigests)).toHaveProperty("size", 1);
-
-      expect(deliveredPacketDigests.at(-1)).toEqual(expect.any(String));
+      expect(deliveredPacketDigests).toEqual([]);
 
       depthFailure = "none";
-      packetDelivery = "success";
       candidateIdentitySuffix = "-crash-recovery";
       const crashRecoveryPlan = campaignDefaultSemanticRunPlanV3Schema.parse({
         ...plan,
@@ -1401,7 +1424,7 @@ describe("CampaignRunner.run source-only Validation", () => {
         ).resolves.toMatchObject({
           kind: "run",
           value: {
-            validations: [{ status: "ready-for-runtime" }],
+            validations: [{ status: "source-validated" }],
           },
         });
         const progressAfterRecovery = await recoveringResearch.reader.inspect(
@@ -1532,6 +1555,8 @@ describe("CampaignRunner.run source-only Validation", () => {
                 reason: "validator-attempt-failed",
               },
             ],
+            findings: [],
+            coverage: { status: "incomplete" },
           },
         });
         const progressAfterUnknownRecovery =
@@ -1712,7 +1737,9 @@ describe("CampaignRunner.run source-only Validation", () => {
         }),
       ).resolves.toMatchObject({
         value: {
-          validations: [{ status: "ready-for-runtime" }],
+          validations: [{ status: "source-validated" }],
+          findings: [{ kind: "finding", schemaVersion: 1 }],
+          coverage: { status: "incomplete" },
           approachFamilyRegistry: {
             pendingValidations: 1,
             validationOutcomes: 1,
@@ -1747,7 +1774,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       research.close();
       await rm(directory, { force: true, recursive: true });
     }
-  }, 15_000);
+  }, 30_000);
 
   it("replays a pre-result-stored Validator completion", async () => {
     const directory = await mkdtemp(
@@ -1774,6 +1801,7 @@ describe("CampaignRunner.run source-only Validation", () => {
         value: {
           schemaVersion: 3,
           validations: [{ status: "ready-for-runtime" }],
+          runtimeVerificationPackets: [{ packet: { schemaVersion: 2 } }],
         },
       });
       await expect(

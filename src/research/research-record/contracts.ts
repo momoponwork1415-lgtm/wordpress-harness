@@ -79,9 +79,7 @@ import type {
   RiskAssessmentRef,
 } from "../validation/human-review-packet.js";
 import type {
-  RuntimeRiskAssessment,
   RuntimeRiskAssessmentRef,
-  RuntimeVerificationPacket,
   RuntimeVerificationPacketHandoff,
   RuntimeVerificationPacketRef,
 } from "../validation/runtime-verification-packet.js";
@@ -269,21 +267,10 @@ export interface ResearchRecord {
     runId: string,
     handoff: HumanReviewPacketHandoff,
   ): Promise<HumanReviewPacketRecordView>;
-  recordRuntimeVerificationPacket(
-    campaignId: string,
-    runId: string,
-    riskAssessment: RuntimeRiskAssessment,
-    packet: RuntimeVerificationPacket,
-  ): Promise<RuntimeVerificationPacketRecordView>;
   readRuntimeVerificationPacket(
     campaignId: string,
     candidateId: string,
   ): Promise<RuntimeVerificationPacketRecordView | undefined>;
-  recordRuntimeVerificationPacketHandoff(
-    campaignId: string,
-    runId: string,
-    handoff: RuntimeVerificationPacketHandoff,
-  ): Promise<RuntimeVerificationPacketRecordView>;
   recordVerificationStart(
     plan: VerificationPlan,
   ): Promise<RecordVerificationStartResult>;
@@ -488,6 +475,7 @@ export interface ValidationCompletion {
   readonly schemaVersion: 1;
   readonly validation: SourceValidationRecordRef;
   readonly disposition:
+    | "source-validated"
     | "ready-for-runtime"
     | "ready-for-human"
     | "needs-research"

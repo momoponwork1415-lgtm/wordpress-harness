@@ -101,23 +101,17 @@ import {
 } from "../verification/index.js";
 import {
   openValidation,
+  projectFinding,
+  referenceFinding,
   referenceValidationCandidate,
+  sourceValidationRecordSchema,
   validationRecordRefSchema,
   validationRecordSchema,
   validationThreatContextSchema,
+  type FindingRef,
   type ValidationCandidate,
   type ValidationRecord,
 } from "../validation/index.js";
-import {
-  defineRuntimeVerificationPacketDeliveryRequest,
-  prepareRuntimeVerificationPacket,
-  runtimeVerificationPacketDeliveryReceiptSchema,
-  runtimeVerificationPacketHandoffSchema,
-  runtimeVerificationPacketPreparationFailureSchema,
-  runtimeVerificationPacketSchema,
-  type RuntimeVerificationPacketHandoff,
-  type RuntimeVerificationPacketPreparationFailure,
-} from "../validation/runtime-verification-packet.js";
 import {
   CampaignRunConflictError,
   LegacyMapFirstExecutionDisabledError,
@@ -1542,166 +1536,59 @@ async function executeCurrentSemanticDepthRound(
   };
 }
 
-async function prepareCurrentRuntimeVerificationPackets(
-  record: CurrentCampaignStore,
+async function prepareSourceValidatedFindings(
   dependencies: CampaignExecutionDependencies,
-  plan: DefaultSemanticCampaignRunPlanV3,
   candidates: readonly ValidationCandidate[],
   validations: readonly ValidationRecord[],
-): Promise<{
-  readonly handoffs: readonly RuntimeVerificationPacketHandoff[];
-  readonly failures: readonly RuntimeVerificationPacketPreparationFailure[];
-}> {
+): Promise<readonly FindingRef[]> {
   const candidatesById = new Map(
     candidates.map((candidate) => [candidate.id, candidate]),
   );
-  const handoffs: RuntimeVerificationPacketHandoff[] = [];
-  const failures: RuntimeVerificationPacketPreparationFailure[] = [];
+  const findings: FindingRef[] = [];
   for (const validation of [...validations].sort((left, right) =>
     compareText(left.candidateId, right.candidateId),
   )) {
-    if (
-      validation.schemaVersion !== 2 ||
-      validation.status !== "ready-for-runtime"
-    ) {
+    const current = sourceValidationRecordSchema.safeParse(validation);
+    if (!current.success || current.data.status !== "source-validated") {
       continue;
     }
     const candidate = candidatesById.get(validation.candidateId);
     if (candidate === undefined) {
-      throw new Error("Ready Validation lost its Candidate");
+      throw new Error("Source-validated Validation lost its Candidate");
     }
-    const candidateRef = referenceValidationCandidate(candidate);
-    const validationRef = validationRecordRefSchema.parse({
-      kind: validation.kind,
-      schemaVersion: validation.schemaVersion,
-      validationId: validation.validationId,
-      candidateId: validation.candidateId,
-      digest: sha256Digest(validation),
-    });
-    let packetRecord = await record.readRuntimeVerificationPacket(
-      plan.campaignId,
-      candidate.id,
-    );
-    let packet;
-    if (packetRecord === undefined) {
-      let hypothesis:
-        | ReturnType<typeof sourceBoundHypothesisArtifactSchema.parse>
-        | undefined;
-      for (const origin of [...candidate.origins].sort((left, right) =>
-        compareText(left.subjectDigest, right.subjectDigest),
-      )) {
-        const raw = await dependencies.artifactStore.readJson(
-          origin.subjectDigest,
-        );
-        if (sha256Digest(raw) !== origin.subjectDigest) {
-          throw new Error("Review Packet origin CAS mismatch");
-        }
-        const parsed = sourceBoundHypothesisArtifactSchema.safeParse(raw);
-        if (parsed.success) {
-          hypothesis = parsed.data;
-          break;
-        }
-      }
-      const threatContextIdentity = {
-        kind: "validation-threat-context" as const,
-        schemaVersion: 1 as const,
-        targetSnapshotDigest: plan.target.digest,
-        candidateId: candidate.id,
-        wordpressBaseline: plan.validation.wordpressBaseline,
-        permittedAttacker: candidate.attackerPremise,
-        publicSurface: plan.validation.publicSurface,
-        technicalExclusions: plan.validation.technicalExclusions,
-      };
-      const threatContext = validationThreatContextSchema.parse({
-        ...threatContextIdentity,
-        id: sha256Digest(threatContextIdentity),
-      });
-      const prepared =
-        hypothesis === undefined
-          ? { kind: "incomplete" as const, reason: "invalid-binding" as const }
-          : prepareRuntimeVerificationPacket({
-              candidate,
-              validation,
-              hypothesis,
-              threatContext,
-            });
-      if (prepared.kind === "incomplete") {
-        failures.push(
-          runtimeVerificationPacketPreparationFailureSchema.parse({
-            kind: "runtime-verification-packet-preparation-failure",
-            schemaVersion: 2,
-            candidate: candidateRef,
-            validation: validationRef,
-            reason: prepared.reason,
-          }),
-        );
-        continue;
-      }
-      packet = prepared.packet;
-      packetRecord = await record.recordRuntimeVerificationPacket(
-        plan.campaignId,
-        plan.runId,
-        prepared.riskAssessment,
-        prepared.packet,
+    let hypothesis:
+      ReturnType<typeof sourceBoundHypothesisArtifactSchema.parse> | undefined;
+    for (const origin of [...candidate.origins].sort((left, right) =>
+      compareText(left.subjectDigest, right.subjectDigest),
+    )) {
+      const raw = await dependencies.artifactStore.readJson(
+        origin.subjectDigest,
       );
-    } else {
-      const rawPacket = await dependencies.artifactStore.readJson(
-        packetRecord.packet.digest,
-      );
-      if (sha256Digest(rawPacket) !== packetRecord.packet.digest) {
-        throw new Error("Runtime Verification Packet CAS mismatch");
+      if (sha256Digest(raw) !== origin.subjectDigest) {
+        throw new Error("Finding origin CAS mismatch");
       }
-      packet = runtimeVerificationPacketSchema.parse(rawPacket);
-    }
-    const previousHandoff = packetRecord.handoffs.find(
-      (handoff) => handoff.runId === plan.runId,
-    );
-    if (previousHandoff !== undefined) {
-      handoffs.push(previousHandoff.handoff);
-      continue;
-    }
-    let delivery: RuntimeVerificationPacketHandoff["delivery"];
-    if (dependencies.runtimeVerificationPacketDelivery === undefined) {
-      delivery = {
-        status: "delivery-failed",
-        reason: "human-os-intake-unavailable",
-      };
-    } else {
-      try {
-        const deliveryRequest = defineRuntimeVerificationPacketDeliveryRequest({
-          campaignId: plan.campaignId,
-          runId: plan.runId,
-          packet,
-        });
-        const receipt = runtimeVerificationPacketDeliveryReceiptSchema.parse(
-          await dependencies.runtimeVerificationPacketDelivery.deliver(
-            deliveryRequest,
-          ),
-        );
-        delivery =
-          receipt.deliveryRequestDigest === deliveryRequest.digest &&
-          receipt.packetDigest === packetRecord.packet.digest
-            ? { status: "delivered", receipt }
-            : { status: "delivery-failed", reason: "delivery-failed" };
-      } catch {
-        delivery = { status: "delivery-failed", reason: "delivery-failed" };
+      const parsed = sourceBoundHypothesisArtifactSchema.safeParse(raw);
+      if (parsed.success) {
+        hypothesis = parsed.data;
+        break;
       }
     }
-    const handoff = runtimeVerificationPacketHandoffSchema.parse({
-      kind: "runtime-verification-packet-handoff",
-      schemaVersion: 2,
-      packet: packetRecord.packet,
-      riskAssessment: packetRecord.riskAssessment,
-      delivery,
+    if (hypothesis === undefined) {
+      throw new Error("Source-validated Finding lost its Hypothesis");
+    }
+    const finding = projectFinding({
+      candidate,
+      validation: current.data,
+      hypothesis,
     });
-    await record.recordRuntimeVerificationPacketHandoff(
-      plan.campaignId,
-      plan.runId,
-      handoff,
-    );
-    handoffs.push(handoff);
+    const ref = referenceFinding(finding);
+    const digest = await dependencies.artifactStore.putJson(finding);
+    if (digest !== ref.digest) {
+      throw new Error("Finding artifact store returned a foreign digest");
+    }
+    findings.push(ref);
   }
-  return { handoffs, failures };
+  return findings;
 }
 
 async function completeCurrentSemanticIteration(
@@ -1886,10 +1773,8 @@ async function completeCurrentSemanticIteration(
       validationRef,
     );
   }
-  const runtimePackets = await prepareCurrentRuntimeVerificationPackets(
-    record,
+  const findings = await prepareSourceValidatedFindings(
     dependencies,
-    plan,
     candidates,
     validationRecords,
   );
@@ -1942,15 +1827,25 @@ async function completeCurrentSemanticIteration(
       compareText(left.validationId, right.validationId),
     ),
     validationFrontierGaps: frontierGaps.map((gap) => gap.frontierGap),
-    runtimeVerificationPackets: [...runtimePackets.handoffs],
-    runtimeVerificationPacketFailures: [...runtimePackets.failures],
+    findings: [...findings],
+    coverage: researchWorkRemains
+      ? {
+          kind: "campaign-coverage",
+          schemaVersion: 1,
+          status: "incomplete",
+          reason: "research-work-remains",
+        }
+      : {
+          kind: "campaign-coverage",
+          schemaVersion: 1,
+          status: "closed",
+          reason: "coverage-closed",
+        },
     decision: pendingValidation
       ? { kind: "incomplete", reason: "validation-pending" }
-      : runtimePackets.failures.length > 0
-        ? { kind: "incomplete", reason: "runtime-packet-pending" }
-        : researchWorkRemains
-          ? { kind: "incomplete", reason: "research-work-remains" }
-          : { kind: "complete" },
+      : researchWorkRemains
+        ? { kind: "incomplete", reason: "research-work-remains" }
+        : { kind: "complete" },
   });
 }
 
@@ -2120,6 +2015,13 @@ async function executeDefaultSemanticCampaign(
             : [attempt.completion.value.result],
         ),
         stage: planning,
+        findings: [],
+        coverage: {
+          kind: "campaign-coverage",
+          schemaVersion: 1,
+          status: "incomplete",
+          reason: "planning-incomplete",
+        },
         decision: { kind: "incomplete", reason: "planning-incomplete" },
       });
     }
@@ -2382,6 +2284,13 @@ async function executeDefaultSemanticCampaign(
             : [attempt.completion.value.result],
         ),
         stage: evaluated,
+        findings: [],
+        coverage: {
+          kind: "campaign-coverage",
+          schemaVersion: 1,
+          status: "incomplete",
+          reason: "evaluation-incomplete",
+        },
         decision: { kind: "incomplete", reason: "evaluation-incomplete" },
       });
     }

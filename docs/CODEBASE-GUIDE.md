@@ -12,14 +12,14 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Target selection / approval | Research History、programme / route観測、自律選定、人間のBatch承認を実装済み | Campaign Coverage Receipt、unattended dispatch |
 | Vulnerability Intelligence | Wordfence Intelligence v3のlocal indexとoracle-separated projectionを実装済み | なし（Wordfence-only方針を#102で確定済み） |
 | Semantic Research | v6 initial Wave、Decision@3、conditional Depth実行まで実装済み | Missing-link / Closure |
-| Source-only Validation | v6 single fresh Attemptと4 dispositionを実装済み | Frontier Gapの次Wave |
-| Runtime handoff | Runtime Verification Packet v2とAI Reproduction intakeを実装済み | Finding handoff後にlegacy化（#126 / #129） |
+| Source-only Validation | v6 single fresh Attempt、4 disposition、source-validated Findingを実装済み | Frontier Gapの次Wave |
+| Runtime handoff | Runtime Verification Packet v2はread-only replay、AI Reproduction intakeは実装済み | Finding handoff（#126 / #129） |
 | AI Reproduction | typed attempt、class別・generic Recipe、private evidence、Triage Packetを実装済み | Finding Verification Recordへ移行（#126） |
 | Human Verification | mandatory fresh再実行、二車線Queue、Current Version Review、human-only Finding gateを実装済み | Finding gateをsubmission gateへ移す（#126） |
-| Finding | Human Verification gateとknown-pluginでの成立を実測済み | Independent Validation生成へ移行（#125） |
+| Finding | fresh Independent Validationからimmutable source-validated Findingを生成 | runtime / human Verification Record（#126） |
 | Understanding / report | 設計とIssue分割まで完了 | grounded explanation、template draft、人間承認、form staging |
 
-現在のproduction sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / single source Validation -> Risk Assessment / Runtime Verification Packet -> AI Reproduction / Triage Reproduction Packet -> mandatory fresh Human reproduction -> Finding`である。Human OSのv1 Human Review Packet flowはread-only replay境界に残す。v6 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Packet delivery failureはPacketを保持したままResearch failureと分ける。Missing-link / Closureはlegacy v5に実装済みだがv6へ未接続。
+現在のResearch production sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / single source Validation -> source-validated Finding + Coverage`である。Findingの存在とCoverage状態は別々にterminal viewへ返す。旧Runtime Verification Packet、Human Review Packet、human-only Findingは元の意味でread-only replay境界に残す。v6 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Missing-link / Closureはlegacy v5に実装済みだがv6へ未接続。
 
 手動Target Intakeから旧Findingまでのflowはversioned contractで接続済みである。[ADR 0124](adr/0124-align-campaign-and-finding-lifecycle-with-reference-harnesses.md)ではFinding lifecycleだけを変更し、現行のSemantic Research Waveとpublic seamは維持する。Target Intelligence内の自律選定とBatch承認は実装済みだが、Approved Target BatchからTarget Acquisition / Researchへのdispatchは未接続であり、完成度をpercentでは表さない。次の有限workと順序は[Issue #124](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/124)と[Issue #86](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/86)を正本とする。
 
@@ -153,15 +153,15 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 **Interface:** `CampaignRunner.prepare / prepareFromTargetIntake / run`、`CampaignReader.inspect`（`{ kind: "budget", runId }`を含む）
 
-- **Purpose:** fixed Targetをfinite Wave、Validation、Runtime Verification Packet handoffまで進める。
+- **Purpose:** fixed Targetをfinite Wave、Independent Validation、source-validated Finding / Coverage terminalまで進める。
 - **Invariants:** PlanへTarget、Manifest、policy、profile、tool、budgetを固定する。artifactをCASへ置き、Ledger eventを記録してから次stageへ進む。
 - **Normal Wave policy:** current defaultは3 Finder、target-specific thesisは最大2、whole-target wildcard thesisは最低1。`maxConcurrentFinders = 4`はhard ceilingと明示的overrideとして維持し、`maxFinderAttempts`とCampaign全体budgetは増やさない。legacy 4-Finder Plan / Ledgerはread-only replayする。
-- **Attacker scope:** current Campaignは未認証、Subscriber、subscriber-equivalent custom role（`customer`を含む）だけを許可する。Contributor以上と`unresolved`はcheckpoint、Root Evaluation、Validation admission、Runtime handoffでfail closedにする。legacy enumとLedgerはreplay互換を維持する。
+- **Attacker scope:** current Campaignは未認証、Subscriber、subscriber-equivalent custom role（`customer`を含む）だけを許可する。Contributor以上と`unresolved`はcheckpoint、Root Evaluation、Validation admission、Finding projectionでfail closedにする。legacy enumとLedgerはreplay互換を維持する。
 - **Budget admission:** initial Wave、Depth、Validationの全Model Attemptは、一つのCampaign budgetとExploration / Validation owner budgetを共有する。Attempt Planの最大使用量をLedgerへreserveしてから、同じSQLite transactionでAttempt intentを記録する。terminal completionとreported usageのsettlementも同じtransactionへ置き、restart時は未settle reservation、既知usage、unknown usageの保守的chargeを一回だけreplayする。
 - **Budget enforcement:** model Attempt数、wall time、provider costは次のprovider request前のadmissionで止める。providerが返すtoken / turnをgeneration前のhard ceilingにはできないため、reported postconditionとしてovershootを記録し、以後のadmissionを止める。turn、structured output、source usageはCampaign集計へ含めるが、現行policyにCampaign-wide limitはない。
 - **Attempt observability:** ValidatorもCampaign Attempt Ledgerへstart / result-stored / completionを記録する。terminal resultはCAS保存後にresult-storedを追記し、completion前の再起動ではidentityとCASを検証して同じresultを再利用する。active progressとreported token / costはFinder、Root role、Critic、Validatorを同じAttempt projectionから一回だけ集計する。
 - **Failures:** integrity不正は起動前に拒否する。provider送信後にresultを確認できないValidator Attemptは再送せず`validation-pending`へ保ち、exactly-once executionは主張しない。保存resultのCASまたはidentity不一致は再利用しない。unknown usageはreservation全量を消費したものとして残し、budget exhaustionを`disproven`、`rejected`、`no-material-delta`、`coverage-closed`へ丸めず、Explorationは`Incomplete`、Validationは`validation-pending`にする。
-- **Status:** v6 initial Wave、single Validation、conditional Depth、Campaign-wide durable budget admission / settlement、Validator crash recovery、Runtime Verification Packet v2 handoff、Human OS intake、terminal replay、progressを実装。Missing-link / Closureは未接続。
+- **Status:** v6 initial Wave、single Validation、conditional Depth、Campaign-wide durable budget admission / settlement、Validator crash recovery、Finding / Coverage terminal、terminal replay、progressを実装。Missing-link / Closureは未接続。
 - **Code / Tests:** [campaign-control](../src/research/campaign-control), [open-research](../src/research/open-research.ts) · [v6 run](../tests/research/campaign-validation-run.test.ts), [semantic E2E](../tests/research/campaign-semantic-e2e.test.ts), [replay](../tests/research/campaign-run.test.ts)
 
 ### Source Understanding
@@ -200,15 +200,14 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 **Interface:** `Validation.validate(plan) -> ValidationRecordRef`
 
-- **Purpose:** Root-evaluated candidateをfreshなsource reviewで反証し、Humanへ渡す明らかなfalse positiveを抑える。
-- **Current implementation:** exact identityはTarget、Manifest、premise、property、ordered route、anchorで作る。一つのfresh Validatorから`ready-for-runtime / needs-research / disproven / validation-pending`を決定的に投影し、二つ目・第三AttemptとValidation Synthesisを起動しない。
-- **Attacker invariant:** Validator起動前にCandidateとThreat Contextをcurrent scopeへ照合し、scope外ならmodel tokenを使わない。Runtime Packet準備でも独立に`attacker-out-of-scope`として止める。
-- **Runtime handoff:** `ready-for-runtime`からsingle Validation、bind済みCandidate、Risk、source route / control / counterevidence、runtime sketchを自己完結のRuntime Verification Packet v2へ投影する。明白なsource contradictionだけを止め、Researchは`rejected`を作らない。[#107](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/107)
-- **Boundary:** Findingやruntime reproductionを所有しない。`needs-research`は具体的Gapとして同じFamilyへ戻す。
-- **Risk / Packet:** Riskはsingle Validationとbind済みCandidateから追加model judgeなしで投影する。exact payloadとraw requestをResearchへ保存せず、delivery failureでもPacketを失わない。
-- **Status:** single fresh Attempt、durable intent / result recovery、Disposition、Risk / Runtime Packetをv6へ接続。multi-Attempt / Synthesis / Human Review Packet v1は元の意味でlegacy replayする。
-- **Accepted next:** fresh Independent Validationが`source-validated` Findingを生成し、FindingとCoverageを別々にterminal projectionへ出す。Runtime Packet current writerは移行後にlegacy replayへ閉じる（[#125](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/125)）。
-- **Code / Tests:** [attacker scope](../src/research/current-research-attacker-scope.ts), [validation](../src/research/validation), [candidate admission](../src/research/campaign-control/validation-candidate-admission.ts) · [scope](../tests/research/current-research-attacker-scope.test.ts), [Validation](../tests/research/validation.test.ts), [Runtime Packet](../tests/research/runtime-verification-packet.test.ts), [legacy Packet](../tests/research/human-review-packet.test.ts), [v6 handoff / usage](../tests/research/campaign-validation-run.test.ts)
+- **Purpose:** Root-evaluated candidateをfreshなsource reviewで反証し、通過したtechnical claimをimmutable Findingにする。
+- **Current implementation:** exact Candidate identityはTarget、Manifest、premise、property、ordered route、anchorで作る。一つのfresh Validatorから`source-validated / needs-research / disproven / validation-pending`を決定的に投影し、二つ目・第三AttemptとValidation Synthesisを起動しない。
+- **Attacker invariant:** Validator起動前にCandidateとThreat Contextをcurrent scopeへ照合し、scope外ならmodel tokenを使わない。Finding projectionでもCandidate、Hypothesis、Validation、Target、Manifest、premise、routeを再照合する。
+- **Finding:** `source-validated`だけがTarget Snapshot、Causal Identity、attacker premise、broken security property、source route / evidence、counterevidence、Validation refを固定したFindingをCASへ保存する。Finding identityはexact Candidate duplicateから決定し、Coverage状態を入力にしない。
+- **Boundary:** runtime / human verificationを所有しない。`needs-research`は具体的Gapとして同じFamilyへ戻し、`disproven`はsource contradictionだけ、provider / budget failureは`validation-pending`として残す。
+- **Legacy Packet:** Runtime Verification Packet v2、Risk Assessment、Human Review Packet v1は元のartifactとLedger eventをread-only replayし、新Findingへ自動変換しない。
+- **Status:** single fresh Attempt、durable intent / result recovery、4 Disposition、Finding / Coverage terminalをv6へ接続。multi-Attempt / Synthesisと旧Packet writerはlegacy replayに限定する。
+- **Code / Tests:** [attacker scope](../src/research/current-research-attacker-scope.ts), [validation](../src/research/validation), [candidate admission](../src/research/campaign-control/validation-candidate-admission.ts) · [scope](../tests/research/current-research-attacker-scope.test.ts), [Validation](../tests/research/validation.test.ts), [Finding / Coverage](../tests/research/campaign-validation-run.test.ts), [legacy Runtime Packet](../tests/research/runtime-verification-packet.test.ts), [legacy Packet](../tests/research/human-review-packet.test.ts)
 
 ### Model Execution
 
@@ -231,7 +230,7 @@ Internal Module。immutable CAS artifact、append-only Ledger event、checkpoint
 - current v3のAttempt reservation / intentとcompletion / settlementはそれぞれ一つのtransactionでappendし、Campaign budget projectionはrun / stage / candidateをまたいで同じCampaignのLedgerから再構築する。
 - cacheを削除しても同じLedgerから同じview digestを再構築できる。
 - semantic identity、priority、Family groupingはowner Moduleが決める。
-- **Status / Tests:** current v3 writeをlegacy `ResearchRecord`から分離し、v1 / v2は既存Ledgerのreplayだけをproductionで許可する。Decision@3、Family、single Validation、Frontier Gap、Depth Queue / Synthesis / Critique / Evaluation、Runtime Packet handoff、Campaign budget、progress replayを実装 · [current store](../src/research/research-record/current-campaign-store.ts), [legacy replay](../src/research/research-record/legacy-research-replay.ts), [v3 behavior](../tests/research/campaign-validation-run.test.ts), [compatibility](../tests/research/ledger-compatibility.test.ts)
+- **Status / Tests:** current v3 writeをlegacy `ResearchRecord`から分離し、v1 / v2と旧Runtime Packet eventは既存Ledgerのread-only replayだけをproductionで許可する。Decision@3、Family、single Validation、Frontier Gap、Depth Queue / Synthesis / Critique / Evaluation、Finding / Coverage terminal、Campaign budget、progress replayを実装 · [current store](../src/research/research-record/current-campaign-store.ts), [legacy replay](../src/research/research-record/legacy-research-replay.ts), [v3 behavior](../tests/research/campaign-validation-run.test.ts), [compatibility](../tests/research/ledger-compatibility.test.ts)
 
 ## Human OS
 

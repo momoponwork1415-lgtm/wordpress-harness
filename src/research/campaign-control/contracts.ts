@@ -72,6 +72,7 @@ import {
   validationFrontierGapRefSchema,
   validationRecordSchema,
 } from "../validation/contracts.js";
+import { findingRefSchema } from "../validation/finding.js";
 import {
   humanReviewPacketHandoffSchema,
   humanReviewPacketPreparationFailureSchema,
@@ -1410,7 +1411,26 @@ const currentSemanticTerminalDecisionSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-const campaignDefaultSemanticCompletionInputV3Schema = z.strictObject({
+export const campaignCoverageSchema = z.discriminatedUnion("status", [
+  z.strictObject({
+    kind: z.literal("campaign-coverage"),
+    schemaVersion: z.literal(1),
+    status: z.literal("closed"),
+    reason: z.literal("coverage-closed"),
+  }),
+  z.strictObject({
+    kind: z.literal("campaign-coverage"),
+    schemaVersion: z.literal(1),
+    status: z.literal("incomplete"),
+    reason: z.enum([
+      "planning-incomplete",
+      "evaluation-incomplete",
+      "research-work-remains",
+    ]),
+  }),
+]);
+
+const legacyCampaignDefaultSemanticCompletionInputV3Schema = z.strictObject({
   kind: z.literal("campaign-run-completion"),
   schemaVersion: z.literal(3),
   ...semanticCampaignRunIdentityFields,
@@ -1445,6 +1465,57 @@ const campaignDefaultSemanticCompletionInputV3Schema = z.strictObject({
   decision: currentSemanticTerminalDecisionSchema,
 });
 
+const legacyCampaignDefaultSemanticRecordV3Schema =
+  legacyCampaignDefaultSemanticCompletionInputV3Schema.extend({
+    kind: z.literal("campaign-run-record"),
+    completedAt: z.string().datetime(),
+  });
+
+const legacyCampaignDefaultSemanticEarlyCompletionInputV3Schema =
+  z.strictObject({
+    kind: z.literal("campaign-run-completion"),
+    schemaVersion: z.literal(3),
+    ...semanticCampaignRunIdentityFields,
+    target: targetSnapshotRefSchema,
+    manifest: targetFileManifestRefSchema,
+    attempts: z.array(attemptExecutionResultV2RefSchema).max(24),
+    stage: z.union([
+      planningIncompleteDecisionSchema,
+      evaluationIncompleteDecisionV3Schema,
+    ]),
+    decision: z.strictObject({
+      kind: z.literal("incomplete"),
+      reason: z.enum(["planning-incomplete", "evaluation-incomplete"]),
+    }),
+  });
+
+const legacyCampaignDefaultSemanticEarlyRecordV3Schema =
+  legacyCampaignDefaultSemanticEarlyCompletionInputV3Schema.extend({
+    kind: z.literal("campaign-run-record"),
+    completedAt: z.string().datetime(),
+  });
+
+const campaignDefaultSemanticCompletionInputV3Schema = z.strictObject({
+  kind: z.literal("campaign-run-completion"),
+  schemaVersion: z.literal(3),
+  ...semanticCampaignRunIdentityFields,
+  target: targetSnapshotRefSchema,
+  manifest: targetFileManifestRefSchema,
+  workWave: semanticWorkWaveRefSchema,
+  waveTerminal: semanticWaveTerminalRefSchema,
+  attempts: z.array(attemptExecutionResultV2RefSchema).min(1).max(128),
+  iterationDecision: iterationDecisionV3Schema,
+  iterationDecisionRef: semanticIterationDecisionRefV3Schema,
+  approachFamilyRegistry: approachFamilyRegistryRefV3Schema,
+  depthWorkQueue: semanticDepthWorkQueueRefV2Schema.optional(),
+  depthResearch: currentSemanticDepthResearchSchema.optional(),
+  validations: z.array(validationRecordSchema).max(64),
+  validationFrontierGaps: z.array(validationFrontierGapRefSchema).max(64),
+  findings: z.array(findingRefSchema).max(64),
+  coverage: campaignCoverageSchema,
+  decision: currentSemanticTerminalDecisionSchema,
+});
+
 const campaignDefaultSemanticRecordV3Schema =
   campaignDefaultSemanticCompletionInputV3Schema.extend({
     kind: z.literal("campaign-run-record"),
@@ -1462,6 +1533,8 @@ const campaignDefaultSemanticEarlyCompletionInputV3Schema = z.strictObject({
     planningIncompleteDecisionSchema,
     evaluationIncompleteDecisionV3Schema,
   ]),
+  findings: z.array(findingRefSchema).length(0),
+  coverage: campaignCoverageSchema,
   decision: z.strictObject({
     kind: z.literal("incomplete"),
     reason: z.enum(["planning-incomplete", "evaluation-incomplete"]),
@@ -1482,6 +1555,8 @@ export const campaignRunCompletionInputV3Schema = z.union([
 export const campaignRunRecordV3Schema = z.union([
   campaignDefaultSemanticRecordV3Schema,
   campaignDefaultSemanticEarlyRecordV3Schema,
+  legacyCampaignDefaultSemanticRecordV3Schema,
+  legacyCampaignDefaultSemanticEarlyRecordV3Schema,
 ]);
 
 export const campaignRunRecordRefV3Schema = z.strictObject({
@@ -1519,6 +1594,7 @@ export type CampaignRunCompletionInputV3 = z.infer<
   typeof campaignRunCompletionInputV3Schema
 >;
 export type CampaignRunRecordV3 = z.infer<typeof campaignRunRecordV3Schema>;
+export type CampaignCoverage = z.infer<typeof campaignCoverageSchema>;
 export type SemanticCampaignUsage = z.infer<typeof semanticCampaignUsageSchema>;
 export type SemanticDepthResearch = z.infer<typeof semanticDepthResearchSchema>;
 export type CurrentSemanticDepthResearch = z.infer<
