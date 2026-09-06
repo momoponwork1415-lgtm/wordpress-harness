@@ -239,6 +239,7 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 - **Status:** current writeをlegacy `ResearchRecord`から分離し、Finding / Coverageを持つCampaign Run Record v4だけを新規作成する。v1 / v2、Packetを持つv3、旧Runtime Packet eventは既存Ledgerのread-only replayだけを許可する。v7 Root Evaluation reservation、single Validation、Finding / Coverage terminal、Campaign budget、progress replayを実装。
 - **Code:** [current store](../src/research/research-record/current-campaign-store.ts)、[legacy replay](../src/research/research-record/legacy-research-replay.ts)、[progress projection](../src/research/research-record/campaign-progress-projection.ts)。
 - **Stored replay evidence:** 8組の固定SQLite / CASで旧Run v1のFinding、Boundary Pair、環境不足、provider failure、未解決work、中断と、旧Run v2のSemantic Wave / Evaluation後の状態を公開`CampaignReader`から読む。旧writerや実行依存を使わず、campaign / preparation / run / progress / Finding groupの元のprojectionとDB / WAL / CAS不変を確認する。fixtureは既存の合成Testから一度だけ採取したもので、実対象の評価結果ではない。
+- **Legacy completion replay:** `attempt-result-stored` event導入前のValidator記録も、completionが指すCASから完了件数とreported usage / costを公開Readerで復元する。[Ledger互換Test](../tests/research/ledger-compatibility.test.ts)は合成した旧event列を二度読んで同じprojectionとなることを確認し、providerを実行しない。
 
 ## Human OS
 

@@ -5,9 +5,16 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 
-import { openResearch } from "../../src/research/index.js";
+import {
+  campaignDefaultSemanticRunPlanV3Schema,
+  defineCurrentSemanticRootPlanningPolicy,
+  openResearch,
+} from "../../src/research/index.js";
 import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
-import { openSqliteResearchRecord } from "../../src/research/research-record/index.js";
+import {
+  openFileJsonArtifactStore,
+  openSqliteResearchRecord,
+} from "../../src/research/research-record/index.js";
 import { createCampaignInput } from "../fixtures/campaign.js";
 
 const fixedNow = "2026-09-01T12:00:00.000Z";
@@ -52,6 +59,321 @@ function createFutureLedger(databasePath: string): void {
 }
 
 describe("CampaignReader Ledger compatibility", () => {
+  it("replays a completion-only legacy Validator result through the public reader", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "legacy-validator-ledger-"));
+    const databasePath = join(directory, "research.sqlite");
+    const artifactStore = openFileJsonArtifactStore(
+      join(directory, "artifacts"),
+    );
+    const input = {
+      ...createCampaignInput("campaign-legacy-validator-result"),
+      schemaVersion: 2 as const,
+      modelProfiles: [
+        { id: "opus-planner-v6", digest: digest("5") },
+        { id: "opus-finder-v6", digest: digest("6") },
+        { id: "opus-evaluator-v6", digest: digest("7") },
+        { id: "opus-validator-v6", digest: digest("8") },
+      ],
+      canonicalFileManifest: {
+        kind: "canonical-file-manifest" as const,
+        schemaVersion: 1 as const,
+        entries: [{ path: "plugin.php", digest: digest("a"), size: 1_000 }],
+      },
+      budget: {
+        maxAttempts: 128,
+        maxWallTimeMs: 43_200_000,
+        maxModelTokens: 4_000_000,
+      },
+    };
+    const writer = openResearch({ databasePath, artifactStore });
+    const preparation = await writer.runner.prepare(input);
+    writer.close();
+    if (preparation.targetFileManifest === undefined) {
+      throw new Error("Expected a Target File Manifest");
+    }
+    const profile = (id: string, profileDigest: string) => ({
+      ref: {
+        kind: "model-profile" as const,
+        schemaVersion: 1 as const,
+        id,
+        family: "claude" as const,
+        digest: profileDigest,
+      },
+      execution: {
+        provider: "anthropic" as const,
+        model: "claude-opus-5",
+        transport: "claude-code-process" as const,
+        executableVersion: "2.1.258",
+        effort: "high" as const,
+        eligibilityReceiptDigest: digest("b"),
+      },
+    });
+    const promptSet = {
+      kind: "prompt-set" as const,
+      schemaVersion: 1 as const,
+      id: input.promptSet.id,
+      digest: input.promptSet.digest,
+    };
+    const sourceToolPolicy = {
+      kind: "source-tool-policy" as const,
+      schemaVersion: 1 as const,
+      id: "semantic-source-tools-v3",
+      digest: digest("c"),
+    };
+    const plan = campaignDefaultSemanticRunPlanV3Schema.parse({
+      kind: "campaign-run-plan",
+      schemaVersion: 3,
+      runId: "legacy-validator-result-run",
+      campaignId: input.campaignId,
+      preparationDigest: preparation.inputDigest,
+      target: input.targetSnapshot,
+      manifest: preparation.targetFileManifest,
+      metadata: {
+        kind: "oracle-free-target-metadata",
+        schemaVersion: 1,
+        pluginIdentity: "wporg:legacy-validator-result",
+        mainPluginFile: "plugin.php",
+        canonicalInstallDirectory: "legacy-validator-result",
+      },
+      semanticPolicy: defineCurrentSemanticRootPlanningPolicy({
+        plannerBudget: {
+          maxWallTimeMs: 3_600_000,
+          maxModelTokens: 100_000,
+          maxModelTurns: 128,
+          maxProviderCostUsd: 10,
+          maxOutputBytes: 2_097_152,
+          maxSourceQueries: 256,
+          maxSourceScanBytes: 17_179_869_184,
+          maxSourceResponseBytes: 268_435_456,
+          sourceLimitTerminalOutput: "preserve",
+          reportedUsageEnforcement: "telemetry-only",
+        },
+        finderLeaseBudget: {
+          maxWallTimeMs: 10_800_000,
+          maxModelTokens: 1_000_000,
+          maxModelTurns: 256,
+          maxProviderCostUsd: 20,
+          maxHypotheses: 8,
+          maxOutputBytes: 2_097_152,
+          maxSourceQueries: 512,
+          maxSourceScanBytes: 17_179_869_184,
+          maxSourceResponseBytes: 268_435_456,
+          sourceLimitTerminalOutput: "preserve",
+          reportedUsageEnforcement: "telemetry-only",
+        },
+      }),
+      planner: {
+        modelProfile: profile("opus-planner-v6", digest("5")),
+        promptSet,
+        sourceToolPolicy,
+      },
+      finder: {
+        modelProfile: profile("opus-finder-v6", digest("6")),
+        promptSet,
+        selectedKnowledge: [],
+        sourceToolPolicy,
+      },
+      evaluator: {
+        modelProfile: profile("opus-evaluator-v6", digest("7")),
+        promptSet,
+        budget: {
+          maxWallTimeMs: 3_600_000,
+          maxModelTokens: 100_000,
+          maxModelTurns: 128,
+          maxProviderCostUsd: 10,
+          maxOutputBytes: 2_097_152,
+          reportedUsageEnforcement: "telemetry-only",
+        },
+      },
+      validation: {
+        wordpressBaseline: {
+          id: "wordpress-threat-baseline-v1",
+          digest: digest("d"),
+        },
+        validationPolicy: { id: "source-validation-v2", digest: digest("e") },
+        promptSet,
+        validatorModelProfile: profile("opus-validator-v6", digest("8")),
+        sourceToolPolicy,
+        publicSurface: ["Public WordPress request handlers"],
+        technicalExclusions: [],
+        budget: {
+          validator: {
+            maxWallTimeMs: 1_800_000,
+            maxModelTokens: 100_000,
+            maxModelTurns: 64,
+            maxProviderCostUsd: 7.5,
+            maxOutputBytes: 2_097_152,
+            maxSourceQueries: 128,
+            maxSourceScanBytes: 17_179_869_184,
+            maxSourceResponseBytes: 268_435_456,
+            sourceLimitTerminalOutput: "preserve",
+            reportedUsageEnforcement: "telemetry-only",
+          },
+        },
+      },
+      budgetPolicy: {
+        kind: "semantic-research-budget",
+        schemaVersion: 2,
+        id: "semantic-research-recall-baseline-v6",
+        maxWorkWaves: 12,
+        maxFinderAttempts: 48,
+        maxConcurrentFinders: 4,
+        maxModelAttempts: 128,
+        maxModelTokens: 4_000_000,
+        maxProviderCostUsd: 150,
+        maxWallTimeMs: 43_200_000,
+        reportedUsageEnforcement: "telemetry-only",
+        exploration: {
+          maxModelTokens: 3_600_000,
+          maxProviderCostUsd: 120,
+          maxWallTimeMs: 36_000_000,
+        },
+        validationReserve: {
+          maxModelTokens: 400_000,
+          maxProviderCostUsd: 30,
+          maxWallTimeMs: 7_200_000,
+        },
+      },
+    });
+    const attemptId = "validator:1:legacy-completion-only";
+    const attemptPlanDigest = digest("9");
+    const result = {
+      kind: "model-attempt-result" as const,
+      schemaVersion: 2 as const,
+      attemptId,
+      owner: "validation" as const,
+      role: "validator" as const,
+      planDigest: attemptPlanDigest,
+      status: "completed" as const,
+      output: {},
+      usage: {
+        kind: "model-attempt-usage" as const,
+        schemaVersion: 1 as const,
+        measurement: "reported" as const,
+        estimatedCostUsd: 0.25,
+        wallTimeMs: 10,
+        providerDurationMs: 8,
+        modelTurns: 1,
+        modelTokens: {
+          input: 10,
+          cacheCreation: 0,
+          cacheRead: 0,
+          output: 10,
+          total: 20,
+        },
+        structuredOutputBytes: 2,
+        source: { queries: 1, scanBytes: 100, responseBytes: 50 },
+        models: [
+          {
+            id: "claude-opus-5",
+            canonicalModel: "claude-opus-5",
+            tokens: {
+              input: 10,
+              cacheCreation: 0,
+              cacheRead: 0,
+              output: 10,
+              total: 20,
+            },
+          },
+        ],
+      },
+    };
+    const resultDigest = await artifactStore.putJson(result);
+    const intent = {
+      kind: "campaign-attempt-intent" as const,
+      schemaVersion: 2 as const,
+      campaignId: input.campaignId,
+      runId: plan.runId,
+      attemptId,
+      ordinal: 1,
+      mode: "execute" as const,
+      attemptPlanDigest,
+      role: "validator" as const,
+      candidateId: digest("f"),
+      validationAttemptOrdinal: 1,
+    };
+    const completion = {
+      kind: "campaign-attempt-completion" as const,
+      schemaVersion: 2 as const,
+      campaignId: input.campaignId,
+      runId: plan.runId,
+      attemptId,
+      ordinal: 1,
+      role: "validator" as const,
+      candidateId: intent.candidateId,
+      validationAttemptOrdinal: 1,
+      result: {
+        kind: "attempt-execution-result" as const,
+        schemaVersion: 2 as const,
+        attemptId,
+        owner: "validation" as const,
+        role: "validator" as const,
+        planDigest: attemptPlanDigest,
+        digest: resultDigest,
+      },
+    };
+    const ledger = new Database(databasePath);
+    try {
+      const insert = ledger.prepare(`
+        INSERT INTO research_events (
+          campaign_id, campaign_sequence, kind, schema_version,
+          occurred_at, payload_json
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      insert.run(
+        input.campaignId,
+        2,
+        "campaign.run-started",
+        3,
+        fixedNow,
+        JSON.stringify({ plan, planDigest: sha256Digest(plan) }),
+      );
+      insert.run(
+        input.campaignId,
+        3,
+        "campaign.attempt-started",
+        2,
+        fixedNow,
+        JSON.stringify({ intent }),
+      );
+      insert.run(
+        input.campaignId,
+        4,
+        "campaign.attempt-completed",
+        2,
+        fixedNow,
+        JSON.stringify({ completion }),
+      );
+    } finally {
+      ledger.close();
+    }
+
+    const research = openResearch({ databasePath, artifactStore });
+    try {
+      const replayed = await research.reader.inspect(input.campaignId, {
+        kind: "progress",
+      });
+      expect(replayed).toMatchObject({
+        kind: "progress",
+        counts: { attempts: { started: 1, completed: 1, active: 0 } },
+        activeAttempts: [],
+        usage: {
+          measurement: "reported",
+          modelAttempts: 1,
+          reportedModelAttempts: 1,
+          modelTokens: { total: 20 },
+          estimatedCostUsd: 0.25,
+        },
+      });
+      await expect(
+        research.reader.inspect(input.campaignId, { kind: "progress" }),
+      ).resolves.toEqual(replayed);
+    } finally {
+      research.close();
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("rejects an unsupported event version instead of guessing", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordpress-harness-"));
     const databasePath = join(directory, "future.sqlite");
