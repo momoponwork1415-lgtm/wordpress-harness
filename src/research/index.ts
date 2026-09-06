@@ -14,6 +14,7 @@ export type {
 } from "./campaign-progress-reporter.js";
 export type {
   CampaignReader,
+  CampaignFindingIntegrityReason,
   CampaignBudgetSubjectRef,
   CampaignRunSubjectRef,
   CampaignRunSubjectView,
@@ -24,6 +25,8 @@ export type {
   NewCampaignInputV1,
   NewCampaignInputV2,
   NewCampaignInputV3,
+  FindingSubjectRef,
+  FindingSubjectView,
   FindingMechanismGroupsSubjectRef,
   FindingMechanismGroupsSubjectView,
   OpenResearchOptions,
@@ -144,6 +147,8 @@ export {
   semanticIterationDecisionRefSchema,
 } from "./exploration/index.js";
 export {
+  CampaignFindingIntegrityError,
+  CampaignFindingNotFoundError,
   CampaignPreparationIntegrityError,
   CampaignPreparationConflictError,
   decodeNewCampaignInput,

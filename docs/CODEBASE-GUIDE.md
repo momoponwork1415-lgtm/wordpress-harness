@@ -151,7 +151,7 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 ### Campaign Control
 
-**Interface:** `CampaignRunner.prepare / prepareFromTargetIntake / run`、`CampaignReader.inspect`（`{ kind: "budget", runId }`を含む）
+**Interface:** `CampaignRunner.prepare / prepareFromTargetIntake / run`、`CampaignReader.inspect`（`{ kind: "budget", runId }`と`{ kind: "finding", runId, findingId } -> FindingSubjectView`を含む）
 
 - **Purpose:** fixed Targetをfinite Wave、Independent Validation、source-validated Finding / Coverage terminalまで進める。
 - **Invariants:** PlanへTarget、Manifest、policy、profile、tool、budgetを固定する。artifactをCASへ置き、Ledger eventを記録してから次stageへ進む。

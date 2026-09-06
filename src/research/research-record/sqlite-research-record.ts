@@ -2,12 +2,14 @@ import Database from "better-sqlite3";
 import { z } from "zod";
 
 import {
+  CampaignFindingIntegrityError,
   LedgerIntegrityError,
   UnsupportedLedgerSchemaError,
   newCampaignInputSchema,
   newCampaignInputV1Schema,
   newCampaignInputV2Schema,
   newCampaignInputV3Schema,
+  type CampaignFindingIntegrityReason,
   type NewCampaignInput,
 } from "../contracts.js";
 import {
@@ -179,6 +181,7 @@ import {
   sourceValidationRecordSchema as currentSourceValidationRecordSchema,
   validationFrontierGapRefSchema,
   type ValidationCandidate,
+  type ValidationRecord,
   type ValidationRecordRef as SourceValidationRecordRef,
 } from "../validation/contracts.js";
 import {
@@ -186,6 +189,8 @@ import {
   findingSchema,
   projectFinding,
   referenceFinding,
+  type Finding,
+  type FindingRef,
 } from "../validation/finding.js";
 import { projectValidationFrontierGap } from "../validation/validation-frontier-gap.js";
 import {
@@ -1911,62 +1916,115 @@ class SqliteResearchRecord
     return transact();
   }
 
+  async #readValidatedCampaignFinding(input: {
+    readonly campaignId: string;
+    readonly runId: string;
+    readonly requestedRef: FindingRef;
+    readonly target: Finding["target"];
+    readonly manifest: Finding["manifest"];
+    readonly validations: readonly ValidationRecord[];
+  }): Promise<Finding> {
+    const fail = (
+      reason: CampaignFindingIntegrityReason,
+    ): CampaignFindingIntegrityError =>
+      new CampaignFindingIntegrityError(
+        input.campaignId,
+        input.runId,
+        input.requestedRef.id,
+        reason,
+      );
+    if (this.#artifactStore === undefined) {
+      throw fail("artifact-store-unavailable");
+    }
+
+    let rawFinding: unknown;
+    try {
+      rawFinding = await this.#artifactStore.readJson(
+        input.requestedRef.digest,
+      );
+    } catch {
+      throw fail("finding-artifact-missing");
+    }
+    if (rawFinding === undefined) {
+      throw fail("finding-artifact-missing");
+    }
+    const parsedFinding = findingSchema.safeParse(rawFinding);
+    if (!parsedFinding.success) throw fail("finding-cas-mismatch");
+    const finding = parsedFinding.data;
+    if (
+      sha256Digest(finding) !== input.requestedRef.digest ||
+      canonicalJson(referenceFinding(finding)) !==
+        canonicalJson(findingRefSchema.parse(input.requestedRef))
+    ) {
+      throw fail("finding-cas-mismatch");
+    }
+    if (
+      canonicalJson(finding.target) !== canonicalJson(input.target) ||
+      canonicalJson(finding.manifest) !== canonicalJson(input.manifest)
+    ) {
+      throw fail("independent-validation-projection-mismatch");
+    }
+
+    const validationValue = input.validations.find(
+      (candidate) =>
+        candidate.schemaVersion === 3 &&
+        sha256Digest(candidate) === finding.validation.digest,
+    );
+    const validation =
+      currentSourceValidationRecordSchema.safeParse(validationValue);
+    if (!validation.success) throw fail("source-validation-missing");
+
+    let rawCandidate: unknown;
+    try {
+      rawCandidate = await this.#artifactStore.readJson(
+        finding.candidate.digest,
+      );
+    } catch {
+      throw fail("candidate-artifact-missing");
+    }
+    if (rawCandidate === undefined) {
+      throw fail("candidate-artifact-missing");
+    }
+    const parsedCandidate = validationCandidateSchema.safeParse(rawCandidate);
+    if (!parsedCandidate.success) throw fail("candidate-cas-mismatch");
+    const candidate = parsedCandidate.data;
+    if (
+      sha256Digest(candidate) !== finding.candidate.digest ||
+      canonicalJson(referenceValidationCandidate(candidate)) !==
+        canonicalJson(finding.candidate)
+    ) {
+      throw fail("candidate-cas-mismatch");
+    }
+
+    let projected: Finding;
+    try {
+      projected = projectFinding({
+        candidate,
+        validation: validation.data,
+      });
+    } catch {
+      throw fail("independent-validation-projection-mismatch");
+    }
+    if (canonicalJson(projected) !== canonicalJson(finding)) {
+      throw fail("independent-validation-projection-mismatch");
+    }
+    return finding;
+  }
+
   async recordSemanticCampaignRunCompletionV4(
     value: CampaignRunCompletionInputV4,
   ): Promise<CampaignRunRecordViewV4> {
     const input = campaignRunCompletionInputV4Schema.parse(value);
     if ("validations" in input) {
-      if (input.findings.length > 0 && this.#artifactStore === undefined) {
-        throw new Error("Finding persistence requires an Artifact Store");
-      }
       for (const requestedRef of input.findings) {
-        const rawFinding = await this.#artifactStore?.readJson(
-          requestedRef.digest,
-        );
-        if (rawFinding === undefined) {
-          throw new Error("Finding artifact is missing");
-        }
-        const finding = findingSchema.parse(rawFinding);
-        if (
-          sha256Digest(finding) !== requestedRef.digest ||
-          canonicalJson(referenceFinding(finding)) !==
-            canonicalJson(findingRefSchema.parse(requestedRef))
-        ) {
-          throw new Error("Finding CAS mismatch");
-        }
-        const validationValue = input.validations.find(
-          (candidate) =>
-            candidate.schemaVersion === 3 &&
-            sha256Digest(candidate) === finding.validation.digest,
-        );
-        const validation =
-          currentSourceValidationRecordSchema.safeParse(validationValue);
-        if (!validation.success) {
-          throw new Error("Finding lost its source Validation");
-        }
-        const rawCandidate = await this.#artifactStore?.readJson(
-          finding.candidate.digest,
-        );
-        if (rawCandidate === undefined) {
-          throw new Error("Finding Candidate artifact is missing");
-        }
-        const candidate = validationCandidateSchema.parse(rawCandidate);
-        if (
-          sha256Digest(candidate) !== finding.candidate.digest ||
-          canonicalJson(referenceValidationCandidate(candidate)) !==
-            canonicalJson(finding.candidate)
-        ) {
-          throw new Error("Finding Candidate CAS mismatch");
-        }
-        const projected = projectFinding({
-          candidate,
-          validation: validation.data,
+        await this.#readValidatedCampaignFinding({
+          campaignId: input.campaignId,
+          runId: input.runId,
+          requestedRef,
+          target: input.target,
+          manifest: input.manifest,
+          validations: input.validations,
         });
-        if (canonicalJson(projected) !== canonicalJson(finding)) {
-          throw new Error(
-            "Finding is not the Independent Validation projection",
-          );
-        }
       }
     }
     const completionInputDigest = sha256Digest(input);
@@ -2176,6 +2234,33 @@ class SqliteResearchRecord
       };
     });
     return transact();
+  }
+
+  async readCampaignFinding(
+    campaignId: string,
+    runId: string,
+    findingId: string,
+  ): Promise<Finding | undefined> {
+    const run = await this.readCampaignRun(campaignId, runId);
+    if (
+      run === undefined ||
+      run.value.schemaVersion !== 4 ||
+      !("validations" in run.value)
+    ) {
+      return undefined;
+    }
+    const requestedRef = run.value.findings.find(
+      (candidate) => candidate.id === findingId,
+    );
+    if (requestedRef === undefined) return undefined;
+    return this.#readValidatedCampaignFinding({
+      campaignId,
+      runId,
+      requestedRef,
+      target: run.value.target,
+      manifest: run.value.manifest,
+      validations: run.value.validations,
+    });
   }
 
   async readCampaignRun(
@@ -7110,6 +7195,7 @@ export function openSqliteResearchStores(
       record.recordSemanticCampaignRunStart.bind(record),
     recordSemanticCampaignRunCompletionV4:
       record.recordSemanticCampaignRunCompletionV4.bind(record),
+    readCampaignFinding: record.readCampaignFinding.bind(record),
     recordSemanticCampaignAttemptStart:
       record.recordSemanticCampaignAttemptStart.bind(record),
     recordSemanticCampaignAttemptAdmission:

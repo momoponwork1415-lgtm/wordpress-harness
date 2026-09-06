@@ -7,6 +7,7 @@ import { z } from "zod";
 import { describe, expect, it } from "vitest";
 
 import {
+  CampaignFindingNotFoundError,
   CampaignRunConflictError,
   campaignDefaultSemanticRunPlanV3Schema,
   bindCurrentSemanticCampaignConfiguration,
@@ -1514,25 +1515,48 @@ describe("CampaignRunner.run source-only Validation", () => {
           ),
         ).resolves.toBeUndefined();
         await expect(
-          artifacts.readJson(findingRef.digest),
+          research.reader.inspect(input.campaignId, {
+            kind: "finding",
+            runId: plan.runId,
+            findingId: findingRef.id,
+          }),
         ).resolves.toMatchObject({
           kind: "finding",
           schemaVersion: 1,
-          id: findingRef.id,
-          target: input.targetSnapshot,
-          manifest: prepared.targetFileManifest,
-          candidate: { id: findingRef.candidateId },
-          validation: { schemaVersion: 3 },
-          causalIdentity: { brokenSecurityProperty: "state-ownership" },
-          attackerPremise: "unauthenticated",
-          brokenSecurityProperty: "state-ownership",
-          sourceRoute: [{ evidence: [anchor] }],
-          sourceEvidence: [anchor],
-          counterevidence: {
-            status: "pass",
-            evidence: [anchor],
+          campaignId: input.campaignId,
+          runId: plan.runId,
+          finding: {
+            kind: "finding",
+            schemaVersion: 1,
+            id: findingRef.id,
+            target: input.targetSnapshot,
+            manifest: prepared.targetFileManifest,
+            candidate: { id: findingRef.candidateId },
+            validation: { schemaVersion: 3 },
+            causalIdentity: { brokenSecurityProperty: "state-ownership" },
+            attackerPremise: "unauthenticated",
+            brokenSecurityProperty: "state-ownership",
+            sourceRoute: [{ evidence: [anchor] }],
+            sourceEvidence: [anchor],
+            counterevidence: {
+              status: "pass",
+              evidence: [anchor],
+            },
           },
         });
+        await expect(
+          research.reader.inspect(input.campaignId, {
+            kind: "finding",
+            runId: plan.runId,
+            findingId: digest("f"),
+          }),
+        ).rejects.toEqual(
+          new CampaignFindingNotFoundError(
+            input.campaignId,
+            plan.runId,
+            digest("f"),
+          ),
+        );
         const completion = await record.listValidationCompletions(
           input.campaignId,
           plan.runId,
