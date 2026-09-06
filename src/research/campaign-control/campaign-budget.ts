@@ -459,11 +459,10 @@ export function campaignBudgetExhaustionDimensions(
       owner.remaining.estimatedCostUsd + protectedCredit.estimatedCostUsd,
     ],
   ] as const) {
-    const ownerPartitionedTokenAdmission =
-      budget.schemaVersion === 2 && dimension === "model-tokens";
+    const ownerPartitionedAdmission = budget.schemaVersion === 2;
     if (
       amount > ownerRemaining ||
-      (!ownerPartitionedTokenAdmission && amount > totalRemaining)
+      (!ownerPartitionedAdmission && amount > totalRemaining)
     ) {
       exhausted.add(dimension);
     }
