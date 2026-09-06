@@ -324,6 +324,15 @@ ADR 0122以前のHuman Review Packet v1、Human Verification、Findingを元の�
 - **Guarantee limit:** CAS file / directoryのsyncによる電源断耐久性と、稼働中のSQLite / CAS一括backupからの復元は未検証。正常なreopenや合成fixtureの成功を、その保証として扱わない。
 - **Code:** [Research JSON](../src/research/research-record/file-json-artifact-store.ts)、[Human OS JSON](../src/human-os/human-os-record/file-json-artifact-store.ts)、[private JSON / bytes](../src/human-os/human-os-record/file-private-artifact-store.ts)。
 
+### Verified artifact access
+
+- **Purpose:** `JsonArtifactStore` seamはintegrityを約束しないため、callerが毎回digestを照合しschemaでparseしていた。その義務をResearch側で一か所に閉じる。
+- **Interface:** `openVerifiedArtifacts(store) -> VerifiedArtifacts.put / read`。`put(artifact, value, expected?)`はcanonical digestを返し、`read(artifact, schema, digest)`は検証済みのparse結果を返す。`artifact`はfailureを説明するための名前であり、storage keyではない。
+- **Invariants:** `put`はstoreが返したdigestをcanonical digestと照合し、`expected`を渡した場合はcallerが持つrefとの一致も要求する。`read`は**parseより先に**保存bytesを`digest`へ照合する。逆順は、adapterが差し替えた内容をshape errorとして報告し、integrity failureを隠す。
+- **Failure semantics:** どちらの方向のdigest不一致も`ArtifactIntegrityError`（`artifact` / `digest`を保持）にする。artifactが健全でschemaを満たさない場合はschema自身のerrorを返し、integrity failureへ丸めない。
+- **Behavior Test:** [verified artifacts](../tests/research/verified-artifacts.test.ts)は、digestを詐称するadapter、別内容を返すadapter、検証とparseの順序、schema failureの分離を確認する。
+- **Code:** [verified-artifacts](../src/research/research-record/verified-artifacts.ts)
+
 ### Shared encoding and execution policy
 
 - statelessな[canonical JSON encoder](../src/infrastructure/canonical-json.ts)を3 Contextで共有する。各Contextの入力検証とdigest Interfaceは維持し、[互換Test](../tests/infrastructure/canonical-json.test.ts)で既存の保存byte列・digest・入力拒否を確認する。共有するのはencodingだけであり、domain schemaやstateのownerは移さない。

@@ -96,6 +96,10 @@ import { sourceEvidenceReceiptValueV2Schema } from "../source-mapping/source-evi
 import { persistTargetFileManifest } from "../source-mapping/target-file-manifest.js";
 import type { JsonArtifactStore } from "../research-record/contracts.js";
 import {
+  openVerifiedArtifacts,
+  type VerifiedArtifacts,
+} from "../research-record/verified-artifacts.js";
+import {
   FindingMechanismGroupingIntegrityError,
   openVerification,
   projectFindingMechanismGroups,
@@ -167,6 +171,19 @@ export interface CampaignControl {
 
 type CampaignExecutionStore = CurrentCampaignStore | ResearchRecord;
 
+/**
+ * Execution dependencies plus the verified artifact accessor derived from
+ * them. Internal: the public dependency contract stays a plain store so
+ * callers and fixtures keep constructing it unchanged.
+ */
+type CampaignExecutionContext = CurrentCampaignExecutionDependencies & {
+  readonly artifacts: VerifiedArtifacts;
+};
+
+type LegacyCampaignExecutionContext = CampaignExecutionDependencies & {
+  readonly artifacts: VerifiedArtifacts;
+};
+
 function supportsCurrentCampaignBudget(
   record: CampaignExecutionStore,
 ): record is CurrentCampaignStore {
@@ -212,15 +229,15 @@ function campaignAttemptId(
 }
 
 async function readFinderResult(
-  dependencies: CurrentCampaignExecutionDependencies,
+  dependencies: CampaignExecutionContext,
   refValue: AttemptExecutionResultRef,
 ): Promise<FinderAttemptResult> {
   const ref = attemptExecutionResultRefSchema.parse(refValue);
-  const artifact = await dependencies.artifactStore.readJson(ref.digest);
-  if (sha256Digest(artifact) !== ref.digest) {
-    throw new Error(`Finder Attempt artifact digest mismatch: ${ref.digest}`);
-  }
-  const value = finderAttemptResultSchema.parse(artifact);
+  const value = await dependencies.artifacts.read(
+    "Finder Attempt artifact",
+    finderAttemptResultSchema,
+    ref.digest,
+  );
   if (value.attemptId !== ref.attemptId || value.leaseId !== ref.leaseId) {
     throw new Error(`Finder Attempt artifact ref mismatch: ${ref.attemptId}`);
   }
@@ -261,8 +278,8 @@ function requireLegacyExecution(
 }
 
 function requireLegacyCampaignDependencies(
-  dependencies: CampaignExecutionDependencies | undefined,
-): CampaignExecutionDependencies {
+  dependencies: LegacyCampaignExecutionContext | undefined,
+): LegacyCampaignExecutionContext {
   if (dependencies === undefined) {
     throw new Error("Campaign execution dependencies are unavailable");
   }
@@ -271,7 +288,7 @@ function requireLegacyCampaignDependencies(
 
 async function preflightSemanticFinderWave(
   record: ResearchRecord,
-  dependencies: CurrentCampaignExecutionDependencies,
+  dependencies: CampaignExecutionContext,
   plan: PreparedWaveCampaignRunPlanV2,
 ): Promise<{
   readonly wave: SemanticWorkWavePlan;
@@ -369,7 +386,7 @@ async function preflightSemanticFinderWave(
 }
 
 async function readSemanticFinderResult(
-  dependencies: CurrentCampaignExecutionDependencies,
+  dependencies: CampaignExecutionContext,
   refValue: unknown,
 ): Promise<{
   readonly ref: ReturnType<typeof attemptExecutionResultV2RefSchema.parse> & {
@@ -382,11 +399,11 @@ async function readSemanticFinderResult(
   };
 }> {
   const ref = attemptExecutionResultV2RefSchema.parse(refValue);
-  const artifact = await dependencies.artifactStore.readJson(ref.digest);
-  if (sha256Digest(artifact) !== ref.digest) {
-    throw new Error(`Semantic Finder artifact digest mismatch: ${ref.digest}`);
-  }
-  const value = modelAttemptResultV2Schema.parse(artifact);
+  const value = await dependencies.artifacts.read(
+    "Semantic Finder artifact",
+    modelAttemptResultV2Schema,
+    ref.digest,
+  );
   if (
     ref.owner !== "exploration" ||
     value.owner !== "exploration" ||
@@ -404,15 +421,15 @@ async function readSemanticFinderResult(
 }
 
 async function readSemanticAttemptResult(
-  dependencies: CurrentCampaignExecutionDependencies,
+  dependencies: CampaignExecutionContext,
   refValue: unknown,
 ): Promise<AttemptExecutionResultV2> {
   const ref = attemptExecutionResultV2RefSchema.parse(refValue);
-  const artifact = await dependencies.artifactStore.readJson(ref.digest);
-  if (sha256Digest(artifact) !== ref.digest) {
-    throw new Error(`Semantic Attempt artifact digest mismatch: ${ref.digest}`);
-  }
-  const value = modelAttemptResultV2Schema.parse(artifact);
+  const value = await dependencies.artifacts.read(
+    "Semantic Attempt artifact",
+    modelAttemptResultV2Schema,
+    ref.digest,
+  );
   if (
     ref.owner !== "exploration" ||
     value.owner !== "exploration" ||
@@ -426,7 +443,7 @@ async function readSemanticAttemptResult(
 }
 
 async function materializeCampaignBudgetExhaustedResult(
-  dependencies: CurrentCampaignExecutionDependencies,
+  dependencies: CampaignExecutionContext,
   plan: Extract<ModelAttemptPlan, { schemaVersion: 2 }>,
   exhaustedDimensions: readonly string[],
 ): Promise<AttemptExecutionResultV2> {
@@ -441,7 +458,7 @@ async function materializeCampaignBudgetExhaustedResult(
     status: "budget-exhausted",
     reason: `campaign-budget-exhausted:${exhaustedDimensions.join(",")}`,
   });
-  const digest = await dependencies.artifactStore.putJson(value);
+  const digest = await dependencies.artifacts.put("Attempt result", value);
   return {
     status: value.status,
     value,
@@ -611,7 +628,7 @@ function validateValidatorAttemptResult(
 }
 
 async function readStoredValidatorAttemptResult(
-  dependencies: CurrentCampaignExecutionDependencies,
+  dependencies: CampaignExecutionContext,
   plan: Extract<ModelAttemptPlan, { schemaVersion: 2; role: "validator" }>,
   refValue: unknown,
 ): Promise<AttemptExecutionResultV2> {
@@ -622,7 +639,7 @@ async function readStoredValidatorAttemptResult(
 
 function recordedValidationModelExecution(
   record: CurrentCampaignStore,
-  dependencies: CurrentCampaignExecutionDependencies,
+  dependencies: CampaignExecutionContext,
   campaignId: string,
   runId: string,
   candidateOrdinals: ReadonlyMap<string, number>,
@@ -672,7 +689,7 @@ function recordedValidationModelExecution(
 
 async function executeRecordedSemanticAttempt(
   record: CampaignExecutionStore,
-  dependencies: CurrentCampaignExecutionDependencies,
+  dependencies: CampaignExecutionContext,
   plan: Extract<ModelAttemptPlan, { schemaVersion: 2 }>,
   intent: CampaignAttemptIntentV2,
   onFinderCheckpoint?: (checkpoint: SemanticFinderCheckpointRef) => void,
@@ -687,12 +704,11 @@ async function executeRecordedSemanticAttempt(
   ) {
     throw new Error(`Semantic Attempt intent mismatch: ${plan.attemptId}`);
   }
-  const storedPlanDigest = await dependencies.artifactStore.putJson(plan);
-  if (storedPlanDigest !== planDigest) {
-    throw new Error(
-      `${plan.role === "validator" ? "Validator" : "Semantic"} Attempt Plan CAS mismatch: ${plan.attemptId}`,
-    );
-  }
+  await dependencies.artifacts.put(
+    `${plan.role === "validator" ? "Validator" : "Semantic"} Attempt Plan ${plan.attemptId}`,
+    plan,
+    planDigest,
+  );
   const started = enforceCampaignBudget
     ? await (() => {
         if (!supportsCurrentCampaignBudget(record)) {
@@ -754,7 +770,7 @@ async function executeRecordedSemanticAttempt(
         status: "orphaned",
         reason: "orphaned-execution-requires-fresh-attempt",
       });
-      const digest = await dependencies.artifactStore.putJson(value);
+      const digest = await dependencies.artifacts.put("Attempt result", value);
       result = {
         status: value.status,
         value,
@@ -818,14 +834,11 @@ async function executeRecordedSemanticAttempt(
             }
             return { status: value.status, ref, value };
           })();
-    const storedResultDigest = await dependencies.artifactStore.putJson(
+    await dependencies.artifacts.put(
+      `${plan.role === "validator" ? "Validator" : "Semantic"} Attempt result ${plan.attemptId}`,
       result.value,
+      result.ref.digest,
     );
-    if (storedResultDigest !== result.ref.digest) {
-      throw new Error(
-        `${plan.role === "validator" ? "Validator" : "Semantic"} Attempt result CAS mismatch: ${plan.attemptId}`,
-      );
-    }
     storeValidatorResult = plan.role === "validator";
   }
   if (storeValidatorResult) {
@@ -860,7 +873,7 @@ async function executeRecordedSemanticAttempt(
 
 async function openSemanticFinderCheckpointObserver(
   record: CampaignExecutionStore,
-  dependencies: CurrentCampaignExecutionDependencies,
+  dependencies: CampaignExecutionContext,
   plan: Extract<AttemptPlanV2, { role: "finder" }>,
   intent: Extract<CampaignAttemptIntentV2, { role: "finder" }>,
   onCheckpoint?: (checkpoint: SemanticFinderCheckpointRef) => void,
@@ -960,7 +973,10 @@ async function openSemanticFinderCheckpointObserver(
       ordinal,
       subject: subjectRef,
     });
-    const digest = await dependencies.artifactStore.putJson(checkpoint);
+    const digest = await dependencies.artifacts.put(
+      "Semantic Finder Checkpoint",
+      checkpoint,
+    );
     const checkpointRef = semanticFinderCheckpointRefSchema.parse({
       ...checkpoint,
       digest,
@@ -986,7 +1002,7 @@ async function openSemanticFinderCheckpointObserver(
 
 async function executeSemanticFinderWave(
   record: ResearchRecord,
-  dependencies: CurrentCampaignExecutionDependencies,
+  dependencies: CampaignExecutionContext,
   plan: PreparedWaveCampaignRunPlanV2,
 ) {
   const preflight = await preflightSemanticFinderWave(
@@ -1171,7 +1187,7 @@ interface CurrentDepthExecutionInput {
 
 async function executeCurrentSemanticDepthRound(
   record: CurrentCampaignStore,
-  dependencies: CurrentCampaignExecutionDependencies,
+  dependencies: CampaignExecutionContext,
   plan: DefaultSemanticCampaignRunPlanV3,
   input: CurrentDepthExecutionInput,
 ): Promise<{
@@ -1469,23 +1485,22 @@ async function executeCurrentSemanticDepthRound(
       incomplete = true;
       continue;
     }
-    const evaluationArtifactDigest =
-      await dependencies.artifactStore.putJson(evaluation);
     const evaluationRef = referenceCurrentDepthIterationDecision(evaluation);
-    if (evaluationArtifactDigest !== evaluationRef.digest) {
-      throw new Error("Current Semantic Depth Decision CAS mismatch");
-    }
+    const evaluationArtifactDigest = await dependencies.artifacts.put(
+      "Current Semantic Depth Decision",
+      evaluation,
+      evaluationRef.digest,
+    );
     currentRegistry = await record.recordSemanticDepthIterationV3(
       plan.campaignId,
       plan.runId,
       { queue: input.queue.value, synthesis, decision: evaluation },
     );
-    const registryDigest = await dependencies.artifactStore.putJson(
+    await dependencies.artifacts.put(
+      "Approach Family Registry v3",
       currentRegistry.value,
+      currentRegistry.ref.digest,
     );
-    if (registryDigest !== currentRegistry.ref.digest) {
-      throw new Error("Approach Family Registry v3 CAS mismatch");
-    }
     batches.push({
       kind: "semantic-depth-batch-result",
       schemaVersion: 2,
@@ -1521,7 +1536,7 @@ async function executeCurrentSemanticDepthRound(
 }
 
 async function prepareSourceValidatedFindings(
-  dependencies: CurrentCampaignExecutionDependencies,
+  dependencies: CampaignExecutionContext,
   candidates: readonly ValidationCandidate[],
   validations: readonly ValidationRecord[],
 ): Promise<readonly FindingRef[]> {
@@ -1545,10 +1560,7 @@ async function prepareSourceValidatedFindings(
       validation: current.data,
     });
     const ref = referenceFinding(finding);
-    const digest = await dependencies.artifactStore.putJson(finding);
-    if (digest !== ref.digest) {
-      throw new Error("Finding artifact store returned a foreign digest");
-    }
+    await dependencies.artifacts.put("Finding", finding, ref.digest);
     findings.push(ref);
   }
   return findings;
@@ -1556,7 +1568,7 @@ async function prepareSourceValidatedFindings(
 
 async function completeCurrentSemanticIteration(
   record: CurrentCampaignStore,
-  dependencies: CurrentCampaignExecutionDependencies,
+  dependencies: CampaignExecutionContext,
   plan: DefaultSemanticCampaignRunPlanV3,
   planDigest: string,
   decision: IterationDecisionV3,
@@ -1814,10 +1826,10 @@ async function completeCurrentSemanticIteration(
 
 async function executeDefaultSemanticCampaign(
   record: CampaignExecutionStore,
-  dependencies: CurrentCampaignExecutionDependencies,
+  dependencies: CampaignExecutionContext,
   plan: DefaultSemanticCampaignRunPlanV2 | DefaultSemanticCampaignRunPlanV3,
   legacyExecution?: ResearchRecord,
-  legacyDependencies?: CampaignExecutionDependencies,
+  legacyDependencies?: LegacyCampaignExecutionContext,
 ) {
   const campaignStartedAt = performance.now();
   const preparation = await record.readPreparation(plan.campaignId);
@@ -2021,10 +2033,10 @@ async function executeDefaultSemanticCampaign(
   ) {
     semanticRunConflict(plan);
   }
-  const initialWavePlanDigest = await dependencies.artifactStore.putJson(wave);
-  if (initialWavePlanDigest !== sha256Digest(wave)) {
-    throw new Error("Initial Semantic Wave Plan CAS mismatch");
-  }
+  const initialWavePlanDigest = await dependencies.artifacts.put(
+    "Initial Semantic Wave Plan",
+    wave,
+  );
 
   const theses = new Map(wave.theses.map((thesis) => [thesis.id, thesis]));
   const materialized = [...wave.leases]
@@ -2089,30 +2101,35 @@ async function executeDefaultSemanticCampaign(
     preparation.input.canonicalFileManifest.entries,
     terminalAttempts,
   );
-  const waveTerminal = semanticWaveTerminalSchema.parse(
-    await dependencies.artifactStore.readJson(waveTerminalRef.digest),
+  const waveTerminal = await dependencies.artifacts.read(
+    "Semantic Wave terminal",
+    semanticWaveTerminalSchema,
+    waveTerminalRef.digest,
   );
-  if (sha256Digest(waveTerminal) !== waveTerminalRef.digest) {
-    throw new Error("Semantic Wave terminal CAS mismatch");
-  }
   const hypotheses = await Promise.all(
     waveTerminalRef.hypotheses.map(async (ref) =>
-      sourceBoundHypothesisArtifactSchema.parse(
-        await dependencies.artifactStore.readJson(ref.digest),
+      dependencies.artifacts.read(
+        "Source-bound Hypothesis",
+        sourceBoundHypothesisArtifactSchema,
+        ref.digest,
       ),
     ),
   );
   const routeFragments = await Promise.all(
     waveTerminalRef.routeFragments.map(async (ref) =>
-      routeFragmentArtifactSchema.parse(
-        await dependencies.artifactStore.readJson(ref.digest),
+      dependencies.artifacts.read(
+        "Route Fragment",
+        routeFragmentArtifactSchema,
+        ref.digest,
       ),
     ),
   );
   const frontierGaps = await Promise.all(
     waveTerminalRef.frontierGaps.map(async (ref) =>
-      frontierGapArtifactSchema.parse(
-        await dependencies.artifactStore.readJson(ref.digest),
+      dependencies.artifacts.read(
+        "Frontier Gap",
+        frontierGapArtifactSchema,
+        ref.digest,
       ),
     ),
   );
@@ -2127,11 +2144,11 @@ async function executeDefaultSemanticCampaign(
   }
   const toolReceipts = await Promise.all(
     toolReceiptRefs.map(async (ref) => {
-      const artifact = await dependencies.artifactStore.readJson(ref.digest);
-      if (sha256Digest(artifact) !== ref.digest) {
-        throw new Error(`Tool Receipt CAS mismatch: ${ref.digest}`);
-      }
-      return sourceEvidenceReceiptValueV2Schema.parse(artifact);
+      return dependencies.artifacts.read(
+        "Tool Receipt",
+        sourceEvidenceReceiptValueV2Schema,
+        ref.digest,
+      );
     }),
   );
 
@@ -2319,13 +2336,13 @@ async function executeDefaultSemanticCampaign(
   }
   const legacyRecord = requireLegacyExecution(legacyExecution);
   const iterationDecision: IterationDecisionV2 = evaluated;
-  const iterationDecisionArtifactDigest =
-    await dependencies.artifactStore.putJson(iterationDecision);
   const expectedIterationDecisionRef =
     referenceSemanticIterationDecision(iterationDecision);
-  if (iterationDecisionArtifactDigest !== expectedIterationDecisionRef.digest) {
-    throw new Error("Semantic Iteration Decision CAS mismatch");
-  }
+  await dependencies.artifacts.put(
+    "Semantic Iteration Decision",
+    iterationDecision,
+    expectedIterationDecisionRef.digest,
+  );
   const recordedIterationDecision =
     await legacyRecord.recordSemanticIterationDecision(
       plan.campaignId,
@@ -2346,12 +2363,11 @@ async function executeDefaultSemanticCampaign(
     throw new Error("Semantic Approach Family Registry is missing");
   }
   let currentFamilyRegistry = initialFamilyRegistry;
-  let storedRegistryDigest = await dependencies.artifactStore.putJson(
+  await dependencies.artifacts.put(
+    "Approach Family Registry",
     currentFamilyRegistry.value,
+    currentFamilyRegistry.ref.digest,
   );
-  if (storedRegistryDigest !== currentFamilyRegistry.ref.digest) {
-    throw new Error("Approach Family Registry CAS mismatch");
-  }
   const coverageObservations: CoverageObservation[] = [];
   const coverageReviews: SemanticCoverageReviewTrace[] = [];
   let coverageReviewIncomplete = false;
@@ -2435,12 +2451,11 @@ async function executeDefaultSemanticCampaign(
     iterationDecision,
     currentFamilyRegistry.value,
   );
-  const storedDepthWorkQueueDigest = await dependencies.artifactStore.putJson(
+  await dependencies.artifacts.put(
+    "Semantic Depth Work Queue",
     depthWorkQueue.value,
+    depthWorkQueue.ref.digest,
   );
-  if (storedDepthWorkQueueDigest !== depthWorkQueue.ref.digest) {
-    throw new Error("Semantic Depth Work Queue CAS mismatch");
-  }
 
   const subjectArtifacts = new Map<
     string,
@@ -3317,7 +3332,7 @@ function sameCampaignValue(left: unknown, right: unknown): boolean {
 
 async function executeRun(
   record: ResearchRecord,
-  dependencies: CampaignExecutionDependencies,
+  dependencies: LegacyCampaignExecutionContext,
   plan: CampaignRunPlan,
   planDigest: string,
 ) {
@@ -3719,13 +3734,25 @@ function createCampaignControl(
   configuredDependencies?: CurrentCampaignExecutionDependencies,
   preparationArtifactStore?: JsonArtifactStore,
   legacyExecution?: ResearchRecord,
-  legacyDependencies?: CampaignExecutionDependencies,
+  configuredLegacyDependencies?: CampaignExecutionDependencies,
 ): CampaignControl {
-  const dependencies: CurrentCampaignExecutionDependencies | undefined =
+  const legacyDependencies: LegacyCampaignExecutionContext | undefined =
+    configuredLegacyDependencies === undefined
+      ? undefined
+      : {
+          ...configuredLegacyDependencies,
+          artifacts: openVerifiedArtifacts(
+            configuredLegacyDependencies.artifactStore,
+          ),
+        };
+  const dependencies: CampaignExecutionContext | undefined =
     configuredDependencies === undefined
       ? undefined
       : {
           artifactStore: configuredDependencies.artifactStore,
+          artifacts: openVerifiedArtifacts(
+            configuredDependencies.artifactStore,
+          ),
           modelExecution: configuredDependencies.modelExecution,
           ...(configuredDependencies.campaignRunStartFaultBoundary === undefined
             ? {}
