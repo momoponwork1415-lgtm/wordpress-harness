@@ -278,7 +278,7 @@ export const validationAttemptOutputSchema = z
     }
   });
 
-export const singleValidationAttemptOutputSchema = z
+export const runtimeHandoffValidationAttemptOutputSchema = z
   .strictObject({
     kind: z.literal("validation-attempt-output"),
     schemaVersion: z.literal(2),
@@ -311,6 +311,65 @@ export const singleValidationAttemptOutputSchema = z
         code: "custom",
         path: ["proposedDisposition"],
         message: "Ready-for-runtime cannot contain a source contradiction",
+      });
+    }
+    if (
+      output.proposedDisposition === "needs-research" &&
+      (!output.criteria.some((criterion) => criterion.status === "unknown") ||
+        output.criteria.some((criterion) => criterion.status === "fail"))
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["proposedDisposition"],
+        message:
+          "Needs-research requires an unknown and no decisive source contradiction",
+      });
+    }
+    if (
+      output.proposedDisposition === "disproven" &&
+      !output.criteria.some((criterion) => criterion.status === "fail")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["proposedDisposition"],
+        message: "Disproven requires a decisive source contradiction",
+      });
+    }
+  });
+
+export const singleValidationAttemptOutputSchema = z
+  .strictObject({
+    kind: z.literal("validation-attempt-output"),
+    schemaVersion: z.literal(3),
+    candidateId: digestSchema,
+    criteria: z.array(criterionResultSchema).length(5),
+    proposedDisposition: z.enum([
+      "source-validated",
+      "needs-research",
+      "disproven",
+    ]),
+    proofGap: validationProofGapSchema.optional(),
+  })
+  .superRefine((output, context) => {
+    requireCompleteRubric(output.criteria, context);
+    if (
+      (output.proposedDisposition === "needs-research") !==
+      (output.proofGap !== undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["proofGap"],
+        message: "Only Needs-research requires a concrete proof gap",
+      });
+    }
+    if (
+      output.proposedDisposition === "source-validated" &&
+      output.criteria.some((criterion) => criterion.status === "fail")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["proposedDisposition"],
+        message: "Source-validated cannot contain a source contradiction",
       });
     }
     if (
@@ -599,10 +658,10 @@ export const legacyValidationRecordSchema = z
     }
   });
 
-const currentCompletedValidatorAttemptRecordSchema = z.strictObject({
+const runtimeHandoffCompletedValidatorAttemptRecordSchema = z.strictObject({
   status: z.literal("completed"),
   execution: validatorAttemptRefSchema,
-  output: singleValidationAttemptOutputSchema,
+  output: runtimeHandoffValidationAttemptOutputSchema,
 });
 
 const currentFailedValidatorAttemptRecordSchema = z.strictObject({
@@ -628,7 +687,7 @@ export const currentValidationRecordSchema = z
       validationId: digestSchema,
       candidateId: digestSchema,
       planDigest: digestSchema,
-      validatorAttempt: currentCompletedValidatorAttemptRecordSchema,
+      validatorAttempt: runtimeHandoffCompletedValidatorAttemptRecordSchema,
       status: z.enum(["ready-for-runtime", "needs-research", "disproven"]),
     }),
     z.strictObject({
@@ -655,7 +714,49 @@ export const currentValidationRecordSchema = z
     }
   });
 
+const sourceValidatedCompletedValidatorAttemptRecordSchema = z.strictObject({
+  status: z.literal("completed"),
+  execution: validatorAttemptRefSchema,
+  output: singleValidationAttemptOutputSchema,
+});
+
+export const sourceValidationRecordSchema = z
+  .discriminatedUnion("status", [
+    z.strictObject({
+      kind: z.literal("validation-record"),
+      schemaVersion: z.literal(3),
+      validationId: digestSchema,
+      candidateId: digestSchema,
+      planDigest: digestSchema,
+      validatorAttempt: sourceValidatedCompletedValidatorAttemptRecordSchema,
+      status: z.enum(["source-validated", "needs-research", "disproven"]),
+    }),
+    z.strictObject({
+      kind: z.literal("validation-record"),
+      schemaVersion: z.literal(3),
+      validationId: digestSchema,
+      candidateId: digestSchema,
+      planDigest: digestSchema,
+      validatorAttempt: currentFailedValidatorAttemptRecordSchema,
+      status: z.literal("validation-pending"),
+      reason: z.enum(["validator-attempt-failed", "invalid-validator-output"]),
+    }),
+  ])
+  .superRefine((record, context) => {
+    if (
+      record.status !== "validation-pending" &&
+      record.validatorAttempt.output.proposedDisposition !== record.status
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["status"],
+        message: "Validation status must match its single Validator output",
+      });
+    }
+  });
+
 export const validationRecordSchema = z.union([
+  sourceValidationRecordSchema,
   currentValidationRecordSchema,
   legacyValidationRecordSchema,
 ]);
@@ -671,7 +772,11 @@ export const legacyValidationRecordRefSchema = z.strictObject({
 export const currentValidationRecordRefSchema =
   legacyValidationRecordRefSchema.extend({ schemaVersion: z.literal(2) });
 
+export const sourceValidationRecordRefSchema =
+  legacyValidationRecordRefSchema.extend({ schemaVersion: z.literal(3) });
+
 export const validationRecordRefSchema = z.union([
+  sourceValidationRecordRefSchema,
   currentValidationRecordRefSchema,
   legacyValidationRecordRefSchema,
 ]);
@@ -744,7 +849,7 @@ export type CurrentValidationPlan = z.infer<typeof currentValidationPlanSchema>;
 export type ValidationRecord = z.infer<typeof validationRecordSchema>;
 export type ValidationRecordRef = z.infer<typeof validationRecordRefSchema>;
 export type CurrentValidationRecordRef = z.infer<
-  typeof currentValidationRecordRefSchema
+  typeof sourceValidationRecordRefSchema
 >;
 export type ValidationFrontierGap = z.infer<typeof validationFrontierGapSchema>;
 export type ValidationFrontierGapRef = z.infer<

@@ -23,11 +23,6 @@ import type {
   CampaignBudgetView,
 } from "../campaign-control/contracts.js";
 import type {
-  RuntimeRiskAssessment,
-  RuntimeVerificationPacket,
-  RuntimeVerificationPacketHandoff,
-} from "../validation/runtime-verification-packet.js";
-import type {
   ValidationCandidate,
   CurrentValidationRecordRef,
 } from "../validation/contracts.js";
@@ -35,7 +30,6 @@ import type {
   ApproachFamilyRegistryRecordViewV3,
   CompleteSemanticCampaignAttemptWithBudgetInput,
   CompleteSemanticCampaignAttemptWithBudgetResult,
-  RuntimeVerificationPacketRecordView,
   PreparationRecord,
   RecordPreparationResult,
   RecordSemanticCampaignAttemptStartResult,
@@ -160,19 +154,4 @@ export interface CurrentCampaignStore {
     campaignId: string,
     runId: string,
   ): Promise<readonly ValidationFrontierGapRecordView[]>;
-  readRuntimeVerificationPacket(
-    campaignId: string,
-    candidateId: string,
-  ): Promise<RuntimeVerificationPacketRecordView | undefined>;
-  recordRuntimeVerificationPacket(
-    campaignId: string,
-    runId: string,
-    riskAssessment: RuntimeRiskAssessment,
-    packet: RuntimeVerificationPacket,
-  ): Promise<RuntimeVerificationPacketRecordView>;
-  recordRuntimeVerificationPacketHandoff(
-    campaignId: string,
-    runId: string,
-    handoff: RuntimeVerificationPacketHandoff,
-  ): Promise<RuntimeVerificationPacketRecordView>;
 }

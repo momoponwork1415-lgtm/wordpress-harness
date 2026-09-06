@@ -155,14 +155,14 @@ class MemoryArtifactStore implements JsonArtifactStore {
 
 function attemptOutput(
   attemptId: string,
-  disposition: SingleValidationAttemptOutput["proposedDisposition"] = "ready-for-runtime",
+  disposition: SingleValidationAttemptOutput["proposedDisposition"] = "source-validated",
   overrides: Partial<
     Record<(typeof criteria)[number], "pass" | "fail" | "unknown">
   > = {},
 ): SingleValidationAttemptOutput {
   return {
     kind: "validation-attempt-output",
-    schemaVersion: 2,
+    schemaVersion: 3,
     candidateId: candidate.id,
     criteria: criteria.map((criterion) => ({
       criterion,
@@ -283,11 +283,11 @@ describe("source-only Validation", () => {
       sourceToolPolicy: plan.sourceToolPolicy,
     });
     expect(model.calls[0]?.prompt).toContain(
-      "Include proofGap only for needs-research; omit proofGap for ready-for-runtime and disproven.",
+      "Include proofGap only for needs-research; omit proofGap for source-validated and disproven.",
     );
     expect(record).toMatchObject({
-      schemaVersion: 2,
-      status: "ready-for-runtime",
+      schemaVersion: 3,
+      status: "source-validated",
       validatorAttempt: { status: "completed" },
     });
   });
@@ -338,7 +338,7 @@ describe("source-only Validation", () => {
 
     expect(model.calls.map((call) => call.role)).toEqual(["validator"]);
     expect(record).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       status: "needs-research",
       validatorAttempt: {
         status: "completed",
@@ -349,10 +349,10 @@ describe("source-only Validation", () => {
     });
   });
 
-  it("sends a boundary-sensitive unknown to Human OS instead of rejecting it", async () => {
+  it("keeps a runtime-only unknown source-validated instead of rejecting it", async () => {
     const store = new MemoryArtifactStore();
     const model = modelExecution((attempt) =>
-      attemptOutput(attempt.attemptId, "ready-for-runtime", {
+      attemptOutput(attempt.attemptId, "source-validated", {
         "counterevidence-and-proof-gap": "unknown",
       }),
     );
@@ -364,7 +364,7 @@ describe("source-only Validation", () => {
     const record = await readRecord(store, await validation.validate(plan));
 
     expect(model.calls).toHaveLength(1);
-    expect(record.status).toBe("ready-for-runtime");
+    expect(record.status).toBe("source-validated");
   });
 
   it("closes only a decisive source contradiction as disproven", async () => {
@@ -400,7 +400,7 @@ describe("source-only Validation", () => {
 
     expect(model.calls).toHaveLength(1);
     expect(record).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       status: "validation-pending",
       reason: "invalid-validator-output",
     });

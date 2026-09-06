@@ -56,7 +56,7 @@ export function projectValidationFrontierGap(input: {
         )
       : undefined;
   const proofGap =
-    validation.schemaVersion === 2
+    validation.schemaVersion === 2 || validation.schemaVersion === 3
       ? validation.validatorAttempt.output.proofGap
       : legacyProofAttempt?.status === "completed"
         ? legacyProofAttempt.output.proofGap

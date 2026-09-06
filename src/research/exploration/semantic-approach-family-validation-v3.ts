@@ -17,6 +17,7 @@ const validationResolutionSchema = z.strictObject({
   validationId: digestSchema,
   recordDigest: digestSchema,
   disposition: z.enum([
+    "source-validated",
     "ready-for-runtime",
     "ready-for-human",
     "needs-research",
@@ -102,6 +103,7 @@ export function resolveApproachFamilyValidationV3(input: {
     readonly validationId: string;
     readonly recordDigest: string;
     readonly disposition:
+      | "source-validated"
       | "ready-for-runtime"
       | "ready-for-human"
       | "needs-research"
