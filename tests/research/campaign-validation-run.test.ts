@@ -206,6 +206,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       readonly validationRemainingTokens: number;
       readonly overshootTokens: number;
     }> = [];
+    let activeCampaignId = input.campaignId;
     let expectedValidationRunId = "";
     let validationDisposition:
       "source-validated" | "needs-research" | "disproven" = "source-validated";
@@ -224,7 +225,7 @@ describe("CampaignRunner.run source-only Validation", () => {
         if (plan.schemaVersion !== 2) {
           throw new Error("Current Campaign used a legacy Attempt Plan");
         }
-        const dispatchBudget = await research.reader.inspect(input.campaignId, {
+        const dispatchBudget = await research.reader.inspect(activeCampaignId, {
           kind: "budget",
           runId: expectedValidationRunId,
         });
@@ -486,7 +487,7 @@ describe("CampaignRunner.run source-only Validation", () => {
           });
           try {
             const queued = await durableRecord.readSemanticDepthWorkQueueV2(
-              input.campaignId,
+              activeCampaignId,
               expectedValidationRunId,
             );
             if (queued === undefined) {
@@ -571,7 +572,7 @@ describe("CampaignRunner.run source-only Validation", () => {
         }
         if (plan.role === "validator") {
           validatorProgressSnapshots.push(
-            await research.reader.inspect(input.campaignId, {
+            await research.reader.inspect(activeCampaignId, {
               kind: "progress",
             }),
           );
@@ -581,7 +582,7 @@ describe("CampaignRunner.run source-only Validation", () => {
           });
           try {
             const queued = await durableRecord.readSemanticDepthWorkQueueV2(
-              input.campaignId,
+              activeCampaignId,
               expectedValidationRunId,
             );
             if (queued === undefined) {
@@ -2149,27 +2150,31 @@ describe("CampaignRunner.run source-only Validation", () => {
       ).resolves.toMatchObject({ schemaVersion: 4, decision: "incomplete" });
       expect(observedPlans).toHaveLength(crossCandidateCallsAfterCompletion);
 
-      const budgetBeforeMeasured = await research.reader.inspect(
-        input.campaignId,
-        { kind: "budget", runId: crossCandidateBudgetPlan.runId },
+      const measuredCampaignInput = {
+        ...input,
+        campaignId: "campaign-validation-measured-root-reserve",
+      };
+      const measuredPreparation = await research.runner.prepare(
+        measuredCampaignInput,
       );
-      if (budgetBeforeMeasured.kind !== "budget") {
-        throw new Error("Expected budget before measured Root reservation run");
+      if (measuredPreparation.targetFileManifest === undefined) {
+        throw new Error("Expected a measured Campaign manifest");
       }
-      const overshootBeforeMeasured =
-        budgetBeforeMeasured.overshoot.modelTokens;
-
-      finderReportedTokens = [1_300_000, 1_300_000, 1_376_741];
+      activeCampaignId = measuredCampaignInput.campaignId;
+      finderReportedTokens = [1_400_000, 1_400_000, 1_376_741];
       finderReportedTokenIndex = 0;
       validationCandidateCount = 1;
       validatorReportedTokens = undefined;
       validationDisposition = "source-validated";
-      depthFailure = "budget-exhausted";
-      failInitialRootAfterAdmission = true;
+      depthFailure = "none";
+      failInitialRootAfterAdmission = false;
       candidateIdentitySuffix = "-measured-root-reserve";
       const measuredPlan = campaignDefaultSemanticRunPlanV3Schema.parse({
         ...plan,
+        campaignId: measuredCampaignInput.campaignId,
         runId: "source-validation-measured-root-reserve",
+        preparationDigest: measuredPreparation.inputDigest,
+        manifest: measuredPreparation.targetFileManifest,
       });
       expectedValidationRunId = measuredPlan.runId;
       const measuredCallOffset = observedPlans.length;
@@ -2178,14 +2183,16 @@ describe("CampaignRunner.run source-only Validation", () => {
         decision: "incomplete",
       });
       await expect(
-        research.reader.inspect(input.campaignId, {
+        research.reader.inspect(measuredCampaignInput.campaignId, {
           kind: "run",
           runId: measuredPlan.runId,
         }),
       ).resolves.toMatchObject({
         value: {
-          stage: { kind: "evaluation-incomplete" },
-          decision: { kind: "incomplete", reason: "evaluation-incomplete" },
+          validations: [{ status: "source-validated" }],
+          findings: [{ kind: "finding", schemaVersion: 1 }],
+          coverage: { status: "incomplete" },
+          decision: { kind: "incomplete", reason: "research-work-remains" },
         },
       });
       const measuredCalls = observedPlans.slice(measuredCallOffset);
@@ -2200,6 +2207,12 @@ describe("CampaignRunner.run source-only Validation", () => {
           .slice(0, initialRootIndex)
           .filter((attempt) => attempt.role === "finder"),
       ).toHaveLength(3);
+      expect(
+        measuredCalls.filter((attempt) => attempt.role === "root-synthesizer"),
+      ).toEqual([]);
+      expect(
+        measuredCalls.filter((attempt) => attempt.role === "validator"),
+      ).toHaveLength(1);
       const measuredRootDispatch = dispatchBudgetSnapshots.find(
         (snapshot) =>
           snapshot.runId === measuredPlan.runId &&
@@ -2214,13 +2227,14 @@ describe("CampaignRunner.run source-only Validation", () => {
       if (measuredRootDispatch === undefined) {
         throw new Error("Expected measured Root Evaluator dispatch");
       }
-      expect(
-        measuredRootDispatch.overshootTokens - overshootBeforeMeasured,
-      ).toBe(976_741);
-      const measuredBudget = await research.reader.inspect(input.campaignId, {
-        kind: "budget",
-        runId: measuredPlan.runId,
-      });
+      expect(measuredRootDispatch.overshootTokens).toBe(1_176_741);
+      const measuredBudget = await research.reader.inspect(
+        measuredCampaignInput.campaignId,
+        {
+          kind: "budget",
+          runId: measuredPlan.runId,
+        },
+      );
       expect(measuredBudget).toMatchObject({
         kind: "budget",
         schemaVersion: 2,
@@ -2234,24 +2248,24 @@ describe("CampaignRunner.run source-only Validation", () => {
       if (measuredBudget.kind !== "budget") {
         throw new Error("Expected measured Campaign budget");
       }
-      expect(
-        measuredBudget.overshoot.modelTokens - overshootBeforeMeasured,
-      ).toBe(976_741);
+      expect(measuredBudget.overshoot.modelTokens).toBe(1_176_741);
       const replayAfterRootCompletion = openResearch({
         databasePath,
         campaignExecution,
       });
       try {
         await expect(
-          replayAfterRootCompletion.reader.inspect(input.campaignId, {
-            kind: "budget",
-            runId: measuredPlan.runId,
-          }),
+          replayAfterRootCompletion.reader.inspect(
+            measuredCampaignInput.campaignId,
+            {
+              kind: "budget",
+              runId: measuredPlan.runId,
+            },
+          ),
         ).resolves.toEqual(measuredBudget);
       } finally {
         replayAfterRootCompletion.close();
       }
-      failInitialRootAfterAdmission = false;
     } finally {
       research.close();
       await rm(directory, { force: true, recursive: true });

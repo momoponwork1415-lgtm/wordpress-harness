@@ -5704,7 +5704,7 @@ class SqliteResearchRecord
           run.plan.schemaVersion !== 3 ||
           queued === undefined ||
           canonicalJson(queued.queue) !== canonicalJson(payload.queue) ||
-          attempt === undefined ||
+          (payload.outcome === "completed" && attempt === undefined) ||
           semanticChainSynthesesV2.has(key) ||
           (payload.outcome === "completed" &&
             (payload.synthesis.queueDigest !== payload.queue.digest ||
