@@ -514,6 +514,7 @@ class SqliteHumanOsRecord implements HumanOsRecord {
     const attempt = findingAIReproductionAttemptSchema.parse(attemptValue);
     const claimId = digestSchema.parse(claimIdValue);
     const findingRef = referenceFinding(finding);
+    const attemptDigest = humanOsDigest(attempt);
     if (
       attempt.finding.id !== finding.id ||
       attempt.finding.digest !== findingRef.digest ||
@@ -523,13 +524,43 @@ class SqliteHumanOsRecord implements HumanOsRecord {
     ) {
       throw new Error("AI Reproduction Claim belongs to another Finding");
     }
+    const completedBeforeWrite = this.#selectFindingAIReproduction(
+      "attempt_id = ?",
+      attempt.id,
+    );
+    if (completedBeforeWrite !== undefined) {
+      const view =
+        await this.#decodeFindingAIReproduction(completedBeforeWrite);
+      if (
+        view.findingArtifactDigest !== findingRef.digest ||
+        view.attemptArtifactDigest !== attemptDigest
+      ) {
+        throw new Error("Finding AI Reproduction Attempt conflict");
+      }
+      return { status: "completed", view };
+    }
+    const claimBeforeWrite = this.#selectFindingAIReproductionClaim(
+      "attempt_id = ?",
+      attempt.id,
+    );
+    if (claimBeforeWrite !== undefined) {
+      const decoded =
+        await this.#decodeFindingAIReproductionClaim(claimBeforeWrite);
+      if (
+        humanOsDigest(decoded.finding) !== findingRef.digest ||
+        humanOsDigest(decoded.attempt) !== attemptDigest
+      ) {
+        throw new Error("Finding AI Reproduction Claim conflict");
+      }
+      return { status: "in-progress", claim: decoded.claim };
+    }
     const [findingArtifactDigest, attemptArtifactDigest] = await Promise.all([
       this.#artifactStore.putJson(finding),
       this.#artifactStore.putJson(attempt),
     ]);
     if (
       findingArtifactDigest !== findingRef.digest ||
-      attemptArtifactDigest !== humanOsDigest(attempt)
+      attemptArtifactDigest !== attemptDigest
     ) {
       throw new Error("Human OS Artifact Store returned a foreign digest");
     }
@@ -618,7 +649,7 @@ class SqliteHumanOsRecord implements HumanOsRecord {
     }
     return {
       status: result.status,
-      claim: this.#projectFindingAIReproductionClaim(result.row),
+      claim: (await this.#decodeFindingAIReproductionClaim(result.row)).claim,
     };
   }
 
@@ -1639,6 +1670,41 @@ class SqliteHumanOsRecord implements HumanOsRecord {
       attemptId: digestSchema.parse(row.attempt_id),
       claimId: digestSchema.parse(row.claim_id),
       startedAt: z.string().datetime().parse(row.started_at),
+    };
+  }
+
+  async #decodeFindingAIReproductionClaim(
+    row: StoredFindingAIReproductionClaimRow,
+  ): Promise<{
+    readonly claim: FindingAIReproductionClaim;
+    readonly finding: ResearchFinding;
+    readonly attempt: FindingAIReproductionAttempt;
+  }> {
+    const [findingValue, attemptValue] = await Promise.all([
+      this.#artifactStore.readJson(row.finding_artifact_digest),
+      this.#artifactStore.readJson(row.attempt_artifact_digest),
+    ]);
+    const finding = researchFindingSchema.parse(findingValue);
+    const attempt = findingAIReproductionAttemptSchema.parse(attemptValue);
+    const findingRef = referenceFinding(finding);
+    if (
+      humanOsDigest(finding) !== row.finding_artifact_digest ||
+      humanOsDigest(attempt) !== row.attempt_artifact_digest ||
+      finding.id !== row.finding_id ||
+      findingRef.digest !== row.finding_digest ||
+      attempt.id !== row.attempt_id ||
+      attempt.finding.id !== finding.id ||
+      attempt.finding.digest !== findingRef.digest ||
+      humanOsDigest(attempt.target.snapshot) !==
+        humanOsDigest(finding.target) ||
+      humanOsDigest(attempt.target.manifest) !== humanOsDigest(finding.manifest)
+    ) {
+      throw new Error("Finding AI Reproduction Claim integrity mismatch");
+    }
+    return {
+      claim: this.#projectFindingAIReproductionClaim(row),
+      finding,
+      attempt,
     };
   }
 

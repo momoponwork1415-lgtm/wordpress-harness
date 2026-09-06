@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { link, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { z } from "zod";
@@ -8,6 +8,15 @@ import { canonicalHumanOsJson, humanOsDigest } from "../canonical-json.js";
 import type { HumanOsArtifactStore } from "./contracts.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+
+function hasCode(value: unknown, code: string): boolean {
+  return (
+    value instanceof Error &&
+    "code" in value &&
+    typeof value.code === "string" &&
+    value.code === code
+  );
+}
 
 class FileHumanOsArtifactStore implements HumanOsArtifactStore {
   readonly #directory: string;
@@ -27,7 +36,16 @@ class FileHumanOsArtifactStore implements HumanOsArtifactStore {
     await writeFile(temporary, `${canonicalHumanOsJson(value)}\n`, {
       mode: 0o600,
     });
-    await rename(temporary, destination);
+    try {
+      await link(temporary, destination);
+    } catch (error) {
+      if (!hasCode(error, "EEXIST")) throw error;
+      await this.readJson(digest);
+    } finally {
+      await unlink(temporary).catch((error: unknown) => {
+        if (!hasCode(error, "ENOENT")) throw error;
+      });
+    }
     return digest;
   }
 
