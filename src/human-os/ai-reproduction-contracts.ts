@@ -977,6 +977,78 @@ export const aiVerificationRecordSchema = aiVerificationRecordIdentitySchema
     }
   });
 
+export const aiReproductionViewSchema = z
+  .strictObject({
+    kind: z.literal("ai-reproduction-view"),
+    schemaVersion: z.literal(1),
+    status: z.enum([
+      "completed",
+      "result-not-recorded",
+      "completed-with-result-not-recorded",
+    ]),
+    finding: findingSchema,
+    assurance: z.strictObject({
+      source: z.literal("source-validated"),
+      runtime: z.array(
+        z.enum([
+          "runtime-confirmed",
+          "disproved",
+          "inconclusive",
+          "setup-blocked",
+        ]),
+      ),
+    }),
+    records: z.array(aiVerificationRecordSchema),
+    incompleteClaims: z.array(
+      z.strictObject({
+        attempt: findingAIReproductionAttemptRefSchema,
+        startedAt: z.string().datetime(),
+        processStatus: z.literal("unknown"),
+        cleanupStatus: z.literal("unknown"),
+      }),
+    ),
+  })
+  .superRefine((view, context) => {
+    const runtimeStatuses = view.records.map((record) => record.outcome.status);
+    const incompleteAttemptIds = view.incompleteClaims.map(
+      (claim) => claim.attempt.id,
+    );
+    const completedAttemptIds = new Set(
+      view.records.map((record) => record.attempt.id),
+    );
+    const expectedStatus =
+      view.records.length === 0
+        ? "result-not-recorded"
+        : view.incompleteClaims.length === 0
+          ? "completed"
+          : "completed-with-result-not-recorded";
+    if (
+      view.status !== expectedStatus ||
+      JSON.stringify(view.assurance.runtime) !==
+        JSON.stringify(runtimeStatuses) ||
+      (view.records.length === 0 && view.incompleteClaims.length === 0) ||
+      view.records.some(
+        (record) =>
+          record.finding.id !== view.finding.id ||
+          record.finding.digest !== referenceFinding(view.finding).digest,
+      ) ||
+      view.incompleteClaims.some(
+        (claim) =>
+          claim.attempt.findingId !== view.finding.id ||
+          claim.attempt.findingDigest !== referenceFinding(view.finding).digest,
+      ) ||
+      new Set(incompleteAttemptIds).size !== incompleteAttemptIds.length ||
+      incompleteAttemptIds.some((attemptId) =>
+        completedAttemptIds.has(attemptId),
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "AI Reproduction View status does not match stored records",
+      });
+    }
+  });
+
 export type FindingAIReproductionAttempt = z.infer<
   typeof findingAIReproductionAttemptSchema
 >;
@@ -1000,6 +1072,7 @@ export type FindingAIReproductionPrivateArtifactRef = z.infer<
 >;
 export type AIVerificationOutcome = z.infer<typeof aiVerificationOutcomeSchema>;
 export type AIVerificationRecord = z.infer<typeof aiVerificationRecordSchema>;
+export type AIReproductionView = z.infer<typeof aiReproductionViewSchema>;
 
 export function defineFindingAIReproductionAttempt(input: {
   readonly finding: Finding;

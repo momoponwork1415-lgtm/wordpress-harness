@@ -14,7 +14,7 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Semantic Research | v7 initial Wave、Decision@3、conditional Depth実行まで実装済み | Missing-link / Closure |
 | Source-only Validation | v7 single fresh Attempt、4 disposition、source-validated Findingを実装済み | Frontier Gapの次Wave |
 | Runtime handoff | FindingをAI Reproductionへ直接渡すcurrent contract、旧Runtime Verification Packetのread-only replayを実装済み | Human Verification移行（#126 / #129） |
-| AI Reproduction | Finding-bound Attempt、gVisor experiment、private evidence、append-only AI Verification Recordを実装済み | なし |
+| AI Reproduction | Finding-bound Attempt、gVisor experiment、private evidence、append-only AI Verification Record、未完了claimの公開読取を実装済み | Human確認への接続（#126） |
 | Human Verification | mandatory fresh再実行、二車線Queue、Current Version Review、human-only Finding gateを実装済み | Finding gateをsubmission gateへ移す（#126） |
 | Finding | fresh Independent Validationからimmutable source-validated Findingを生成し、runtime Verification Recordを追記 | human Verification Record（#126） |
 | Understanding / report | 設計とIssue分割まで完了 | grounded explanation、template draft、人間承認、form staging |
@@ -241,12 +241,14 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 ### AI Reproduction
 
-**Interface:** `AIReproduction.run(Finding + Target source + Runtime Profile + Setup Plan + Policy) -> AI Verification Record`、`AIReproduction.read(findingId)`
+**Interface:** `AIReproduction.run(Finding + Target source + Runtime Profile + Setup Plan + Policy) -> AI Verification Record`、`AIReproduction.read(findingId) -> AIReproductionView v1 | undefined`
 
 - **Purpose:** fresh environmentと実Target interfaceでsource routeを試し、人間が再実行できるRecipeとevidenceを作る。
 - **Owned artifacts:** Finding-bound Attemptとappend-only AI Verification Recordを専用current event streamへCAS-firstで保存する。exact Reproduction Recipe、payload、request、screenshot、runtime logは専用private storeへ置き、public recordにはdigest検証済みopaque refだけを残す。
 - **Invariants:** AttemptへFinding、Target/version、Manifest、attacker premise、source route、Runtime Profile、Setup Plan、no-ambient-tool policyをbindする。gVisor AdapterだけがEnvironment Builderのlive sessionでexperimentを実行し、sessionを外へ渡さない。AI outputはFindingを上書きせず、programme eligibilityを作らない。
 - **Failure semantics:** setupは`setup-blocked`、provider / budget / private store / stale ready session / cleanup failureは理由付き`inconclusive`として保持する。`disproved`は前提一致かつRecipe完走後のSecurity Effect非観測だけに限定する。同じAttemptは保存済みRecordを返し、異なるcontentの占有はfail closedにする。
+- **Incomplete claim:** harnessの未知例外または結果保存前の中断では、完了Recordのないdurable claimが残り得る。同じ要求の再投入は`FindingAIReproductionInProgressError`となり、二重実行しない。公開読取は記録のないFindingを`undefined`、claimのみを`result-not-recorded`、完了Recordのみを`completed`、両者の併存を`completed-with-result-not-recorded`で返す。claimと完了RecordをAttempt単位で照合し、完了後も残るclaimを未完了扱いしない。
+- **Read invariants:** `finding / assurance / records`を維持し、未完了分の`incompleteClaims`へAttempt ref、開始時刻、`processStatus: unknown / cleanupStatus: unknown`だけを追加する。内部claim tokenとprivate本文は返さない。View schemaはRecordとassuranceの一致、Finding binding、未完了Attemptの重複・完了との重複を検査する。読取は実行・claim解放・記録修復を行わず、CAS欠損やbinding不一致はerrorとする。開始時刻だけからprocessの生存・停止・cleanup完了を推測しない。[公開読取・再起動Test](../tests/human-os/finding-ai-reproduction.test.ts)はharness非呼出しとDB / WAL / public CAS / private store不変も確認する（[#140](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/140)）。
 - **Status / Tests:** Finding-bound current contract、idempotent run / reopen、dedicated SQLite stream、private bytes digest check、Environment Builder + typed gVisor experiment Adapterを実装。旧Runtime Verification Packet / Triage writerはcurrent barrelから外し、[#129](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/129)までdirect legacy moduleと既存decoderを保持する · [code](../src/human-os/ai-reproduction.ts), [gVisor adapter](../src/human-os/gvisor-ai-reproduction-harness.ts), [contracts](../src/human-os/ai-reproduction-contracts.ts), [behavior](../tests/human-os/finding-ai-reproduction.test.ts), [legacy replay](../tests/human-os/ai-reproduction.test.ts) · [#133](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/133)
 
 ### Human Verification Environment

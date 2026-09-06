@@ -676,6 +676,22 @@ class SqliteHumanOsRecord implements HumanOsRecord {
     );
   }
 
+  async listFindingAIReproductionClaims(findingIdValue: string) {
+    const findingId = digestSchema.parse(findingIdValue);
+    const rows = this.#database
+      .prepare(
+        `SELECT attempt_id, claim_id, started_at, finding_id,
+                finding_digest, finding_artifact_digest, attempt_artifact_digest
+           FROM finding_ai_reproduction_claims
+          WHERE finding_id = ?
+          ORDER BY started_at, attempt_id`,
+      )
+      .all(findingId) as StoredFindingAIReproductionClaimRow[];
+    return Promise.all(
+      rows.map((row) => this.#decodeFindingAIReproductionClaim(row)),
+    );
+  }
+
   async recordFindingAIReproduction(
     claimValue: FindingAIReproductionClaim,
     findingValue: ResearchFinding,

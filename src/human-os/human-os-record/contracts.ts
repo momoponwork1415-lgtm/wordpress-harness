@@ -139,6 +139,12 @@ export interface FindingAIReproductionClaim {
   readonly startedAt: string;
 }
 
+export interface FindingAIReproductionClaimView {
+  readonly claim: FindingAIReproductionClaim;
+  readonly finding: Finding;
+  readonly attempt: FindingAIReproductionAttempt;
+}
+
 export type ClaimFindingAIReproductionResult =
   | {
       readonly status: "claimed";
@@ -162,6 +168,9 @@ export interface FindingAIReproductionStore {
   readFindingAIReproductionByAttempt(
     attemptId: string,
   ): Promise<FindingAIReproductionRecordView | undefined>;
+  listFindingAIReproductionClaims(
+    findingId: string,
+  ): Promise<readonly FindingAIReproductionClaimView[]>;
   listFindingAIReproduction(
     findingId: string,
   ): Promise<readonly FindingAIReproductionRecordView[]>;
