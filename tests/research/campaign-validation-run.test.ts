@@ -154,7 +154,7 @@ function failedResult(
 }
 
 describe("CampaignRunner.run source-only Validation", () => {
-  it("recovers durable Validator results and replays pre-result-event ledgers", async () => {
+  it("recovers lost Exploration and durable Validator results while replaying pre-result-event ledgers", async () => {
     const directory = await mkdtemp(join(tmpdir(), "campaign-validation-"));
     const databasePath = join(directory, "research.sqlite");
     const artifacts = openFileJsonArtifactStore(join(directory, "artifacts"));
@@ -226,6 +226,7 @@ describe("CampaignRunner.run source-only Validation", () => {
     let finderReportedTokens: readonly number[] | undefined;
     let finderReportedTokenIndex = 0;
     let reverseValidationEvidence = false;
+    let injectUnknownExplorationResult = false;
     let injectUnknownValidatorResult = false;
     let firstFindingId: string | undefined;
     const modelExecution: ModelExecution = {
@@ -266,6 +267,10 @@ describe("CampaignRunner.run source-only Validation", () => {
         });
         observedPlans.push(plan);
         if (plan.role === "root-planner") {
+          if (injectUnknownExplorationResult) {
+            injectUnknownExplorationResult = false;
+            throw new Error("Injected Exploration provider result loss");
+          }
           return completedResult(plan, {
             kind: "root-planner-output",
             schemaVersion: 1,
@@ -1692,6 +1697,107 @@ describe("CampaignRunner.run source-only Validation", () => {
       ).toEqual([]);
 
       depthFailure = "none";
+      candidateIdentitySuffix = "-exploration-provider-loss";
+      const explorationProviderLossPlan =
+        campaignDefaultSemanticRunPlanV3Schema.parse({
+          ...plan,
+          runId: "source-exploration-provider-loss",
+        });
+      expectedValidationRunId = explorationProviderLossPlan.runId;
+      const explorationLossCallOffset = observedPlans.length;
+      injectUnknownExplorationResult = true;
+      const interruptedExploration = openResearch({
+        databasePath,
+        campaignExecution,
+      });
+      try {
+        await expect(
+          interruptedExploration.runner.run(explorationProviderLossPlan),
+        ).rejects.toThrow("Injected Exploration provider result loss");
+      } finally {
+        interruptedExploration.close();
+        injectUnknownExplorationResult = false;
+      }
+      const interruptedAttempt = observedPlans
+        .slice(explorationLossCallOffset)
+        .find((attempt) => attempt.role === "root-planner");
+      if (interruptedAttempt === undefined) {
+        throw new Error("Expected an interrupted Exploration Attempt");
+      }
+      await expect(
+        research.reader.inspect(input.campaignId, { kind: "progress" }),
+      ).resolves.toMatchObject({
+        kind: "progress",
+        activeAttempts: expect.arrayContaining([
+          expect.objectContaining({
+            attemptId: interruptedAttempt.attemptId,
+            role: "root-planner",
+          }),
+        ]),
+      });
+      await expect(
+        research.reader.inspect(input.campaignId, {
+          kind: "budget",
+          runId: explorationProviderLossPlan.runId,
+        }),
+      ).resolves.toMatchObject({
+        kind: "budget",
+        activeReservations: expect.arrayContaining([
+          expect.objectContaining({
+            attemptId: interruptedAttempt.attemptId,
+            role: "root-planner",
+          }),
+        ]),
+      });
+
+      const recoveredExploration = openResearch({
+        databasePath,
+        campaignExecution,
+      });
+      try {
+        await expect(
+          recoveredExploration.runner.run(explorationProviderLossPlan),
+        ).resolves.toMatchObject({ schemaVersion: 4 });
+        await expect(
+          recoveredExploration.reader.inspect(input.campaignId, {
+            kind: "progress",
+          }),
+        ).resolves.toMatchObject({
+          kind: "progress",
+          activeAttempts: [],
+        });
+        const recoveredExplorationBudget =
+          await recoveredExploration.reader.inspect(input.campaignId, {
+            kind: "budget",
+            runId: explorationProviderLossPlan.runId,
+          });
+        expect(recoveredExplorationBudget).toMatchObject({
+          kind: "budget",
+          activeReservations: [],
+          unknownUsageAttemptIds: expect.arrayContaining([
+            interruptedAttempt.attemptId,
+          ]),
+        });
+        await expect(
+          recoveredExploration.runner.run(explorationProviderLossPlan),
+        ).resolves.toMatchObject({ schemaVersion: 4 });
+        await expect(
+          recoveredExploration.reader.inspect(input.campaignId, {
+            kind: "budget",
+            runId: explorationProviderLossPlan.runId,
+          }),
+        ).resolves.toEqual(recoveredExplorationBudget);
+      } finally {
+        recoveredExploration.close();
+      }
+      expect(
+        observedPlans
+          .slice(explorationLossCallOffset)
+          .filter(
+            (attempt) => attempt.attemptId === interruptedAttempt.attemptId,
+          ),
+      ).toHaveLength(1);
+
       candidateIdentitySuffix = "-crash-recovery";
       const crashRecoveryValidation = {
         ...plan.validation,

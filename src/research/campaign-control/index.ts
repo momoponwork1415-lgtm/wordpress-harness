@@ -646,103 +646,15 @@ function recordedValidationModelExecution(
         candidateId: plan.assignment.candidateId,
         validationAttemptOrdinal: plan.assignment.attemptOrdinal,
       };
-      const storedPlanDigest = await dependencies.artifactStore.putJson(plan);
-      if (storedPlanDigest !== planDigest) {
-        throw new Error(
-          `Validator Attempt Plan CAS mismatch: ${plan.attemptId}`,
-        );
-      }
-      const reservation = reserveCampaignAttemptBudget(campaignId, runId, plan);
-      const started = await record.recordSemanticCampaignAttemptAdmission(
-        reservation,
+      return executeRecordedSemanticAttempt(
+        record,
+        dependencies,
+        plan,
         intent,
+        undefined,
+        true,
+        observer,
       );
-      if (started.disposition === "budget-exhausted") {
-        throw new CampaignBudgetExhaustedError(
-          reservation,
-          started.budget,
-          started.exhaustedDimensions,
-        );
-      }
-      let result: AttemptExecutionResultV2;
-      if (started.disposition === "completed") {
-        return readStoredValidatorAttemptResult(
-          dependencies,
-          plan,
-          started.attempt.completion.value.result,
-        );
-      }
-      if (started.disposition === "in-progress") {
-        if (started.attempt.storedResult !== undefined) {
-          result = await readStoredValidatorAttemptResult(
-            dependencies,
-            plan,
-            started.attempt.storedResult.value.result,
-          );
-        } else {
-          const value = modelAttemptResultV2Schema.parse({
-            kind: "model-attempt-result",
-            schemaVersion: 2,
-            attemptId: plan.attemptId,
-            owner: "validation",
-            role: "validator",
-            planDigest,
-            status: "orphaned",
-            reason: "orphaned-execution-requires-fresh-attempt",
-          });
-          const digest = await dependencies.artifactStore.putJson(value);
-          result = {
-            status: value.status,
-            value,
-            ref: attemptExecutionResultV2RefSchema.parse({
-              kind: "attempt-execution-result",
-              schemaVersion: 2,
-              attemptId: plan.attemptId,
-              owner: "validation",
-              role: "validator",
-              planDigest,
-              digest,
-            }),
-          };
-          await record.recordSemanticCampaignAttemptResult(
-            semanticValidatorAttemptStoredResult(intent, result.ref),
-          );
-        }
-      } else {
-        const executed = await dependencies.modelExecution.run(plan, observer);
-        if (
-          executed.ref.schemaVersion !== 2 ||
-          executed.value.schemaVersion !== 2
-        ) {
-          throw new Error(
-            `Validator Attempt returned a legacy result: ${plan.attemptId}`,
-          );
-        }
-        result = validateValidatorAttemptResult(plan, {
-          ref: executed.ref,
-          value: executed.value,
-          reportedStatus: executed.status,
-        });
-        const digest = await dependencies.artifactStore.putJson(result.value);
-        if (digest !== result.ref.digest) {
-          throw new Error(
-            `Validator Attempt result CAS mismatch: ${plan.attemptId}`,
-          );
-        }
-        await record.recordSemanticCampaignAttemptResult(
-          semanticValidatorAttemptStoredResult(intent, result.ref),
-        );
-      }
-      await dependencies.validationAttemptFaultBoundary?.afterResultStored(
-        intent,
-      );
-      await record.completeSemanticCampaignAttemptWithBudget({
-        completion: semanticAttemptCompletion(intent, result.ref),
-        ...(result.value.usage === undefined
-          ? {}
-          : { usage: result.value.usage }),
-      });
-      return result;
     },
   };
 }
@@ -754,6 +666,7 @@ async function executeRecordedSemanticAttempt(
   intent: CampaignAttemptIntentV2,
   onFinderCheckpoint?: (checkpoint: SemanticFinderCheckpointRef) => void,
   enforceCampaignBudget = false,
+  modelObserver?: ModelAttemptObserver,
 ): Promise<AttemptExecutionResultV2> {
   const planDigest = sha256Digest(plan);
   if (
@@ -765,7 +678,9 @@ async function executeRecordedSemanticAttempt(
   }
   const storedPlanDigest = await dependencies.artifactStore.putJson(plan);
   if (storedPlanDigest !== planDigest) {
-    throw new Error(`Semantic Attempt Plan CAS mismatch: ${plan.attemptId}`);
+    throw new Error(
+      `${plan.role === "validator" ? "Validator" : "Semantic"} Attempt Plan CAS mismatch: ${plan.attemptId}`,
+    );
   }
   const started = enforceCampaignBudget
     ? await (() => {
@@ -779,6 +694,13 @@ async function executeRecordedSemanticAttempt(
       })()
     : await record.recordSemanticCampaignAttemptStart(intent);
   if (started.disposition === "budget-exhausted") {
+    if (plan.role === "validator") {
+      throw new CampaignBudgetExhaustedError(
+        reserveCampaignAttemptBudget(intent.campaignId, intent.runId, plan),
+        started.budget,
+        started.exhaustedDimensions,
+      );
+    }
     return materializeCampaignBudgetExhaustedResult(
       dependencies,
       plan,
@@ -786,78 +708,127 @@ async function executeRecordedSemanticAttempt(
     );
   }
   if (started.disposition === "completed") {
+    if (plan.role === "validator") {
+      return readStoredValidatorAttemptResult(
+        dependencies,
+        plan,
+        started.attempt.completion.value.result,
+      );
+    }
     return readSemanticAttemptResult(
       dependencies,
       started.attempt.completion.value.result,
     );
   }
   let result: AttemptExecutionResultV2;
+  let storeValidatorResult = false;
   if (started.disposition === "in-progress") {
-    const value = modelAttemptResultV2Schema.parse({
-      kind: "model-attempt-result",
-      schemaVersion: 2,
-      attemptId: plan.attemptId,
-      owner: "exploration",
-      role: plan.role,
-      planDigest,
-      status: "orphaned",
-      reason: "orphaned-execution-requires-fresh-attempt",
-    });
-    const digest = await dependencies.artifactStore.putJson(value);
-    result = {
-      status: value.status,
-      value,
-      ref: attemptExecutionResultV2RefSchema.parse({
-        kind: "attempt-execution-result",
+    if (
+      plan.role === "validator" &&
+      started.attempt.storedResult !== undefined
+    ) {
+      result = await readStoredValidatorAttemptResult(
+        dependencies,
+        plan,
+        started.attempt.storedResult.value.result,
+      );
+    } else {
+      const value = modelAttemptResultV2Schema.parse({
+        kind: "model-attempt-result",
         schemaVersion: 2,
         attemptId: plan.attemptId,
-        owner: "exploration",
+        owner: plan.owner,
         role: plan.role,
         planDigest,
-        digest,
-      }),
-    };
+        status: "orphaned",
+        reason: "orphaned-execution-requires-fresh-attempt",
+      });
+      const digest = await dependencies.artifactStore.putJson(value);
+      result = {
+        status: value.status,
+        value,
+        ref: attemptExecutionResultV2RefSchema.parse({
+          kind: "attempt-execution-result",
+          schemaVersion: 2,
+          attemptId: plan.attemptId,
+          owner: plan.owner,
+          role: plan.role,
+          planDigest,
+          digest,
+        }),
+      };
+      storeValidatorResult = plan.role === "validator";
+    }
   } else {
     const observer =
-      plan.role === "finder" && intent.role === "finder"
-        ? await openSemanticFinderCheckpointObserver(
-            record,
-            dependencies,
-            plan,
-            intent,
-            onFinderCheckpoint,
-          )
-        : undefined;
+      plan.role === "validator"
+        ? modelObserver
+        : plan.role === "finder" && intent.role === "finder"
+          ? await openSemanticFinderCheckpointObserver(
+              record,
+              dependencies,
+              plan,
+              intent,
+              onFinderCheckpoint,
+            )
+          : undefined;
     const executed = await dependencies.modelExecution.run(plan, observer);
     if (
       executed.ref.schemaVersion !== 2 ||
       executed.value.schemaVersion !== 2
     ) {
       throw new Error(
-        `Semantic Attempt returned a legacy result: ${plan.attemptId}`,
+        `${plan.role === "validator" ? "Validator" : "Semantic"} Attempt returned a legacy result: ${plan.attemptId}`,
       );
     }
-    const ref = attemptExecutionResultV2RefSchema.parse(executed.ref);
-    const value = modelAttemptResultV2Schema.parse(executed.value);
-    if (
-      ref.attemptId !== plan.attemptId ||
-      value.attemptId !== plan.attemptId ||
-      ref.role !== plan.role ||
-      value.role !== plan.role ||
-      ref.planDigest !== planDigest ||
-      value.planDigest !== planDigest ||
-      ref.digest !== sha256Digest(value) ||
-      executed.status !== value.status
-    ) {
-      throw new Error(`Semantic Attempt result mismatch: ${plan.attemptId}`);
-    }
-    const storedResultDigest = await dependencies.artifactStore.putJson(value);
-    if (storedResultDigest !== ref.digest) {
+    result =
+      plan.role === "validator"
+        ? validateValidatorAttemptResult(plan, {
+            ref: executed.ref,
+            value: executed.value,
+            reportedStatus: executed.status,
+          })
+        : (() => {
+            const ref = attemptExecutionResultV2RefSchema.parse(executed.ref);
+            const value = modelAttemptResultV2Schema.parse(executed.value);
+            if (
+              ref.attemptId !== plan.attemptId ||
+              value.attemptId !== plan.attemptId ||
+              ref.role !== plan.role ||
+              value.role !== plan.role ||
+              ref.planDigest !== planDigest ||
+              value.planDigest !== planDigest ||
+              ref.digest !== sha256Digest(value) ||
+              executed.status !== value.status
+            ) {
+              throw new Error(
+                `Semantic Attempt result mismatch: ${plan.attemptId}`,
+              );
+            }
+            return { status: value.status, ref, value };
+          })();
+    const storedResultDigest = await dependencies.artifactStore.putJson(
+      result.value,
+    );
+    if (storedResultDigest !== result.ref.digest) {
       throw new Error(
-        `Semantic Attempt result CAS mismatch: ${plan.attemptId}`,
+        `${plan.role === "validator" ? "Validator" : "Semantic"} Attempt result CAS mismatch: ${plan.attemptId}`,
       );
     }
-    result = { status: value.status, ref, value };
+    storeValidatorResult = plan.role === "validator";
+  }
+  if (storeValidatorResult) {
+    if (intent.role !== "validator" || !supportsCurrentCampaignBudget(record)) {
+      throw new Error("Current Validator Campaign store is unavailable");
+    }
+    await record.recordSemanticCampaignAttemptResult(
+      semanticValidatorAttemptStoredResult(intent, result.ref),
+    );
+  }
+  if (intent.role === "validator") {
+    await dependencies.validationAttemptFaultBoundary?.afterResultStored(
+      intent,
+    );
   }
   const completion = semanticAttemptCompletion(intent, result.ref);
   if (enforceCampaignBudget) {
