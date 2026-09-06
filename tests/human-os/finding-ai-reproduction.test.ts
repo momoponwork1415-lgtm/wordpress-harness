@@ -671,6 +671,52 @@ describe("AIReproduction.run/read", () => {
     expect(reopenedHarness.run).not.toHaveBeenCalled();
   });
 
+  it.each(["Finding", "Attempt"] as const)(
+    "does not silently repair corrupted %s CAS for an existing claim",
+    async (artifactKind) => {
+      const state = await fixture();
+      const request = runRequest();
+      let claimedAttempt: FindingAIReproductionAttempt | undefined;
+      await expect(
+        openAIReproduction({
+          record: state.record,
+          privateArtifactStore: state.privateStore,
+          harness: {
+            run: async ({ attempt }) => {
+              claimedAttempt = attempt;
+              throw new Error("interrupt after claim");
+            },
+          },
+          clock: () => new Date(fixedNow),
+        }).run(request),
+      ).rejects.toThrow("interrupt after claim");
+      if (claimedAttempt === undefined) throw new Error("Expected Attempt");
+      const artifactDigest =
+        artifactKind === "Finding"
+          ? humanOsDigest(request.finding)
+          : humanOsDigest(claimedAttempt);
+      const artifactPath = join(
+        state.publicDirectory,
+        `${artifactDigest.slice("sha256:".length)}.json`,
+      );
+      await writeFile(artifactPath, "{}\n");
+
+      const replayHarness = { run: vi.fn() };
+      await expect(
+        openAIReproduction({
+          record: openSqliteHumanOsRecord({
+            databasePath: join(state.directory, "human-os.sqlite"),
+            artifactStore: openFileHumanOsArtifactStore(state.publicDirectory),
+          }),
+          privateArtifactStore: state.privateStore,
+          harness: replayHarness,
+        }).run(request),
+      ).rejects.toThrow();
+      expect(replayHarness.run).not.toHaveBeenCalled();
+      expect(await readFile(artifactPath, "utf8")).toBe("{}\n");
+    },
+  );
+
   it("propagates CAS admission failures before running the harness", async () => {
     const state = await fixture();
     const harness = { run: vi.fn() };
