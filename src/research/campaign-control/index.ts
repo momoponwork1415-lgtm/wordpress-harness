@@ -82,6 +82,10 @@ import {
 } from "../model-execution/contracts.js";
 import type { ModelAttemptUsageV2 } from "../model-attempt-usage-contracts.js";
 import {
+  rollUpModelAttemptUsage,
+  type RolledModelUsage,
+} from "../model-attempt-usage.js";
+import {
   canonicalJson,
   sha256Digest,
 } from "../research-record/canonical-json.js";
@@ -3229,106 +3233,42 @@ function aggregateSemanticCampaignUsage(
   const explorationUsages = attempts.flatMap((attempt) =>
     attempt.usage === undefined ? [] : [attempt.usage],
   );
-  const ownerUsage = (
-    usages: readonly ModelAttemptUsageV2[],
-    modelAttempts: number,
-  ) => ({
+  const ownerUsage = (rolled: RolledModelUsage, modelAttempts: number) => ({
     modelAttempts,
-    reportedModelAttempts: usages.filter(
-      (usage) => usage.measurement === "reported",
-    ).length,
-    modelWallTimeMs: usages.reduce(
-      (total, usage) => total + usage.wallTimeMs,
-      0,
-    ),
-    modelTurns: usages.reduce((total, usage) => total + usage.modelTurns, 0),
-    modelTokens: usages.reduce(
-      (total, usage) => ({
-        input: total.input + usage.modelTokens.input,
-        cacheCreation: total.cacheCreation + usage.modelTokens.cacheCreation,
-        cacheRead: total.cacheRead + usage.modelTokens.cacheRead,
-        output: total.output + usage.modelTokens.output,
-        total: total.total + usage.modelTokens.total,
-      }),
-      { input: 0, cacheCreation: 0, cacheRead: 0, output: 0, total: 0 },
-    ),
-    structuredOutputBytes: usages.reduce(
-      (total, usage) => total + usage.structuredOutputBytes,
-      0,
-    ),
-    estimatedCostUsd: usages.reduce(
-      (total, usage) => total + (usage.estimatedCostUsd ?? 0),
-      0,
-    ),
+    reportedModelAttempts: rolled.reportedAttempts,
+    modelWallTimeMs: rolled.modelWallTimeMs,
+    modelTurns: rolled.modelTurns,
+    modelTokens: rolled.modelTokens,
+    structuredOutputBytes: rolled.structuredOutputBytes,
+    estimatedCostUsd: rolled.estimatedCostUsd,
     estimatedCostMeasurement:
-      usages.length === modelAttempts &&
-      usages.every((usage) => usage.estimatedCostUsd !== undefined)
+      rolled.attempts === modelAttempts && rolled.everyCostReported
         ? ("reported" as const)
         : ("partial" as const),
-    source: usages.reduce(
-      (total, usage) => ({
-        queries: total.queries + usage.source.queries,
-        scanBytes: total.scanBytes + usage.source.scanBytes,
-        responseBytes: total.responseBytes + usage.source.responseBytes,
-      }),
-      { queries: 0, scanBytes: 0, responseBytes: 0 },
-    ),
+    source: rolled.source,
   });
   const owners = {
-    exploration: ownerUsage(explorationUsages, attempts.length),
-    verification: ownerUsage(verifierUsages, verifierAttempts),
+    exploration: ownerUsage(
+      rollUpModelAttemptUsage(explorationUsages),
+      attempts.length,
+    ),
+    verification: ownerUsage(
+      rollUpModelAttemptUsage(verifierUsages),
+      verifierAttempts,
+    ),
   };
   const allUsages = [...explorationUsages, ...verifierUsages];
-  const modelTokens = allUsages.reduce(
-    (total, usage) => ({
-      input: total.input + usage.modelTokens.input,
-      cacheCreation: total.cacheCreation + usage.modelTokens.cacheCreation,
-      cacheRead: total.cacheRead + usage.modelTokens.cacheRead,
-      output: total.output + usage.modelTokens.output,
-      total: total.total + usage.modelTokens.total,
-    }),
-    { input: 0, cacheCreation: 0, cacheRead: 0, output: 0, total: 0 },
-  );
+  const modelAttempts = attempts.length + verifierAttempts;
+  const rolled = rollUpModelAttemptUsage(allUsages);
   return {
     kind: "semantic-campaign-usage" as const,
     schemaVersion: 2 as const,
     measurement:
-      allUsages.length === attempts.length + verifierAttempts &&
-      allUsages.every((usage) => usage.measurement === "reported")
+      rolled.attempts === modelAttempts && rolled.everyAttemptReported
         ? ("reported" as const)
         : ("partial" as const),
-    modelAttempts: attempts.length + verifierAttempts,
-    reportedModelAttempts: allUsages.filter(
-      (usage) => usage.measurement === "reported",
-    ).length,
     campaignWallTimeMs,
-    modelWallTimeMs: allUsages.reduce(
-      (total, usage) => total + usage.wallTimeMs,
-      0,
-    ),
-    modelTurns: allUsages.reduce((total, usage) => total + usage.modelTurns, 0),
-    modelTokens,
-    structuredOutputBytes: allUsages.reduce(
-      (total, usage) => total + usage.structuredOutputBytes,
-      0,
-    ),
-    estimatedCostUsd: allUsages.reduce(
-      (total, usage) => total + (usage.estimatedCostUsd ?? 0),
-      0,
-    ),
-    estimatedCostMeasurement:
-      allUsages.length === attempts.length + verifierAttempts &&
-      allUsages.every((usage) => usage.estimatedCostUsd !== undefined)
-        ? ("reported" as const)
-        : ("partial" as const),
-    source: allUsages.reduce(
-      (total, usage) => ({
-        queries: total.queries + usage.source.queries,
-        scanBytes: total.scanBytes + usage.source.scanBytes,
-        responseBytes: total.responseBytes + usage.source.responseBytes,
-      }),
-      { queries: 0, scanBytes: 0, responseBytes: 0 },
-    ),
+    ...ownerUsage(rolled, modelAttempts),
     owners,
   };
 }

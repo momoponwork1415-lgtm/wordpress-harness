@@ -10,6 +10,7 @@ import {
 } from "../research-record/canonical-json.js";
 import { openFileJsonArtifactStore } from "../research-record/file-json-artifact-store.js";
 import { openVerifiedArtifacts } from "../../infrastructure/verified-artifacts.js";
+import { sumModelTokens } from "../model-attempt-usage.js";
 import {
   sourceEvidenceQueryV1Schema,
   sourceEvidenceQueryV2Schema,
@@ -63,16 +64,7 @@ export function normalizeClaudeModelAttemptUsage(
       ? {}
       : { providerDurationMs: usage.providerDurationMs }),
     modelTurns: usage.modelTurns,
-    modelTokens: usage.models.reduce(
-      (total, model) => ({
-        input: total.input + model.tokens.input,
-        cacheCreation: total.cacheCreation + model.tokens.cacheCreation,
-        cacheRead: total.cacheRead + model.tokens.cacheRead,
-        output: total.output + model.tokens.output,
-        total: total.total + model.tokens.total,
-      }),
-      { input: 0, cacheCreation: 0, cacheRead: 0, output: 0, total: 0 },
-    ),
+    modelTokens: sumModelTokens(usage.models.map((model) => model.tokens)),
     structuredOutputBytes: Buffer.byteLength(canonicalJson(output), "utf8"),
     source,
     models: usage.models,
@@ -251,15 +243,8 @@ class FirstFinderModelExecution implements ModelExecution {
           ? {}
           : { providerDurationMs: envelope.usage.providerDurationMs }),
         modelTurns: envelope.usage.modelTurns,
-        modelTokens: envelope.usage.models.reduce(
-          (total, model) => ({
-            input: total.input + model.tokens.input,
-            cacheCreation: total.cacheCreation + model.tokens.cacheCreation,
-            cacheRead: total.cacheRead + model.tokens.cacheRead,
-            output: total.output + model.tokens.output,
-            total: total.total + model.tokens.total,
-          }),
-          { input: 0, cacheCreation: 0, cacheRead: 0, output: 0, total: 0 },
+        modelTokens: sumModelTokens(
+          envelope.usage.models.map((model) => model.tokens),
         ),
         structuredOutputBytes: Buffer.byteLength(
           canonicalJson(envelope.output),

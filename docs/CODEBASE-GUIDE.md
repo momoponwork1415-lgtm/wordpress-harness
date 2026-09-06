@@ -333,6 +333,15 @@ ADR 0122以前のHuman Review Packet v1、Human Verification、Findingを元の�
 - **Behavior Test:** [verified artifacts](../tests/infrastructure/verified-artifacts.test.ts)は、digestを詐称するadapter、別内容を返すadapter、検証とparseの順序、schema failureの分離を確認する。
 - **Code:** [verified-artifacts](../src/infrastructure/verified-artifacts.ts)
 
+### Model Attempt usage roll-up
+
+- **Purpose:** Attempt usageの合算は、campaign自身のusage記録、その2つのowner内訳、record層のprogress projection、そしてusage契約自身のaggregate検査で、それぞれ手書きされていた。同じ和を一か所に閉じる。
+- **Interface:** `sumModelTokens(counts) -> ModelTokenCounts`と`rollUpModelAttemptUsage(usages) -> RolledModelUsage`。入力は`Iterable`で、`ModelAttemptUsageFacts`は構造的に宣言する。これによりusage契約が自身の不変条件をこのmoduleの語で述べられ、逆向きの依存を持たない。
+- **Invariants:** token `total`はcategoryから導出し、独立に合算しない。契約が各attemptの`total`を既に強制しているため両者は一致するが、導出は和についても構成的に成立させる。空の集合は明示的な0であり、不在ではない。
+- **Failure semantics:** 「測れたか」はここでは決めない。`attempts` / `reportedAttempts` / `everyAttemptReported` / `everyCostReported`を返すだけで、`measurement`はcallerが決める。campaign自身のusageと、実行途中のrunのprogress projectionは、同じ事実から意図的に異なる`measurement`へ到達する。ここで決めるとどちらかが必ず誤りになる。costの網羅は`measurement`の網羅とは独立に返す。attemptがusageを報告してcostを報告しないことは起こりうる。
+- **Behavior Test:** [model attempt usage](../tests/research/model-attempt-usage.test.ts)は、全次元の合算、空集合の0、totalの導出、報告済みattemptの計数、costと測定の分離、任意のIterableを確認する。
+- **Code:** [model-attempt-usage](../src/research/model-attempt-usage.ts)
+
 ### Shared encoding and execution policy
 
 - statelessな[canonical JSON encoder](../src/infrastructure/canonical-json.ts)を3 Contextで共有する。各Contextの入力検証とdigest Interfaceは維持し、[互換Test](../tests/infrastructure/canonical-json.test.ts)で既存の保存byte列・digest・入力拒否を確認する。共有するのはencodingだけであり、domain schemaやstateのownerは移さない。

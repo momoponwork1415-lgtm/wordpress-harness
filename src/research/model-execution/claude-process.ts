@@ -7,6 +7,7 @@ import { isAbsolute, join } from "node:path";
 import { z } from "zod";
 
 import type { SourceEvidenceGateway } from "../source-mapping/source-evidence-contracts.js";
+import { sumModelTokens } from "../model-attempt-usage.js";
 import { openModelExecution } from "./model-execution.js";
 import {
   openClaudeSourceEvidenceBridge,
@@ -256,11 +257,9 @@ function aggregateClaudeUsage(
       }
       models.set(model.id, {
         canonicalModel: model.canonicalModel,
-        input: (prior?.input ?? 0) + model.tokens.input,
-        cacheCreation: (prior?.cacheCreation ?? 0) + model.tokens.cacheCreation,
-        cacheRead: (prior?.cacheRead ?? 0) + model.tokens.cacheRead,
-        output: (prior?.output ?? 0) + model.tokens.output,
-        total: (prior?.total ?? 0) + model.tokens.total,
+        ...sumModelTokens(
+          prior === undefined ? [model.tokens] : [prior, model.tokens],
+        ),
       });
     }
   }

@@ -15,6 +15,7 @@ import {
 } from "../campaign-progress-contracts.js";
 import { modelAttemptResultV2Schema } from "../model-execution/contracts.js";
 import type { ModelAttemptUsageV2 } from "../model-attempt-usage-contracts.js";
+import { rollUpModelAttemptUsage } from "../model-attempt-usage.js";
 import type { VerificationRecordView } from "../verification/contracts.js";
 import type {
   JsonArtifactStore,
@@ -52,41 +53,23 @@ function aggregateProgressUsage(
   usages: readonly ModelAttemptUsageV2[],
   incomplete: boolean,
 ): CampaignProgressUsage {
-  const modelTokens = usages.reduce(
-    (total, usage) => ({
-      input: total.input + usage.modelTokens.input,
-      cacheCreation: total.cacheCreation + usage.modelTokens.cacheCreation,
-      cacheRead: total.cacheRead + usage.modelTokens.cacheRead,
-      output: total.output + usage.modelTokens.output,
-      total: total.total + usage.modelTokens.total,
-    }),
-    { input: 0, cacheCreation: 0, cacheRead: 0, output: 0, total: 0 },
-  );
+  const rolled = rollUpModelAttemptUsage(usages);
   return {
+    // A run still in flight cannot have complete usage however many of its
+    // Attempts reported, so this projection refuses "reported" while the run
+    // is incomplete. The campaign's own usage record has no such term.
     measurement:
       !incomplete &&
-      usages.length === modelAttempts &&
-      usages.every((usage) => usage.measurement === "reported")
+      rolled.attempts === modelAttempts &&
+      rolled.everyAttemptReported
         ? "reported"
         : "partial",
     modelAttempts,
-    reportedModelAttempts: usages.filter(
-      (usage) => usage.measurement === "reported",
-    ).length,
-    modelTurns: usages.reduce((total, usage) => total + usage.modelTurns, 0),
-    modelTokens,
-    estimatedCostUsd: usages.reduce(
-      (total, usage) => total + (usage.estimatedCostUsd ?? 0),
-      0,
-    ),
-    source: usages.reduce(
-      (total, usage) => ({
-        queries: total.queries + usage.source.queries,
-        scanBytes: total.scanBytes + usage.source.scanBytes,
-        responseBytes: total.responseBytes + usage.source.responseBytes,
-      }),
-      { queries: 0, scanBytes: 0, responseBytes: 0 },
-    ),
+    reportedModelAttempts: rolled.reportedAttempts,
+    modelTurns: rolled.modelTurns,
+    modelTokens: rolled.modelTokens,
+    estimatedCostUsd: rolled.estimatedCostUsd,
+    source: rolled.source,
   };
 }
 

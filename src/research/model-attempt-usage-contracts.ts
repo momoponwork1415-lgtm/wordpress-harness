@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { sumModelTokens } from "./model-attempt-usage.js";
+
 const modelTokenUsageSchema = z
   .strictObject({
     input: z.number().int().nonnegative(),
@@ -46,16 +48,7 @@ export const modelAttemptUsageV2Schema = z
     ),
   })
   .superRefine((usage, context) => {
-    const total = usage.models.reduce(
-      (sum, model) => ({
-        input: sum.input + model.tokens.input,
-        cacheCreation: sum.cacheCreation + model.tokens.cacheCreation,
-        cacheRead: sum.cacheRead + model.tokens.cacheRead,
-        output: sum.output + model.tokens.output,
-        total: sum.total + model.tokens.total,
-      }),
-      { input: 0, cacheCreation: 0, cacheRead: 0, output: 0, total: 0 },
-    );
+    const total = sumModelTokens(usage.models.map((model) => model.tokens));
     for (const key of [
       "input",
       "cacheCreation",
