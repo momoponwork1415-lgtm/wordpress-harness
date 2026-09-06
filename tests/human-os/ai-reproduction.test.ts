@@ -5,16 +5,21 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  aiReproductionHarnessExecutionSchema,
   defineHumanVerificationEnvironmentPolicy,
   defineHumanVerificationRuntimeProfile,
   defineHumanVerificationSetupPlan,
-  openAIReproduction,
+  openAIReproduction as openCurrentAIReproduction,
   setupStageNames,
+} from "../../src/human-os/index.js";
+import {
+  aiReproductionHarnessExecutionSchema,
   type AIReproductionAttempt,
   type AIReproductionClass,
-  type AIReproductionHarness,
-} from "../../src/human-os/index.js";
+} from "../../src/human-os/ai-reproduction-contracts.js";
+import {
+  openLegacyPacketAIReproduction as openAIReproduction,
+  type LegacyPacketAIReproductionHarness as AIReproductionHarness,
+} from "../../src/human-os/legacy-packet-ai-reproduction.js";
 import { humanOsDigest } from "../../src/human-os/canonical-json.js";
 import {
   openFileHumanOsArtifactStore,
@@ -22,6 +27,7 @@ import {
   openSqliteHumanOsRecord,
 } from "../../src/human-os/human-os-record/index.js";
 import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
+import { findingId } from "../../src/research/validation/finding.js";
 import {
   defineRuntimeVerificationPacketDeliveryRequest,
   prepareRuntimeVerificationPacket,
@@ -455,6 +461,7 @@ async function serviceFixture(harness: AIReproductionHarness) {
     packet,
   });
   return {
+    record,
     service,
     packet,
     deliveryRequest,
@@ -468,7 +475,24 @@ async function serviceFixture(harness: AIReproductionHarness) {
   };
 }
 
-describe("AI Reproduction", () => {
+describe("Legacy Packet AI Reproduction", () => {
+  it("keeps legacy Packet events out of the current Finding stream", async () => {
+    const fixture = await serviceFixture({
+      run: async ({ attempt }) => confirmedExecution(attempt),
+    });
+    await fixture.service.run(fixture.runRequest);
+
+    const current = openCurrentAIReproduction({
+      record: fixture.record,
+      privateArtifactStore: fixture.privateArtifactStore,
+      harness: { run: vi.fn() },
+    });
+
+    await expect(
+      current.read(findingId(fixture.packet.candidate.id)),
+    ).resolves.toBeUndefined();
+  });
+
   it("creates a private exact Recipe and a shareable Triage Packet only after runtime confirmation", async () => {
     const run = vi.fn(async ({ attempt }: { attempt: AIReproductionAttempt }) =>
       confirmedExecution(attempt),

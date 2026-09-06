@@ -9,6 +9,8 @@ export type {
   CurrentHumanReviewResultRecordView,
   CurrentHumanReviewScheduleRecordView,
   CurrentHumanReviewStore,
+  FindingAIReproductionRecordView,
+  FindingAIReproductionStore,
   HumanOsArtifactStore,
   HumanOsRecord,
   HumanReviewAdmissionRecordView,

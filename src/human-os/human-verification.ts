@@ -155,6 +155,8 @@ class DefaultHumanVerification implements HumanVerification {
     );
     if (
       environmentRecord === undefined ||
+      environmentRecord.request.kind !==
+        "human-verification-environment-request" ||
       humanOsDigest(environmentRecord.request.packet) !==
         reviewCase.packet.digest
     ) {

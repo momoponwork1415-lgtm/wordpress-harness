@@ -4,13 +4,13 @@ import {
   effectiveEnvironmentConfigurationSchema,
   humanVerificationEnvironmentDispositionSchema,
   humanVerificationEnvironmentRefSchema,
-  humanVerificationEnvironmentRequestSchema,
+  verificationEnvironmentRequestSchema,
   isolationGateObservationSchema,
   setupReceiptSchema,
   setupStageNames,
   targetRuntimeIdentitySchema,
   type HumanVerificationEnvironmentDisposition,
-  type HumanVerificationEnvironmentRequest,
+  type VerificationEnvironmentRequest,
   type HumanVerificationRuntimeProfile,
   type IsolationGateObservation,
   type SetupStageObservation,
@@ -59,8 +59,8 @@ export interface ProvisionedEffectiveConfiguration {
 }
 
 export interface ProvisionedTargetRuntimeIdentity {
-  readonly targetSnapshot: HumanVerificationEnvironmentRequest["target"]["snapshot"];
-  readonly manifest: HumanVerificationEnvironmentRequest["target"]["manifest"];
+  readonly targetSnapshot: VerificationEnvironmentRequest["target"]["snapshot"];
+  readonly manifest: VerificationEnvironmentRequest["target"]["manifest"];
   readonly sourceArtifactDigest: string;
   readonly observedWordpressVersion: string;
   readonly observedPhpVersion: string;
@@ -87,10 +87,10 @@ export type EnvironmentSetupAttempt =
 
 export interface HumanVerificationEnvironmentProvisioner {
   inspectIsolation(
-    request: HumanVerificationEnvironmentRequest,
+    request: VerificationEnvironmentRequest,
   ): Promise<IsolationCapabilityInspection>;
   setup(
-    request: HumanVerificationEnvironmentRequest,
+    request: VerificationEnvironmentRequest,
   ): Promise<EnvironmentSetupAttempt>;
   cleanup(
     environment: ProvisionedEnvironmentHandle,
@@ -99,7 +99,7 @@ export interface HumanVerificationEnvironmentProvisioner {
 
 export interface HumanVerificationEnvironmentBuilder {
   establish(
-    request: HumanVerificationEnvironmentRequest,
+    request: VerificationEnvironmentRequest,
   ): Promise<HumanVerificationEnvironmentDisposition>;
 }
 
@@ -110,7 +110,7 @@ export interface OpenHumanVerificationEnvironmentBuilderOptions {
 }
 
 function expectedEgressDestinations(
-  request: HumanVerificationEnvironmentRequest,
+  request: VerificationEnvironmentRequest,
 ): readonly { readonly hostname: string; readonly port: number }[] {
   return request.grants
     .flatMap((grant) => grant.destinations)
@@ -150,7 +150,7 @@ function projectStageObservations(
 
 function inspectionPasses(
   inspection: IsolationCapabilityInspection,
-  request: HumanVerificationEnvironmentRequest,
+  request: VerificationEnvironmentRequest,
 ): boolean {
   return (
     inspection.status === "available" &&
@@ -193,10 +193,9 @@ class DefaultHumanVerificationEnvironmentBuilder implements HumanVerificationEnv
   }
 
   async establish(
-    requestValue: HumanVerificationEnvironmentRequest,
+    requestValue: VerificationEnvironmentRequest,
   ): Promise<HumanVerificationEnvironmentDisposition> {
-    const request =
-      humanVerificationEnvironmentRequestSchema.parse(requestValue);
+    const request = verificationEnvironmentRequestSchema.parse(requestValue);
     const existing = await this.#record.readEnvironmentDisposition(
       request.digest,
     );
@@ -446,7 +445,7 @@ class DefaultHumanVerificationEnvironmentBuilder implements HumanVerificationEnv
   }
 
   #gate(
-    request: HumanVerificationEnvironmentRequest,
+    request: VerificationEnvironmentRequest,
     inspection: IsolationCapabilityInspection | undefined,
     status: "passed" | "blocked",
   ): IsolationGateObservation {
@@ -471,7 +470,7 @@ class DefaultHumanVerificationEnvironmentBuilder implements HumanVerificationEnv
   }
 
   async #recordBlocked(
-    request: HumanVerificationEnvironmentRequest,
+    request: VerificationEnvironmentRequest,
     gate: IsolationGateObservation,
     input: {
       readonly phase: "isolation-gate" | "setup" | "activation" | "health";

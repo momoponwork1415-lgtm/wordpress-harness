@@ -13,10 +13,10 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Vulnerability Intelligence | Wordfence Intelligence v3のlocal indexとoracle-separated projectionを実装済み | なし（Wordfence-only方針を#102で確定済み） |
 | Semantic Research | v6 initial Wave、Decision@3、conditional Depth実行まで実装済み | Missing-link / Closure |
 | Source-only Validation | v6 single fresh Attempt、4 disposition、source-validated Findingを実装済み | Frontier Gapの次Wave |
-| Runtime handoff | Runtime Verification Packet v2はread-only replay、AI Reproduction intakeは実装済み | Finding handoff（#126 / #129） |
-| AI Reproduction | typed attempt、class別・generic Recipe、private evidence、Triage Packetを実装済み | Finding Verification Recordへ移行（#126） |
+| Runtime handoff | FindingをAI Reproductionへ直接渡すcurrent contract、旧Runtime Verification Packetのread-only replayを実装済み | Human Verification移行（#126 / #129） |
+| AI Reproduction | Finding-bound Attempt、gVisor experiment、private evidence、append-only AI Verification Recordを実装済み | なし |
 | Human Verification | mandatory fresh再実行、二車線Queue、Current Version Review、human-only Finding gateを実装済み | Finding gateをsubmission gateへ移す（#126） |
-| Finding | fresh Independent Validationからimmutable source-validated Findingを生成 | runtime / human Verification Record（#126） |
+| Finding | fresh Independent Validationからimmutable source-validated Findingを生成し、runtime Verification Recordを追記 | human Verification Record（#126） |
 | Understanding / report | 設計とIssue分割まで完了 | grounded explanation、template draft、人間承認、form staging |
 
 現在のResearch production sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / single source Validation -> source-validated Finding + Coverage`である。Findingの存在とCoverage状態は別々にterminal viewへ返す。旧Runtime Verification Packet、Human Review Packet、human-only Findingは元の意味でread-only replay境界に残す。v6 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Missing-link / Closureはlegacy v5に実装済みだがv6へ未接続。
@@ -236,21 +236,20 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 ### AI Reproduction
 
-**Interface:** `AIReproduction.deliver(RuntimeVerificationPacketDeliveryRequest)`、`AIReproduction.run(Packet + Target source + Runtime Profile + Setup Plan + Policy) -> runtime-confirmed | runtime-inconclusive | setup-blocked | execution-failed`
+**Interface:** `AIReproduction.run(Finding + Target source + Runtime Profile + Setup Plan + Policy) -> AI Verification Record`、`AIReproduction.read(findingId)`
 
 - **Purpose:** fresh environmentと実Target interfaceでsource routeを試し、人間が再実行できるRecipeとevidenceを作る。
-- **Owned artifacts:** shareableなIntake、typed Attempt、sanitized Result、Triage Reproduction PacketはHuman OS RecordへCAS-firstで保存する。exact Reproduction RecipeとPrivate Evidence Bundleは専用private storeへ保存し、shareable artifactにはopaque refだけを残す。
-- **Invariants:** AttemptへTarget/version、Manifest、attacker premise、Security Effect、source route、Runtime Profile、Setup Plan、no-ambient-tool policyをbindする。SQLi、XSS等のclassはRecipeのcriterionに使うが、固定Adapter対応をadmission条件にしない。exact payload、request、screenshot、runtime logはPrivate Evidence Bundleへ置く。AI outputはFinding、Human disposition、programme eligibilityを作らない。
-- **Failures:** unsupported mechanism、setup、provider、budget failureをRejectedへ丸めない。runtime-confirmedだけがTriage Reproduction Packetを作る。
-- **Status / Tests:** v2 contract、idempotent intake / execution record、class別・generic Recipe、private file store、Triage gateを実装。Harness seamはfresh gVisor identity、cleanup、harness-mediated browser / HTTP / runtime observation attestationを要求する · [code](../src/human-os/ai-reproduction.ts), [contracts](../src/human-os/ai-reproduction-contracts.ts), [behavior](../tests/human-os/ai-reproduction.test.ts) · [#108](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/108)
-- **Accepted next:** Findingを直接受け取り、runtime outcomeをappend-only Verification Recordとして返す。Triage Packet current writerは移行後にlegacy replayへ閉じる（[#126](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/126)）。
+- **Owned artifacts:** Finding-bound Attemptとappend-only AI Verification Recordを専用current event streamへCAS-firstで保存する。exact Reproduction Recipe、payload、request、screenshot、runtime logは専用private storeへ置き、public recordにはdigest検証済みopaque refだけを残す。
+- **Invariants:** AttemptへFinding、Target/version、Manifest、attacker premise、source route、Runtime Profile、Setup Plan、no-ambient-tool policyをbindする。gVisor AdapterだけがEnvironment Builderのlive sessionでexperimentを実行し、sessionを外へ渡さない。AI outputはFindingを上書きせず、programme eligibilityを作らない。
+- **Failure semantics:** setupは`setup-blocked`、provider / budget / private store / stale ready session / cleanup failureは理由付き`inconclusive`として保持する。`disproved`は前提一致かつRecipe完走後のSecurity Effect非観測だけに限定する。同じAttemptは保存済みRecordを返し、異なるcontentの占有はfail closedにする。
+- **Status / Tests:** Finding-bound current contract、idempotent run / reopen、dedicated SQLite stream、private bytes digest check、Environment Builder + typed gVisor experiment Adapterを実装。旧Runtime Verification Packet / Triage writerはcurrent barrelから外し、[#129](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/129)までdirect legacy moduleと既存decoderを保持する · [code](../src/human-os/ai-reproduction.ts), [gVisor adapter](../src/human-os/gvisor-ai-reproduction-harness.ts), [contracts](../src/human-os/ai-reproduction-contracts.ts), [behavior](../tests/human-os/finding-ai-reproduction.test.ts), [legacy replay](../tests/human-os/ai-reproduction.test.ts) · [#133](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/133)
 
 ### Human Verification Environment
 
 **Interface:** `HumanVerificationEnvironmentBuilder.establish -> ready | setup-blocked`
 
-- **Purpose:** Packetと一致するTargetをfresh disposable environmentへ構築する。
-- **Invariants:** requestへPacket、Target、Runtime Profile、declarative Setup Plan、Policy、grantをdigest固定する。target codeをhost上で実行せず、privileged container、host network、engine socket、ambient credential、許可外egressを使わない。Setup Receipt、gate observation、effective config、Target/runtime identityをCAS-firstで保存した後だけ`ready`を公開する。
+- **Purpose:** Finding（legacy replayではPacket）と一致するTargetをfresh disposable environmentへ構築する。
+- **Invariants:** current requestへFinding ref、Target、Runtime Profile、declarative Setup Plan、Policy、grantをdigest固定する。target codeをhost上で実行せず、privileged container、host network、engine socket、ambient credential、許可外egressを使わない。Setup Receipt、gate observation、effective config、Target/runtime identityをCAS-firstで保存した後だけ`ready`を公開する。
 - **Failure semantics:** isolation不足、setup、activation、health failureは`setup-blocked`として保持する。partial environmentはcleanupし、plain Dockerまたはhost executionへfallbackしない。同じrequest digestは保存済みDispositionをreplayする。
 - **Status / Tests:** Builder、versioned contract、Human OS Record、Packet-bound sourceを実runsc WordPress sessionへ構築するgVisor provisionerを実装。Researchのlegacy Assistantとはsession lifecycleだけを共有する · [builder](../src/human-os/human-verification-environment.ts), [provisioner](../src/human-os/gvisor-wordpress-environment-provisioner.ts), [isolation infrastructure](../src/infrastructure/gvisor-wordpress-session.ts) · [contract tests](../tests/human-os/human-verification-environment.test.ts), [gVisor adapter](../tests/human-os/gvisor-wordpress-environment-provisioner.test.ts)
 

@@ -6,6 +6,12 @@ import {
   runtimeVerificationPacketRefSchema,
   runtimeVerificationPacketSchema,
 } from "../research/validation/runtime-verification-packet.js";
+import {
+  findingRefSchema,
+  findingSchema,
+  referenceFinding,
+  type Finding,
+} from "../research/validation/finding.js";
 import { humanOsDigest } from "./canonical-json.js";
 import {
   externalDependencyGrantSchema,
@@ -720,4 +726,346 @@ export const aiReproductionPrivateSchemas = {
   recipeIdentity: reproductionRecipeIdentitySchema,
   evidenceIdentity: privateEvidenceBundleIdentitySchema,
   triageIdentity: triageReproductionPacketIdentitySchema,
+} as const;
+
+// Current Finding-bound lifecycle. Packet-bound contracts above remain decoder
+// input for legacy replay until #129 removes their writers.
+const findingAIReproductionAttemptIdentitySchema = z
+  .strictObject({
+    kind: z.literal("finding-ai-reproduction-attempt"),
+    schemaVersion: z.literal(1),
+    finding: findingRefSchema,
+    target: humanVerificationTargetSchema,
+    attackerPremise: findingSchema.shape.attackerPremise,
+    brokenSecurityProperty: findingSchema.shape.brokenSecurityProperty,
+    sourceRoute: findingSchema.shape.sourceRoute,
+    runtimeProfile: humanVerificationRuntimeProfileSchema,
+    setupPlan: humanVerificationSetupPlanSchema,
+    environmentPolicy: humanVerificationEnvironmentPolicySchema,
+    grants: z.array(externalDependencyGrantSchema).max(16),
+    toolPolicy: aiReproductionToolPolicySchema,
+  })
+  .superRefine((attempt, context) => {
+    const grantDigests = attempt.grants.map((grant) => grant.digest).sort();
+    const policyGrantDigests =
+      attempt.environmentPolicy.egress.mode === "grant-only"
+        ? [...attempt.environmentPolicy.egress.grantDigests].sort()
+        : [];
+    if (
+      attempt.finding.targetSnapshotDigest !== attempt.target.snapshot.digest ||
+      attempt.finding.manifestDigest !== attempt.target.manifest.digest ||
+      attempt.setupPlan.pluginSlug !== attempt.target.snapshot.pluginSlug ||
+      JSON.stringify(grantDigests) !== JSON.stringify(policyGrantDigests)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Finding AI Reproduction Attempt contains a foreign Target, Setup Plan, or grant binding",
+      });
+    }
+  });
+
+export const findingAIReproductionAttemptSchema =
+  findingAIReproductionAttemptIdentitySchema
+    .extend({ id: digestSchema })
+    .superRefine((attempt, context) => {
+      const { id: _id, ...identity } = attempt;
+      if (attempt.id !== humanOsDigest(identity)) {
+        context.addIssue({
+          code: "custom",
+          path: ["id"],
+          message: "Finding AI Reproduction Attempt ID does not match content",
+        });
+      }
+    });
+
+export const findingAIReproductionAttemptRefSchema = z.strictObject({
+  kind: z.literal("finding-ai-reproduction-attempt"),
+  schemaVersion: z.literal(1),
+  id: digestSchema,
+  digest: digestSchema,
+  findingId: digestSchema,
+  findingDigest: digestSchema,
+  targetSnapshotDigest: digestSchema,
+  manifestDigest: digestSchema,
+  runtimeProfileDigest: digestSchema,
+  setupPlanDigest: digestSchema,
+  toolPolicyDigest: digestSchema,
+});
+
+export const findingAIReproductionRecipeDraftSchema =
+  reproductionRecipeDraftSchema;
+export const findingAIReproductionPrivateEvidenceDraftSchema =
+  privateEvidenceDraftSchema;
+
+const findingAIReproductionExperimentSchema = z.strictObject({
+  runtimeIdentity: aiReproductionRuntimeIdentitySchema,
+  recipe: findingAIReproductionRecipeDraftSchema,
+  privateEvidence: findingAIReproductionPrivateEvidenceDraftSchema,
+});
+
+const findingHarnessBase = {
+  kind: z.literal("finding-ai-reproduction-harness-execution"),
+  schemaVersion: z.literal(1),
+  completedAt: z.string().datetime(),
+} as const;
+
+export const findingAIReproductionHarnessExecutionSchema = z.discriminatedUnion(
+  "status",
+  [
+    z.strictObject({
+      ...findingHarnessBase,
+      ...findingAIReproductionExperimentSchema.shape,
+      status: z.literal("runtime-confirmed"),
+      observation: z.strictObject({
+        securityEffect: z.literal("observed"),
+        description: shareableTextSchema,
+      }),
+      cleanup: z.enum(["completed", "failed"]),
+    }),
+    z.strictObject({
+      ...findingHarnessBase,
+      ...findingAIReproductionExperimentSchema.shape,
+      status: z.literal("disproved"),
+      observation: z.strictObject({
+        securityEffect: z.literal("not-observed"),
+        description: shareableTextSchema,
+      }),
+      preconditionsMatched: z.literal(true),
+      recipeCompleted: z.literal(true),
+      cleanup: z.enum(["completed", "failed"]),
+    }),
+    z.strictObject({
+      ...findingHarnessBase,
+      status: z.literal("inconclusive"),
+      reason: z.enum([
+        "unsupported-mechanism",
+        "effect-unclear",
+        "environment-identity-mismatch",
+        "environment-session-unavailable",
+        "provider-failed",
+        "budget-exhausted",
+        "policy-denied",
+        "harness-failed",
+        "private-evidence-unavailable",
+      ]),
+      description: shareableTextSchema,
+      cleanup: z.enum(["not-required", "completed", "failed"]),
+    }),
+    z.strictObject({
+      ...findingHarnessBase,
+      status: z.literal("setup-blocked"),
+      reason: z.enum([
+        "isolation-unavailable",
+        "policy-violation",
+        "setup-failed",
+        "activation-failed",
+        "health-failed",
+      ]),
+      description: shareableTextSchema,
+      cleanup: z.enum(["not-required", "completed", "failed"]),
+    }),
+  ],
+);
+
+export const aiVerificationOutcomeSchema = z.discriminatedUnion("status", [
+  z.strictObject({
+    status: z.literal("runtime-confirmed"),
+    reason: shareableTextSchema,
+    securityEffect: z.literal("observed"),
+    preconditionsMatched: z.literal(true),
+    recipeCompleted: z.literal(true),
+  }),
+  z.strictObject({
+    status: z.literal("disproved"),
+    reason: shareableTextSchema,
+    securityEffect: z.literal("not-observed"),
+    preconditionsMatched: z.literal(true),
+    recipeCompleted: z.literal(true),
+  }),
+  z.strictObject({
+    status: z.literal("inconclusive"),
+    reason: shareableTextSchema,
+    securityEffect: z.literal("uncertain"),
+    preconditionsMatched: z.boolean(),
+    recipeCompleted: z.boolean(),
+  }),
+  z.strictObject({
+    status: z.literal("setup-blocked"),
+    reason: shareableTextSchema,
+    securityEffect: z.literal("uncertain"),
+    preconditionsMatched: z.literal(false),
+    recipeCompleted: z.literal(false),
+  }),
+]);
+
+const aiVerificationRecordIdentitySchema = z
+  .strictObject({
+    kind: z.literal("ai-verification-record"),
+    schemaVersion: z.literal(1),
+    finding: findingRefSchema,
+    attempt: findingAIReproductionAttemptRefSchema,
+    performedAt: z.string().datetime(),
+    environment: aiReproductionRuntimeIdentitySchema.nullable(),
+    outcome: aiVerificationOutcomeSchema,
+    recipe: humanOsPrivateArtifactRefSchema.nullable(),
+    privateEvidence: humanOsPrivateArtifactRefSchema.nullable(),
+  })
+  .superRefine((record, context) => {
+    if (
+      record.finding.id !== record.attempt.findingId ||
+      record.finding.digest !== record.attempt.findingDigest ||
+      (record.recipe === null) !== (record.privateEvidence === null) ||
+      (record.recipe !== null &&
+        (record.recipe.attemptId !== record.attempt.id ||
+          record.privateEvidence?.attemptId !== record.attempt.id ||
+          record.recipe.targetSnapshotDigest !==
+            record.attempt.targetSnapshotDigest ||
+          record.privateEvidence?.targetSnapshotDigest !==
+            record.attempt.targetSnapshotDigest)) ||
+      ((record.outcome.status === "runtime-confirmed" ||
+        record.outcome.status === "disproved") &&
+        (record.environment === null || record.recipe === null)) ||
+      (record.outcome.status === "setup-blocked" &&
+        (record.environment !== null || record.recipe !== null)) ||
+      (record.outcome.status === "inconclusive" &&
+        (record.environment === null) !== (record.recipe === null)) ||
+      (record.environment === null &&
+        (record.outcome.preconditionsMatched ||
+          record.outcome.recipeCompleted)) ||
+      (record.environment !== null &&
+        (record.environment.targetSnapshotDigest !==
+          record.attempt.targetSnapshotDigest ||
+          record.environment.manifestDigest !== record.attempt.manifestDigest ||
+          record.environment.runtimeProfileDigest !==
+            record.attempt.runtimeProfileDigest ||
+          record.environment.setupPlanDigest !==
+            record.attempt.setupPlanDigest ||
+          record.environment.toolPolicyDigest !==
+            record.attempt.toolPolicyDigest))
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "AI Verification Record binding mismatch",
+      });
+    }
+  });
+
+export const aiVerificationRecordSchema = aiVerificationRecordIdentitySchema
+  .extend({ id: digestSchema })
+  .superRefine((record, context) => {
+    const { id: _id, ...identity } = record;
+    if (record.id !== humanOsDigest(identity)) {
+      context.addIssue({
+        code: "custom",
+        path: ["id"],
+        message: "AI Verification Record ID mismatch",
+      });
+    }
+  });
+
+export type FindingAIReproductionAttempt = z.infer<
+  typeof findingAIReproductionAttemptSchema
+>;
+export type FindingAIReproductionAttemptRef = z.infer<
+  typeof findingAIReproductionAttemptRefSchema
+>;
+export type FindingAIReproductionRuntimeIdentity = z.infer<
+  typeof aiReproductionRuntimeIdentitySchema
+>;
+export type FindingAIReproductionHarnessExecution = z.infer<
+  typeof findingAIReproductionHarnessExecutionSchema
+>;
+export type FindingAIReproductionRecipeDraft = z.infer<
+  typeof findingAIReproductionRecipeDraftSchema
+>;
+export type FindingAIReproductionPrivateEvidenceDraft = z.infer<
+  typeof findingAIReproductionPrivateEvidenceDraftSchema
+>;
+export type FindingAIReproductionPrivateArtifactRef = z.infer<
+  typeof humanOsPrivateArtifactRefSchema
+>;
+export type AIVerificationOutcome = z.infer<typeof aiVerificationOutcomeSchema>;
+export type AIVerificationRecord = z.infer<typeof aiVerificationRecordSchema>;
+
+export function defineFindingAIReproductionAttempt(input: {
+  readonly finding: Finding;
+  readonly target: z.infer<typeof humanVerificationTargetSchema>;
+  readonly runtimeProfile: z.infer<
+    typeof humanVerificationRuntimeProfileSchema
+  >;
+  readonly setupPlan: z.infer<typeof humanVerificationSetupPlanSchema>;
+  readonly environmentPolicy: z.infer<
+    typeof humanVerificationEnvironmentPolicySchema
+  >;
+  readonly grants: readonly z.infer<typeof externalDependencyGrantSchema>[];
+}): FindingAIReproductionAttempt {
+  const finding = findingSchema.parse(input.finding);
+  if (
+    humanOsDigest(finding.target) !== humanOsDigest(input.target.snapshot) ||
+    humanOsDigest(finding.manifest) !== humanOsDigest(input.target.manifest)
+  ) {
+    throw new Error("Finding AI Reproduction Target identity mismatch");
+  }
+  const identity = findingAIReproductionAttemptIdentitySchema.parse({
+    kind: "finding-ai-reproduction-attempt",
+    schemaVersion: 1,
+    finding: referenceFinding(finding),
+    target: input.target,
+    attackerPremise: finding.attackerPremise,
+    brokenSecurityProperty: finding.brokenSecurityProperty,
+    sourceRoute: finding.sourceRoute,
+    runtimeProfile: input.runtimeProfile,
+    setupPlan: input.setupPlan,
+    environmentPolicy: input.environmentPolicy,
+    grants: input.grants,
+    toolPolicy: {
+      kind: "ai-reproduction-tool-policy",
+      schemaVersion: 2,
+      browser: "harness-mediated",
+      http: "harness-mediated",
+      runtimeObservation: "harness-mediated",
+      ambientHostShell: false,
+      ambientCredentials: false,
+      arbitraryNetwork: false,
+    },
+  });
+  return findingAIReproductionAttemptSchema.parse({
+    ...identity,
+    id: humanOsDigest(identity),
+  });
+}
+
+export function referenceFindingAIReproductionAttempt(
+  attemptValue: FindingAIReproductionAttempt,
+): FindingAIReproductionAttemptRef {
+  const attempt = findingAIReproductionAttemptSchema.parse(attemptValue);
+  return findingAIReproductionAttemptRefSchema.parse({
+    kind: attempt.kind,
+    schemaVersion: attempt.schemaVersion,
+    id: attempt.id,
+    digest: humanOsDigest(attempt),
+    findingId: attempt.finding.id,
+    findingDigest: attempt.finding.digest,
+    targetSnapshotDigest: attempt.target.snapshot.digest,
+    manifestDigest: attempt.target.manifest.digest,
+    runtimeProfileDigest: attempt.runtimeProfile.digest,
+    setupPlanDigest: attempt.setupPlan.digest,
+    toolPolicyDigest: humanOsDigest(attempt.toolPolicy),
+  });
+}
+
+export function defineAIVerificationRecord(
+  input: z.input<typeof aiVerificationRecordIdentitySchema>,
+): AIVerificationRecord {
+  const identity = aiVerificationRecordIdentitySchema.parse(input);
+  return aiVerificationRecordSchema.parse({
+    ...identity,
+    id: humanOsDigest(identity),
+  });
+}
+
+export const findingAIReproductionPrivateSchemas = {
+  recipe: reproductionRecipeSchema,
+  evidence: privateEvidenceBundleSchema,
 } as const;

@@ -3,13 +3,18 @@ import { z } from "zod";
 
 import { humanOsDigest } from "../canonical-json.js";
 import {
+  aiVerificationRecordSchema,
   aiReproductionAttemptSchema,
   aiReproductionIntakeSchema,
   aiReproductionResultSchema,
   triageReproductionPacketSchema,
+  findingAIReproductionAttemptSchema,
+  referenceFindingAIReproductionAttempt,
+  type AIVerificationRecord,
   type AIReproductionAttempt,
   type AIReproductionIntake,
   type AIReproductionResult,
+  type FindingAIReproductionAttempt,
 } from "../ai-reproduction-contracts.js";
 import {
   currentHumanReviewCaseSchema,
@@ -23,9 +28,9 @@ import {
 } from "../current-human-review-contracts.js";
 import {
   humanVerificationEnvironmentDispositionSchema,
-  humanVerificationEnvironmentRequestSchema,
+  verificationEnvironmentRequestSchema,
   type HumanVerificationEnvironmentDisposition,
-  type HumanVerificationEnvironmentRequest,
+  type VerificationEnvironmentRequest,
 } from "../human-verification-environment-contracts.js";
 import {
   humanReviewCaseSchema,
@@ -36,6 +41,11 @@ import {
 } from "../human-verification-contracts.js";
 import { humanReviewPacketDeliveryRequestSchema } from "../../research/validation/human-review-packet.js";
 import {
+  findingSchema as researchFindingSchema,
+  referenceFinding,
+  type Finding as ResearchFinding,
+} from "../../research/validation/finding.js";
+import {
   runtimeVerificationPacketDeliveryRequestSchema,
   type RuntimeVerificationPacketDeliveryRequest,
 } from "../../research/validation/runtime-verification-packet.js";
@@ -45,6 +55,7 @@ import type {
   CurrentHumanReviewCaseRecordView,
   CurrentHumanReviewResultRecordView,
   CurrentHumanReviewScheduleRecordView,
+  FindingAIReproductionRecordView,
   HumanOsRecord,
   HumanReviewAdmissionRecordView,
   HumanReproductionPreparationRecordView,
@@ -117,6 +128,18 @@ interface StoredAIReproductionResultRow {
   readonly triage_packet_artifact_digest: string | null;
 }
 
+interface StoredFindingAIReproductionRow {
+  readonly global_sequence: number;
+  readonly finding_id: string;
+  readonly finding_digest: string;
+  readonly attempt_id: string;
+  readonly outcome: string;
+  readonly occurred_at: string;
+  readonly finding_artifact_digest: string;
+  readonly attempt_artifact_digest: string;
+  readonly record_artifact_digest: string;
+}
+
 interface StoredCurrentHumanReviewEventRow {
   readonly global_sequence: number;
   readonly event_id: string;
@@ -130,7 +153,7 @@ interface StoredCurrentHumanReviewEventRow {
 }
 
 function assertDispositionMatchesRequest(
-  request: HumanVerificationEnvironmentRequest,
+  request: VerificationEnvironmentRequest,
   disposition: HumanVerificationEnvironmentDisposition,
 ): void {
   if (
@@ -246,6 +269,19 @@ class SqliteHumanOsRecord implements HumanOsRecord {
       ) STRICT;
       CREATE INDEX IF NOT EXISTS ai_reproduction_events_intake
         ON ai_reproduction_events (intake_id, global_sequence);
+      CREATE TABLE IF NOT EXISTS finding_ai_reproduction_events (
+        global_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        finding_id TEXT NOT NULL,
+        finding_digest TEXT NOT NULL,
+        attempt_id TEXT NOT NULL UNIQUE,
+        outcome TEXT NOT NULL,
+        occurred_at TEXT NOT NULL,
+        finding_artifact_digest TEXT NOT NULL,
+        attempt_artifact_digest TEXT NOT NULL,
+        record_artifact_digest TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS finding_ai_reproduction_finding
+        ON finding_ai_reproduction_events (finding_id, global_sequence);
       CREATE TABLE IF NOT EXISTS human_review_v2_events (
         global_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
         event_id TEXT NOT NULL UNIQUE,
@@ -433,6 +469,134 @@ class SqliteHumanOsRecord implements HumanOsRecord {
     return {
       status: recorded.status,
       view: await this.#decodeAIResult(recorded.row),
+    };
+  }
+
+  async readFindingAIReproductionByAttempt(
+    attemptIdValue: string,
+  ): Promise<FindingAIReproductionRecordView | undefined> {
+    const attemptId = digestSchema.parse(attemptIdValue);
+    const row = this.#selectFindingAIReproduction("attempt_id = ?", attemptId);
+    return row === undefined
+      ? undefined
+      : this.#decodeFindingAIReproduction(row);
+  }
+
+  async listFindingAIReproduction(
+    findingIdValue: string,
+  ): Promise<readonly FindingAIReproductionRecordView[]> {
+    const findingId = digestSchema.parse(findingIdValue);
+    const rows = this.#database
+      .prepare(
+        `SELECT global_sequence, finding_id, finding_digest, attempt_id,
+                outcome, occurred_at, finding_artifact_digest,
+                attempt_artifact_digest, record_artifact_digest
+           FROM finding_ai_reproduction_events
+          WHERE finding_id = ?
+          ORDER BY global_sequence`,
+      )
+      .all(findingId) as StoredFindingAIReproductionRow[];
+    return Promise.all(
+      rows.map((row) => this.#decodeFindingAIReproduction(row)),
+    );
+  }
+
+  async recordFindingAIReproduction(
+    findingValue: ResearchFinding,
+    attemptValue: FindingAIReproductionAttempt,
+    recordValue: AIVerificationRecord,
+  ): Promise<{
+    readonly status: "appended" | "occupied";
+    readonly view: FindingAIReproductionRecordView;
+  }> {
+    const finding = researchFindingSchema.parse(findingValue);
+    const attempt = findingAIReproductionAttemptSchema.parse(attemptValue);
+    const record = aiVerificationRecordSchema.parse(recordValue);
+    const findingRef = referenceFinding(finding);
+    if (
+      attempt.finding.id !== finding.id ||
+      attempt.finding.digest !== findingRef.digest ||
+      humanOsDigest(attempt.target.snapshot) !==
+        humanOsDigest(finding.target) ||
+      humanOsDigest(attempt.target.manifest) !==
+        humanOsDigest(finding.manifest) ||
+      record.finding.id !== finding.id ||
+      record.finding.digest !== findingRef.digest ||
+      humanOsDigest(record.attempt) !==
+        humanOsDigest(referenceFindingAIReproductionAttempt(attempt))
+    ) {
+      throw new Error("AI Verification Record belongs to another Finding");
+    }
+    const [findingArtifactDigest, attemptArtifactDigest, recordArtifactDigest] =
+      await Promise.all([
+        this.#artifactStore.putJson(finding),
+        this.#artifactStore.putJson(attempt),
+        this.#artifactStore.putJson(record),
+      ]);
+    if (
+      findingArtifactDigest !== findingRef.digest ||
+      attemptArtifactDigest !== humanOsDigest(attempt) ||
+      recordArtifactDigest !== humanOsDigest(record)
+    ) {
+      throw new Error("Human OS Artifact Store returned a foreign digest");
+    }
+    const transact = this.#database.transaction(() => {
+      const existing = this.#selectFindingAIReproduction(
+        "attempt_id = ?",
+        attempt.id,
+      );
+      if (existing !== undefined) {
+        if (
+          existing.finding_artifact_digest !== findingArtifactDigest ||
+          existing.attempt_artifact_digest !== attemptArtifactDigest ||
+          existing.record_artifact_digest !== recordArtifactDigest
+        ) {
+          throw new Error("Finding AI Reproduction Attempt conflict");
+        }
+        return { status: "occupied" as const, row: existing };
+      }
+      const prior = this.#selectFindingAIReproduction(
+        "finding_id = ?",
+        finding.id,
+      );
+      if (
+        prior !== undefined &&
+        prior.finding_digest !== findingArtifactDigest
+      ) {
+        throw new Error("AI Reproduction cannot overwrite its Finding");
+      }
+      const occurredAt = this.#clock().toISOString();
+      this.#database
+        .prepare(
+          `INSERT INTO finding_ai_reproduction_events (
+             finding_id, finding_digest, attempt_id, outcome, occurred_at,
+             finding_artifact_digest, attempt_artifact_digest,
+             record_artifact_digest
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          finding.id,
+          findingArtifactDigest,
+          attempt.id,
+          record.outcome.status,
+          occurredAt,
+          findingArtifactDigest,
+          attemptArtifactDigest,
+          recordArtifactDigest,
+        );
+      const row = this.#selectFindingAIReproduction(
+        "attempt_id = ?",
+        attempt.id,
+      );
+      if (row === undefined) {
+        throw new Error("Finding AI Reproduction append failed");
+      }
+      return { status: "appended" as const, row };
+    });
+    const recorded = transact();
+    return {
+      status: recorded.status,
+      view: await this.#decodeFindingAIReproduction(recorded.row),
     };
   }
 
@@ -661,11 +825,10 @@ class SqliteHumanOsRecord implements HumanOsRecord {
   }
 
   async recordEnvironmentDisposition(
-    requestValue: HumanVerificationEnvironmentRequest,
+    requestValue: VerificationEnvironmentRequest,
     dispositionValue: HumanVerificationEnvironmentDisposition,
   ): Promise<RecordEnvironmentDispositionResult> {
-    const request =
-      humanVerificationEnvironmentRequestSchema.parse(requestValue);
+    const request = verificationEnvironmentRequestSchema.parse(requestValue);
     const disposition =
       humanVerificationEnvironmentDispositionSchema.parse(dispositionValue);
     assertDispositionMatchesRequest(request, disposition);
@@ -1274,6 +1437,64 @@ class SqliteHumanOsRecord implements HumanOsRecord {
     };
   }
 
+  #selectFindingAIReproduction(
+    predicate: "attempt_id = ?" | "finding_id = ?",
+    value: string,
+  ): StoredFindingAIReproductionRow | undefined {
+    return this.#database
+      .prepare(
+        `SELECT global_sequence, finding_id, finding_digest, attempt_id,
+                outcome, occurred_at, finding_artifact_digest,
+                attempt_artifact_digest, record_artifact_digest
+           FROM finding_ai_reproduction_events
+          WHERE ${predicate}
+          ORDER BY global_sequence
+          LIMIT 1`,
+      )
+      .get(value) as StoredFindingAIReproductionRow | undefined;
+  }
+
+  async #decodeFindingAIReproduction(
+    row: StoredFindingAIReproductionRow,
+  ): Promise<FindingAIReproductionRecordView> {
+    const [findingValue, attemptValue, recordValue] = await Promise.all([
+      this.#artifactStore.readJson(row.finding_artifact_digest),
+      this.#artifactStore.readJson(row.attempt_artifact_digest),
+      this.#artifactStore.readJson(row.record_artifact_digest),
+    ]);
+    const finding = researchFindingSchema.parse(findingValue);
+    const attempt = findingAIReproductionAttemptSchema.parse(attemptValue);
+    const record = aiVerificationRecordSchema.parse(recordValue);
+    if (
+      humanOsDigest(finding) !== row.finding_artifact_digest ||
+      humanOsDigest(attempt) !== row.attempt_artifact_digest ||
+      humanOsDigest(record) !== row.record_artifact_digest ||
+      finding.id !== row.finding_id ||
+      row.finding_digest !== row.finding_artifact_digest ||
+      attempt.id !== row.attempt_id ||
+      attempt.finding.id !== finding.id ||
+      attempt.finding.digest !== row.finding_digest ||
+      record.finding.id !== finding.id ||
+      record.finding.digest !== row.finding_digest ||
+      record.attempt.id !== attempt.id ||
+      humanOsDigest(record.attempt) !==
+        humanOsDigest(referenceFindingAIReproductionAttempt(attempt)) ||
+      record.outcome.status !== row.outcome
+    ) {
+      throw new Error("Finding AI Reproduction artifact integrity mismatch");
+    }
+    return {
+      ledgerHead: row.global_sequence,
+      occurredAt: row.occurred_at,
+      findingArtifactDigest: row.finding_artifact_digest,
+      attemptArtifactDigest: row.attempt_artifact_digest,
+      recordArtifactDigest: row.record_artifact_digest,
+      finding,
+      attempt,
+      record,
+    };
+  }
+
   #selectAdmission(
     predicate:
       "delivery_request_digest = ?" | "packet_digest = ?" | "case_id = ?",
@@ -1422,8 +1643,7 @@ class SqliteHumanOsRecord implements HumanOsRecord {
     const dispositionValue = await this.#artifactStore.readJson(
       row.disposition_artifact_digest,
     );
-    const request =
-      humanVerificationEnvironmentRequestSchema.parse(requestValue);
+    const request = verificationEnvironmentRequestSchema.parse(requestValue);
     const disposition =
       humanVerificationEnvironmentDispositionSchema.parse(dispositionValue);
     if (

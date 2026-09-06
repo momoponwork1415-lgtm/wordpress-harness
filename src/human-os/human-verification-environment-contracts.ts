@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { findingSchema, type Finding } from "../research/validation/finding.js";
 import {
   humanReviewPacketSchema,
   type HumanReviewPacket,
@@ -234,20 +235,32 @@ export const externalDependencyGrantSchema =
       }
     });
 
-export const humanVerificationTargetSchema = z.strictObject({
-  kind: z.literal("human-verification-target"),
-  schemaVersion: z.literal(1),
-  snapshot: humanReviewPacketSchema.shape.target,
-  manifest: humanReviewPacketSchema.shape.manifest,
-  sourceArtifact: z.strictObject({
-    kind: z.literal("content-addressed-target-source"),
-    mediaType: z.enum([
-      "application/zip",
-      "application/vnd.wordpress.source-tree+json",
-    ]),
-    digest: digestSchema,
-  }),
-});
+export const humanVerificationTargetSchema = z
+  .strictObject({
+    kind: z.literal("human-verification-target"),
+    schemaVersion: z.literal(1),
+    snapshot: humanReviewPacketSchema.shape.target,
+    manifest: humanReviewPacketSchema.shape.manifest,
+    sourceArtifact: z.strictObject({
+      kind: z.literal("content-addressed-target-source"),
+      mediaType: z.enum([
+        "application/zip",
+        "application/vnd.wordpress.source-tree+json",
+      ]),
+      digest: digestSchema,
+    }),
+  })
+  .superRefine((target, context) => {
+    if (
+      target.manifest.targetSnapshotId !== target.snapshot.id ||
+      target.manifest.targetSnapshotDigest !== target.snapshot.digest
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Human Verification Target manifest does not own its snapshot",
+      });
+    }
+  });
 
 const environmentRequestIdentitySchema = z
   .strictObject({
@@ -304,6 +317,70 @@ export const humanVerificationEnvironmentRequestSchema =
         });
       }
     });
+
+const findingVerificationEnvironmentRequestIdentitySchema = z
+  .strictObject({
+    kind: z.literal("finding-verification-environment-request"),
+    schemaVersion: z.literal(1),
+    finding: findingSchema,
+    target: humanVerificationTargetSchema,
+    runtimeProfile: humanVerificationRuntimeProfileSchema,
+    setupPlan: humanVerificationSetupPlanSchema,
+    policy: humanVerificationEnvironmentPolicySchema,
+    grants: z.array(externalDependencyGrantSchema).max(16),
+  })
+  .superRefine((request, context) => {
+    const grantDigests = request.grants.map((grant) => grant.digest).sort();
+    const policyGrantDigests =
+      request.policy.egress.mode === "grant-only"
+        ? [...request.policy.egress.grantDigests].sort()
+        : [];
+    if (
+      request.finding.target.id !== request.target.snapshot.id ||
+      request.finding.target.pluginSlug !==
+        request.target.snapshot.pluginSlug ||
+      request.finding.target.version !== request.target.snapshot.version ||
+      request.finding.target.digest !== request.target.snapshot.digest ||
+      request.finding.manifest.targetSnapshotId !==
+        request.target.manifest.targetSnapshotId ||
+      request.finding.manifest.targetSnapshotDigest !==
+        request.target.manifest.targetSnapshotDigest ||
+      request.finding.manifest.digest !== request.target.manifest.digest ||
+      request.setupPlan.pluginSlug !== request.target.snapshot.pluginSlug
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Environment Request does not match the Finding-bound Target",
+      });
+    }
+    if (JSON.stringify(grantDigests) !== JSON.stringify(policyGrantDigests)) {
+      context.addIssue({
+        code: "custom",
+        path: ["grants"],
+        message:
+          "Environment Request grants must exactly match Environment Policy",
+      });
+    }
+  });
+
+export const findingVerificationEnvironmentRequestSchema =
+  findingVerificationEnvironmentRequestIdentitySchema
+    .extend({ digest: digestSchema })
+    .superRefine((request, context) => {
+      const { digest: _digest, ...identity } = request;
+      if (request.digest !== humanOsDigest(identity)) {
+        context.addIssue({
+          code: "custom",
+          path: ["digest"],
+          message: "Finding Environment Request digest does not match identity",
+        });
+      }
+    });
+
+export const verificationEnvironmentRequestSchema = z.union([
+  findingVerificationEnvironmentRequestSchema,
+  humanVerificationEnvironmentRequestSchema,
+]);
 
 const stageObservationSchema = z.strictObject({
   ordinal: z.number().int().positive(),
@@ -541,6 +618,12 @@ export type HumanVerificationTarget = z.infer<
 export type HumanVerificationEnvironmentRequest = z.infer<
   typeof humanVerificationEnvironmentRequestSchema
 >;
+export type FindingVerificationEnvironmentRequest = z.infer<
+  typeof findingVerificationEnvironmentRequestSchema
+>;
+export type VerificationEnvironmentRequest = z.infer<
+  typeof verificationEnvironmentRequestSchema
+>;
 export type IsolationGateObservation = z.infer<
   typeof isolationGateObservationSchema
 >;
@@ -621,6 +704,25 @@ export function defineHumanVerificationEnvironmentRequest(input: {
     ...input,
   });
   return humanVerificationEnvironmentRequestSchema.parse({
+    ...identity,
+    digest: humanOsDigest(identity),
+  });
+}
+
+export function defineFindingVerificationEnvironmentRequest(input: {
+  readonly finding: Finding;
+  readonly target: HumanVerificationTarget;
+  readonly runtimeProfile: HumanVerificationRuntimeProfile;
+  readonly setupPlan: HumanVerificationSetupPlan;
+  readonly policy: HumanVerificationEnvironmentPolicy;
+  readonly grants: readonly ExternalDependencyGrant[];
+}): FindingVerificationEnvironmentRequest {
+  const identity = findingVerificationEnvironmentRequestIdentitySchema.parse({
+    kind: "finding-verification-environment-request",
+    schemaVersion: 1,
+    ...input,
+  });
+  return findingVerificationEnvironmentRequestSchema.parse({
     ...identity,
     digest: humanOsDigest(identity),
   });
