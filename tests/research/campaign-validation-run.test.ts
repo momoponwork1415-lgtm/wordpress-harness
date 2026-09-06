@@ -225,7 +225,6 @@ describe("CampaignRunner.run source-only Validation", () => {
     let validatorReportedTokens: number | undefined;
     let finderReportedTokens: readonly number[] | undefined;
     let finderReportedTokenIndex = 0;
-    let failInitialRootAfterAdmission = false;
     let reverseValidationEvidence = false;
     let injectUnknownValidatorResult = false;
     let firstFindingId: string | undefined;
@@ -385,12 +384,6 @@ describe("CampaignRunner.run source-only Validation", () => {
           });
         }
         if (plan.role === "root-evaluator") {
-          if (
-            failInitialRootAfterAdmission &&
-            plan.assignment.kind === "wave-evaluation"
-          ) {
-            return failedResult(plan, "budget-exhausted");
-          }
           const prefix = "Wave evaluation context: ";
           const line = plan.prompt
             .split("\n")
@@ -2183,7 +2176,6 @@ describe("CampaignRunner.run source-only Validation", () => {
       validatorReportedTokens = undefined;
       validationDisposition = "source-validated";
       depthFailure = "none";
-      failInitialRootAfterAdmission = false;
       reverseValidationEvidence = true;
       candidateIdentitySuffix = "-measured-root-reserve";
       const measuredPlan = campaignDefaultSemanticRunPlanV3Schema.parse({
