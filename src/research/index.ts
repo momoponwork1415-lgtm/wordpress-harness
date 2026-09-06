@@ -118,6 +118,7 @@ export {
   defineCurrentSemanticRootPlanningPolicy,
   semanticResearchBudgetPolicySchema,
   semanticResearchBudgetPolicyV6Schema,
+  semanticResearchBudgetPolicyV7Schema,
   semanticCampaignUsageSchema,
   semanticDepthResearchSchema,
   currentSemanticDepthResearchSchema,
@@ -127,6 +128,7 @@ export {
   iterationDecisionSchema,
 } from "./campaign-control/contracts.js";
 export type { CurrentSemanticRootPlanningPolicyInput } from "./campaign-control/contracts.js";
+export { bindCurrentSemanticCampaignConfiguration } from "./campaign-control/current-semantic-campaign-bindings.js";
 export {
   approachFamilyRefSchema,
   approachFamilyRegistryRefSchema,

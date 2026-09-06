@@ -559,6 +559,45 @@ export const semanticResearchBudgetPolicyV6Schema = z.strictObject({
   }),
 });
 
+export const semanticResearchBudgetPolicyV7Schema = z.strictObject({
+  kind: z.literal("semantic-research-budget"),
+  schemaVersion: z.literal(3),
+  id: z.literal("semantic-research-recall-baseline-v7"),
+  maxWorkWaves: z.literal(12),
+  maxFinderAttempts: z.literal(48),
+  maxConcurrentFinders: z.literal(4),
+  maxModelAttempts: z.literal(128),
+  maxModelTokens: z.literal(4_600_000),
+  maxProviderCostUsd: z.literal(150),
+  maxWallTimeMs: z.literal(43_200_000),
+  reportedUsageEnforcement: z.literal("telemetry-only"),
+  exploration: z.strictObject({
+    maxModelTokens: z.literal(4_200_000),
+    maxProviderCostUsd: z.literal(120),
+    maxWallTimeMs: z.literal(36_000_000),
+    rootEvaluationReserve: z.strictObject({
+      maxModelTokens: z.literal(100_000),
+      owner: z.literal("exploration"),
+      role: z.literal("root-evaluator"),
+    }),
+  }),
+  validationReserve: z.strictObject({
+    maxModelTokens: z.literal(400_000),
+    maxProviderCostUsd: z.literal(30),
+    maxWallTimeMs: z.literal(7_200_000),
+  }),
+});
+
+type SemanticResearchBudgetPolicyV3 =
+  | z.infer<typeof semanticResearchBudgetPolicyV6Schema>
+  | z.infer<typeof semanticResearchBudgetPolicyV7Schema>;
+
+export function isCurrentSemanticResearchBudgetPolicy(
+  policy: SemanticResearchBudgetPolicyV3,
+): policy is z.infer<typeof semanticResearchBudgetPolicyV7Schema> {
+  return policy.id === "semantic-research-recall-baseline-v7";
+}
+
 export const semanticResearchBudgetPolicySchema = z.union([
   semanticResearchBudgetPolicyV5Schema,
   semanticResearchBudgetPolicyV4Schema,
@@ -647,7 +686,7 @@ export const campaignDefaultSemanticRunPlanV2Schema = z.strictObject({
   budgetPolicy: semanticResearchBudgetPolicySchema,
 });
 
-export const campaignDefaultSemanticRunPlanV3Schema = z.strictObject({
+const campaignDefaultSemanticRunPlanV3Fields = {
   kind: z.literal("campaign-run-plan"),
   schemaVersion: z.literal(3),
   runId: identifierSchema,
@@ -671,8 +710,62 @@ export const campaignDefaultSemanticRunPlanV3Schema = z.strictObject({
     currentValidationConfigurationSchema,
     legacyValidationConfigurationSchema,
   ]),
+} as const;
+
+const campaignDefaultSemanticRunPlanV3LegacySchema = z.strictObject({
+  ...campaignDefaultSemanticRunPlanV3Fields,
   budgetPolicy: semanticResearchBudgetPolicyV6Schema,
 });
+
+export const currentSemanticCampaignBindingsSchema = z.strictObject({
+  kind: z.literal("current-semantic-campaign-bindings"),
+  schemaVersion: z.literal(1),
+  semanticPolicyDigest: digestSchema,
+  modelProfiles: z.strictObject({
+    planner: z.strictObject({
+      id: identifierSchema,
+      refDigest: digestSchema,
+      configurationDigest: digestSchema,
+    }),
+    finder: z.strictObject({
+      id: identifierSchema,
+      refDigest: digestSchema,
+      configurationDigest: digestSchema,
+    }),
+    evaluator: z.strictObject({
+      id: identifierSchema,
+      refDigest: digestSchema,
+      configurationDigest: digestSchema,
+    }),
+    validator: z.strictObject({
+      id: identifierSchema,
+      refDigest: digestSchema,
+      configurationDigest: digestSchema,
+    }),
+  }),
+  promptSet: z.strictObject({ id: identifierSchema, digest: digestSchema }),
+  sourceToolPolicy: z.strictObject({
+    id: identifierSchema,
+    digest: digestSchema,
+  }),
+  finderSelectedKnowledgeDigest: digestSchema,
+  validationPolicy: z.strictObject({
+    id: identifierSchema,
+    digest: digestSchema,
+  }),
+  validationScopeDigest: digestSchema,
+});
+
+const campaignDefaultSemanticRunPlanV3CurrentSchema = z.strictObject({
+  ...campaignDefaultSemanticRunPlanV3Fields,
+  bindings: currentSemanticCampaignBindingsSchema,
+  budgetPolicy: semanticResearchBudgetPolicyV7Schema,
+});
+
+export const campaignDefaultSemanticRunPlanV3Schema = z.union([
+  campaignDefaultSemanticRunPlanV3CurrentSchema,
+  campaignDefaultSemanticRunPlanV3LegacySchema,
+]);
 
 export const campaignRunPlanV3Schema = campaignDefaultSemanticRunPlanV3Schema;
 
@@ -712,6 +805,7 @@ export const campaignAttemptIntentV2Schema = z.discriminatedUnion("role", [
     schemaVersion: z.literal(2),
     ...semanticCampaignAttemptIdentityFields,
     role: z.literal("root-evaluator"),
+    rootEvaluationReservationId: identifierSchema.optional(),
     workWaveDigest: digestSchema.optional(),
     terminalDigest: digestSchema.optional(),
     registryDigest: digestSchema.optional(),
@@ -882,6 +976,46 @@ export const campaignAttemptBudgetReservationSchema = z.strictObject({
   amount: campaignBudgetAmountSchema,
 });
 
+export const campaignRootEvaluationBudgetReservationSchema = z.strictObject({
+  kind: z.literal("campaign-root-evaluation-budget-reservation"),
+  schemaVersion: z.literal(1),
+  campaignId: identifierSchema,
+  runId: identifierSchema,
+  reservationId: identifierSchema,
+  owner: z.literal("exploration"),
+  role: z.literal("root-evaluator"),
+  amount: campaignBudgetAmountSchema,
+  bindings: z.strictObject({
+    budgetPolicy: z.strictObject({
+      id: identifierSchema,
+      digest: digestSchema,
+    }),
+    semanticPolicy: z.strictObject({
+      id: identifierSchema,
+      digest: digestSchema,
+    }),
+    modelProfile: z.strictObject({
+      id: identifierSchema,
+      refDigest: digestSchema,
+      configurationDigest: digestSchema,
+    }),
+    promptSet: z.strictObject({ id: identifierSchema, digest: digestSchema }),
+    evaluatorBudgetDigest: digestSchema,
+  }),
+});
+
+export const campaignRootEvaluationBudgetClaimSchema = z.strictObject({
+  kind: z.literal("campaign-root-evaluation-budget-claim"),
+  schemaVersion: z.literal(1),
+  campaignId: identifierSchema,
+  runId: identifierSchema,
+  reservationId: identifierSchema,
+  attemptId: identifierSchema,
+  attemptPlanDigest: digestSchema,
+  owner: z.literal("exploration"),
+  role: z.literal("root-evaluator"),
+});
+
 const campaignBudgetUnknownDimensionSchema = z.enum([
   "model-wall-time",
   "model-turns",
@@ -914,9 +1048,8 @@ const campaignBudgetOwnerViewSchema = z.strictObject({
   remaining: campaignBudgetOwnerLimitedAmountSchema,
 });
 
-export const campaignBudgetViewSchema = z.strictObject({
+const campaignBudgetViewFields = {
   kind: z.literal("budget"),
-  schemaVersion: z.literal(1),
   campaignId: identifierSchema,
   runId: identifierSchema,
   ledgerHead: z.number().int().positive(),
@@ -942,7 +1075,23 @@ export const campaignBudgetViewSchema = z.strictObject({
   }),
   unknownUsageAttemptIds: z.array(identifierSchema),
   overshoot: campaignBudgetLimitedAmountSchema.omit({ modelAttempts: true }),
+} as const;
+
+const campaignBudgetViewV1Schema = z.strictObject({
+  ...campaignBudgetViewFields,
+  schemaVersion: z.literal(1),
 });
+
+const campaignBudgetViewV2Schema = z.strictObject({
+  ...campaignBudgetViewFields,
+  schemaVersion: z.literal(2),
+  protectedReservations: z.array(campaignRootEvaluationBudgetReservationSchema),
+});
+
+export const campaignBudgetViewSchema = z.union([
+  campaignBudgetViewV2Schema,
+  campaignBudgetViewV1Schema,
+]);
 
 const semanticCampaignRunIdentityFields = {
   runId: identifierSchema,
@@ -1566,6 +1715,12 @@ export type CampaignBudgetAmount = z.infer<typeof campaignBudgetAmountSchema>;
 export type CampaignAttemptBudgetReservation = z.infer<
   typeof campaignAttemptBudgetReservationSchema
 >;
+export type CampaignRootEvaluationBudgetReservation = z.infer<
+  typeof campaignRootEvaluationBudgetReservationSchema
+>;
+export type CampaignRootEvaluationBudgetClaim = z.infer<
+  typeof campaignRootEvaluationBudgetClaimSchema
+>;
 export type CampaignAttemptBudgetSettlement = z.infer<
   typeof campaignAttemptBudgetSettlementSchema
 >;
@@ -1664,6 +1819,9 @@ export interface CampaignExecutionDependencies {
   readonly modelExecution: ModelExecution;
   readonly independentVerifier: IndependentVerifier;
   readonly labControl: LabControl;
+  readonly campaignRunStartFaultBoundary?: {
+    afterStarted(plan: DefaultSemanticCampaignRunPlanV3): void | Promise<void>;
+  };
   readonly validationAttemptFaultBoundary?: {
     afterResultStored(
       intent: Extract<CampaignAttemptIntentV2, { role: "validator" }>,
@@ -1709,7 +1867,7 @@ export class LegacySemanticExecutionDisabledError extends Error {
 export class RetiredSemanticBudgetPolicyError extends Error {
   constructor() {
     super(
-      "Semantic Research budget policy is retired; use semantic-research-recall-baseline-v5 for new Campaigns",
+      "Semantic Research budget policy is retired; use semantic-research-recall-baseline-v7 for new Campaigns",
     );
     this.name = "RetiredSemanticBudgetPolicyError";
   }
