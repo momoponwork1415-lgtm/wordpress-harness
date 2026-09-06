@@ -557,6 +557,32 @@ describe("AIReproduction.run/read", () => {
     expect(cleanupFailure.recipe).not.toBeNull();
     expect(cleanupFailure.privateEvidence).not.toBeNull();
 
+    // An unobserved teardown downgrades exactly as an observed failure does,
+    // under its own reason: the record must not assert a disposable
+    // environment nobody watched go away.
+    const unverifiedState = await fixture();
+    const unverifiedScreenshot =
+      await unverifiedState.privateStore.putPrivateBytes(
+        new TextEncoder().encode("cleanup-unverified screenshot bytes"),
+      );
+    const cleanupUnverified = await openAIReproduction({
+      record: unverifiedState.record,
+      privateArtifactStore: unverifiedState.privateStore,
+      harness: {
+        run: async ({ attempt }) => ({
+          ...experiment(attempt, unverifiedScreenshot),
+          cleanup: "unverified" as const,
+        }),
+      },
+    }).run(request);
+    expect(cleanupUnverified.outcome.status).toBe("inconclusive");
+    expect(cleanupUnverified.outcome).toMatchObject({
+      reasonCode: "cleanup-unverified",
+      preconditionsMatched: true,
+      recipeCompleted: true,
+    });
+    expect(cleanupUnverified.outcome.reason).toContain("could not be observed");
+
     const missingState = await fixture();
     const inconclusive = await openAIReproduction({
       record: missingState.record,

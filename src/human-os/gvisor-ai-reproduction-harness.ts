@@ -144,11 +144,14 @@ class GvisorAIReproductionHarness implements AIReproductionHarness {
     });
   }
 
-  async #cleanup(environmentId: string): Promise<"completed" | "failed"> {
+  async #cleanup(
+    environmentId: string,
+  ): Promise<"completed" | "failed" | "unverified"> {
     try {
       return await this.#options.provisioner.cleanup({ environmentId });
     } catch {
-      return "failed";
+      // Nothing was observed, so the unknown is reported as itself.
+      return "unverified";
     }
   }
 
@@ -158,7 +161,7 @@ class GvisorAIReproductionHarness implements AIReproductionHarness {
       { readonly status: "inconclusive" }
     >["reason"],
     description: string,
-    cleanup: "not-required" | "completed" | "failed",
+    cleanup: "not-required" | "completed" | "failed" | "unverified",
   ): FindingAIReproductionHarnessExecution {
     return findingAIReproductionHarnessExecutionSchema.parse({
       kind: "finding-ai-reproduction-harness-execution",

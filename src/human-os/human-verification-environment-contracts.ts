@@ -451,7 +451,7 @@ export const setupReceiptSchema = z
       ...setupReceiptBase,
       status: z.literal("setup-blocked"),
       environmentId: z.null(),
-      cleanup: z.enum(["not-required", "completed", "failed"]),
+      cleanup: z.enum(["not-required", "completed", "failed", "unverified"]),
     }),
   ])
   .superRefine((receipt, context) => {

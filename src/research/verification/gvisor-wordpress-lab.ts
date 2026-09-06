@@ -190,8 +190,8 @@ export async function runFreshGvisorWordPressLab(
         image: options.images.worker,
         ...options.worker,
       });
-      const cleaned = await session.dispose();
-      if (!cleaned) throw new LabCommandFailedError();
+      const teardown = await session.dispose();
+      if (teardown.status !== "cleaned") throw new LabCommandFailedError();
       return { labId: session.labId, stdout };
     } catch (error) {
       if (session !== undefined) await session.dispose();

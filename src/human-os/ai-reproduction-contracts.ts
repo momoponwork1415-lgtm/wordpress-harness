@@ -833,6 +833,7 @@ export const findingAIReproductionSetupBlockedReasonSchema = z.enum([
 const aiVerificationInconclusiveReasonSchema = z.enum([
   ...findingAIReproductionInconclusiveReasonSchema.options,
   "cleanup-failed",
+  "cleanup-unverified",
   "private-evidence-mismatch",
   "private-evidence-store-failed",
 ]);
@@ -848,7 +849,7 @@ export const findingAIReproductionHarnessExecutionSchema = z.discriminatedUnion(
         securityEffect: z.literal("observed"),
         description: shareableTextSchema,
       }),
-      cleanup: z.enum(["completed", "failed"]),
+      cleanup: z.enum(["completed", "failed", "unverified"]),
     }),
     z.strictObject({
       ...findingHarnessBase,
@@ -860,21 +861,21 @@ export const findingAIReproductionHarnessExecutionSchema = z.discriminatedUnion(
       }),
       preconditionsMatched: z.literal(true),
       recipeCompleted: z.literal(true),
-      cleanup: z.enum(["completed", "failed"]),
+      cleanup: z.enum(["completed", "failed", "unverified"]),
     }),
     z.strictObject({
       ...findingHarnessBase,
       status: z.literal("inconclusive"),
       reason: findingAIReproductionInconclusiveReasonSchema,
       description: shareableTextSchema,
-      cleanup: z.enum(["not-required", "completed", "failed"]),
+      cleanup: z.enum(["not-required", "completed", "failed", "unverified"]),
     }),
     z.strictObject({
       ...findingHarnessBase,
       status: z.literal("setup-blocked"),
       reason: findingAIReproductionSetupBlockedReasonSchema,
       description: shareableTextSchema,
-      cleanup: z.enum(["not-required", "completed", "failed"]),
+      cleanup: z.enum(["not-required", "completed", "failed", "unverified"]),
     }),
   ],
 );

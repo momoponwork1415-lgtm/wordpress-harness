@@ -196,10 +196,18 @@ function finding(input: {
 
 class FakeDockerRunner implements ContainerProcessRunner {
   readonly requests: ContainerProcessRequest[] = [];
+  daemonReachable = true;
 
   async run(request: ContainerProcessRequest): Promise<ContainerProcessResult> {
     this.requests.push(request);
     const args = request.args;
+    if (!this.daemonReachable) {
+      return {
+        exitCode: -1,
+        stdout: "",
+        stderr: "Cannot connect to the Docker daemon",
+      };
+    }
     if (args[0] === "info") {
       return this.#result(
         JSON.stringify({ runsc: { path: "/usr/bin/runsc" } }),
@@ -421,9 +429,24 @@ describe("gVisor WordPress Environment provisioner", () => {
       ).resolves.toBe("human-verification-environment-request:witness");
       expect(assistantBroker.run).toHaveBeenCalledOnce();
 
+      // A teardown nobody could observe is not a teardown. The environment
+      // stays active so a later attempt still owns it, and the disposition is
+      // its own literal rather than a borrowed "completed".
+      runner.daemonReachable = false;
+      await expect(
+        provisioner.cleanup({ environmentId: disposition.environment.id }),
+      ).resolves.toBe("unverified");
+      expect(provisioner.hasActiveEnvironment(disposition.environment.id)).toBe(
+        true,
+      );
+
+      runner.daemonReachable = true;
       await expect(
         provisioner.cleanup({ environmentId: disposition.environment.id }),
       ).resolves.toBe("completed");
+      expect(provisioner.hasActiveEnvironment(disposition.environment.id)).toBe(
+        false,
+      );
       expect(
         runner.requests.some(
           (item) => item.args[0] === "rm" && item.args.includes("--force"),

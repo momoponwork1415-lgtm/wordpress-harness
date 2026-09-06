@@ -6,9 +6,11 @@ import { z } from "zod";
 
 import {
   establishGvisorWordPressSession,
+  GvisorWordPressSetupTeardownError,
   type ContainerProcessRunner,
   type GvisorWordPressPluginSource,
   type GvisorWordPressSession,
+  type GvisorWordPressTeardown,
 } from "../infrastructure/gvisor-wordpress-session.js";
 import { humanOsDigest } from "./canonical-json.js";
 import type {
@@ -484,11 +486,23 @@ class DefaultGvisorWordPressEnvironmentProvisioner<
           timezone: request.setupPlan.configuration.timezone,
         },
       });
-    } catch {
+    } catch (error: unknown) {
+      // The only teardown of a session that never reached a handle happens
+      // inside establishGvisorWordPressSession, so this is where its outcome
+      // re-enters the Human OS. Without it the receipt records not-required
+      // for resources that may still be running.
       return {
         status: "setup-blocked",
         phase: "activation",
         reason: "activation-failed",
+        ...(error instanceof GvisorWordPressSetupTeardownError
+          ? {
+              cleanup:
+                error.teardown.status === "leaked"
+                  ? ("failed" as const)
+                  : ("unverified" as const),
+            }
+          : {}),
         stages: emptyStages,
       };
     }
@@ -591,12 +605,22 @@ class DefaultGvisorWordPressEnvironmentProvisioner<
 
   async cleanup(
     environment: ProvisionedEnvironmentHandle,
-  ): Promise<"completed" | "failed"> {
+  ): Promise<"completed" | "failed" | "unverified"> {
     const retained = this.#sessions.get(environment.environmentId);
     if (retained === undefined) return "completed";
-    const cleaned = await retained.session.dispose().catch(() => false);
-    if (cleaned) this.#sessions.delete(environment.environmentId);
-    return cleaned ? "completed" : "failed";
+    // A throw is also an absence of observation, so it reports the unknown
+    // rather than a leak nobody saw.
+    const teardown = await retained.session
+      .dispose()
+      .catch((): GvisorWordPressTeardown => ({
+        status: "unobservable",
+        reason: "probe-failed",
+      }));
+    if (teardown.status === "cleaned") {
+      this.#sessions.delete(environment.environmentId);
+      return "completed";
+    }
+    return teardown.status === "leaked" ? "failed" : "unverified";
   }
 
   async runAssistant(

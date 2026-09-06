@@ -138,6 +138,14 @@ function environmentMatchesAttempt(
   );
 }
 
+function cleanupNote(
+  cleanup: "not-required" | "completed" | "failed" | "unverified",
+): string {
+  if (cleanup === "failed") return " Cleanup also failed.";
+  if (cleanup === "unverified") return " Cleanup could not be observed.";
+  return "";
+}
+
 class DefaultAIReproduction implements AIReproduction {
   readonly #record: FindingAIReproductionStore;
   readonly #privateArtifactStore: HumanOsPrivateArtifactStore;
@@ -218,10 +226,7 @@ class DefaultAIReproduction implements AIReproduction {
       return this.#withoutExperiment(finding, attempt, {
         status: "setup-blocked",
         reasonCode: execution.reason,
-        reason:
-          execution.cleanup === "failed"
-            ? `${execution.description} Cleanup also failed.`
-            : execution.description,
+        reason: `${execution.description}${cleanupNote(execution.cleanup)}`,
         performedAt: execution.completedAt,
       });
     }
@@ -229,10 +234,7 @@ class DefaultAIReproduction implements AIReproduction {
       return this.#withoutExperiment(finding, attempt, {
         status: "inconclusive",
         reasonCode: execution.reason,
-        reason:
-          execution.cleanup === "failed"
-            ? `${execution.description} Cleanup also failed.`
-            : execution.description,
+        reason: `${execution.description}${cleanupNote(execution.cleanup)}`,
         performedAt: execution.completedAt,
       });
     }
@@ -277,13 +279,22 @@ class DefaultAIReproduction implements AIReproduction {
         performedAt: execution.completedAt,
       });
     }
+    // A record must not assert a disposable environment on a teardown nobody
+    // observed, so the unknown downgrades exactly as an observed failure does
+    // - under its own reason, so a reader can tell a proven leak from one that
+    // was never looked for.
     const outcome =
-      execution.cleanup === "failed"
+      execution.cleanup === "failed" || execution.cleanup === "unverified"
         ? {
             status: "inconclusive" as const,
-            reasonCode: "cleanup-failed" as const,
+            reasonCode:
+              execution.cleanup === "failed"
+                ? ("cleanup-failed" as const)
+                : ("cleanup-unverified" as const),
             reason:
-              "The Finding-bound experiment completed, but the disposable AI environment could not be cleaned up.",
+              execution.cleanup === "failed"
+                ? "The Finding-bound experiment completed, but the disposable AI environment could not be cleaned up."
+                : "The Finding-bound experiment completed, but the teardown of the disposable AI environment could not be observed.",
             securityEffect: "uncertain" as const,
             preconditionsMatched: true,
             recipeCompleted: true,

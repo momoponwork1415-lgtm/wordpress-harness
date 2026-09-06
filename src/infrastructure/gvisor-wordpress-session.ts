@@ -52,7 +52,7 @@ export interface GvisorWordPressSession {
   runWordPressCli(command: readonly string[]): Promise<string>;
   runWorker(worker: GvisorWordPressWorker): Promise<string>;
   observeRuntime(): Promise<GvisorWordPressRuntimeObservation>;
-  dispose(): Promise<boolean>;
+  dispose(): Promise<GvisorWordPressTeardown>;
 }
 
 export interface EstablishGvisorWordPressSessionOptions {
@@ -87,6 +87,52 @@ export class GvisorWordPressSessionError extends Error {
   }
 }
 
+export type GvisorLabResourceKind =
+  "database-container" | "wordpress-container" | "volume" | "network";
+
+/**
+ * The outcome of tearing a lab down.
+ *
+ * `cleaned` is only ever an observed absence: a reachable daemon answered and
+ * did not list the resource. `leaked` names the resources a reachable daemon
+ * still lists, and is not a claim that the others were observed absent — a
+ * proven leak simply outranks an unknown. `unobservable` is the typed unknown:
+ * the probe never reached a daemon, or never finished. A lab that could not be
+ * observed torn down is not a lab that was torn down.
+ */
+export type GvisorWordPressTeardown =
+  | { readonly status: "cleaned" }
+  | {
+      readonly status: "leaked";
+      readonly remaining: readonly GvisorLabResourceKind[];
+    }
+  | {
+      readonly status: "unobservable";
+      readonly reason: "probe-terminated" | "probe-failed";
+    };
+
+export type GvisorWordPressUncleanTeardown = Exclude<
+  GvisorWordPressTeardown,
+  { readonly status: "cleaned" }
+>;
+
+/**
+ * Carries an unclean teardown out of a failed setup without losing the setup
+ * failure itself, which stays reachable as `cause`.
+ */
+export class GvisorWordPressSetupTeardownError extends Error {
+  readonly teardown: GvisorWordPressUncleanTeardown;
+
+  constructor(teardown: GvisorWordPressUncleanTeardown, cause: unknown) {
+    super(
+      "gVisor WordPress session setup failed and its resources were not observed removed",
+      { cause },
+    );
+    this.name = "GvisorWordPressSetupTeardownError";
+    this.teardown = teardown;
+  }
+}
+
 async function run(
   processRunner: ContainerProcessRunner,
   args: readonly string[],
@@ -113,10 +159,85 @@ interface SessionResources {
   readonly wordpressContainer: string;
 }
 
+interface ResourceProbe {
+  readonly kind: GvisorLabResourceKind;
+  readonly name: string;
+  readonly args: readonly string[];
+}
+
+type ResourceProbeOutcome = "present" | "absent" | "terminated" | "failed";
+
+function resourceProbes(resources: SessionResources): readonly ResourceProbe[] {
+  const container = (name: string) => [
+    "container",
+    "ls",
+    "--all",
+    "--filter",
+    `name=${name}`,
+    "--format",
+    "{{.Names}}",
+  ];
+  return [
+    {
+      kind: "database-container",
+      name: resources.databaseContainer,
+      args: container(resources.databaseContainer),
+    },
+    {
+      kind: "wordpress-container",
+      name: resources.wordpressContainer,
+      args: container(resources.wordpressContainer),
+    },
+    {
+      kind: "volume",
+      name: resources.volume,
+      args: [
+        "volume",
+        "ls",
+        "--filter",
+        `name=${resources.volume}`,
+        "--format",
+        "{{.Name}}",
+      ],
+    },
+    {
+      kind: "network",
+      name: resources.network,
+      args: [
+        "network",
+        "ls",
+        "--filter",
+        `name=${resources.network}`,
+        "--format",
+        "{{.Name}}",
+      ],
+    },
+  ];
+}
+
+/**
+ * A listing probe exits 0 whenever a reachable daemon answered, whether or not
+ * the resource exists, so the exit code separates observation from unknown and
+ * the listing itself answers presence. `inspect` cannot do this: it exits
+ * non-zero both for "no such object" and for every way the question could not
+ * be asked. The name is compared exactly — `--filter name=` is a substring
+ * match and only narrows the listing.
+ */
+function classifyProbe(
+  probe: ResourceProbe,
+  result: ContainerProcessResult,
+): ResourceProbeOutcome {
+  if (result.exitCode < 0) return "terminated";
+  if (result.exitCode !== 0) return "failed";
+  return result.stdout.split(/[\s,]+/u).includes(probe.name)
+    ? "present"
+    : "absent";
+}
+
 async function disposeResources(
   processRunner: ContainerProcessRunner,
   resources: SessionResources,
-): Promise<boolean> {
+): Promise<GvisorWordPressTeardown> {
   const containers = await run(processRunner, [
     "rm",
     "--force",
@@ -130,15 +251,25 @@ async function disposeResources(
   const removed =
     containers.exitCode === 0 &&
     resourcesRemoved.every((result) => result.exitCode === 0);
-  if (removed) return true;
+  if (removed) return { status: "cleaned" };
 
-  const remaining = await Promise.all([
-    run(processRunner, ["container", "inspect", resources.databaseContainer]),
-    run(processRunner, ["container", "inspect", resources.wordpressContainer]),
-    run(processRunner, ["volume", "inspect", resources.volume]),
-    run(processRunner, ["network", "inspect", resources.network]),
-  ]);
-  return remaining.every((result) => result.exitCode !== 0);
+  const probes = resourceProbes(resources);
+  const outcomes = await Promise.all(
+    probes.map(async (probe) =>
+      classifyProbe(probe, await run(processRunner, probe.args, 10_000)),
+    ),
+  );
+  const remaining = probes
+    .filter((_, index) => outcomes[index] === "present")
+    .map((probe) => probe.kind);
+  if (remaining.length > 0) return { status: "leaked", remaining };
+  if (outcomes.includes("terminated")) {
+    return { status: "unobservable", reason: "probe-terminated" };
+  }
+  if (outcomes.includes("failed")) {
+    return { status: "unobservable", reason: "probe-failed" };
+  }
+  return { status: "cleaned" };
 }
 
 class DefaultGvisorWordPressSession implements GvisorWordPressSession {
@@ -150,7 +281,11 @@ class DefaultGvisorWordPressSession implements GvisorWordPressSession {
   readonly #wordpressAddress: string;
   readonly #databasePassword: string;
   readonly #adminPassword: string;
+  // Separate questions: removal was issued, so the session is unusable; and
+  // removal was observed to have taken effect, so re-probing is pointless.
+  // Only the second may short-circuit a later dispose().
   #disposed = false;
+  #disposeAttempted = false;
 
   constructor(input: {
     readonly labId: string;
@@ -242,14 +377,15 @@ class DefaultGvisorWordPressSession implements GvisorWordPressSession {
     };
   }
 
-  async dispose(): Promise<boolean> {
-    if (this.#disposed) return true;
-    const cleaned = await disposeResources(
+  async dispose(): Promise<GvisorWordPressTeardown> {
+    if (this.#disposed) return { status: "cleaned" };
+    this.#disposeAttempted = true;
+    const teardown = await disposeResources(
       this.#processRunner,
       this.#resources,
     );
-    if (cleaned) this.#disposed = true;
-    return cleaned;
+    if (teardown.status === "cleaned") this.#disposed = true;
+    return teardown;
   }
 
   #wpCliArgs(command: readonly string[]): readonly string[] {
@@ -277,7 +413,9 @@ class DefaultGvisorWordPressSession implements GvisorWordPressSession {
   }
 
   #requireActive(): void {
-    if (this.#disposed) throw new Error("gVisor WordPress session is disposed");
+    if (this.#disposeAttempted) {
+      throw new Error("gVisor WordPress session is disposed");
+    }
   }
 }
 
@@ -484,8 +622,12 @@ export async function establishGvisorWordPressSession(
       ]);
     }
     return session;
-  } catch (error) {
-    await disposeResources(options.processRunner, resources);
-    throw error;
+  } catch (error: unknown) {
+    // The caller never receives a session here, so this is the only place the
+    // teardown of these resources can be reported. The setup failure stays the
+    // cause; the wrapper only adds what could not be observed removed.
+    const teardown = await disposeResources(options.processRunner, resources);
+    if (teardown.status === "cleaned") throw error;
+    throw new GvisorWordPressSetupTeardownError(teardown, error);
   }
 }

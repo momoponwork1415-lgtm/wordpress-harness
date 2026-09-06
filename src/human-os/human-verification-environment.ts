@@ -82,6 +82,13 @@ export type EnvironmentSetupAttempt =
       readonly phase: "setup" | "activation" | "health";
       readonly reason: "setup-failed" | "activation-failed" | "health-failed";
       readonly partialEnvironment?: ProvisionedEnvironmentHandle;
+      /**
+       * Set only when the provisioner already tore down resources that never
+       * became a handle, so the builder cannot repeat the teardown itself.
+       * Absent means the builder still owns it. `completed` is deliberately
+       * not in the union: a clean teardown needs no report.
+       */
+      readonly cleanup?: "failed" | "unverified";
       readonly stages: readonly ProvisionedSetupStageObservation[];
     };
 
@@ -94,7 +101,7 @@ export interface HumanVerificationEnvironmentProvisioner {
   ): Promise<EnvironmentSetupAttempt>;
   cleanup(
     environment: ProvisionedEnvironmentHandle,
-  ): Promise<"completed" | "failed">;
+  ): Promise<"completed" | "failed" | "unverified">;
 }
 
 export interface HumanVerificationEnvironmentBuilder {
@@ -172,12 +179,14 @@ function inspectionPasses(
 async function cleanup(
   provisioner: HumanVerificationEnvironmentProvisioner,
   handle: ProvisionedEnvironmentHandle | undefined,
-): Promise<"not-required" | "completed" | "failed"> {
+): Promise<"not-required" | "completed" | "failed" | "unverified"> {
   if (handle === undefined) return "not-required";
   try {
     return await provisioner.cleanup(handle);
   } catch {
-    return "failed";
+    // A provisioner that threw observed nothing. `failed` is reserved for an
+    // observed leak.
+    return "unverified";
   }
 }
 
@@ -265,10 +274,9 @@ class DefaultHumanVerificationEnvironmentBuilder implements HumanVerificationEnv
     }
 
     if (attempt.status === "setup-blocked") {
-      const cleanupStatus = await cleanup(
-        this.#provisioner,
-        attempt.partialEnvironment,
-      );
+      const cleanupStatus =
+        attempt.cleanup ??
+        (await cleanup(this.#provisioner, attempt.partialEnvironment));
       let stages: readonly SetupStageObservation[];
       try {
         stages = projectStageObservations(attempt.stages);
@@ -485,7 +493,7 @@ class DefaultHumanVerificationEnvironmentBuilder implements HumanVerificationEnv
         | "target-runtime-identity-mismatch";
       readonly startedAt: string;
       readonly stages: readonly SetupStageObservation[];
-      readonly cleanup: "not-required" | "completed" | "failed";
+      readonly cleanup: "not-required" | "completed" | "failed" | "unverified";
     },
   ): Promise<HumanVerificationEnvironmentDisposition> {
     const setupReceipt = setupReceiptSchema.parse({
