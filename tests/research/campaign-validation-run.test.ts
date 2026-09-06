@@ -6,7 +6,9 @@ import { z } from "zod";
 import { describe, expect, it } from "vitest";
 
 import {
+  CampaignRunConflictError,
   campaignDefaultSemanticRunPlanV3Schema,
+  bindCurrentSemanticCampaignConfiguration,
   defineCurrentSemanticRootPlanningPolicy,
   openResearch,
   type CampaignExecutionDependencies,
@@ -48,8 +50,13 @@ const evaluationContextSchema = z.object({
 function completedResult(
   plan: Exclude<ModelAttemptPlan, { schemaVersion: 1 }>,
   output: unknown,
+  reported?: {
+    readonly modelTokens: number;
+    readonly estimatedCostUsd: number;
+  },
 ): AttemptExecutionResultV2 {
   const planDigest = sha256Digest(plan);
+  const modelTokens = reported?.modelTokens ?? 20;
   const value = {
     kind: "model-attempt-result" as const,
     schemaVersion: 2 as const,
@@ -63,16 +70,16 @@ function completedResult(
       kind: "model-attempt-usage" as const,
       schemaVersion: 1 as const,
       measurement: "reported" as const,
-      estimatedCostUsd: 0.25,
+      estimatedCostUsd: reported?.estimatedCostUsd ?? 0.25,
       wallTimeMs: 10,
       providerDurationMs: 8,
       modelTurns: 1,
       modelTokens: {
-        input: 10,
+        input: modelTokens,
         cacheCreation: 0,
         cacheRead: 0,
-        output: 10,
-        total: 20,
+        output: 0,
+        total: modelTokens,
       },
       structuredOutputBytes: 1_000,
       source:
@@ -86,11 +93,11 @@ function completedResult(
           id: "claude-opus-5",
           canonicalModel: "claude-opus-5",
           tokens: {
-            input: 10,
+            input: modelTokens,
             cacheCreation: 0,
             cacheRead: 0,
-            output: 10,
-            total: 20,
+            output: 0,
+            total: modelTokens,
           },
         },
       ],
@@ -163,7 +170,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       budget: {
         maxAttempts: 128,
         maxWallTimeMs: 43_200_000,
-        maxModelTokens: 4_000_000,
+        maxModelTokens: 4_600_000,
       },
     };
     const anchor = {
@@ -177,9 +184,16 @@ describe("CampaignRunner.run source-only Validation", () => {
     const depthQueuesObservedBeforeSynthesis: string[] = [];
     const validatorProgressSnapshots: unknown[] = [];
     const dispatchBudgetSnapshots: Array<{
+      readonly runId: string;
       readonly role: string;
+      readonly assignmentKind: string;
       readonly reservedAttempts: number;
       readonly ownReservationDurable: boolean;
+      readonly protectedRootTokens: number;
+      readonly explorationSpentTokens: number;
+      readonly explorationReservedTokens: number;
+      readonly validationRemainingTokens: number;
+      readonly overshootTokens: number;
     }> = [];
     let expectedValidationRunId = "";
     let validationDisposition:
@@ -188,6 +202,9 @@ describe("CampaignRunner.run source-only Validation", () => {
     let candidateIdentitySuffix = "";
     let validationCandidateCount = 1;
     let validatorReportedTokens: number | undefined;
+    let finderReportedTokens: readonly number[] | undefined;
+    let finderReportedTokenIndex = 0;
+    let failInitialRootAfterAdmission = false;
     let injectUnknownValidatorResult = false;
     let firstFindingId: string | undefined;
     const deliveredPacketDigests: string[] = [];
@@ -204,11 +221,28 @@ describe("CampaignRunner.run source-only Validation", () => {
           throw new Error("Expected a durable reservation before dispatch");
         }
         dispatchBudgetSnapshots.push({
+          runId: expectedValidationRunId,
           role: plan.role,
+          assignmentKind: plan.assignment.kind,
           reservedAttempts: dispatchBudget.reserved.modelAttempts,
           ownReservationDurable: dispatchBudget.activeReservations.some(
             (reservation) => reservation.attemptId === plan.attemptId,
           ),
+          protectedRootTokens:
+            dispatchBudget.schemaVersion === 2
+              ? dispatchBudget.protectedReservations.reduce(
+                  (total, reservation) =>
+                    total + reservation.amount.modelTokens,
+                  0,
+                )
+              : 0,
+          explorationSpentTokens:
+            dispatchBudget.owners.exploration.spent.modelTokens,
+          explorationReservedTokens:
+            dispatchBudget.owners.exploration.reserved.modelTokens,
+          validationRemainingTokens:
+            dispatchBudget.owners.validation.remaining.modelTokens,
+          overshootTokens: dispatchBudget.overshoot.modelTokens,
         });
         observedPlans.push(plan);
         if (plan.role === "root-planner") {
@@ -250,48 +284,64 @@ describe("CampaignRunner.run source-only Validation", () => {
           });
         }
         if (plan.role === "finder") {
-          return completedResult(plan, {
-            kind: "finder-output",
-            schemaVersion: 2,
-            leaseId: plan.assignment.leaseId,
-            hypotheses: plan.prompt.includes(
-              "a whole-target review may reveal broken security semantics",
-            )
-              ? Array.from({ length: validationCandidateCount }, (_, index) => {
-                  const identitySuffix =
-                    validationCandidateCount === 1
-                      ? candidateIdentitySuffix
-                      : `${candidateIdentitySuffix}-${index + 1}`;
-                  return {
-                    kind: "source-bound-hypothesis",
-                    schemaVersion: 1,
-                    causalIdentity: {
-                      rootCause: `public-state-crosses-actor-boundary${identitySuffix}`,
-                      attackerControlledPrimitive:
-                        "unauthenticated-option-write",
-                      brokenSecurityProperty:
-                        validationDisposition === "needs-research"
-                          ? "state-consumer-identity"
-                          : `state-ownership${identitySuffix}`,
+          const reportedModelTokens =
+            finderReportedTokens?.[finderReportedTokenIndex++];
+          return completedResult(
+            plan,
+            {
+              kind: "finder-output",
+              schemaVersion: 2,
+              leaseId: plan.assignment.leaseId,
+              hypotheses: plan.prompt.includes(
+                "a whole-target review may reveal broken security semantics",
+              )
+                ? Array.from(
+                    { length: validationCandidateCount },
+                    (_, index) => {
+                      const identitySuffix =
+                        validationCandidateCount === 1
+                          ? candidateIdentitySuffix
+                          : `${candidateIdentitySuffix}-${index + 1}`;
+                      return {
+                        kind: "source-bound-hypothesis",
+                        schemaVersion: 1,
+                        causalIdentity: {
+                          rootCause: `public-state-crosses-actor-boundary${identitySuffix}`,
+                          attackerControlledPrimitive:
+                            "unauthenticated-option-write",
+                          brokenSecurityProperty:
+                            validationDisposition === "needs-research"
+                              ? "state-consumer-identity"
+                              : `state-ownership${identitySuffix}`,
+                        },
+                        attackerPremise: "unauthenticated",
+                        impact: "account-takeover",
+                        route: { anchors: [anchor] },
+                        unknowns: [
+                          {
+                            claim:
+                              "A privileged consumer reads the same state.",
+                            requiredEvidence:
+                              "Independently trace the exact source-bound consumer.",
+                          },
+                        ],
+                        falsifier:
+                          "Every consumer independently checks ownership.",
+                        nextExperiment: "Review every source-bound consumer.",
+                      };
                     },
-                    attackerPremise: "unauthenticated",
-                    impact: "account-takeover",
-                    route: { anchors: [anchor] },
-                    unknowns: [
-                      {
-                        claim: "A privileged consumer reads the same state.",
-                        requiredEvidence:
-                          "Independently trace the exact source-bound consumer.",
-                      },
-                    ],
-                    falsifier: "Every consumer independently checks ownership.",
-                    nextExperiment: "Review every source-bound consumer.",
-                  };
-                })
-              : [],
-            routeFragments: [],
-            frontierGaps: [],
-          });
+                  )
+                : [],
+              routeFragments: [],
+              frontierGaps: [],
+            },
+            reportedModelTokens === undefined
+              ? undefined
+              : {
+                  modelTokens: reportedModelTokens,
+                  estimatedCostUsd: 7.1014455 / 3,
+                },
+          );
         }
         if (
           plan.role === "root-evaluator" &&
@@ -309,6 +359,12 @@ describe("CampaignRunner.run source-only Validation", () => {
           });
         }
         if (plan.role === "root-evaluator") {
+          if (
+            failInitialRootAfterAdmission &&
+            plan.assignment.kind === "wave-evaluation"
+          ) {
+            return failedResult(plan, "budget-exhausted");
+          }
           const prefix = "Wave evaluation context: ";
           const line = plan.prompt
             .split("\n")
@@ -680,21 +736,7 @@ describe("CampaignRunner.run source-only Validation", () => {
         id: "semantic-source-tools-v3",
         digest: digest("c"),
       };
-      const plan = campaignDefaultSemanticRunPlanV3Schema.parse({
-        kind: "campaign-run-plan",
-        schemaVersion: 3,
-        runId: "source-validation-run",
-        campaignId: input.campaignId,
-        preparationDigest: prepared.inputDigest,
-        target: input.targetSnapshot,
-        manifest: prepared.targetFileManifest,
-        metadata: {
-          kind: "oracle-free-target-metadata",
-          schemaVersion: 1,
-          pluginIdentity: "wporg:campaign-validation-run",
-          mainPluginFile: "plugin.php",
-          canonicalInstallDirectory: "campaign-validation-run",
-        },
+      const bindingSource = {
         semanticPolicy: defineCurrentSemanticRootPlanningPolicy({
           plannerBudget: {
             maxWallTimeMs: 3_600_000,
@@ -705,8 +747,8 @@ describe("CampaignRunner.run source-only Validation", () => {
             maxSourceQueries: 256,
             maxSourceScanBytes: 16 * GIBIBYTE,
             maxSourceResponseBytes: 256 * MEBIBYTE,
-            sourceLimitTerminalOutput: "preserve",
-            reportedUsageEnforcement: "telemetry-only",
+            sourceLimitTerminalOutput: "preserve" as const,
+            reportedUsageEnforcement: "telemetry-only" as const,
           },
           finderLeaseBudget: {
             maxWallTimeMs: 10_800_000,
@@ -718,8 +760,8 @@ describe("CampaignRunner.run source-only Validation", () => {
             maxSourceQueries: 512,
             maxSourceScanBytes: 16 * GIBIBYTE,
             maxSourceResponseBytes: 256 * MEBIBYTE,
-            sourceLimitTerminalOutput: "preserve",
-            reportedUsageEnforcement: "telemetry-only",
+            sourceLimitTerminalOutput: "preserve" as const,
+            reportedUsageEnforcement: "telemetry-only" as const,
           },
         }),
         planner: {
@@ -742,7 +784,7 @@ describe("CampaignRunner.run source-only Validation", () => {
             maxModelTurns: 128,
             maxProviderCostUsd: 10,
             maxOutputBytes: 2 * MEBIBYTE,
-            reportedUsageEnforcement: "telemetry-only",
+            reportedUsageEnforcement: "telemetry-only" as const,
           },
         },
         validation: {
@@ -769,27 +811,50 @@ describe("CampaignRunner.run source-only Validation", () => {
               maxSourceQueries: 128,
               maxSourceScanBytes: 16 * GIBIBYTE,
               maxSourceResponseBytes: 256 * MEBIBYTE,
-              sourceLimitTerminalOutput: "preserve",
-              reportedUsageEnforcement: "telemetry-only",
+              sourceLimitTerminalOutput: "preserve" as const,
+              reportedUsageEnforcement: "telemetry-only" as const,
             },
           },
         },
+      };
+      const plan = campaignDefaultSemanticRunPlanV3Schema.parse({
+        kind: "campaign-run-plan",
+        schemaVersion: 3,
+        runId: "source-validation-run",
+        campaignId: input.campaignId,
+        preparationDigest: prepared.inputDigest,
+        target: input.targetSnapshot,
+        manifest: prepared.targetFileManifest,
+        metadata: {
+          kind: "oracle-free-target-metadata",
+          schemaVersion: 1,
+          pluginIdentity: "wporg:campaign-validation-run",
+          mainPluginFile: "plugin.php",
+          canonicalInstallDirectory: "campaign-validation-run",
+        },
+        ...bindingSource,
+        bindings: bindCurrentSemanticCampaignConfiguration(bindingSource),
         budgetPolicy: {
           kind: "semantic-research-budget",
-          schemaVersion: 2,
-          id: "semantic-research-recall-baseline-v6",
+          schemaVersion: 3,
+          id: "semantic-research-recall-baseline-v7",
           maxWorkWaves: 12,
           maxFinderAttempts: 48,
           maxConcurrentFinders: 4,
           maxModelAttempts: 128,
-          maxModelTokens: 4_000_000,
+          maxModelTokens: 4_600_000,
           maxProviderCostUsd: 150,
           maxWallTimeMs: 43_200_000,
           reportedUsageEnforcement: "telemetry-only",
           exploration: {
-            maxModelTokens: 3_600_000,
+            maxModelTokens: 4_200_000,
             maxProviderCostUsd: 120,
             maxWallTimeMs: 36_000_000,
+            rootEvaluationReserve: {
+              maxModelTokens: 100_000,
+              owner: "exploration",
+              role: "root-evaluator",
+            },
           },
           validationReserve: {
             maxModelTokens: 400_000,
@@ -798,6 +863,183 @@ describe("CampaignRunner.run source-only Validation", () => {
           },
         },
       });
+
+      const modelCallsBeforeBindingChecks = observedPlans.length;
+      await expect(
+        research.runner.run({
+          ...plan,
+          runId: "source-validation-profile-version-mismatch",
+          evaluator: {
+            ...plan.evaluator,
+            modelProfile: {
+              ...plan.evaluator.modelProfile,
+              execution: {
+                ...plan.evaluator.modelProfile.execution,
+                executableVersion: "2.1.259",
+              },
+            },
+          },
+        }),
+      ).rejects.toBeInstanceOf(CampaignRunConflictError);
+      await expect(
+        research.runner.run({
+          ...plan,
+          runId: "source-validation-profile-receipt-mismatch",
+          finder: {
+            ...plan.finder,
+            modelProfile: {
+              ...plan.finder.modelProfile,
+              execution: {
+                ...plan.finder.modelProfile.execution,
+                eligibilityReceiptDigest: digest("0"),
+              },
+            },
+          },
+        }),
+      ).rejects.toBeInstanceOf(CampaignRunConflictError);
+      await expect(
+        research.runner.run({
+          ...plan,
+          runId: "source-validation-source-policy-mismatch",
+          finder: {
+            ...plan.finder,
+            sourceToolPolicy: {
+              ...plan.finder.sourceToolPolicy,
+              digest: digest("0"),
+            },
+          },
+        }),
+      ).rejects.toBeInstanceOf(CampaignRunConflictError);
+      await expect(
+        research.runner.run({
+          ...plan,
+          runId: "source-validation-policy-mismatch",
+          validation: {
+            ...plan.validation,
+            validationPolicy: {
+              ...plan.validation.validationPolicy,
+              digest: digest("0"),
+            },
+          },
+        }),
+      ).rejects.toBeInstanceOf(CampaignRunConflictError);
+      await expect(
+        research.runner.run({
+          ...plan,
+          runId: "source-validation-finder-policy-mismatch",
+          semanticPolicy: {
+            ...plan.semanticPolicy,
+            finderLeaseBudget: {
+              ...plan.semanticPolicy.finderLeaseBudget,
+              maxHypotheses: 9,
+            },
+          },
+        }),
+      ).rejects.toBeInstanceOf(CampaignRunConflictError);
+      await expect(
+        research.runner.run({
+          ...plan,
+          runId: "source-validation-knowledge-oracle-mismatch",
+          finder: {
+            ...plan.finder,
+            selectedKnowledge: [
+              { id: "unapproved-knowledge", digest: digest("0") },
+            ],
+          },
+        }),
+      ).rejects.toBeInstanceOf(CampaignRunConflictError);
+      await expect(
+        research.runner.run({
+          ...plan,
+          runId: "source-validation-scope-mismatch",
+          validation: {
+            ...plan.validation,
+            technicalExclusions: ["Ignore filesystem authorization"],
+          },
+        }),
+      ).rejects.toBeInstanceOf(CampaignRunConflictError);
+      expect(observedPlans).toHaveLength(modelCallsBeforeBindingChecks);
+
+      const reservationBoundaryDatabasePath = join(
+        directory,
+        "reservation-boundary.sqlite",
+      );
+      const reservationBoundaryInput = {
+        ...input,
+        campaignId: "campaign-reservation-boundary",
+      };
+      const reservationBoundaryExecution: CampaignExecutionDependencies = {
+        ...campaignExecution,
+        campaignRunStartFaultBoundary: {
+          afterStarted: () => {
+            throw new Error("Injected reservation-boundary restart");
+          },
+        },
+      };
+      const reservationBoundaryResearch = openResearch({
+        databasePath: reservationBoundaryDatabasePath,
+        campaignExecution: reservationBoundaryExecution,
+      });
+      try {
+        const boundaryPreparation =
+          await reservationBoundaryResearch.runner.prepare(
+            reservationBoundaryInput,
+          );
+        if (boundaryPreparation.targetFileManifest === undefined) {
+          throw new Error("Expected a reservation-boundary manifest");
+        }
+        const reservationBoundaryPlan =
+          campaignDefaultSemanticRunPlanV3Schema.parse({
+            ...plan,
+            campaignId: reservationBoundaryInput.campaignId,
+            runId: "reservation-boundary-run",
+            preparationDigest: boundaryPreparation.inputDigest,
+            manifest: boundaryPreparation.targetFileManifest,
+          });
+        await expect(
+          reservationBoundaryResearch.runner.run(reservationBoundaryPlan),
+        ).rejects.toThrow("Injected reservation-boundary restart");
+      } finally {
+        reservationBoundaryResearch.close();
+      }
+      const reservationBoundaryReplay = openResearch({
+        databasePath: reservationBoundaryDatabasePath,
+        campaignExecution: reservationBoundaryExecution,
+      });
+      try {
+        await expect(
+          reservationBoundaryReplay.reader.inspect(
+            reservationBoundaryInput.campaignId,
+            { kind: "budget", runId: "reservation-boundary-run" },
+          ),
+        ).resolves.toMatchObject({
+          kind: "budget",
+          schemaVersion: 2,
+          activeReservations: [],
+          protectedReservations: [
+            {
+              owner: "exploration",
+              role: "root-evaluator",
+              amount: { modelTokens: 100_000 },
+            },
+          ],
+          owners: {
+            exploration: { reserved: { modelTokens: 100_000 } },
+            validation: { remaining: { modelTokens: 400_000 } },
+          },
+        });
+        await expect(
+          reservationBoundaryReplay.reader.inspect(
+            reservationBoundaryInput.campaignId,
+            { kind: "progress" },
+          ),
+        ).resolves.toMatchObject({
+          kind: "progress",
+          activeAttempts: [],
+        });
+      } finally {
+        reservationBoundaryReplay.close();
+      }
 
       expectedValidationRunId = plan.runId;
       const ref = await research.runner.run(plan);
@@ -821,6 +1063,25 @@ describe("CampaignRunner.run source-only Validation", () => {
           "validator",
         ]),
       );
+      expect(
+        dispatchBudgetSnapshots.find(
+          (snapshot) =>
+            snapshot.runId === plan.runId && snapshot.role === "finder",
+        ),
+      ).toMatchObject({ protectedRootTokens: 100_000 });
+      expect(
+        dispatchBudgetSnapshots.find(
+          (snapshot) =>
+            snapshot.runId === plan.runId &&
+            snapshot.role === "root-evaluator" &&
+            snapshot.assignmentKind === "wave-evaluation",
+        ),
+      ).toMatchObject({
+        ownReservationDurable: true,
+        protectedRootTokens: 0,
+        explorationReservedTokens: 100_000,
+        validationRemainingTokens: 400_000,
+      });
       expect(
         observedPlans.every((attempt) =>
           attempt.prompt.includes(
@@ -986,11 +1247,11 @@ describe("CampaignRunner.run source-only Validation", () => {
         }),
       ).resolves.toMatchObject({
         kind: "budget",
-        schemaVersion: 1,
+        schemaVersion: 2,
         campaignId: input.campaignId,
         runId: plan.runId,
         policy: {
-          id: "semantic-research-recall-baseline-v6",
+          id: "semantic-research-recall-baseline-v7",
           digest: expect.stringMatching(/^sha256:/),
         },
         enforcement: {
@@ -1015,10 +1276,11 @@ describe("CampaignRunner.run source-only Validation", () => {
           modelTokens: 0,
           estimatedCostUsd: 0,
         },
+        protectedReservations: [],
         remaining: {
           modelAttempts: 116,
           modelWallTimeMs: 43_199_880,
-          modelTokens: 3_999_760,
+          modelTokens: 4_599_760,
           estimatedCostUsd: 147,
         },
         owners: {
@@ -1026,7 +1288,7 @@ describe("CampaignRunner.run source-only Validation", () => {
             spent: { modelAttempts: 11, modelTokens: 220 },
             remaining: {
               modelWallTimeMs: 35_999_890,
-              modelTokens: 3_599_780,
+              modelTokens: 4_199_780,
               estimatedCostUsd: 117.25,
             },
           },
@@ -1336,16 +1598,21 @@ describe("CampaignRunner.run source-only Validation", () => {
 
       depthFailure = "none";
       candidateIdentitySuffix = "-crash-recovery";
+      const crashRecoveryValidation = {
+        ...plan.validation,
+        validationPolicy: {
+          ...plan.validation.validationPolicy,
+          digest: digest("f"),
+        },
+      };
       const crashRecoveryPlan = campaignDefaultSemanticRunPlanV3Schema.parse({
         ...plan,
         runId: "source-validation-crash-recovery",
-        validation: {
-          ...plan.validation,
-          validationPolicy: {
-            ...plan.validation.validationPolicy,
-            digest: digest("f"),
-          },
-        },
+        validation: crashRecoveryValidation,
+        bindings: bindCurrentSemanticCampaignConfiguration({
+          ...plan,
+          validation: crashRecoveryValidation,
+        }),
       });
       expectedValidationRunId = crashRecoveryPlan.runId;
       const crashCallOffset = observedPlans.length;
@@ -1770,6 +2037,110 @@ describe("CampaignRunner.run source-only Validation", () => {
         research.runner.run(crossCandidateBudgetPlan),
       ).resolves.toMatchObject({ schemaVersion: 4, decision: "incomplete" });
       expect(observedPlans).toHaveLength(crossCandidateCallsAfterCompletion);
+
+      const budgetBeforeMeasured = await research.reader.inspect(
+        input.campaignId,
+        { kind: "budget", runId: crossCandidateBudgetPlan.runId },
+      );
+      if (budgetBeforeMeasured.kind !== "budget") {
+        throw new Error("Expected budget before measured Root reservation run");
+      }
+      const overshootBeforeMeasured =
+        budgetBeforeMeasured.overshoot.modelTokens;
+
+      finderReportedTokens = [1_300_000, 1_300_000, 1_376_741];
+      finderReportedTokenIndex = 0;
+      validationCandidateCount = 1;
+      validatorReportedTokens = undefined;
+      validationDisposition = "ready-for-runtime";
+      depthFailure = "budget-exhausted";
+      failInitialRootAfterAdmission = true;
+      candidateIdentitySuffix = "-measured-root-reserve";
+      const measuredPlan = campaignDefaultSemanticRunPlanV3Schema.parse({
+        ...plan,
+        runId: "source-validation-measured-root-reserve",
+      });
+      expectedValidationRunId = measuredPlan.runId;
+      const measuredCallOffset = observedPlans.length;
+      await expect(research.runner.run(measuredPlan)).resolves.toMatchObject({
+        schemaVersion: 3,
+        decision: "incomplete",
+      });
+      await expect(
+        research.reader.inspect(input.campaignId, {
+          kind: "run",
+          runId: measuredPlan.runId,
+        }),
+      ).resolves.toMatchObject({
+        value: {
+          stage: { kind: "evaluation-incomplete" },
+          decision: { kind: "incomplete", reason: "evaluation-incomplete" },
+        },
+      });
+      const measuredCalls = observedPlans.slice(measuredCallOffset);
+      const initialRootIndex = measuredCalls.findIndex(
+        (attempt) =>
+          attempt.role === "root-evaluator" &&
+          attempt.assignment.kind === "wave-evaluation",
+      );
+      expect(initialRootIndex).toBeGreaterThan(0);
+      expect(
+        measuredCalls
+          .slice(0, initialRootIndex)
+          .filter((attempt) => attempt.role === "finder"),
+      ).toHaveLength(3);
+      const measuredRootDispatch = dispatchBudgetSnapshots.find(
+        (snapshot) =>
+          snapshot.runId === measuredPlan.runId &&
+          snapshot.role === "root-evaluator" &&
+          snapshot.assignmentKind === "wave-evaluation",
+      );
+      expect(measuredRootDispatch).toMatchObject({
+        ownReservationDurable: true,
+        protectedRootTokens: 0,
+        explorationReservedTokens: 100_000,
+      });
+      if (measuredRootDispatch === undefined) {
+        throw new Error("Expected measured Root Evaluator dispatch");
+      }
+      expect(
+        measuredRootDispatch.overshootTokens - overshootBeforeMeasured,
+      ).toBe(976_741);
+      const measuredBudget = await research.reader.inspect(input.campaignId, {
+        kind: "budget",
+        runId: measuredPlan.runId,
+      });
+      expect(measuredBudget).toMatchObject({
+        kind: "budget",
+        schemaVersion: 2,
+        protectedReservations: [],
+        owners: {
+          validation: {
+            limits: { modelTokens: 400_000 },
+          },
+        },
+      });
+      if (measuredBudget.kind !== "budget") {
+        throw new Error("Expected measured Campaign budget");
+      }
+      expect(
+        measuredBudget.overshoot.modelTokens - overshootBeforeMeasured,
+      ).toBe(976_741);
+      const replayAfterRootCompletion = openResearch({
+        databasePath,
+        campaignExecution,
+      });
+      try {
+        await expect(
+          replayAfterRootCompletion.reader.inspect(input.campaignId, {
+            kind: "budget",
+            runId: measuredPlan.runId,
+          }),
+        ).resolves.toEqual(measuredBudget);
+      } finally {
+        replayAfterRootCompletion.close();
+      }
+      failInitialRootAfterAdmission = false;
     } finally {
       research.close();
       await rm(directory, { force: true, recursive: true });
@@ -1804,13 +2175,16 @@ describe("CampaignRunner.run source-only Validation", () => {
           runtimeVerificationPackets: [{ packet: { schemaVersion: 2 } }],
         },
       });
-      await expect(
-        research.reader.inspect("campaign-validation-run", {
+      const legacyBudget = await research.reader.inspect(
+        "campaign-validation-run",
+        {
           kind: "budget",
           runId: "source-validation-run",
-        }),
-      ).resolves.toMatchObject({
+        },
+      );
+      expect(legacyBudget).toMatchObject({
         kind: "budget",
+        schemaVersion: 1,
         spent: { modelAttempts: 12, modelTokens: 3_900_000 },
         reserved: { modelAttempts: 0, modelTokens: 0 },
         activeReservations: [],
@@ -1819,6 +2193,7 @@ describe("CampaignRunner.run source-only Validation", () => {
           expect.stringMatching(/^validator:/),
         ]),
       });
+      expect(legacyBudget).not.toHaveProperty("protectedReservations");
     } finally {
       research.close();
       await rm(directory, { force: true, recursive: true });

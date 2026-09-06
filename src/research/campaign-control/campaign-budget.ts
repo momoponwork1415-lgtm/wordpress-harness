@@ -5,12 +5,15 @@ import {
   campaignAttemptBudgetReservationSchema,
   campaignAttemptBudgetSettlementSchema,
   campaignBudgetViewSchema,
+  campaignRootEvaluationBudgetReservationSchema,
+  isCurrentSemanticResearchBudgetPolicy,
   type CampaignAttemptBudgetReservation,
   type CampaignAttemptBudgetSettlement,
   type CampaignBudgetAmount,
   type CampaignBudgetView,
   type CampaignAttemptIntentV2,
-  type DefaultSemanticCampaignRunPlanV3,
+  type CampaignRootEvaluationBudgetReservation,
+  type CampaignRunPlanV3,
 } from "./contracts.js";
 
 const zeroSource = () => ({ queries: 0, scanBytes: 0, responseBytes: 0 });
@@ -104,8 +107,59 @@ export function reserveCampaignAttemptBudget(
   });
 }
 
+export function reserveCampaignRootEvaluationBudget(
+  plan: CampaignRunPlanV3,
+): CampaignRootEvaluationBudgetReservation {
+  if (!isCurrentSemanticResearchBudgetPolicy(plan.budgetPolicy)) {
+    throw new Error("Root Evaluation reservation requires budget policy v7");
+  }
+  const identity = {
+    campaignId: plan.campaignId,
+    runId: plan.runId,
+    budgetPolicyDigest: sha256Digest(plan.budgetPolicy),
+    semanticPolicyDigest: sha256Digest(plan.semanticPolicy),
+    modelProfileDigest: sha256Digest(plan.evaluator.modelProfile),
+    promptSetDigest: sha256Digest(plan.evaluator.promptSet),
+    evaluatorBudgetDigest: sha256Digest(plan.evaluator.budget),
+  };
+  return campaignRootEvaluationBudgetReservationSchema.parse({
+    kind: "campaign-root-evaluation-budget-reservation",
+    schemaVersion: 1,
+    campaignId: plan.campaignId,
+    runId: plan.runId,
+    reservationId: `root-evaluation-reservation:${sha256Digest(identity).slice("sha256:".length)}`,
+    owner: "exploration",
+    role: "root-evaluator",
+    amount: {
+      ...zeroCampaignBudgetAmount(),
+      modelTokens:
+        plan.budgetPolicy.exploration.rootEvaluationReserve.maxModelTokens,
+    },
+    bindings: {
+      budgetPolicy: {
+        id: plan.budgetPolicy.id,
+        digest: sha256Digest(plan.budgetPolicy),
+      },
+      semanticPolicy: {
+        id: plan.semanticPolicy.id,
+        digest: sha256Digest(plan.semanticPolicy),
+      },
+      modelProfile: {
+        id: plan.evaluator.modelProfile.ref.id,
+        refDigest: plan.evaluator.modelProfile.ref.digest,
+        configurationDigest: sha256Digest(plan.evaluator.modelProfile),
+      },
+      promptSet: {
+        id: plan.evaluator.promptSet.id,
+        digest: plan.evaluator.promptSet.digest,
+      },
+      evaluatorBudgetDigest: sha256Digest(plan.evaluator.budget),
+    },
+  });
+}
+
 export function reserveUnrecordedCampaignAttemptBudget(
-  plan: DefaultSemanticCampaignRunPlanV3,
+  plan: CampaignRunPlanV3,
   intent: CampaignAttemptIntentV2,
 ): CampaignAttemptBudgetReservation {
   const budget =
@@ -221,10 +275,11 @@ export function settleCampaignAttemptBudget(
 }
 
 export function projectCampaignBudget(input: {
-  readonly plan: DefaultSemanticCampaignRunPlanV3;
+  readonly plan: CampaignRunPlanV3;
   readonly ledgerHead: number;
   readonly reservations: readonly CampaignAttemptBudgetReservation[];
   readonly settlements: readonly CampaignAttemptBudgetSettlement[];
+  readonly protectedReservations?: readonly CampaignRootEvaluationBudgetReservation[];
 }): CampaignBudgetView {
   const settlements = new Map(
     input.settlements.map((settlement) => [settlement.attemptId, settlement]),
@@ -232,11 +287,14 @@ export function projectCampaignBudget(input: {
   const activeReservations = input.reservations.filter(
     (reservation) => !settlements.has(reservation.attemptId),
   );
+  const protectedReservations = input.protectedReservations ?? [];
   const sum = (amounts: readonly CampaignBudgetAmount[]) =>
     amounts.reduce(addCampaignBudgetAmount, zeroCampaignBudgetAmount());
   const spent = sum(input.settlements.map((settlement) => settlement.spent));
   const reserved = sum(
-    activeReservations.map((reservation) => reservation.amount),
+    [...activeReservations, ...protectedReservations].map(
+      (reservation) => reservation.amount,
+    ),
   );
   const owner = (ownerName: "exploration" | "validation") => {
     const ownerSpent = sum(
@@ -245,7 +303,7 @@ export function projectCampaignBudget(input: {
         .map((settlement) => settlement.spent),
     );
     const ownerReserved = sum(
-      activeReservations
+      [...activeReservations, ...protectedReservations]
         .filter((reservation) => reservation.owner === ownerName)
         .map((reservation) => reservation.amount),
     );
@@ -291,7 +349,11 @@ export function projectCampaignBudget(input: {
   };
   return campaignBudgetViewSchema.parse({
     kind: "budget",
-    schemaVersion: 1,
+    schemaVersion: isCurrentSemanticResearchBudgetPolicy(
+      input.plan.budgetPolicy,
+    )
+      ? 2
+      : 1,
     campaignId: input.plan.campaignId,
     runId: input.plan.runId,
     ledgerHead: input.ledgerHead,
@@ -312,6 +374,14 @@ export function projectCampaignBudget(input: {
     activeReservations: [...activeReservations].sort((left, right) =>
       left.attemptId.localeCompare(right.attemptId),
     ),
+    ...(isCurrentSemanticResearchBudgetPolicy(input.plan.budgetPolicy)
+      ? {
+          protectedReservations: [...protectedReservations].sort(
+            (left, right) =>
+              left.reservationId.localeCompare(right.reservationId),
+          ),
+        }
+      : {}),
     remaining: {
       modelAttempts: Math.max(
         0,
@@ -362,6 +432,7 @@ export function projectCampaignBudget(input: {
 export function campaignBudgetExhaustionDimensions(
   budget: CampaignBudgetView,
   reservation: CampaignAttemptBudgetReservation,
+  protectedCredit: CampaignBudgetAmount = zeroCampaignBudgetAmount(),
 ): readonly string[] {
   const owner = budget.owners[reservation.owner];
   const exhausted = new Set<string>();
@@ -372,23 +443,28 @@ export function campaignBudgetExhaustionDimensions(
     [
       "model-wall-time",
       reservation.amount.modelWallTimeMs,
-      budget.remaining.modelWallTimeMs,
-      owner.remaining.modelWallTimeMs,
+      budget.remaining.modelWallTimeMs + protectedCredit.modelWallTimeMs,
+      owner.remaining.modelWallTimeMs + protectedCredit.modelWallTimeMs,
     ],
     [
       "model-tokens",
       reservation.amount.modelTokens,
-      budget.remaining.modelTokens,
-      owner.remaining.modelTokens,
+      budget.remaining.modelTokens + protectedCredit.modelTokens,
+      owner.remaining.modelTokens + protectedCredit.modelTokens,
     ],
     [
       "provider-cost",
       reservation.amount.estimatedCostUsd,
-      budget.remaining.estimatedCostUsd,
-      owner.remaining.estimatedCostUsd,
+      budget.remaining.estimatedCostUsd + protectedCredit.estimatedCostUsd,
+      owner.remaining.estimatedCostUsd + protectedCredit.estimatedCostUsd,
     ],
   ] as const) {
-    if (amount > totalRemaining || amount > ownerRemaining) {
+    const ownerPartitionedTokenAdmission =
+      budget.schemaVersion === 2 && dimension === "model-tokens";
+    if (
+      amount > ownerRemaining ||
+      (!ownerPartitionedTokenAdmission && amount > totalRemaining)
+    ) {
       exhausted.add(dimension);
     }
   }

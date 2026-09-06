@@ -155,14 +155,15 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 - **Purpose:** fixed Targetをfinite Wave、Independent Validation、source-validated Finding / Coverage terminalまで進める。
 - **Invariants:** PlanへTarget、Manifest、policy、profile、tool、budgetを固定する。artifactをCASへ置き、Ledger eventを記録してから次stageへ進む。
-- **Normal Wave policy:** current defaultは3 Finder、target-specific thesisは最大2、whole-target wildcard thesisは最低1。`maxConcurrentFinders = 4`はhard ceilingと明示的overrideとして維持し、`maxFinderAttempts`とCampaign全体budgetは増やさない。legacy 4-Finder Plan / Ledgerはread-only replayする。
+- **Normal Wave policy:** current v7は3 Finder、target-specific thesisは最大2、whole-target wildcard thesisは最低1。`maxConcurrentFinders = 4`はschema上のhard ceilingとして維持する。legacy 4-Finder Plan / Ledgerはread-only replayする。
 - **Attacker scope:** current Campaignは未認証、Subscriber、subscriber-equivalent custom role（`customer`を含む）だけを許可する。Contributor以上と`unresolved`はcheckpoint、Root Evaluation、Validation admission、Finding projectionでfail closedにする。legacy enumとLedgerはreplay互換を維持する。
-- **Budget admission:** initial Wave、Depth、Validationの全Model Attemptは、一つのCampaign budgetとExploration / Validation owner budgetを共有する。Attempt Planの最大使用量をLedgerへreserveしてから、同じSQLite transactionでAttempt intentを記録する。terminal completionとreported usageのsettlementも同じtransactionへ置き、restart時は未settle reservation、既知usage、unknown usageの保守的chargeを一回だけreplayする。
-- **Budget enforcement:** model Attempt数、wall time、provider costは次のprovider request前のadmissionで止める。providerが返すtoken / turnをgeneration前のhard ceilingにはできないため、reported postconditionとしてovershootを記録し、以後のadmissionを止める。turn、structured output、source usageはCampaign集計へ含めるが、現行policyにCampaign-wide limitはない。
-- **Attempt observability:** ValidatorもCampaign Attempt Ledgerへstart / result-stored / completionを記録する。terminal resultはCAS保存後にresult-storedを追記し、completion前の再起動ではidentityとCASを検証して同じresultを再利用する。active progressとreported token / costはFinder、Root role、Critic、Validatorを同じAttempt projectionから一回だけ集計する。
-- **Failures:** integrity不正は起動前に拒否する。provider送信後にresultを確認できないValidator Attemptは再送せず`validation-pending`へ保ち、exactly-once executionは主張しない。保存resultのCASまたはidentity不一致は再利用しない。unknown usageはreservation全量を消費したものとして残し、budget exhaustionを`disproven`、`rejected`、`no-material-delta`、`coverage-closed`へ丸めず、Explorationは`Incomplete`、Validationは`validation-pending`にする。
-- **Status:** v6 initial Wave、single Validation、conditional Depth、Campaign-wide durable budget admission / settlement、Validator crash recovery、Finding / Coverage terminal、terminal replay、progressを実装。Missing-link / Closureは未接続。
-- **Code / Tests:** [campaign-control](../src/research/campaign-control), [open-research](../src/research/open-research.ts) · [v6 run](../tests/research/campaign-validation-run.test.ts), [semantic E2E](../tests/research/campaign-semantic-e2e.test.ts), [replay](../tests/research/campaign-run.test.ts)
+- **Budget admission:** v7 PlanはSemantic Policy、全roleのmodel profile、prompt、source tool policy、Finder knowledge、Validation policy / baseline / public surface / exclusionをdigest固定してrun前に照合する。run startはRoot Evaluation用100,000 exploration tokenをFinder admission前にreserveし、initial Root Attemptだけがatomicにclaimできる。通常のAttemptはPlan最大使用量のreservationとintentを一transaction、terminal completionとreported usageのsettlementを一transactionで記録する。
+- **Budget enforcement:** ExplorationとValidationのtoken、wall time、provider costをowner partitionでadmitし、Explorationのreported overshootでValidation reserveを減らさない。providerが返すtoken / turnはreported postconditionとしてovershootを残し、owner / Campaign remainingを0未満にしない。
+- **Attempt observability:** ValidatorもCampaign Attempt Ledgerへstart / result-stored / completionを記録する。completion前の再起動ではidentityとCASを検証して同じresultを再利用する。
+- **Failure semantics:** policy / profile / prompt / reservation ownerまたはclaim identityの不一致と、reservationを欠くv7 replayはfail closedにする。budget exhaustionをnegativeまたはCoverage Closureへ丸めず、Explorationは`Incomplete`、Validationは`validation-pending`にする。
+- **Behavior Test:** [v7 public run / budget / binding / restart](../tests/research/campaign-validation-run.test.ts)、[v7 contract](../tests/research/semantic-recall-budget.test.ts)、[legacy replay](../tests/research/ledger-compatibility.test.ts)。
+- **Status:** v7 initial Wave、durable Root Evaluation reservation、single Validation、conditional Depth、Finding / Coverage terminal、terminal replay、progressを実装。v6とlegacy Ledgerは元の意味でread-only replayする。Missing-link / Closureは未接続。
+- **Code:** [campaign-control](../src/research/campaign-control)、[open-research](../src/research/open-research.ts)。
 
 ### Source Understanding
 
@@ -193,7 +194,7 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 - **Depth:** fresh tool-free Synthesis、source-enabled Critic、Root Evaluation、Missing-link Waveを分離する。Familyごと最大3 evidence generation、Campaign全体最大12 Wave。
 - **Closure:** 最後のmaterial evidence後に二回連続のcomplete no-material-deltaを要求し、後者はfresh reviewを含む。
 - **Failures:** invalid evaluation、budget exhaustion、active Family、unscheduled Gapを`Incomplete`として残す。
-- **Status:** v6 initial Wave / Decision@3 / conditional Depthを実装。Missing-link / Closureはlegacy pathのみ。
+- **Status:** v7 initial Wave / Decision@3 / conditional Depthを実装。Missing-link / Closureはlegacy pathのみ。
 - **Code / Tests:** [exploration](../src/research/exploration) · [planning](../tests/research/semantic-root-planning.test.ts), [evaluation](../tests/research/semantic-root-evaluation.test.ts), [Depth](../tests/research/semantic-depth-work-queue.test.ts), [E2E](../tests/research/campaign-semantic-e2e.test.ts)
 
 ### Validation
@@ -206,7 +207,7 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 - **Finding:** `source-validated`だけがTarget Snapshot、Causal Identity、attacker premise、broken security property、source route / evidence、counterevidence、Validation refを固定したFindingをCASへ保存する。Finding identityはexact Candidate duplicateから決定し、Coverage状態を入力にしない。
 - **Boundary:** runtime / human verificationを所有しない。`needs-research`は具体的Gapとして同じFamilyへ戻し、`disproven`はsource contradictionだけ、provider / budget failureは`validation-pending`として残す。
 - **Legacy Packet:** Runtime Verification Packet v2、Risk Assessment、Human Review Packet v1は元のartifactとLedger eventをread-only replayし、新Findingへ自動変換しない。
-- **Status:** single fresh Attempt、durable intent / result recovery、4 Disposition、Finding / Coverage terminalをv6へ接続。multi-Attempt / Synthesisと旧Packet writerはlegacy replayに限定する。
+- **Status:** single fresh Attempt、durable intent / result recovery、4 Disposition、Finding / Coverage terminalをv7へ接続。multi-Attempt / Synthesisと旧Packet writerはlegacy replayに限定する。
 - **Code / Tests:** [attacker scope](../src/research/current-research-attacker-scope.ts), [validation](../src/research/validation), [candidate admission](../src/research/campaign-control/validation-candidate-admission.ts) · [scope](../tests/research/current-research-attacker-scope.test.ts), [Validation](../tests/research/validation.test.ts), [Finding / Coverage](../tests/research/campaign-validation-run.test.ts), [legacy Runtime Packet](../tests/research/runtime-verification-packet.test.ts), [legacy Packet](../tests/research/human-review-packet.test.ts)
 
 ### Model Execution
@@ -223,14 +224,13 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 ### Research Record
 
-Internal Module。immutable CAS artifact、append-only Ledger event、checkpoint、replay projectionを所有する。
-
-- **Interface:** current writeはprivate `CurrentCampaignStore`、全世代のread-only replayは`LegacyResearchReplay`。SQLiteとpublic `CampaignRunner / CampaignReader`は維持する。
-- artifactを保存してから参照eventをappendする。
-- current Attempt reservation / intentとcompletion / settlementはそれぞれ一つのtransactionでappendし、Campaign budget projectionはrun / stage / candidateをまたいで同じCampaignのLedgerから再構築する。
-- cacheを削除しても同じLedgerから同じview digestを再構築できる。
-- semantic identity、priority、Family groupingはowner Moduleが決める。
-- **Status / Tests:** current writeをlegacy `ResearchRecord`から分離し、Finding / Coverageを持つCampaign Run Record v4だけを新規作成する。v1 / v2、Packetを持つv3、旧Runtime Packet eventは既存Ledgerのread-only replayだけをproductionで許可する。Decision@3、Family、single Validation、Frontier Gap、Depth Queue / Synthesis / Critique / Evaluation、Finding / Coverage terminal、Campaign budget、progress replayを実装 · [current store](../src/research/research-record/current-campaign-store.ts), [legacy replay](../src/research/research-record/legacy-research-replay.ts), [current behavior](../tests/research/campaign-validation-run.test.ts), [compatibility](../tests/research/ledger-compatibility.test.ts)
+- **Purpose:** immutable CAS artifact、append-only Ledger event、checkpoint、replay projectionを所有するInternal Module。
+- **Interface:** current writeはprivate `CurrentCampaignStore`、全世代のread-only replayは`LegacyResearchReplay`。context外はpublic `CampaignRunner / CampaignReader`だけを使う。
+- **Invariants:** artifactを保存してから参照eventをappendする。Attempt reservation / intentとcompletion / settlementはそれぞれ一transactionでappendする。v7 Root Evaluation reservationはrun startとatomicにappendし、initial Root Attemptのreservation / intent / claimを一transactionでappendする。Campaign budget projectionはprotected reservationを含めてLedgerから再構築する。cacheを削除しても同じview digestを再構築する。
+- **Failure semantics:** event順序、artifact digest、Plan binding、reservation owner、claim identityの不一致はreplayまたはwrite admissionでfail closedにする。partial transactionを公開せず、unknown usageは保守的にreservation全量をchargeする。
+- **Behavior Test:** [current public behavior](../tests/research/campaign-validation-run.test.ts)、[legacy compatibility](../tests/research/ledger-compatibility.test.ts)。
+- **Status:** current writeをlegacy `ResearchRecord`から分離し、Finding / Coverageを持つCampaign Run Record v4だけを新規作成する。v1 / v2、Packetを持つv3、旧Runtime Packet eventは既存Ledgerのread-only replayだけを許可する。v7 Root Evaluation reservation、single Validation、Finding / Coverage terminal、Campaign budget、progress replayを実装。
+- **Code:** [current store](../src/research/research-record/current-campaign-store.ts)、[legacy replay](../src/research/research-record/legacy-research-replay.ts)。
 
 ## Human OS
 
@@ -285,8 +285,8 @@ ADR 0122以前のHuman Review Packet v1、Human Verification、Findingを元の�
 ## Adapters and runtime policy
 
 - CLIは`prepare / inspect`だけを持つthin adapter。[code](../src/cli.ts) · [tests](../tests/cli/campaign-cli.test.ts)
-- current policyは`semantic-research-recall-baseline-v6`。
-- current Campaign ceilingは12 Wave、USD 150、12 hours、Validation reserveはUSD 30。これらは[#111](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/111)でSchema literalからversioned baseline defaultへ移す。
+- current policyは`semantic-research-recall-baseline-v7`。Campaign token ceilingは4,600,000、Explorationは4,200,000、その内100,000をinitial Root Evaluationへdurableにreserveし、Validation 400,000へ再配分しない。
+- current Campaign ceilingは12 Wave、USD 150、12 hours、Validation reserveはUSD 30。provider cost ceiling、Opus profile、prompt / policy、oracle exclusion、no-fallbackはv6から変更しない。これらをSchema literalからversioned baseline defaultへ移す作業は[#111](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/111)で扱う。
 - v1 Map-firstとv5 Verificationはread/replay互換として残す。
 - ceiling到達はnegativeではなくtyped IncompleteまたはPending。
 

@@ -17,6 +17,8 @@ import {
   campaignAttemptCompletionV2Schema,
   campaignAttemptBudgetReservationSchema,
   campaignAttemptBudgetSettlementSchema,
+  campaignRootEvaluationBudgetClaimSchema,
+  campaignRootEvaluationBudgetReservationSchema,
   campaignAttemptIntentSchema,
   campaignAttemptIntentV2Schema,
   campaignAttemptResultStoredV2Schema,
@@ -30,6 +32,7 @@ import {
   campaignRunRecordV2Schema,
   campaignRunRecordV3Schema,
   campaignRunRecordV4Schema,
+  isCurrentSemanticResearchBudgetPolicy,
   type AnyCampaignRunRecordView,
   type CampaignRunCompletionInput,
   type CampaignRunCompletionInputV2,
@@ -51,6 +54,8 @@ import {
   type CampaignAttemptCompletionV2,
   type CampaignAttemptBudgetReservation,
   type CampaignAttemptBudgetSettlement,
+  type CampaignRootEvaluationBudgetClaim,
+  type CampaignRootEvaluationBudgetReservation,
   type CampaignAttemptIntent,
   type CampaignAttemptIntentV2,
   type CampaignAttemptResultStoredV2,
@@ -59,9 +64,11 @@ import {
   type CampaignBudgetView,
   type CurrentSemanticDepthResearch,
 } from "../campaign-control/contracts.js";
+import { currentSemanticCampaignConfigurationMatches } from "../campaign-control/current-semantic-campaign-bindings.js";
 import {
   campaignBudgetExhaustionDimensions,
   projectCampaignBudget,
+  reserveCampaignRootEvaluationBudget,
   reserveUnrecordedCampaignAttemptBudget,
   settleCampaignAttemptBudget,
 } from "../campaign-control/campaign-budget.js";
@@ -230,6 +237,8 @@ import type {
   RuntimeVerificationPacketRecordView,
   CampaignAttemptBudgetReservationRecordView,
   CampaignAttemptBudgetSettlementRecordView,
+  CampaignRootEvaluationBudgetClaimRecordView,
+  CampaignRootEvaluationBudgetReservationRecordView,
   CompleteSemanticCampaignAttemptWithBudgetInput,
   CompleteSemanticCampaignAttemptWithBudgetResult,
 } from "./contracts.js";
@@ -354,47 +363,15 @@ function currentSemanticPlanBudgetMismatch(
   input: NewCampaignInput,
 ): boolean {
   const policy = plan.budgetPolicy;
-  const validator = plan.validation.budget.validator;
+  const currentPolicyMismatch =
+    isCurrentSemanticResearchBudgetPolicy(policy) &&
+    !currentSemanticCampaignConfigurationMatches(plan);
   return (
+    currentPolicyMismatch ||
     policy.maxModelAttempts > input.budget.maxAttempts ||
     policy.maxModelTokens > input.budget.maxModelTokens ||
     policy.maxWallTimeMs > input.budget.maxWallTimeMs ||
-    plan.semanticPolicy.maxLeases > policy.maxConcurrentFinders ||
-    plan.semanticPolicy.finderLeaseBudget.maxWallTimeMs !== 10_800_000 ||
-    plan.semanticPolicy.finderLeaseBudget.maxModelTurns !== 256 ||
-    plan.semanticPolicy.finderLeaseBudget.maxProviderCostUsd !== 20 ||
-    plan.semanticPolicy.finderLeaseBudget.maxOutputBytes !== 2 * MEBIBYTE ||
-    plan.semanticPolicy.finderLeaseBudget.maxSourceQueries !== 512 ||
-    plan.semanticPolicy.finderLeaseBudget.maxSourceScanBytes !==
-      16 * GIBIBYTE ||
-    plan.semanticPolicy.finderLeaseBudget.maxSourceResponseBytes !==
-      256 * MEBIBYTE ||
-    plan.semanticPolicy.finderLeaseBudget.sourceLimitTerminalOutput !==
-      "preserve" ||
-    plan.semanticPolicy.finderLeaseBudget.reportedUsageEnforcement !==
-      "telemetry-only" ||
-    plan.semanticPolicy.plannerBudget.maxWallTimeMs !== 3_600_000 ||
-    plan.semanticPolicy.plannerBudget.maxModelTurns !== 128 ||
-    plan.semanticPolicy.plannerBudget.maxProviderCostUsd !== 10 ||
-    plan.semanticPolicy.plannerBudget.maxOutputBytes !== 2 * MEBIBYTE ||
-    plan.semanticPolicy.plannerBudget.maxSourceQueries !== 256 ||
-    plan.semanticPolicy.plannerBudget.maxSourceScanBytes !== 16 * GIBIBYTE ||
-    plan.semanticPolicy.plannerBudget.maxSourceResponseBytes !==
-      256 * MEBIBYTE ||
-    plan.semanticPolicy.plannerBudget.sourceLimitTerminalOutput !==
-      "preserve" ||
-    plan.semanticPolicy.plannerBudget.reportedUsageEnforcement !==
-      "telemetry-only" ||
-    plan.evaluator.budget.maxWallTimeMs !== 3_600_000 ||
-    plan.evaluator.budget.maxModelTurns !== 128 ||
-    plan.evaluator.budget.maxProviderCostUsd !== 10 ||
-    plan.evaluator.budget.maxOutputBytes !== 2 * MEBIBYTE ||
-    plan.evaluator.budget.reportedUsageEnforcement !== "telemetry-only" ||
-    plan.validation.validatorModelProfile.execution.model !== "claude-opus-5" ||
-    validator.maxModelTokens > policy.validationReserve.maxModelTokens ||
-    validator.maxProviderCostUsd >
-      policy.validationReserve.maxProviderCostUsd ||
-    validator.maxWallTimeMs > policy.validationReserve.maxWallTimeMs
+    plan.semanticPolicy.maxLeases > policy.maxConcurrentFinders
   );
 }
 
@@ -484,6 +461,17 @@ const semanticCampaignAttemptBudgetReservedPayloadSchema = z.strictObject({
 const semanticCampaignAttemptBudgetSettledPayloadSchema = z.strictObject({
   settlement: campaignAttemptBudgetSettlementSchema,
 });
+
+const semanticCampaignRootEvaluationBudgetReservedPayloadSchema =
+  z.strictObject({
+    reservation: campaignRootEvaluationBudgetReservationSchema,
+  });
+
+const semanticCampaignRootEvaluationBudgetClaimedPayloadSchema = z.strictObject(
+  {
+    claim: campaignRootEvaluationBudgetClaimSchema,
+  },
+);
 
 const semanticCampaignAttemptResultStoredPayloadSchema = z.strictObject({
   result: campaignAttemptResultStoredV2Schema,
@@ -744,6 +732,14 @@ interface LedgerProjection {
     string,
     CampaignAttemptBudgetSettlementRecordView
   >;
+  readonly semanticRootEvaluationBudgetReservations: ReadonlyMap<
+    string,
+    CampaignRootEvaluationBudgetReservationRecordView
+  >;
+  readonly semanticRootEvaluationBudgetClaims: ReadonlyMap<
+    string,
+    CampaignRootEvaluationBudgetClaimRecordView
+  >;
   readonly semanticFinderCheckpoints: ReadonlyMap<
     string,
     SemanticFinderCheckpointRecordView
@@ -850,6 +846,16 @@ function projectStoredSemanticCampaignBudget(
       ),
       ...implicitSettlements,
     ],
+    protectedReservations: [
+      ...ledger.semanticRootEvaluationBudgetReservations.values(),
+    ]
+      .filter(
+        (record) =>
+          !ledger.semanticRootEvaluationBudgetClaims.has(
+            record.reservation.reservationId,
+          ),
+      )
+      .map((record) => record.reservation),
   });
 }
 
@@ -1754,7 +1760,7 @@ class SqliteResearchRecord
         }
         if (
           (plan.schemaVersion === 3 &&
-            plan.budgetPolicy.id !== "semantic-research-recall-baseline-v6") ||
+            !isCurrentSemanticResearchBudgetPolicy(plan.budgetPolicy)) ||
           (plan.schemaVersion === 2 &&
             !("workWave" in plan) &&
             plan.budgetPolicy.id !== "semantic-research-recall-baseline-v5")
@@ -1772,6 +1778,19 @@ class SqliteResearchRecord
           { plan, planDigest },
           plan.schemaVersion,
         );
+        if (
+          plan.schemaVersion === 3 &&
+          isCurrentSemanticResearchBudgetPolicy(plan.budgetPolicy)
+        ) {
+          this.#insertEvent(
+            plan.campaignId,
+            ledgerHead + 1,
+            "campaign.root-evaluation-budget-reserved",
+            occurredAt,
+            { reservation: reserveCampaignRootEvaluationBudget(plan) },
+            1,
+          );
+        }
         return {
           disposition: "started",
           planDigest,
@@ -2317,6 +2336,18 @@ class SqliteResearchRecord
         }
         const ledger = this.#decodeLedger(intent.campaignId, rows);
         const run = ledger.semanticRuns.get(intent.runId);
+        if (run?.plan.schemaVersion !== 3 || run.completed !== undefined) {
+          throw new CampaignRunConflictError(intent.campaignId, intent.runId);
+        }
+        if (
+          isCurrentSemanticResearchBudgetPolicy(run.plan.budgetPolicy) &&
+          canonicalJson(reservation) !==
+            canonicalJson(
+              reserveUnrecordedCampaignAttemptBudget(run.plan, intent),
+            )
+        ) {
+          throw new CampaignRunConflictError(intent.campaignId, intent.runId);
+        }
         const existingAttempt = ledger.semanticAttempts.get(intent.attemptId);
         const existingReservation =
           ledger.semanticAttemptBudgetReservations.get(intent.attemptId);
@@ -2354,8 +2385,6 @@ class SqliteResearchRecord
               };
         }
         if (
-          run?.plan.schemaVersion !== 3 ||
-          run.completed !== undefined ||
           (intent.role === "root-evaluator" &&
             !validRootEvaluatorIdentity(intent)) ||
           (intent.role === "root-evaluator" &&
@@ -2371,6 +2400,32 @@ class SqliteResearchRecord
           throw new CampaignRunConflictError(intent.campaignId, intent.runId);
         }
         if (existingReservation !== undefined) {
+          throw new CampaignRunConflictError(intent.campaignId, intent.runId);
+        }
+        const rootReservation = isCurrentSemanticResearchBudgetPolicy(
+          run.plan.budgetPolicy,
+        )
+          ? reserveCampaignRootEvaluationBudget(run.plan)
+          : undefined;
+        const claimsRootReservation =
+          intent.role === "root-evaluator" &&
+          intent.workWaveDigest !== undefined &&
+          rootReservation !== undefined;
+        if (
+          (rootReservation !== undefined &&
+            !ledger.semanticRootEvaluationBudgetReservations.has(
+              rootReservation.reservationId,
+            )) ||
+          (claimsRootReservation &&
+            (intent.rootEvaluationReservationId !==
+              rootReservation.reservationId ||
+              ledger.semanticRootEvaluationBudgetClaims.has(
+                rootReservation.reservationId,
+              ))) ||
+          (!claimsRootReservation &&
+            intent.role === "root-evaluator" &&
+            intent.rootEvaluationReservationId !== undefined)
+        ) {
           throw new CampaignRunConflictError(intent.campaignId, intent.runId);
         }
         if (
@@ -2395,6 +2450,7 @@ class SqliteResearchRecord
         const exhaustedDimensions = campaignBudgetExhaustionDimensions(
           currentBudget,
           reservation,
+          claimsRootReservation ? rootReservation.amount : undefined,
         );
         if (exhaustedDimensions.length > 0) {
           return {
@@ -2422,11 +2478,36 @@ class SqliteResearchRecord
           { intent },
           2,
         );
+        const claimLedgerHead = rows.length + 3;
+        if (claimsRootReservation) {
+          const claim: CampaignRootEvaluationBudgetClaim = {
+            kind: "campaign-root-evaluation-budget-claim",
+            schemaVersion: 1,
+            campaignId: intent.campaignId,
+            runId: intent.runId,
+            reservationId: rootReservation.reservationId,
+            attemptId: intent.attemptId,
+            attemptPlanDigest: intent.attemptPlanDigest,
+            owner: "exploration",
+            role: "root-evaluator",
+          };
+          this.#insertEvent(
+            intent.campaignId,
+            claimLedgerHead,
+            "campaign.root-evaluation-budget-claimed",
+            occurredAt,
+            { claim },
+            1,
+          );
+        }
         const updatedRows = this.#readRows(intent.campaignId);
+        const finalLedgerHead = claimsRootReservation
+          ? claimLedgerHead
+          : attemptLedgerHead;
         const budget = projectStoredSemanticCampaignBudget(
           intent.campaignId,
           intent.runId,
-          attemptLedgerHead,
+          finalLedgerHead,
           this.#decodeLedger(intent.campaignId, updatedRows),
         );
         if (budget === undefined) {
@@ -4938,6 +5019,14 @@ class SqliteResearchRecord
       string,
       CampaignAttemptBudgetSettlementRecordView
     >();
+    const semanticRootEvaluationBudgetReservations = new Map<
+      string,
+      CampaignRootEvaluationBudgetReservationRecordView
+    >();
+    const semanticRootEvaluationBudgetClaims = new Map<
+      string,
+      CampaignRootEvaluationBudgetClaimRecordView
+    >();
     const semanticFinderCheckpoints = new Map<
       string,
       SemanticFinderCheckpointRecordView
@@ -5077,6 +5166,50 @@ class SqliteResearchRecord
         });
         continue;
       }
+      if (event.kind === "campaign.root-evaluation-budget-reserved") {
+        if (event.schema_version !== 1) {
+          throw new UnsupportedLedgerSchemaError(
+            event.kind,
+            event.schema_version,
+          );
+        }
+        const { reservation } =
+          semanticCampaignRootEvaluationBudgetReservedPayloadSchema.parse(
+            this.#parsePayload(event),
+          );
+        const run = semanticRuns.get(reservation.runId);
+        const expected =
+          run?.plan.schemaVersion === 3 &&
+          isCurrentSemanticResearchBudgetPolicy(run.plan.budgetPolicy)
+            ? reserveCampaignRootEvaluationBudget(run.plan)
+            : undefined;
+        if (
+          reservation.campaignId !== campaignId ||
+          run === undefined ||
+          run.completed !== undefined ||
+          expected === undefined ||
+          canonicalJson(reservation) !== canonicalJson(expected) ||
+          semanticRootEvaluationBudgetReservations.has(
+            reservation.reservationId,
+          ) ||
+          [...semanticAttempts.values()].some(
+            (attempt) =>
+              attempt.intent.runId === reservation.runId &&
+              attempt.intent.role === "finder",
+          )
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        semanticRootEvaluationBudgetReservations.set(
+          reservation.reservationId,
+          {
+            ledgerHead: event.campaign_sequence,
+            occurredAt: event.occurred_at,
+            reservation,
+          },
+        );
+        continue;
+      }
       if (event.kind === "campaign.attempt-started") {
         if (event.schema_version === 2) {
           const payload = semanticCampaignAttemptStartedPayloadSchema.parse(
@@ -5092,6 +5225,18 @@ class SqliteResearchRecord
             run === undefined ||
             run.completed !== undefined ||
             semanticAttempts.has(intent.attemptId) ||
+            (run.plan.schemaVersion === 3 &&
+              isCurrentSemanticResearchBudgetPolicy(run.plan.budgetPolicy) &&
+              intent.role === "finder" &&
+              !semanticRootEvaluationBudgetReservations.has(
+                reserveCampaignRootEvaluationBudget(run.plan).reservationId,
+              )) ||
+            (run.plan.schemaVersion === 3 &&
+              isCurrentSemanticResearchBudgetPolicy(run.plan.budgetPolicy) &&
+              intent.role === "root-evaluator" &&
+              intent.workWaveDigest !== undefined &&
+              intent.rootEvaluationReservationId !==
+                reserveCampaignRootEvaluationBudget(run.plan).reservationId) ||
             (reservation !== undefined &&
               (reservation.reservation.campaignId !== intent.campaignId ||
                 reservation.reservation.runId !== intent.runId ||
@@ -5166,6 +5311,48 @@ class SqliteResearchRecord
           ledgerHead: event.campaign_sequence,
           occurredAt: event.occurred_at,
           intent,
+        });
+        continue;
+      }
+      if (event.kind === "campaign.root-evaluation-budget-claimed") {
+        if (event.schema_version !== 1) {
+          throw new UnsupportedLedgerSchemaError(
+            event.kind,
+            event.schema_version,
+          );
+        }
+        const { claim } =
+          semanticCampaignRootEvaluationBudgetClaimedPayloadSchema.parse(
+            this.#parsePayload(event),
+          );
+        const reservation = semanticRootEvaluationBudgetReservations.get(
+          claim.reservationId,
+        );
+        const attempt = semanticAttempts.get(claim.attemptId);
+        const attemptReservation = semanticAttemptBudgetReservations.get(
+          claim.attemptId,
+        );
+        if (
+          claim.campaignId !== campaignId ||
+          reservation === undefined ||
+          attempt === undefined ||
+          attempt.intent.role !== "root-evaluator" ||
+          attempt.intent.rootEvaluationReservationId !== claim.reservationId ||
+          attempt.intent.attemptPlanDigest !== claim.attemptPlanDigest ||
+          attemptReservation === undefined ||
+          attemptReservation.reservation.owner !== claim.owner ||
+          attemptReservation.reservation.role !== claim.role ||
+          reservation.reservation.runId !== claim.runId ||
+          reservation.reservation.owner !== claim.owner ||
+          reservation.reservation.role !== claim.role ||
+          semanticRootEvaluationBudgetClaims.has(claim.reservationId)
+        ) {
+          throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+        }
+        semanticRootEvaluationBudgetClaims.set(claim.reservationId, {
+          ledgerHead: event.campaign_sequence,
+          occurredAt: event.occurred_at,
+          claim,
         });
         continue;
       }
@@ -6831,6 +7018,25 @@ class SqliteResearchRecord
       throw new UnsupportedLedgerSchemaError(event.kind, event.schema_version);
     }
 
+    for (const run of semanticRuns.values()) {
+      if (
+        run.plan.schemaVersion !== 3 ||
+        !isCurrentSemanticResearchBudgetPolicy(run.plan.budgetPolicy)
+      ) {
+        continue;
+      }
+      const expected = reserveCampaignRootEvaluationBudget(run.plan);
+      const stored = semanticRootEvaluationBudgetReservations.get(
+        expected.reservationId,
+      );
+      if (
+        stored === undefined ||
+        canonicalJson(stored.reservation) !== canonicalJson(expected)
+      ) {
+        throw new LedgerIntegrityError(campaignId, "invalid-event-order");
+      }
+    }
+
     return {
       preparation: {
         campaignId,
@@ -6846,6 +7052,8 @@ class SqliteResearchRecord
       semanticAttempts,
       semanticAttemptBudgetReservations,
       semanticAttemptBudgetSettlements,
+      semanticRootEvaluationBudgetReservations,
+      semanticRootEvaluationBudgetClaims,
       semanticFinderCheckpoints,
       semanticIterationDecisions,
       semanticIterationDecisionsV3,

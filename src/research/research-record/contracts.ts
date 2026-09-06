@@ -41,6 +41,8 @@ import type {
   CampaignAttemptRecordView,
   CampaignAttemptCompletionV2,
   CampaignAttemptBudgetReservation,
+  CampaignRootEvaluationBudgetClaim,
+  CampaignRootEvaluationBudgetReservation,
   CampaignAttemptBudgetSettlement,
   CampaignAttemptIntentV2,
   CampaignAttemptResultStoredV2,
@@ -350,6 +352,18 @@ export interface CampaignAttemptBudgetSettlementRecordView {
   readonly ledgerHead: number;
   readonly occurredAt: string;
   readonly settlement: CampaignAttemptBudgetSettlement;
+}
+
+export interface CampaignRootEvaluationBudgetReservationRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly reservation: CampaignRootEvaluationBudgetReservation;
+}
+
+export interface CampaignRootEvaluationBudgetClaimRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly claim: CampaignRootEvaluationBudgetClaim;
 }
 
 export interface CompleteSemanticCampaignAttemptWithBudgetInput {

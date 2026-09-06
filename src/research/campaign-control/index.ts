@@ -122,6 +122,7 @@ import {
   calibrationReviewResultSchema,
   campaignAttemptResultStoredV2Schema,
   finderAttemptMaterializationSchema,
+  isCurrentSemanticResearchBudgetPolicy,
   semanticDepthResearchSchema,
   currentSemanticDepthResearchSchema,
   type CampaignAttemptIntent,
@@ -154,6 +155,7 @@ import { isWithinCurrentResearchAttackerScope } from "../current-research-attack
 import {
   CampaignBudgetExhaustedError,
   reserveCampaignAttemptBudget,
+  reserveCampaignRootEvaluationBudget,
 } from "./campaign-budget.js";
 
 export interface CampaignControl {
@@ -1857,6 +1859,9 @@ async function executeDefaultSemanticCampaign(
     throw new LegacySemanticExecutionDisabledError();
   }
   if (start.disposition === "completed") return start.run;
+  if (plan.schemaVersion === 3) {
+    await dependencies.campaignRunStartFaultBoundary?.afterStarted(plan);
+  }
 
   const verificationQueue =
     plan.schemaVersion === 2
@@ -2175,6 +2180,13 @@ async function executeDefaultSemanticCampaign(
         attemptPlan.assignment.kind === "wave-evaluation"
           ? {
               ...commonIntent,
+              ...(plan.schemaVersion === 3 &&
+              isCurrentSemanticResearchBudgetPolicy(plan.budgetPolicy)
+                ? {
+                    rootEvaluationReservationId:
+                      reserveCampaignRootEvaluationBudget(plan).reservationId,
+                  }
+                : {}),
               workWaveDigest: attemptPlan.assignment.wave.digest,
               terminalDigest: attemptPlan.assignment.terminalDigest,
             }

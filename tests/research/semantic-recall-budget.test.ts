@@ -1,16 +1,11 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { describe, expect, it } from "vitest";
 
 import {
-  CampaignRunConflictError,
+  bindCurrentSemanticCampaignConfiguration,
   campaignDefaultSemanticRunPlanV3Schema,
   defineCurrentSemanticRootPlanningPolicy,
-} from "../../src/research/campaign-control/contracts.js";
+} from "../../src/research/index.js";
 import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
-import { openSqliteResearchRecord } from "../../src/research/research-record/index.js";
 import { projectTargetFileManifest } from "../../src/research/source-mapping/target-file-manifest.js";
 import { createCampaignInput } from "../fixtures/campaign.js";
 
@@ -24,14 +19,10 @@ const targets = [
   { slug: "translatepress-multilingual", version: "3.2.5" },
 ] as const;
 
-describe("semantic-research-recall-baseline-v6", () => {
+describe("semantic-research-recall-baseline-v7", () => {
   it.each(targets)(
     "dry-checks $slug without starting a model or Lab",
-    async ({ slug, version }) => {
-      const directory = await mkdtemp(join(tmpdir(), "semantic-v6-dry-"));
-      const record = openSqliteResearchRecord({
-        databasePath: join(directory, "research.sqlite"),
-      });
+    ({ slug, version }) => {
       const targetSnapshot = {
         id: `${slug}-${version}`,
         pluginSlug: slug,
@@ -43,9 +34,9 @@ describe("semantic-research-recall-baseline-v6", () => {
         schemaVersion: 2 as const,
         targetSnapshot,
         modelProfiles: [
-          { id: "opus-planner-v5", digest: digest("5") },
-          { id: "opus-finder-v5", digest: digest("6") },
-          { id: "opus-evaluator-v5", digest: digest("7") },
+          { id: "opus-planner-v6", digest: digest("5") },
+          { id: "opus-finder-v6", digest: digest("6") },
+          { id: "opus-evaluator-v6", digest: digest("7") },
           { id: "opus-validator-v6", digest: digest("8") },
         ],
         canonicalFileManifest: {
@@ -56,7 +47,7 @@ describe("semantic-research-recall-baseline-v6", () => {
         budget: {
           maxAttempts: 128,
           maxWallTimeMs: 43_200_000,
-          maxModelTokens: 4_000_000,
+          maxModelTokens: 4_600_000,
         },
       };
       const manifestValue = projectTargetFileManifest(
@@ -70,13 +61,12 @@ describe("semantic-research-recall-baseline-v6", () => {
         targetSnapshotDigest: targetSnapshot.digest,
         digest: sha256Digest(manifestValue),
       };
-      const preparation = await record.recordPreparation(input, manifest);
       const profile = (id: string, profileDigest: string) => ({
         ref: {
           kind: "model-profile" as const,
           schemaVersion: 1 as const,
           id,
-          family: "claude",
+          family: "claude" as const,
           digest: profileDigest,
         },
         execution: {
@@ -100,28 +90,8 @@ describe("semantic-research-recall-baseline-v6", () => {
         id: "semantic-source-tools-v3",
         digest: digest("c"),
       };
-      const plan = campaignDefaultSemanticRunPlanV3Schema.parse({
-        kind: "campaign-run-plan",
-        schemaVersion: 3,
-        runId: `dry-${slug}-run`,
-        campaignId: input.campaignId,
-        preparationDigest: preparation.requestedInputDigest,
-        target: targetSnapshot,
-        manifest,
-        metadata: {
-          kind: "oracle-free-target-metadata",
-          schemaVersion: 1,
-          pluginIdentity: `wporg:${slug}`,
-          mainPluginFile: `${slug}.php`,
-          canonicalInstallDirectory: slug,
-        },
-        semanticPolicy: {
-          kind: "semantic-root-planning-policy",
-          schemaVersion: 1,
-          id: "semantic-research-recall-baseline-v5",
-          maxTargetSpecificTheses: 2,
-          minWildcardTheses: 1,
-          maxLeases: 4,
+      const bindingSource = {
+        semanticPolicy: defineCurrentSemanticRootPlanningPolicy({
           plannerBudget: {
             maxWallTimeMs: 3_600_000,
             maxModelTokens: 100_000,
@@ -147,28 +117,28 @@ describe("semantic-research-recall-baseline-v6", () => {
             sourceLimitTerminalOutput: "preserve",
             reportedUsageEnforcement: "telemetry-only",
           },
-        },
+        }),
         planner: {
-          modelProfile: profile("opus-planner-v5", digest("5")),
+          modelProfile: profile("opus-planner-v6", digest("5")),
           promptSet,
           sourceToolPolicy,
         },
         finder: {
-          modelProfile: profile("opus-finder-v5", digest("6")),
+          modelProfile: profile("opus-finder-v6", digest("6")),
           promptSet,
           selectedKnowledge: [],
           sourceToolPolicy,
         },
         evaluator: {
-          modelProfile: profile("opus-evaluator-v5", digest("7")),
+          modelProfile: profile("opus-evaluator-v6", digest("7")),
           promptSet,
           budget: {
             maxWallTimeMs: 3_600_000,
-            maxModelTokens: 300_000,
+            maxModelTokens: 100_000,
             maxModelTurns: 128,
             maxProviderCostUsd: 10,
             maxOutputBytes: 2 * MEBIBYTE,
-            reportedUsageEnforcement: "telemetry-only",
+            reportedUsageEnforcement: "telemetry-only" as const,
           },
         },
         validation: {
@@ -195,27 +165,50 @@ describe("semantic-research-recall-baseline-v6", () => {
               maxSourceQueries: 128,
               maxSourceScanBytes: 16 * GIBIBYTE,
               maxSourceResponseBytes: 256 * MEBIBYTE,
-              sourceLimitTerminalOutput: "preserve",
-              reportedUsageEnforcement: "telemetry-only",
+              sourceLimitTerminalOutput: "preserve" as const,
+              reportedUsageEnforcement: "telemetry-only" as const,
             },
           },
         },
+      };
+      const plan = campaignDefaultSemanticRunPlanV3Schema.parse({
+        kind: "campaign-run-plan",
+        schemaVersion: 3,
+        runId: `dry-${slug}-run`,
+        campaignId: input.campaignId,
+        preparationDigest: digest("f"),
+        target: targetSnapshot,
+        manifest,
+        metadata: {
+          kind: "oracle-free-target-metadata",
+          schemaVersion: 1,
+          pluginIdentity: `wporg:${slug}`,
+          mainPluginFile: `${slug}.php`,
+          canonicalInstallDirectory: slug,
+        },
+        ...bindingSource,
+        bindings: bindCurrentSemanticCampaignConfiguration(bindingSource),
         budgetPolicy: {
           kind: "semantic-research-budget",
-          schemaVersion: 2,
-          id: "semantic-research-recall-baseline-v6",
+          schemaVersion: 3,
+          id: "semantic-research-recall-baseline-v7",
           maxWorkWaves: 12,
           maxFinderAttempts: 48,
           maxConcurrentFinders: 4,
           maxModelAttempts: 128,
-          maxModelTokens: 4_000_000,
+          maxModelTokens: 4_600_000,
           maxProviderCostUsd: 150,
           maxWallTimeMs: 43_200_000,
           reportedUsageEnforcement: "telemetry-only",
           exploration: {
-            maxModelTokens: 3_600_000,
+            maxModelTokens: 4_200_000,
             maxProviderCostUsd: 120,
             maxWallTimeMs: 36_000_000,
+            rootEvaluationReserve: {
+              maxModelTokens: 100_000,
+              owner: "exploration",
+              role: "root-evaluator",
+            },
           },
           validationReserve: {
             maxModelTokens: 400_000,
@@ -224,93 +217,28 @@ describe("semantic-research-recall-baseline-v6", () => {
           },
         },
       });
+
       expect(plan).not.toHaveProperty("verification");
       expect(plan.semanticPolicy).toMatchObject({
         maxTargetSpecificTheses: 2,
         minWildcardTheses: 1,
-        maxLeases: 4,
+        maxLeases: 3,
       });
       expect(plan.budgetPolicy).toMatchObject({
-        maxFinderAttempts: 48,
-        maxConcurrentFinders: 4,
-      });
-      const legacyFourFinderPlan = campaignDefaultSemanticRunPlanV3Schema.parse(
-        {
-          ...plan,
-          runId: `${plan.runId}-legacy-four-finder`,
-          semanticPolicy: {
-            ...plan.semanticPolicy,
-            maxTargetSpecificTheses: 3,
-          },
+        id: "semantic-research-recall-baseline-v7",
+        maxModelTokens: 4_600_000,
+        exploration: {
+          maxModelTokens: 4_200_000,
+          rootEvaluationReserve: { maxModelTokens: 100_000 },
         },
-      );
-      expect(legacyFourFinderPlan.semanticPolicy).toMatchObject({
-        maxTargetSpecificTheses: 3,
-        minWildcardTheses: 1,
-        maxLeases: 4,
+        validationReserve: { maxModelTokens: 400_000 },
       });
-      const currentFourFinderPolicy = defineCurrentSemanticRootPlanningPolicy({
-        plannerBudget: plan.semanticPolicy.plannerBudget,
-        finderLeaseBudget: plan.semanticPolicy.finderLeaseBudget,
-        maxLeasesOverride: 4,
-      });
-      expect(currentFourFinderPolicy).toMatchObject({
-        maxTargetSpecificTheses: 2,
-        minWildcardTheses: 1,
-        maxLeases: 4,
-      });
-      expect(() =>
-        campaignDefaultSemanticRunPlanV3Schema.parse({
-          ...plan,
-          runId: `${plan.runId}-invalid-current-four-finder`,
-          semanticPolicy: {
-            ...currentFourFinderPolicy,
-            maxTargetSpecificTheses: 3,
-          },
-        }),
-      ).toThrow();
-
-      try {
-        const started = await record.recordSemanticCampaignRunStart(plan);
-        expect(started).toMatchObject({ disposition: "started" });
-        await expect(
-          record.recordSemanticCampaignRunStart(plan),
-        ).resolves.toEqual(started);
-        await expect(
-          record.recordSemanticCampaignRunStart({
-            ...plan,
-            runId: `${plan.runId}-non-opus-validation`,
-            validation: {
-              ...plan.validation,
-              validatorModelProfile: {
-                ...plan.validation.validatorModelProfile,
-                execution: {
-                  ...plan.validation.validatorModelProfile.execution,
-                  model: "claude-sonnet-5",
-                },
-              },
-            },
-          }),
-        ).rejects.toBeInstanceOf(CampaignRunConflictError);
-        await expect(
-          record.recordSemanticCampaignRunStart({
-            ...plan,
-            runId: `${plan.runId}-validator-reserve-overflow`,
-            validation: {
-              ...plan.validation,
-              budget: {
-                validator: {
-                  ...plan.validation.budget.validator,
-                  maxModelTokens: 400_001,
-                },
-              },
-            },
-          }),
-        ).rejects.toBeInstanceOf(CampaignRunConflictError);
-      } finally {
-        record.close();
-        await rm(directory, { force: true, recursive: true });
+      if (!("bindings" in plan)) {
+        throw new Error("Expected current Campaign bindings");
       }
+      expect(plan.bindings).toEqual(
+        bindCurrentSemanticCampaignConfiguration(plan),
+      );
     },
   );
 });
