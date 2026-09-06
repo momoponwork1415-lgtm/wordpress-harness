@@ -79,6 +79,30 @@ const legacyValidationCandidateIdentitySchema = z.strictObject(
   legacyValidationCandidateIdentityFields,
 );
 
+type ValidationCausalRoute = z.output<
+  typeof validationCandidateIdentitySchema
+>["causalRoute"];
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+export function normalizeValidationCausalRoute(
+  input: ValidationCausalRoute,
+): ValidationCausalRoute {
+  const route = validationCandidateIdentityFields.causalRoute.parse(input);
+  return route.map((step) => ({
+    ...step,
+    evidence: [...step.evidence].sort(
+      (left, right) =>
+        compareText(left.path, right.path) ||
+        left.startLine - right.startLine ||
+        left.endLine - right.endLine ||
+        compareText(left.fileDigest, right.fileDigest),
+    ),
+  }));
+}
+
 export type LegacyValidationCandidateIdentityInput = z.input<
   typeof legacyValidationCandidateIdentitySchema
 > & { readonly origins?: unknown };

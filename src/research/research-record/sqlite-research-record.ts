@@ -171,6 +171,7 @@ import {
   referenceValidationCandidate,
   legacyValidationCandidateRefSchema,
   legacyValidationCandidateSchema,
+  normalizeValidationCausalRoute,
   validationCandidateRefSchema,
   validationCandidateSchema,
   validationRecordRefSchema as sourceValidationRecordRefSchema,
@@ -3696,8 +3697,9 @@ class SqliteResearchRecord
               action.admission.hypothesis.digest === origin.subjectDigest &&
               action.admission.brokenSecurityProperty ===
                 candidate.brokenSecurityProperty &&
-              canonicalJson(action.admission.causalRoute) ===
-                canonicalJson(candidate.causalRoute),
+              canonicalJson(
+                normalizeValidationCausalRoute(action.admission.causalRoute),
+              ) === canonicalJson(candidate.causalRoute),
           )
         ) {
           throw new Error("Validation intent is not admitted by its Decision");

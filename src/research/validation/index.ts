@@ -59,6 +59,7 @@ export {
   legacyValidationCandidateId,
   legacyValidationCandidateRefSchema,
   legacyValidationCandidateSchema,
+  normalizeValidationCausalRoute,
   validationCandidateId,
   validationCandidateRefSchema,
   validationCandidateSchema,

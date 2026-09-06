@@ -15,6 +15,7 @@ import type { JsonArtifactStore } from "../research-record/contracts.js";
 import {
   validationCandidateId,
   validationCandidateSchema,
+  normalizeValidationCausalRoute,
   type ValidationCandidate,
   type ValidationCandidateIdentityInput,
 } from "../validation/index.js";
@@ -148,16 +149,7 @@ export async function materializeValidationCandidates(
       attackerPremise: hypothesis.value.attackerPremise,
       brokenSecurityProperty: action.admission.brokenSecurityProperty,
       causalIdentity: hypothesis.value.causalIdentity,
-      causalRoute: action.admission.causalRoute.map((step) => ({
-        ...step,
-        evidence: [...step.evidence].sort(
-          (left, right) =>
-            compareText(left.path, right.path) ||
-            left.startLine - right.startLine ||
-            left.endLine - right.endLine ||
-            compareText(left.fileDigest, right.fileDigest),
-        ),
-      })),
+      causalRoute: normalizeValidationCausalRoute(action.admission.causalRoute),
     };
     const candidateId = validationCandidateId(candidateInput);
     const origin = {

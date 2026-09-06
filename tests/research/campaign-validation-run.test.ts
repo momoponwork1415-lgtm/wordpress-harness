@@ -194,6 +194,11 @@ describe("CampaignRunner.run source-only Validation", () => {
       startLine: 10,
       endLine: 20,
     };
+    const secondaryAnchor = {
+      ...anchor,
+      startLine: 30,
+      endLine: 40,
+    };
     const observedPlans: ModelAttemptPlan[] = [];
     const depthQueuesObservedBeforeValidation: string[] = [];
     const depthQueuesObservedBeforeSynthesis: string[] = [];
@@ -221,6 +226,7 @@ describe("CampaignRunner.run source-only Validation", () => {
     let finderReportedTokens: readonly number[] | undefined;
     let finderReportedTokenIndex = 0;
     let failInitialRootAfterAdmission = false;
+    let reverseValidationEvidence = false;
     let injectUnknownValidatorResult = false;
     let firstFindingId: string | undefined;
     const deliveredPacketDigests: string[] = [];
@@ -332,7 +338,11 @@ describe("CampaignRunner.run source-only Validation", () => {
                         },
                         attackerPremise: "unauthenticated",
                         impact: "account-takeover",
-                        route: { anchors: [anchor] },
+                        route: {
+                          anchors: reverseValidationEvidence
+                            ? [anchor, secondaryAnchor]
+                            : [anchor],
+                        },
                         unknowns: [
                           {
                             claim:
@@ -438,7 +448,9 @@ describe("CampaignRunner.run source-only Validation", () => {
                       ordinal: 1,
                       claim:
                         "A public write reaches a privileged consumer without ownership enforcement.",
-                      evidence: [anchor],
+                      evidence: reverseValidationEvidence
+                        ? [secondaryAnchor, anchor]
+                        : [anchor],
                     },
                   ],
                   reason: "The exact route is ready for fresh source review.",
@@ -2172,6 +2184,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       validationDisposition = "source-validated";
       depthFailure = "none";
       failInitialRootAfterAdmission = false;
+      reverseValidationEvidence = true;
       candidateIdentitySuffix = "-measured-root-reserve";
       const measuredPlan = campaignDefaultSemanticRunPlanV3Schema.parse({
         ...plan,
