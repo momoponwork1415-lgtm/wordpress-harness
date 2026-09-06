@@ -351,6 +351,10 @@ describe("CampaignRunner.prepareFromTargetIntake", () => {
         reopened.close();
       }
 
+      // A store answering with content the digest does not address has served
+      // the wrong artifact, whatever shape that content happens to have. It is
+      // reported as a CAS mismatch and not as an unreadable artifact, because
+      // the two send an operator to repair different things.
       const corruptedReplay = openResearch({
         databasePath,
         artifactStore: {
@@ -368,10 +372,33 @@ describe("CampaignRunner.prepareFromTargetIntake", () => {
           }),
         ).rejects.toMatchObject({
           name: "TargetIntakeHandoffIntegrityError",
-          reason: "research-cas-artifact-invalid",
+          reason: "research-cas-digest-mismatch",
         });
       } finally {
         corruptedReplay.close();
+      }
+
+      const absentReplay = openResearch({
+        databasePath,
+        artifactStore: {
+          putJson: (value) => artifacts.putJson(value),
+          readJson: (artifactDigest) =>
+            artifactDigest === disposition.packetRef.digest
+              ? Promise.reject(new Error("ENOENT: no such file or directory"))
+              : artifacts.readJson(artifactDigest),
+        },
+      });
+      try {
+        await expect(
+          absentReplay.reader.inspect(campaign.campaignId, {
+            kind: "preparation",
+          }),
+        ).rejects.toMatchObject({
+          name: "TargetIntakeHandoffIntegrityError",
+          reason: "research-cas-artifact-missing",
+        });
+      } finally {
+        absentReplay.close();
       }
     } finally {
       await rm(directory, { force: true, recursive: true });

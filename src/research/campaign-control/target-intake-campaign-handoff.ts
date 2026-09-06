@@ -15,14 +15,30 @@ import {
   sha256Digest,
 } from "../research-record/canonical-json.js";
 import type { JsonArtifactStore } from "../research-record/contracts.js";
+import { rehydrationReason } from "../research-record/rehydration-reason.js";
+import {
+  ArtifactIntegrityError,
+  openVerifiedArtifacts,
+  type VerifiedArtifacts,
+} from "../../infrastructure/verified-artifacts.js";
 
+/**
+ * Why the handoff refused.
+ *
+ * The three Research CAS reasons name three different repairs and must not be
+ * substituted for one another: `-digest-mismatch` says the store holds content
+ * the digest does not address, `-artifact-invalid` says it holds the addressed
+ * content and this generation cannot read it, and `-artifact-missing` says it
+ * could not produce the artifact at all.
+ */
 type HandoffIntegrityReason =
   | "packet-digest-mismatch"
   | "receipt-digest-mismatch"
   | "receipt-packet-binding-mismatch"
   | "packet-content-binding-mismatch"
   | "research-cas-digest-mismatch"
-  | "research-cas-artifact-invalid";
+  | "research-cas-artifact-invalid"
+  | "research-cas-artifact-missing";
 
 export class TargetIntakeHandoffIntegrityError extends Error {
   readonly reason: HandoffIntegrityReason;
@@ -95,12 +111,15 @@ function validatePacketAndReceipt(
 }
 
 async function persistHandoffArtifact(
-  artifactStore: JsonArtifactStore,
+  artifacts: VerifiedArtifacts,
+  artifact: string,
   value: unknown,
   expectedDigest: string,
 ): Promise<void> {
-  const storedDigest = await artifactStore.putJson(value);
-  if (storedDigest !== expectedDigest) {
+  try {
+    await artifacts.put(artifact, value, expectedDigest);
+  } catch (error: unknown) {
+    if (!(error instanceof ArtifactIntegrityError)) throw error;
     throw new TargetIntakeHandoffIntegrityError("research-cas-digest-mismatch");
   }
 }
@@ -111,9 +130,20 @@ export async function materializeTargetIntakeCampaignInput(
 ): Promise<NewCampaignInputV3> {
   const input = targetIntakeCampaignPreparationInputSchema.parse(value);
   const { packet, packetRef, receipt, receiptRef } = input.intake;
+  const artifacts = openVerifiedArtifacts(artifactStore);
   validatePacketAndReceipt(packet, packetRef, receipt, receiptRef);
-  await persistHandoffArtifact(artifactStore, packet, packetRef.digest);
-  await persistHandoffArtifact(artifactStore, receipt, receiptRef.digest);
+  await persistHandoffArtifact(
+    artifacts,
+    "Target Intake Packet",
+    packet,
+    packetRef.digest,
+  );
+  await persistHandoffArtifact(
+    artifacts,
+    "Target Intake Receipt",
+    receipt,
+    receiptRef.digest,
+  );
 
   return newCampaignInputV3Schema.parse({
     schemaVersion: 3,
@@ -143,19 +173,29 @@ export async function validatePreparedTargetIntake(
   input: NewCampaignInputV3,
   artifactStore: JsonArtifactStore,
 ): Promise<void> {
+  const artifacts = openVerifiedArtifacts(artifactStore);
   let packet: TargetIntakePacket;
   let receipt: IntakeReceipt;
   try {
-    packet = targetIntakePacketSchema.parse(
-      await artifactStore.readJson(input.targetIntake.packet.digest),
+    packet = await artifacts.read(
+      "Target Intake Packet",
+      targetIntakePacketSchema,
+      input.targetIntake.packet.digest,
     );
-    receipt = intakeReceiptSchema.parse(
-      await artifactStore.readJson(input.targetIntake.receipt.digest),
+    receipt = await artifacts.read(
+      "Target Intake Receipt",
+      intakeReceiptSchema,
+      input.targetIntake.receipt.digest,
     );
   } catch (error: unknown) {
     if (error instanceof TargetIntakeHandoffIntegrityError) throw error;
     throw new TargetIntakeHandoffIntegrityError(
-      "research-cas-artifact-invalid",
+      rehydrationReason(
+        error,
+        "research-cas-digest-mismatch",
+        "research-cas-artifact-invalid",
+        "research-cas-artifact-missing",
+      ),
     );
   }
   validatePacketAndReceipt(
