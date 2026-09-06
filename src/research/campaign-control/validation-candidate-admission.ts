@@ -12,6 +12,7 @@ import {
 } from "../research-record/canonical-json.js";
 import { isWithinCurrentResearchAttackerScope } from "../current-research-attacker-scope.js";
 import type { JsonArtifactStore } from "../research-record/contracts.js";
+import { openVerifiedArtifacts } from "../research-record/verified-artifacts.js";
 import {
   validationCandidateId,
   validationCandidateSchema,
@@ -59,6 +60,7 @@ export async function materializeValidationCandidates(
     readonly decision: unknown;
   },
 ): Promise<readonly ValidationCandidate[]> {
+  const artifacts = openVerifiedArtifacts(artifactStore);
   const input = validationCandidateAdmissionInputSchema.parse(inputValue);
   const decisionDigest = sha256Digest(input.decision);
   const families = new Map(
@@ -98,14 +100,11 @@ export async function materializeValidationCandidates(
       throw new Error("Validation admission lost its Approach Family");
     }
 
-    const hypothesisInput = await artifactStore.readJson(
+    const hypothesis = await artifacts.read(
+      "Validation admission Hypothesis",
+      sourceBoundHypothesisArtifactSchema,
       action.admission.hypothesis.digest,
     );
-    if (sha256Digest(hypothesisInput) !== action.admission.hypothesis.digest) {
-      throw new Error("Validation admission Hypothesis CAS mismatch");
-    }
-    const hypothesis =
-      sourceBoundHypothesisArtifactSchema.parse(hypothesisInput);
     if (
       !isWithinCurrentResearchAttackerScope(hypothesis.value.attackerPremise)
     ) {

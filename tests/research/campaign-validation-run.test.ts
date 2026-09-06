@@ -2334,7 +2334,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       try {
         await expect(
           invalidResultRecoveryResearch.runner.run(invalidStoredResultPlan),
-        ).rejects.toThrow("Validator Attempt result mismatch");
+        ).rejects.toThrow("Validator Attempt result CAS mismatch");
       } finally {
         invalidResultRecoveryResearch.close();
       }

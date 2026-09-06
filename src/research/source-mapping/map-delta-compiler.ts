@@ -3,6 +3,7 @@ import {
   canonicalJson,
   sha256Digest,
 } from "../research-record/canonical-json.js";
+import { openVerifiedArtifacts } from "../research-record/verified-artifacts.js";
 import {
   mapDeltaProposalSchema,
   mapDeltaReceiptSchema,
@@ -90,6 +91,7 @@ function revisionFor(
 export async function compileMapDelta(
   options: CompileMapDeltaOptions,
 ): Promise<CompiledMapDelta> {
+  const artifacts = openVerifiedArtifacts(options.artifacts);
   const synthesis = await options.synthesizer.synthesize({
     predecessorRef: options.predecessorRef,
     predecessor: options.predecessor,
@@ -113,7 +115,7 @@ export async function compileMapDelta(
       accepted: [],
       rejected: [],
     });
-    const receiptDigest = await options.artifacts.putJson(receipt);
+    const receiptDigest = await artifacts.put("Map Delta Receipt", receipt);
     return {
       revision: revisionFor(options, receiptDigest),
       receiptDigest,
@@ -138,7 +140,7 @@ export async function compileMapDelta(
 
   const proposal = mapDeltaProposalSchema.parse(synthesis);
   validateProposalIdentity(proposal, options);
-  const proposalDigest = await options.artifacts.putJson(proposal);
+  const proposalDigest = await artifacts.put("Map Delta Proposal", proposal);
   const relations: SurfaceRelation[] = [];
   const accepted: Array<{ proposalIndex: number; relationId: string }> = [];
   const rejected: Array<{
@@ -204,7 +206,7 @@ export async function compileMapDelta(
     accepted,
     rejected,
   });
-  const receiptDigest = await options.artifacts.putJson(receipt);
+  const receiptDigest = await artifacts.put("Map Delta Receipt", receipt);
   return {
     revision: revisionFor(options, receiptDigest),
     receiptDigest,

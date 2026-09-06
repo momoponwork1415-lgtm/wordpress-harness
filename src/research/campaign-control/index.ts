@@ -633,7 +633,11 @@ async function readStoredValidatorAttemptResult(
   refValue: unknown,
 ): Promise<AttemptExecutionResultV2> {
   const ref = attemptExecutionResultV2RefSchema.parse(refValue);
-  const value = await dependencies.artifactStore.readJson(ref.digest);
+  const value = await dependencies.artifacts.read(
+    "Validator Attempt result",
+    modelAttemptResultV2Schema,
+    ref.digest,
+  );
   return validateValidatorAttemptResult(plan, { ref, value });
 }
 
@@ -1680,13 +1684,11 @@ async function completeCurrentSemanticIteration(
   for (const candidate of candidates) {
     const completedValidation = completedValidations.get(candidate.id);
     if (completedValidation !== undefined) {
-      const rawValidation = await dependencies.artifactStore.readJson(
+      const validationRecord = await dependencies.artifacts.read(
+        "Validation Record",
+        validationRecordSchema,
         completedValidation.digest,
       );
-      if (sha256Digest(rawValidation) !== completedValidation.digest) {
-        throw new Error("Validation Record CAS mismatch");
-      }
-      const validationRecord = validationRecordSchema.parse(rawValidation);
       if (
         validationRecord.validationId !== candidate.id ||
         validationRecord.candidateId !== candidate.id
@@ -1734,13 +1736,11 @@ async function completeCurrentSemanticIteration(
       validationBudgetExhausted = true;
       break;
     }
-    const rawValidation = await dependencies.artifactStore.readJson(
+    const validationRecord = await dependencies.artifacts.read(
+      "Validation Record",
+      validationRecordSchema,
       validationRef.digest,
     );
-    if (sha256Digest(rawValidation) !== validationRef.digest) {
-      throw new Error("Validation Record CAS mismatch");
-    }
-    const validationRecord = validationRecordSchema.parse(rawValidation);
     validationRecords.push(validationRecord);
     await record.recordValidationCompletion(
       plan.campaignId,
@@ -2662,8 +2662,10 @@ async function executeDefaultSemanticCampaign(
           subjects,
         }),
       );
-      const synthesisArtifactDigest =
-        await dependencies.artifactStore.putJson(synthesis);
+      const synthesisArtifactDigest = await dependencies.artifacts.put(
+        "Semantic Chain Synthesis",
+        synthesis,
+      );
       if (synthesis.kind === "chain-synthesis-incomplete") {
         roundBatches.push({
           kind: "semantic-depth-batch-incomplete",
@@ -2708,8 +2710,10 @@ async function executeDefaultSemanticCampaign(
           },
         }),
       );
-      const critiqueArtifactDigest =
-        await dependencies.artifactStore.putJson(critique);
+      const critiqueArtifactDigest = await dependencies.artifacts.put(
+        "Semantic Adversarial Critique",
+        critique,
+      );
       if (critique.kind === "adversarial-critique-incomplete") {
         roundBatches.push({
           kind: "semantic-depth-batch-incomplete",
@@ -2731,8 +2735,10 @@ async function executeDefaultSemanticCampaign(
           critique,
         }),
       );
-      const evaluationArtifactDigest =
-        await dependencies.artifactStore.putJson(evaluation);
+      const evaluationArtifactDigest = await dependencies.artifacts.put(
+        "Semantic Depth Iteration Decision",
+        evaluation,
+      );
       if (evaluation.kind === "depth-evaluation-incomplete") {
         roundBatches.push({
           kind: "semantic-depth-batch-incomplete",
@@ -2758,12 +2764,11 @@ async function executeDefaultSemanticCampaign(
           decision: evaluation,
         },
       );
-      let storedRegistryDigest = await dependencies.artifactStore.putJson(
+      await dependencies.artifacts.put(
+        "Approach Family Registry",
         currentFamilyRegistry.value,
+        currentFamilyRegistry.ref.digest,
       );
-      if (storedRegistryDigest !== currentFamilyRegistry.ref.digest) {
-        throw new Error("Approach Family Registry CAS mismatch");
-      }
       const depthVerificationHypotheses =
         await materializeDepthVerificationHypotheses(
           dependencies.artifactStore,
@@ -2844,11 +2849,11 @@ async function executeDefaultSemanticCampaign(
       const followUpQueues = [];
       for (const missingLinkWave of missingLinkWaves) {
         const planRef = referenceSemanticMissingLinkWavePlan(missingLinkWave);
-        const storedPlanDigest =
-          await dependencies.artifactStore.putJson(missingLinkWave);
-        if (storedPlanDigest !== planRef.digest) {
-          throw new Error("Semantic Missing-link Wave Plan CAS mismatch");
-        }
+        await dependencies.artifacts.put(
+          "Semantic Missing-link Wave Plan",
+          missingLinkWave,
+          planRef.digest,
+        );
         const gaps = new Map(missingLinkWave.gaps.map((gap) => [gap.id, gap]));
         const scheduled = [...missingLinkWave.leases]
           .sort((left, right) => compareText(left.id, right.id))
@@ -2917,20 +2922,26 @@ async function executeDefaultSemanticCampaign(
         missingLinkWaveRecords.push({ plan: planRef, terminal });
         usedMissingLinkWaves += 1;
         for (const ref of terminal.hypotheses) {
-          const value = sourceBoundHypothesisArtifactSchema.parse(
-            await dependencies.artifactStore.readJson(ref.digest),
+          const value = await dependencies.artifacts.read(
+            "Missing-link Terminal Hypothesis",
+            sourceBoundHypothesisArtifactSchema,
+            ref.digest,
           );
           subjectArtifacts.set(ref.digest, { ref, value });
         }
         for (const ref of terminal.routeFragments) {
-          const value = routeFragmentArtifactSchema.parse(
-            await dependencies.artifactStore.readJson(ref.digest),
+          const value = await dependencies.artifacts.read(
+            "Missing-link Terminal Route Fragment",
+            routeFragmentArtifactSchema,
+            ref.digest,
           );
           subjectArtifacts.set(ref.digest, { ref, value });
         }
         for (const ref of terminal.frontierGaps) {
-          const value = frontierGapArtifactSchema.parse(
-            await dependencies.artifactStore.readJson(ref.digest),
+          const value = await dependencies.artifacts.read(
+            "Missing-link Terminal Frontier Gap",
+            frontierGapArtifactSchema,
+            ref.digest,
           );
           subjectArtifacts.set(ref.digest, { ref, value });
         }
@@ -2944,12 +2955,11 @@ async function executeDefaultSemanticCampaign(
         });
         unscheduledGaps.push(...projected.unresolvedGaps);
         if (projected.queue !== undefined) {
-          const storedQueueDigest = await dependencies.artifactStore.putJson(
+          await dependencies.artifacts.put(
+            "Missing-link Depth Work Queue",
             projected.queue.value,
+            projected.queue.ref.digest,
           );
-          if (storedQueueDigest !== projected.queue.ref.digest) {
-            throw new Error("Missing-link Depth Work Queue CAS mismatch");
-          }
           followUpQueues.push(projected.queue);
         }
         if (terminal.issues.length > 0) depthIncomplete = true;
@@ -2962,12 +2972,11 @@ async function executeDefaultSemanticCampaign(
             evaluationRef.digest,
             followUpQueues.map((queue) => queue.value),
           );
-        storedRegistryDigest = await dependencies.artifactStore.putJson(
+        await dependencies.artifacts.put(
+          "Approach Family Registry",
           currentFamilyRegistry.value,
+          currentFamilyRegistry.ref.digest,
         );
-        if (storedRegistryDigest !== currentFamilyRegistry.ref.digest) {
-          throw new Error("Approach Family Registry CAS mismatch");
-        }
       }
       roundBatches.push({
         kind: "semantic-depth-batch-result",
@@ -3046,12 +3055,11 @@ async function executeDefaultSemanticCampaign(
         plan.runId,
         familyVerificationResolutions,
       );
-    const storedRegistryDigest = await dependencies.artifactStore.putJson(
+    await dependencies.artifacts.put(
+      "Approach Family Registry",
       currentFamilyRegistry.value,
+      currentFamilyRegistry.ref.digest,
     );
-    if (storedRegistryDigest !== currentFamilyRegistry.ref.digest) {
-      throw new Error("Approach Family Registry CAS mismatch");
-    }
   }
   const initialActionsPermitTerminalReview = iterationDecision.actions.every(
     (action) =>
@@ -3111,12 +3119,11 @@ async function executeDefaultSemanticCampaign(
       verifications: verificationRefs,
     });
     if (closure.kind === "closed") {
-      const storedClosureDigest = await dependencies.artifactStore.putJson(
+      await dependencies.artifacts.put(
+        "Semantic Coverage Closure",
         closure.value,
+        closure.ref.digest,
       );
-      if (storedClosureDigest !== closure.ref.digest) {
-        throw new Error("Semantic Coverage Closure CAS mismatch");
-      }
       coverageClosure = closure.value;
       coverageClosureRef = closure.ref;
     } else {
@@ -3340,20 +3347,16 @@ async function executeRun(
   if (preparation === undefined) {
     throw new Error(`Campaign not found: ${plan.campaignId}`);
   }
-  const mapArtifact = await dependencies.artifactStore.readJson(
+  const surfaceMap = await dependencies.artifacts.read(
+    "Campaign Surface Map artifact",
+    surfaceMapSchema,
     plan.surfaceMap.digest,
   );
-  if (sha256Digest(mapArtifact) !== plan.surfaceMap.digest) {
-    throw new Error("Campaign Surface Map artifact digest mismatch");
-  }
-  const surfaceMap = surfaceMapSchema.parse(mapArtifact);
-  const policyArtifact = await dependencies.artifactStore.readJson(
+  const policy = await dependencies.artifacts.read(
+    "Campaign Exploration Policy artifact",
+    explorationBootstrapPolicySchema,
     plan.explorationPolicy.digest,
   );
-  if (sha256Digest(policyArtifact) !== plan.explorationPolicy.digest) {
-    throw new Error("Campaign Exploration Policy artifact digest mismatch");
-  }
-  const policy = explorationBootstrapPolicySchema.parse(policyArtifact);
   if (
     surfaceMap.targetSnapshot.id !== preparation.input.targetSnapshot.id ||
     surfaceMap.targetSnapshot.digest !== preparation.input.targetSnapshot.digest
@@ -3396,7 +3399,10 @@ async function executeRun(
       status: "orphaned",
       reason: "orphaned-execution-requires-fresh-attempt",
     });
-    const digest = await dependencies.artifactStore.putJson(value);
+    const digest = await dependencies.artifacts.put(
+      "Finder Attempt artifact",
+      value,
+    );
     await completeCampaignAttempt(record, attempt.intent, {
       ...finderResultRef(value),
       digest,
@@ -3451,7 +3457,10 @@ async function executeRun(
         status: "cancelled",
         reason: "campaign-finder-attempt-limit",
       });
-      const digest = await dependencies.artifactStore.putJson(value);
+      const digest = await dependencies.artifacts.put(
+        "Finder Attempt artifact",
+        value,
+      );
       await completeCampaignAttempt(record, intent, {
         ...finderResultRef(value),
         digest,
@@ -3503,8 +3512,10 @@ async function executeRun(
           : { maxSourceQueries: materialized.sourceEvidence.maxQueries }),
       },
     });
-    const attemptPlanDigest =
-      await dependencies.artifactStore.putJson(attemptPlan);
+    const attemptPlanDigest = await dependencies.artifacts.put(
+      "Attempt Plan",
+      attemptPlan,
+    );
     const intent = {
       kind: "campaign-attempt-intent" as const,
       schemaVersion: 1 as const,
@@ -3530,7 +3541,10 @@ async function executeRun(
       const executed = await dependencies.modelExecution.run(attemptPlan);
       const value = finderAttemptResultSchema.parse(executed.value);
       const ref = attemptExecutionResultRefSchema.parse(executed.ref);
-      const storedDigest = await dependencies.artifactStore.putJson(value);
+      const storedDigest = await dependencies.artifacts.put(
+        "Finder Attempt artifact",
+        value,
+      );
       if (
         executed.status !== value.status ||
         ref.digest !== storedDigest ||
@@ -3705,7 +3719,8 @@ async function executeRun(
     ...(calibrationReview === undefined ? {} : { calibrationReview }),
   });
   if (iteration.finiteWork !== null) {
-    const stored = await dependencies.artifactStore.putJson(
+    const stored = await dependencies.artifacts.put(
+      "Iteration Review finite work",
       iteration.finiteWork,
     );
     if (

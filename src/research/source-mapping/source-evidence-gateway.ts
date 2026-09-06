@@ -15,6 +15,10 @@ import {
   sha256Digest,
 } from "../research-record/canonical-json.js";
 import {
+  openVerifiedArtifacts,
+  type VerifiedArtifacts,
+} from "../research-record/verified-artifacts.js";
+import {
   targetFileManifestRefSchema,
   targetFileManifestSchema,
   type TargetFileManifest,
@@ -184,7 +188,7 @@ function decodeUtf8Prefix(content: Buffer, maxBytes: number): Buffer {
 class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
   readonly policy: SourceToolPolicyRef;
   readonly #sourceDirectory: string;
-  readonly #artifactStore: JsonArtifactStore;
+  readonly #artifacts: VerifiedArtifacts;
   readonly #manifestRef: TargetFileManifestRef;
   readonly #manifest: TargetFileManifest;
   readonly #policyValue: SourceToolPolicy;
@@ -195,7 +199,7 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
       throw new Error("Source Evidence root must be absolute");
     }
     this.#sourceDirectory = resolve(options.sourceDirectory);
-    this.#artifactStore = options.artifactStore;
+    this.#artifacts = openVerifiedArtifacts(options.artifactStore);
     this.#manifestRef = targetFileManifestRefSchema.parse(options.manifest.ref);
     this.#manifest = targetFileManifestSchema.parse(options.manifest.value);
     this.policy = sourceToolPolicyRefSchema.parse(options.policy.ref);
@@ -379,7 +383,10 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
       entries: page,
       ...(nextCursor === undefined ? {} : { nextCursor }),
     });
-    const responseDigest = await this.#artifactStore.putJson(response);
+    const responseDigest = await this.#artifacts.put(
+      "Source List response",
+      response,
+    );
     return this.#storeReceiptV2(
       request,
       "list",
@@ -632,7 +639,10 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
       matches,
       ...(nextCursor === undefined ? {} : { nextCursor }),
     });
-    const responseDigest = await this.#artifactStore.putJson(response);
+    const responseDigest = await this.#artifacts.put(
+      "Source Search response",
+      response,
+    );
     const result: SourceEvidenceResultV2 = hasNext
       ? {
           status: "partial",
@@ -848,7 +858,10 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
       content: selected.toString("utf8"),
       ...(nextCursor === undefined ? {} : { nextCursor }),
     });
-    const responseDigest = await this.#artifactStore.putJson(response);
+    const responseDigest = await this.#artifacts.put(
+      "Source Read response",
+      response,
+    );
     return this.#storeReceiptV2(
       request,
       "read",
@@ -1043,7 +1056,10 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
       matches,
     });
     if (matches.length === 0 && !truncated) {
-      const responseDigest = await this.#artifactStore.putJson(response);
+      const responseDigest = await this.#artifacts.put(
+        "Source Search response",
+        response,
+      );
       return this.#storeReceipt(
         request,
         { outcome: "allowed", reason: "search-allowed" },
@@ -1203,7 +1219,10 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
     response:
       SourceRangeResponse | SourceSearchResponse | SourceInventoryResponse,
   ): Promise<SourceEvidenceReceipt> {
-    const responseDigest = await this.#artifactStore.putJson(response);
+    const responseDigest = await this.#artifacts.put(
+      "Source Evidence response",
+      response,
+    );
     return this.#storeReceipt(
       request,
       policyDecision,
@@ -1230,7 +1249,7 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
       policyDecision,
       result,
     });
-    const digest = await this.#artifactStore.putJson(value);
+    const digest = await this.#artifacts.put("Source Evidence receipt", value);
     const ref = sourceEvidenceReceiptRefSchema.parse({
       kind: "source-evidence-receipt",
       schemaVersion: 1,
@@ -1334,7 +1353,7 @@ class SnapshotSourceEvidenceGateway implements SourceEvidenceGateway {
       usage,
       result,
     });
-    const digest = await this.#artifactStore.putJson(value);
+    const digest = await this.#artifacts.put("Source Evidence receipt", value);
     const ref = sourceEvidenceReceiptRefV2Schema.parse({
       kind: "source-evidence-receipt",
       schemaVersion: 2,

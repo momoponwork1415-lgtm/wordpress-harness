@@ -22,6 +22,7 @@ import type {
   ValidationIntentRecordView,
   ValidationCompletionRecordView,
 } from "./contracts.js";
+import { openVerifiedArtifacts } from "./verified-artifacts.js";
 
 // Validated read records only; no SQL rows, database handles, or write capability.
 interface CampaignProgressRecords {
@@ -129,18 +130,29 @@ export async function projectCampaignProgress(
   );
   const checkpoints = records.checkpoints;
   const usages: ModelAttemptUsageV2[] = [];
+  const artifacts =
+    artifactStore === undefined
+      ? undefined
+      : openVerifiedArtifacts({
+          readJson: (digest) => artifactStore.readJson(digest),
+          putJson: () => {
+            throw new Error("Campaign progress projection cannot write");
+          },
+        });
   let usageIncomplete =
     activeAttempts.length > 0 || activeVerifications.length > 0;
   for (const { attempt } of attempts) {
     const completion = attempt.completion;
     if (completion === undefined || !("role" in completion.value)) continue;
-    if (artifactStore === undefined) {
+    if (artifacts === undefined) {
       usageIncomplete = true;
       continue;
     }
     try {
-      const artifact = modelAttemptResultV2Schema.parse(
-        await artifactStore.readJson(completion.value.result.digest),
+      const artifact = await artifacts.read(
+        "Model Attempt Result v2",
+        modelAttemptResultV2Schema,
+        completion.value.result.digest,
       );
       if (artifact.usage === undefined) usageIncomplete = true;
       else usages.push(artifact.usage);

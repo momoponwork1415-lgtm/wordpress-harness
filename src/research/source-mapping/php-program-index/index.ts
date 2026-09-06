@@ -3,8 +3,11 @@ import { delimiter, dirname, resolve } from "node:path";
 
 import { z } from "zod";
 
-import type { JsonArtifactStore } from "../../research-record/contracts.js";
 import { openFileJsonArtifactStore } from "../../research-record/file-json-artifact-store.js";
+import {
+  openVerifiedArtifacts,
+  type VerifiedArtifacts,
+} from "../../research-record/verified-artifacts.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const identifierSchema = z
@@ -289,14 +292,16 @@ function summariesMatch(
 }
 
 class PhpSourceAnalysisImplementation implements PhpSourceAnalysis {
-  readonly #artifacts: JsonArtifactStore;
+  readonly #artifacts: VerifiedArtifacts;
   readonly #helperPath: string;
   readonly #phpBinary: string;
   readonly #timeoutMs: number;
   readonly #maxOutputBytes: number;
 
   constructor(options: OpenPhpSourceAnalysisOptions) {
-    this.#artifacts = openFileJsonArtifactStore(options.artifactDirectory);
+    this.#artifacts = openVerifiedArtifacts(
+      openFileJsonArtifactStore(options.artifactDirectory),
+    );
     this.#helperPath = resolve(options.helperPath);
     this.#phpBinary = options.phpBinary ?? "php";
     this.#timeoutMs = options.timeoutMs ?? 30_000;
@@ -347,7 +352,7 @@ class PhpSourceAnalysisImplementation implements PhpSourceAnalysis {
       throw new Error("PHP Program Index helper returned mismatched identity");
     }
 
-    const digest = await this.#artifacts.putJson(index);
+    const digest = await this.#artifacts.put("PHP Program Index", index);
 
     return {
       kind: "php-program-index",
@@ -361,8 +366,11 @@ class PhpSourceAnalysisImplementation implements PhpSourceAnalysis {
 
   async read(ref: PhpProgramIndexRef): Promise<PhpProgramIndex> {
     const parsedRef = phpProgramIndexRefSchema.parse(ref);
-    const value = await this.#artifacts.readJson(parsedRef.digest);
-    const index = phpProgramIndexSchema.parse(value);
+    const index = await this.#artifacts.read(
+      "PHP Program Index",
+      phpProgramIndexSchema,
+      parsedRef.digest,
+    );
     if (
       index.targetSnapshot.id !== parsedRef.targetSnapshotId ||
       index.analysisProfile.id !== parsedRef.analysisProfileId ||

@@ -9,6 +9,7 @@ import {
   sha256Digest,
 } from "../research-record/canonical-json.js";
 import { openFileJsonArtifactStore } from "../research-record/file-json-artifact-store.js";
+import { openVerifiedArtifacts } from "../research-record/verified-artifacts.js";
 import {
   sourceEvidenceQueryV1Schema,
   sourceEvidenceQueryV2Schema,
@@ -84,7 +85,9 @@ class FirstFinderModelExecution implements ModelExecution {
   readonly #sourceEvidenceGateway;
 
   constructor(options: OpenModelExecutionOptions) {
-    this.#artifacts = openFileJsonArtifactStore(options.artifactDirectory);
+    this.#artifacts = openVerifiedArtifacts(
+      openFileJsonArtifactStore(options.artifactDirectory),
+    );
     this.#process = options.process;
     this.#sourceEvidenceGateway = options.sourceEvidenceGateway;
   }
@@ -198,7 +201,7 @@ class FirstFinderModelExecution implements ModelExecution {
     }
     if (processResult.exitCode !== 0) {
       const providerError = decodeClaudeErrorEnvelope(processResult.stdout);
-      const errorDigest = await this.#artifacts.putJson({
+      const errorDigest = await this.#artifacts.put("Provider error artifact", {
         kind: "provider-error-artifact",
         schemaVersion: 1,
         attemptId: plan.attemptId,
@@ -490,7 +493,7 @@ class FirstFinderModelExecution implements ModelExecution {
     }
     if (processResult.exitCode !== 0) {
       const providerError = decodeClaudeErrorEnvelope(processResult.stdout);
-      const errorDigest = await this.#artifacts.putJson({
+      const errorDigest = await this.#artifacts.put("Provider error artifact", {
         kind: "provider-error-artifact",
         schemaVersion: 2,
         attemptId: plan.attemptId,
@@ -657,7 +660,7 @@ class FirstFinderModelExecution implements ModelExecution {
   async #store(
     value: z.infer<typeof finderAttemptResultSchema>,
   ): Promise<AttemptExecutionResult> {
-    const digest = await this.#artifacts.putJson(value);
+    const digest = await this.#artifacts.put("Finder Attempt result", value);
     const ref = attemptExecutionResultRefSchema.parse({
       kind: "attempt-execution-result",
       schemaVersion: 1,
@@ -697,7 +700,7 @@ class FirstFinderModelExecution implements ModelExecution {
   async #storeV2(
     value: ReturnType<typeof modelAttemptResultV2Schema.parse>,
   ): Promise<AttemptExecutionResultV2> {
-    const digest = await this.#artifacts.putJson(value);
+    const digest = await this.#artifacts.put("Model Attempt result", value);
     const ref = attemptExecutionResultV2RefSchema.parse({
       kind: "attempt-execution-result",
       schemaVersion: 2,

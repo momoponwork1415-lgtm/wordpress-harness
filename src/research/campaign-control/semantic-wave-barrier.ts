@@ -17,6 +17,7 @@ import type {
 } from "../model-execution/contracts.js";
 import type { JsonArtifactStore } from "../research-record/contracts.js";
 import { sha256Digest } from "../research-record/canonical-json.js";
+import { openVerifiedArtifacts } from "../research-record/verified-artifacts.js";
 
 export interface SemanticWaveTerminalAttempt {
   readonly ref: AttemptExecutionResultV2Ref & { readonly role: "finder" };
@@ -75,6 +76,7 @@ export async function closeSemanticWaveBarrier(
   }[],
   terminalAttempts: readonly SemanticWaveTerminalAttempt[],
 ): Promise<SemanticWaveTerminalRef> {
+  const artifacts = openVerifiedArtifacts(artifactStore);
   const admitted = new Map(
     manifestEntries.map((entry) => [entry.path, entry.digest]),
   );
@@ -158,7 +160,7 @@ export async function closeSemanticWaveBarrier(
         ...common,
         value,
       });
-      const digest = await artifactStore.putJson(artifact);
+      const digest = await artifacts.put("Source Bound Hypothesis", artifact);
       hypotheses.push(
         sourceBoundHypothesisArtifactRefSchema.parse({
           kind: artifact.kind,
@@ -187,7 +189,7 @@ export async function closeSemanticWaveBarrier(
         ...common,
         value,
       });
-      const digest = await artifactStore.putJson(artifact);
+      const digest = await artifacts.put("Route Fragment", artifact);
       routeFragments.push(
         routeFragmentArtifactRefSchema.parse({
           kind: artifact.kind,
@@ -216,7 +218,7 @@ export async function closeSemanticWaveBarrier(
         ...common,
         value,
       });
-      const digest = await artifactStore.putJson(artifact);
+      const digest = await artifacts.put("Frontier Gap", artifact);
       frontierGaps.push(
         frontierGapArtifactRefSchema.parse({
           kind: artifact.kind,
@@ -268,7 +270,7 @@ export async function closeSemanticWaveBarrier(
     frontierGaps,
     issues,
   });
-  const digest = await artifactStore.putJson(terminal);
+  const digest = await artifacts.put("Semantic Wave terminal", terminal);
   return semanticWaveTerminalRefSchema.parse({
     kind: "semantic-wave-terminal",
     schemaVersion: 2,

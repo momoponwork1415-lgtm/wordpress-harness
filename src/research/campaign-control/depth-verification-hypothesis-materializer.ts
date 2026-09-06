@@ -9,6 +9,7 @@ import {
 import { semanticDepthWorkQueueSchema } from "../exploration/semantic-depth-work-queue.js";
 import type { JsonArtifactStore } from "../research-record/contracts.js";
 import { sha256Digest } from "../research-record/canonical-json.js";
+import { openVerifiedArtifacts } from "../research-record/verified-artifacts.js";
 
 export async function materializeDepthVerificationHypotheses(
   artifactStore: JsonArtifactStore,
@@ -17,6 +18,7 @@ export async function materializeDepthVerificationHypotheses(
     readonly decision: unknown;
   },
 ) {
+  const artifacts = openVerifiedArtifacts(artifactStore);
   const queue = semanticDepthWorkQueueSchema.parse(input.queue);
   const decision = depthIterationDecisionSchema.parse(input.decision);
   const queueDigest = sha256Digest(queue);
@@ -60,7 +62,10 @@ export async function materializeDepthVerificationHypotheses(
           leaseId,
           value: action.hypothesis,
         });
-        const digest = await artifactStore.putJson(artifact);
+        const digest = await artifacts.put(
+          "Depth Verification Hypothesis",
+          artifact,
+        );
         return {
           proposal: action.proposal,
           ref: sourceBoundHypothesisArtifactRefSchema.parse({

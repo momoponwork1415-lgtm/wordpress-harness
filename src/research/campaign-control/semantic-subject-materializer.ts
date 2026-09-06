@@ -12,6 +12,7 @@ import {
 import type { TargetSnapshotRef } from "../contracts.js";
 import type { JsonArtifactStore } from "../research-record/contracts.js";
 import { sha256Digest } from "../research-record/canonical-json.js";
+import { openVerifiedArtifacts } from "../research-record/verified-artifacts.js";
 import type { TargetFileManifestRef } from "../source-mapping/contracts.js";
 
 export interface SemanticSubjectMaterializationInput {
@@ -42,6 +43,7 @@ export async function materializeSemanticSubject(
   artifactStore: JsonArtifactStore,
   input: SemanticSubjectMaterializationInput,
 ) {
+  const artifacts = openVerifiedArtifacts(artifactStore);
   const subject = semanticCheckpointSubjectProposalSchema.parse(input.subject);
   const admitted = new Map(
     input.manifestEntries.map((entry) => [entry.path, entry.digest]),
@@ -75,7 +77,7 @@ export async function materializeSemanticSubject(
       ...common,
       value: subject,
     });
-    const digest = await artifactStore.putJson(artifact);
+    const digest = await artifacts.put("Source Bound Hypothesis", artifact);
     return sourceBoundHypothesisArtifactRefSchema.parse({
       kind: artifact.kind,
       schemaVersion: 2,
@@ -103,7 +105,7 @@ export async function materializeSemanticSubject(
       ...common,
       value: subject,
     });
-    const digest = await artifactStore.putJson(artifact);
+    const digest = await artifacts.put("Route Fragment", artifact);
     return routeFragmentArtifactRefSchema.parse({
       kind: artifact.kind,
       schemaVersion: 2,
@@ -130,7 +132,7 @@ export async function materializeSemanticSubject(
     ...common,
     value: subject,
   });
-  const digest = await artifactStore.putJson(artifact);
+  const digest = await artifacts.put("Frontier Gap", artifact);
   return frontierGapArtifactRefSchema.parse({
     kind: artifact.kind,
     schemaVersion: 2,

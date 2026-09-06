@@ -22,6 +22,7 @@ import type {
   JsonArtifactStore,
   ResearchRecord,
 } from "../research-record/contracts.js";
+import { openVerifiedArtifacts } from "../research-record/verified-artifacts.js";
 import { sourceEvidenceReceiptValueV2Schema } from "../source-mapping/source-evidence-contracts.js";
 import type {
   CampaignAttemptIntentV2,
@@ -91,6 +92,7 @@ function compareText(left: string, right: string): number {
 export async function executeSemanticCoverageReview(
   input: SemanticCoverageReviewRunnerInput,
 ): Promise<SemanticCoverageReviewRunnerResult> {
+  const artifacts = openVerifiedArtifacts(input.artifactStore);
   const review = materializeCoverageReviewWave({
     target: input.run.target,
     manifest: input.run.manifest,
@@ -98,12 +100,7 @@ export async function executeSemanticCoverageReview(
     plannerAttempt: input.plannerAttempt,
     ordinal: input.reviewOrdinal,
   });
-  const storedReviewPlanDigest = await input.artifactStore.putJson(
-    review.value,
-  );
-  if (storedReviewPlanDigest !== review.digest) {
-    throw new Error("Coverage Review Wave Plan CAS mismatch");
-  }
+  await artifacts.put("Coverage Review Wave Plan", review.value, review.digest);
   const reviewLease = review.value.leases[0];
   const reviewThesis = review.value.theses[0];
   if (reviewLease === undefined || reviewThesis === undefined) {
@@ -160,44 +157,41 @@ export async function executeSemanticCoverageReview(
     wavePlanDigest: review.digest,
     terminal: terminalRef,
   };
-  const terminal = semanticWaveTerminalSchema.parse(
-    await input.artifactStore.readJson(terminalRef.digest),
+  const terminal = await artifacts.read(
+    "Coverage Review terminal",
+    semanticWaveTerminalSchema,
+    terminalRef.digest,
   );
-  if (sha256Digest(terminal) !== terminalRef.digest) {
-    throw new Error("Coverage Review terminal CAS mismatch");
-  }
   const hypotheses = await Promise.all(
-    terminalRef.hypotheses.map(async (ref) =>
-      sourceBoundHypothesisArtifactSchema.parse(
-        await input.artifactStore.readJson(ref.digest),
+    terminalRef.hypotheses.map((ref) =>
+      artifacts.read(
+        "Source Bound Hypothesis",
+        sourceBoundHypothesisArtifactSchema,
+        ref.digest,
       ),
     ),
   );
   const routeFragments = await Promise.all(
-    terminalRef.routeFragments.map(async (ref) =>
-      routeFragmentArtifactSchema.parse(
-        await input.artifactStore.readJson(ref.digest),
-      ),
+    terminalRef.routeFragments.map((ref) =>
+      artifacts.read("Route Fragment", routeFragmentArtifactSchema, ref.digest),
     ),
   );
   const frontierGaps = await Promise.all(
-    terminalRef.frontierGaps.map(async (ref) =>
-      frontierGapArtifactSchema.parse(
-        await input.artifactStore.readJson(ref.digest),
-      ),
+    terminalRef.frontierGaps.map((ref) =>
+      artifacts.read("Frontier Gap", frontierGapArtifactSchema, ref.digest),
     ),
   );
   const receiptRefs = [
     ...(attemptResult.value.sourceEvidenceReceipts ?? []),
   ].sort((left, right) => compareText(left.digest, right.digest));
   const receipts = await Promise.all(
-    receiptRefs.map(async (ref) => {
-      const artifact = await input.artifactStore.readJson(ref.digest);
-      if (sha256Digest(artifact) !== ref.digest) {
-        throw new Error(`Tool Receipt CAS mismatch: ${ref.digest}`);
-      }
-      return sourceEvidenceReceiptValueV2Schema.parse(artifact);
-    }),
+    receiptRefs.map((ref) =>
+      artifacts.read(
+        "Tool Receipt",
+        sourceEvidenceReceiptValueV2Schema,
+        ref.digest,
+      ),
+    ),
   );
   const decision = await input.exploration.decide({
     kind: "evaluate-semantic-wave",
@@ -219,11 +213,8 @@ export async function executeSemanticCoverageReview(
   if (decision.kind !== "iteration-decision" || decision.schemaVersion !== 2) {
     return { kind: "incomplete", trace: traceBase, registry: input.registry };
   }
-  const decisionDigest = await input.artifactStore.putJson(decision);
   const decisionRef = referenceSemanticIterationDecision(decision);
-  if (decisionDigest !== decisionRef.digest) {
-    throw new Error("Coverage Review Decision CAS mismatch");
-  }
+  await artifacts.put("Coverage Review Decision", decision, decisionRef.digest);
   const recorded = await input.record.recordSemanticIterationDecision(
     input.run.campaignId,
     input.run.runId,
@@ -239,10 +230,11 @@ export async function executeSemanticCoverageReview(
   if (registry === undefined) {
     throw new Error("Coverage Review lost the Approach Family Registry");
   }
-  const registryDigest = await input.artifactStore.putJson(registry.value);
-  if (registryDigest !== registry.ref.digest) {
-    throw new Error("Approach Family Registry CAS mismatch");
-  }
+  await artifacts.put(
+    "Approach Family Registry",
+    registry.value,
+    registry.ref.digest,
+  );
   for (const action of decision.actions) {
     if (action.kind === "request-verification") {
       input.onVerificationRequest(action.request.hypothesis);

@@ -7,6 +7,10 @@ import {
   canonicalJson,
   sha256Digest,
 } from "../research-record/canonical-json.js";
+import {
+  openVerifiedArtifacts,
+  type VerifiedArtifacts,
+} from "../research-record/verified-artifacts.js";
 import { targetFileManifestSchema } from "../source-mapping/contracts.js";
 import {
   LabControlBlockedError,
@@ -98,9 +102,11 @@ type StoredXssLabDefinition = z.infer<typeof storedXssLabDefinitionSchema>;
 
 class GvisorStoredXssLabControl implements LabControl {
   readonly #options: OpenGvisorStoredXssLabControlOptions;
+  readonly #artifacts: VerifiedArtifacts;
 
   constructor(options: OpenGvisorStoredXssLabControlOptions) {
     this.#options = options;
+    this.#artifacts = openVerifiedArtifacts(options.artifactStore);
   }
 
   async #loadDefinition(
@@ -308,8 +314,10 @@ class GvisorStoredXssLabControl implements LabControl {
       result: observationResult,
       artifactRefs: [],
     });
-    const observationDigest =
-      await this.#options.artifactStore.putJson(observation);
+    const observationDigest = await this.#artifacts.put(
+      "Experiment Observation",
+      observation,
+    );
     return experimentObservationRefSchema.parse({
       kind: "experiment-observation",
       schemaVersion: 1,

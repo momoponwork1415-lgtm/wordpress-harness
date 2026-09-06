@@ -11,6 +11,7 @@ import {
   canonicalJson,
   sha256Digest,
 } from "../research-record/canonical-json.js";
+import { openVerifiedArtifacts } from "../research-record/verified-artifacts.js";
 import {
   currentResearchAttackerScopePrompt,
   isWithinCurrentResearchAttackerScope,
@@ -176,16 +177,9 @@ async function persistExecutionResult(
   options: OpenValidationOptions,
 ): Promise<void> {
   if (execution === undefined) return;
+  const artifacts = openVerifiedArtifacts(options.artifactStore);
   const value = modelAttemptResultV2Schema.parse(result.value);
-  if (sha256Digest(value) !== execution.digest) {
-    throw new Error("Validation Attempt result digest mismatch");
-  }
-  const storedDigest = await options.artifactStore.putJson(value);
-  if (storedDigest !== execution.digest) {
-    throw new Error(
-      "Validation Attempt artifact store returned a foreign digest",
-    );
-  }
+  await artifacts.put("Validation Attempt result", value, execution.digest);
 }
 
 async function runValidator(
@@ -248,13 +242,9 @@ async function storeRecord(
   record: CurrentValidationRecord,
   options: OpenValidationOptions,
 ): Promise<CurrentValidationRecordRef> {
+  const artifacts = openVerifiedArtifacts(options.artifactStore);
   const value = sourceValidationRecordSchema.parse(record);
-  const digest = await options.artifactStore.putJson(value);
-  if (digest !== sha256Digest(value)) {
-    throw new Error(
-      "Validation Record artifact store returned a foreign digest",
-    );
-  }
+  const digest = await artifacts.put("Validation Record", value);
   return sourceValidationRecordRefSchema.parse({
     kind: "validation-record",
     schemaVersion: 3,

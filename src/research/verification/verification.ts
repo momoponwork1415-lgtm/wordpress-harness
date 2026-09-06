@@ -3,6 +3,10 @@ import {
   sha256Digest,
 } from "../research-record/canonical-json.js";
 import {
+  openVerifiedArtifacts,
+  type VerifiedArtifacts,
+} from "../research-record/verified-artifacts.js";
+import {
   IndependentVerifierBlockedError,
   LabControlBlockedError,
   experimentObservationRefSchema,
@@ -378,9 +382,11 @@ function reportsNonHermeticExecution(
 
 class IndependentVerification implements Verification {
   readonly #options: OpenVerificationOptions;
+  readonly #artifacts: VerifiedArtifacts;
 
   constructor(options: OpenVerificationOptions) {
     this.#options = options;
+    this.#artifacts = openVerifiedArtifacts(options.artifactStore);
   }
 
   async #recordBlocked(
@@ -505,8 +511,10 @@ class IndependentVerification implements Verification {
       throw new Error("Independent source re-derivation binding mismatch");
     }
 
-    const rederivationDigest =
-      await this.#options.artifactStore.putJson(rederivation);
+    const rederivationDigest = await this.#artifacts.put(
+      "Source Rederivation",
+      rederivation,
+    );
     const sourceRederivationRef = {
       kind: "source-rederivation" as const,
       schemaVersion: 1 as const,

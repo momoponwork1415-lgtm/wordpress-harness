@@ -3025,19 +3025,16 @@ class SqliteResearchRecord
       runId,
       decision,
     );
-    if (this.#artifactStore === undefined) {
+    const artifacts = this.#artifacts;
+    if (artifacts === undefined) {
       throw new Error("Iteration Decision v3 requires an Artifact Store");
     }
-    const decisionArtifactDigest = await this.#artifactStore.putJson(decision);
-    const registryArtifactDigest = await this.#artifactStore.putJson(
+    await artifacts.put("Iteration Decision v3", decision, decisionRef.digest);
+    await artifacts.put(
+      "Iteration Decision v3 registry",
       registry.value,
+      registry.ref.digest,
     );
-    if (
-      decisionArtifactDigest !== decisionRef.digest ||
-      registryArtifactDigest !== registry.ref.digest
-    ) {
-      throw new Error("Iteration Decision v3 CAS mismatch");
-    }
 
     const transact = this.#database.transaction(
       (): SemanticIterationDecisionRecordViewV3 => {
@@ -3230,10 +3227,11 @@ class SqliteResearchRecord
     ) {
       throw new CampaignRunConflictError(campaignId, runId);
     }
-    if (this.#artifactStore === undefined) {
+    const artifacts = this.#artifacts;
+    if (artifacts === undefined) {
       throw new Error("Chain Synthesis v2 requires an Artifact Store");
     }
-    const artifactDigest = await this.#artifactStore.putJson(synthesis);
+    const artifactDigest = await artifacts.put("Chain Synthesis v2", synthesis);
     const payload = semanticChainSynthesizedPayloadV2Schema.parse({
       runId,
       queue: queueRef,
@@ -3326,10 +3324,14 @@ class SqliteResearchRecord
     ) {
       throw new CampaignRunConflictError(campaignId, runId);
     }
-    if (this.#artifactStore === undefined) {
+    const artifacts = this.#artifacts;
+    if (artifacts === undefined) {
       throw new Error("Adversarial Critique v2 requires an Artifact Store");
     }
-    const artifactDigest = await this.#artifactStore.putJson(critique);
+    const artifactDigest = await artifacts.put(
+      "Adversarial Critique v2",
+      critique,
+    );
     const payload = semanticAdversarialCritiquedPayloadV2Schema.parse({
       runId,
       synthesis: synthesisRef,
@@ -3412,10 +3414,14 @@ class SqliteResearchRecord
   ): Promise<SemanticDepthEvaluationIncompleteRecordViewV2> {
     const evaluation =
       currentDepthEvaluationIncompleteSchema.parse(evaluationValue);
-    if (this.#artifactStore === undefined) {
+    const artifacts = this.#artifacts;
+    if (artifacts === undefined) {
       throw new Error("Depth Evaluation v2 requires an Artifact Store");
     }
-    const artifactDigest = await this.#artifactStore.putJson(evaluation);
+    const artifactDigest = await artifacts.put(
+      "Depth Evaluation Incomplete v2",
+      evaluation,
+    );
     const payload = semanticDepthEvaluationIncompletePayloadV2Schema.parse({
       runId,
       artifactDigest,
@@ -3719,16 +3725,15 @@ class SqliteResearchRecord
     value: SourceValidationRecordRef,
   ): Promise<ValidationCompletionRecordView> {
     const validationRef = sourceValidationRecordRefSchema.parse(value);
-    if (this.#artifactStore === undefined) {
+    const artifacts = this.#artifacts;
+    if (artifacts === undefined) {
       throw new Error("Validation completion requires an Artifact Store");
     }
-    const rawValidation = await this.#artifactStore.readJson(
+    const validation = await artifacts.read(
+      "Validation Record",
+      sourceValidationRecordSchema,
       validationRef.digest,
     );
-    if (sha256Digest(rawValidation) !== validationRef.digest) {
-      throw new Error("Validation Record CAS mismatch");
-    }
-    const validation = sourceValidationRecordSchema.parse(rawValidation);
     if (
       validation.schemaVersion !== validationRef.schemaVersion ||
       validation.validationId !== validationRef.validationId ||
@@ -3784,12 +3789,11 @@ class SqliteResearchRecord
           })
         : undefined;
     if (frontierGap !== undefined) {
-      const storedFrontierGapDigest = await this.#artifactStore.putJson(
+      await artifacts.put(
+        "Validation Frontier Gap",
         frontierGap.value,
+        frontierGap.ref.digest,
       );
-      if (storedFrontierGapDigest !== frontierGap.ref.digest) {
-        throw new Error("Validation Frontier Gap CAS mismatch");
-      }
     }
     const completion = validationCompletionSchema.parse({
       kind: "validation-completion",
@@ -3808,12 +3812,11 @@ class SqliteResearchRecord
         approachFamilyIds: completion.approachFamilyIds,
       },
     });
-    const storedRegistryDigest = await this.#artifactStore.putJson(
+    await artifacts.put(
+      "Validation completion Registry",
       projected.value,
+      projected.ref.digest,
     );
-    if (storedRegistryDigest !== projected.ref.digest) {
-      throw new Error("Validation completion Registry CAS mismatch");
-    }
 
     const transact = this.#database.transaction(
       (): ValidationCompletionRecordView => {

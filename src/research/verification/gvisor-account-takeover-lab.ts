@@ -7,6 +7,10 @@ import {
   canonicalJson,
   sha256Digest,
 } from "../research-record/canonical-json.js";
+import {
+  openVerifiedArtifacts,
+  type VerifiedArtifacts,
+} from "../research-record/verified-artifacts.js";
 import { targetFileManifestSchema } from "../source-mapping/contracts.js";
 import {
   LabControlBlockedError,
@@ -79,9 +83,11 @@ type AccountTakeoverLabDefinition = z.infer<
 
 class GvisorAccountTakeoverLabControl implements LabControl {
   readonly #options: OpenGvisorAccountTakeoverLabControlOptions;
+  readonly #artifacts: VerifiedArtifacts;
 
   constructor(options: OpenGvisorAccountTakeoverLabControlOptions) {
     this.#options = options;
+    this.#artifacts = openVerifiedArtifacts(options.artifactStore);
   }
 
   async #loadDefinition(plan: ExperimentPlan): Promise<{
@@ -251,8 +257,10 @@ class GvisorAccountTakeoverLabControl implements LabControl {
       },
       artifactRefs: [],
     });
-    const observationDigest =
-      await this.#options.artifactStore.putJson(observation);
+    const observationDigest = await this.#artifacts.put(
+      "Experiment Observation",
+      observation,
+    );
     return experimentObservationRefSchema.parse({
       kind: "experiment-observation",
       schemaVersion: 1,

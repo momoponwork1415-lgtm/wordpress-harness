@@ -1,6 +1,7 @@
 import { extname } from "node:path";
 
 import { openFileJsonArtifactStore } from "../research-record/file-json-artifact-store.js";
+import { openVerifiedArtifacts } from "../research-record/verified-artifacts.js";
 import {
   canonicalJson,
   sha256Digest,
@@ -228,11 +229,13 @@ function factNode(
 
 class StaticSourceMapping implements SourceMapping {
   readonly #artifacts;
+  readonly #verified;
   readonly #source;
   readonly #synthesizer: MapDeltaSynthesizer | undefined;
 
   constructor(options: OpenSourceMappingOptions) {
     this.#artifacts = openFileJsonArtifactStore(options.artifactDirectory);
+    this.#verified = openVerifiedArtifacts(this.#artifacts);
     this.#source = surfaceMappingSourceSchema.parse(options.source);
     this.#synthesizer = options.synthesizer;
   }
@@ -250,8 +253,10 @@ class StaticSourceMapping implements SourceMapping {
       revision = { kind: "initial", number: 1, predecessor: null };
     } else {
       const predecessor = surfaceMapRefSchema.parse(parsedInput.predecessor);
-      predecessorMap = surfaceMapSchema.parse(
-        await this.#artifacts.readJson(predecessor.digest),
+      predecessorMap = await this.#verified.read(
+        "Surface Map predecessor",
+        surfaceMapSchema,
+        predecessor.digest,
       );
       this.#validatePredecessor(predecessor, predecessorMap);
       revision = {
@@ -263,11 +268,15 @@ class StaticSourceMapping implements SourceMapping {
     const target =
       parsedInput.kind === "initial" ? parsedInput.target : this.#source.target;
 
-    const manifest = targetFileManifestSchema.parse(
-      await this.#artifacts.readJson(this.#source.manifest.digest),
+    const manifest = await this.#verified.read(
+      "Target File Manifest",
+      targetFileManifestSchema,
+      this.#source.manifest.digest,
     );
-    const programIndex = phpProgramIndexSchema.parse(
-      await this.#artifacts.readJson(this.#source.phpProgramIndex.digest),
+    const programIndex = await this.#verified.read(
+      "PHP Program Index",
+      phpProgramIndexSchema,
+      this.#source.phpProgramIndex.digest,
     );
     this.#validateSources(manifest, programIndex, parsedInput.profile);
     const acceptedContext =
@@ -275,8 +284,10 @@ class StaticSourceMapping implements SourceMapping {
         ? (
             await Promise.all(
               parsedInput.acceptedContext.map(async (ref) => {
-                const value = contextResponseSchema.parse(
-                  await this.#artifacts.readJson(ref.digest),
+                const value = await this.#verified.read(
+                  "Context Response",
+                  contextResponseSchema,
+                  ref.digest,
                 );
                 this.#validateContextResponse(ref.id, value, manifest);
                 return { digest: ref.digest, value };
@@ -538,7 +549,7 @@ class StaticSourceMapping implements SourceMapping {
       gaps,
       summary,
     });
-    const digest = await this.#artifacts.putJson(map);
+    const digest = await this.#verified.put("Surface Map", map);
     return {
       kind: "surface-map",
       schemaVersion: 1,

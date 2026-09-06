@@ -7,6 +7,7 @@ import {
   sha256Digest,
 } from "../research-record/canonical-json.js";
 import type { ResearchRecord } from "../research-record/index.js";
+import { openVerifiedArtifacts } from "../research-record/verified-artifacts.js";
 import {
   openVerification,
   type VerificationRecordRef,
@@ -44,6 +45,7 @@ export function openSemanticVerificationQueue(
     independentVerifier: dependencies.independentVerifier,
     labControl: dependencies.labControl,
   });
+  const artifacts = openVerifiedArtifacts(dependencies.artifactStore);
   const maximumVerifierAttempts = Math.min(
     plan.verification.budget.maxVerifierAttempts,
     plan.budgetPolicy.verificationReserve.maxVerifierAttempts,
@@ -68,13 +70,11 @@ export function openSemanticVerificationQueue(
       budgetExhausted = true;
       return;
     }
-    const artifactInput = await dependencies.artifactStore.readJson(
+    const artifact = await artifacts.read(
+      "Verification Hypothesis",
+      sourceBoundHypothesisArtifactSchema,
       subject.digest,
     );
-    if (sha256Digest(artifactInput) !== subject.digest) {
-      throw new Error(`Verification Hypothesis CAS mismatch: ${subject.id}`);
-    }
-    const artifact = sourceBoundHypothesisArtifactSchema.parse(artifactInput);
     if (
       artifact.id !== subject.id ||
       artifact.attemptId !== subject.attemptId ||
