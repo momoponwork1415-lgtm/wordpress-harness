@@ -7,6 +7,7 @@ import {
   mkdtemp,
   readFile,
   rm,
+  writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
@@ -328,6 +329,12 @@ class NativeGrokProcess {
           };
         }
       }
+      const promptPath = join(isolated.workspace, "attempt-prompt.txt");
+      await writeFile(promptPath, request.plan.prompt, {
+        encoding: "utf8",
+        mode: 0o600,
+        flag: "wx",
+      });
       const args = [
         "--model",
         profile.model,
@@ -346,8 +353,8 @@ class NativeGrokProcess {
         "bypassPermissions",
         "--json-schema",
         JSON.stringify(request.outputJsonSchema),
-        "--single",
-        request.plan.prompt,
+        "--prompt-file",
+        promptPath,
       ];
       const result = await runNativeModelProcess({
         executablePath: this.#options.executablePath,

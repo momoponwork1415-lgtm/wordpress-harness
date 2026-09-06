@@ -1865,6 +1865,101 @@ fi
     }
   });
 
+  it("passes a large Grok evaluation prompt through a file instead of argv", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "grok-large-prompt-"));
+    const executablePath = join(directory, "fake-grok");
+    const sourceHome = join(directory, "source-grok-home");
+    await mkdir(sourceHome, { recursive: true, mode: 0o700 });
+    await writeFile(join(sourceHome, "auth.json"), "synthetic-grok-auth", {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    const output = {
+      kind: "root-evaluator-output",
+      schemaVersion: 1,
+      dispositions: [],
+    };
+    const envelope = {
+      text: JSON.stringify(output),
+      stopReason: "end_turn",
+      sessionId: "synthetic-session",
+      requestId: "synthetic-request",
+      usage: {
+        input_tokens: 100,
+        cache_read_input_tokens: 20,
+        cache_creation_input_tokens: 0,
+        output_tokens: 30,
+        reasoning_tokens: 10,
+        total_tokens: 150,
+      },
+      num_turns: 2,
+      total_cost_usd: 0.01,
+      modelUsage: {
+        "grok-4.6-build": {
+          inputTokens: 100,
+          outputTokens: 30,
+          cacheReadInputTokens: 20,
+          cacheCreationInputTokens: 0,
+          modelCalls: 1,
+          costUSD: 0.01,
+        },
+      },
+      structuredOutput: output,
+    };
+    await writeFile(
+      executablePath,
+      `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf '%s\n' 'grok 1.0.13 (synthetic)'
+  exit 0
+fi
+prompt_file=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--prompt-file" ]; then
+    shift
+    prompt_file="$1"
+  fi
+  shift
+done
+[ -n "$prompt_file" ] || exit 91
+[ "$(wc -c < "$prompt_file")" -eq 204800 ] || exit 92
+[ "$(stat -c '%a' "$prompt_file")" = 600 ] || exit 93
+printf '%s' '${JSON.stringify(envelope)}'
+`,
+      "utf8",
+    );
+    await chmod(executablePath, 0o700);
+    const original = rootEvaluatorAttemptPlan();
+    const plan = {
+      ...original,
+      prompt: "x".repeat(200 * 1_024),
+      modelProfile: {
+        provider: "xai",
+        model: "grok-4.6",
+        transport: "grok-build-process",
+        executableVersion: "1.0.13",
+        effort: "xhigh",
+        eligibilityReceiptDigest:
+          original.modelProfile.eligibilityReceiptDigest,
+      },
+    } as Extract<AttemptPlanV2, { role: "root-evaluator" }>;
+    const execution = openGrokModelExecution({
+      artifactDirectory: join(directory, "artifacts"),
+      executablePath,
+      executableVersion: "1.0.13",
+      grokHomeDirectory: sourceHome,
+    });
+
+    try {
+      await expect(execution.run(plan)).resolves.toMatchObject({
+        status: "completed",
+        value: { status: "completed", output },
+      });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("stops Grok before launch when its OAuth document is unavailable", async () => {
     const directory = await mkdtemp(join(tmpdir(), "grok-auth-"));
     const executablePath = join(directory, "fake-grok");
