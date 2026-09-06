@@ -14,10 +14,13 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Semantic Research | v7 initial Wave、Decision@3、conditional Depth実行まで実装済み | Missing-link / Closure |
 | Source-only Validation | v7 single fresh Attempt、4 disposition、source-validated Findingを実装済み | Frontier Gapの次Wave |
 | Runtime handoff | FindingをAI Reproductionへ直接渡すcurrent contract、旧Runtime Verification Packetのread-only replayを実装済み | Human Verification移行（#126 / #129） |
-| AI Reproduction | Finding-bound Attempt、gVisor experiment、private evidence、append-only AI Verification Recordを実装済み | なし |
-| Human Verification | mandatory fresh再実行、二車線Queue、Current Version Review、human-only Finding gateを実装済み | Finding gateをsubmission gateへ移す（#126） |
+| AI Reproduction | Finding-bound Attempt、gVisor experiment、private evidence、append-only AI Verification Record、未完了claimの公開読取を実装済み | Human確認への接続（#126） |
+| Human Verification | 旧Packet入力のfresh再実行、Queue、Current Version Review、human-only Finding writerを保持 | 新Findingへのhuman Verification Record追記と独立環境の証拠照合（#126） |
 | Finding | fresh Independent Validationからimmutable source-validated Findingを生成し、runtime Verification Recordを追記 | human Verification Record（#126） |
 | Understanding / report | 設計とIssue分割まで完了 | grounded explanation、template draft、人間承認、form staging |
+| Record integrity / recovery | verified artifact access、append-only記録、公開Readerからのreplayを実装済み | backup / restoreと耐久性の保証範囲（#141） |
+
+到達点は**主要機能が部分接続された開発版**である。表の「実装済み」は対応するInterfaceとBehavior Testがあることを示し、実対象での一連の運用や検出品質を保証しない。新Findingへの人間確認の追記と提出準備は未接続であり、旧Packetでの完了実績を現行lifecycleの完了へ読み替えない。
 
 現在のResearch production sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / single source Validation -> source-validated Finding + Coverage`である。Findingの存在とCoverage状態は別々にterminal viewへ返す。Researchの旧Packetはread-only replayに限定する。Human OSには移行前のHuman Review writerとdirect legacy AI writerが残り、物理的な退役は#126 / #129で扱う。v7 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Missing-link / Closureはlegacy v5に実装済みだがcurrent v7へ未接続。
 
@@ -241,17 +244,20 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 - **Status:** current writeをlegacy `ResearchRecord`から分離し、Finding / Coverageを持つCampaign Run Record v4だけを新規作成する。v1 / v2、Packetを持つv3、旧Runtime Packet eventは既存Ledgerのread-only replayだけを許可する。v7 Root Evaluation reservation、single Validation、Finding / Coverage terminal、Campaign budget、progress replayを実装。
 - **Code:** [current store](../src/research/research-record/current-campaign-store.ts)、[legacy replay](../src/research/research-record/legacy-research-replay.ts)、[progress projection](../src/research/research-record/campaign-progress-projection.ts)。
 - **Stored replay evidence:** 8組の固定SQLite / CASで旧Run v1のFinding、Boundary Pair、環境不足、provider failure、未解決work、中断と、旧Run v2のSemantic Wave / Evaluation後の状態を公開`CampaignReader`から読む。旧writerや実行依存を使わず、campaign / preparation / run / progress / Finding groupの元のprojectionとDB / WAL / CAS不変を確認する。fixtureは既存の合成Testから一度だけ採取したもので、実対象の評価結果ではない。
+- **Legacy completion replay:** `attempt-result-stored` event導入前のValidator記録も、completionが指すCASから完了件数とreported usage / costを公開Readerで復元する。[Ledger互換Test](../tests/research/ledger-compatibility.test.ts)は合成した旧event列を二度読んで同じprojectionとなることを確認し、providerを実行しない。
 
 ## Human OS
 
 ### AI Reproduction
 
-**Interface:** `AIReproduction.run(Finding + Target source + Runtime Profile + Setup Plan + Policy) -> AI Verification Record`、`AIReproduction.read(findingId)`
+**Interface:** `AIReproduction.run(Finding + Target source + Runtime Profile + Setup Plan + Policy) -> AI Verification Record`、`AIReproduction.read(findingId) -> AIReproductionView v1 | undefined`
 
 - **Purpose:** fresh environmentと実Target interfaceでsource routeを試し、人間が再実行できるRecipeとevidenceを作る。
 - **Owned artifacts:** Finding-bound Attemptとappend-only AI Verification Recordを専用current event streamへCAS-firstで保存する。exact Reproduction Recipe、payload、request、screenshot、runtime logは専用private storeへ置き、public recordにはdigest検証済みopaque refだけを残す。
 - **Invariants:** AttemptへFinding、Target/version、Manifest、attacker premise、source route、Runtime Profile、Setup Plan、no-ambient-tool policyをbindする。gVisor AdapterだけがEnvironment Builderのlive sessionでexperimentを実行し、sessionを外へ渡さない。AI outputはFindingを上書きせず、programme eligibilityを作らない。
 - **Failure semantics:** setupは`setup-blocked`、provider / budget / private store / stale ready sessionは理由付き`inconclusive`として保持する。cleanup failure（`failed`）と観測不能なcleanup（`unverified`）はそれぞれ`cleanup-failed` / `cleanup-unverified`理由の`inconclusive`とし、どちらも`runtime-confirmed`を公開しない。`disproved`は前提一致かつRecipe完走後のSecurity Effect非観測だけに限定する。同じAttemptは保存済みRecordを返し、異なるcontentの占有はfail closedにする。
+- **Incomplete claim:** harnessの未知例外または結果保存前の中断では、完了Recordのないdurable claimが残り得る。同じ要求の再投入は`FindingAIReproductionInProgressError`となり、二重実行しない。公開読取は記録のないFindingを`undefined`、claimのみを`result-not-recorded`、完了Recordのみを`completed`、両者の併存を`completed-with-result-not-recorded`で返す。claimと完了RecordをAttempt単位で照合し、完了後も残るclaimを未完了扱いしない。
+- **Read invariants:** `finding / assurance / records`を維持し、未完了分の`incompleteClaims`へAttempt ref、開始時刻、`processStatus: unknown / cleanupStatus: unknown`だけを追加する。内部claim tokenとprivate本文は返さない。View schemaはRecordとassuranceの一致、Finding binding、未完了Attemptの重複・完了との重複を検査する。読取は実行・claim解放・記録修復を行わず、CAS欠損やbinding不一致はerrorとする。開始時刻だけからprocessの生存・停止・cleanup完了を推測しない。[公開読取・再起動Test](../tests/human-os/finding-ai-reproduction.test.ts)はharness非呼出しとDB / WAL / public CAS / private store不変も確認する（[#140](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/140)）。
 - **Status / Tests:** Finding-bound current contract、idempotent run / reopen、dedicated SQLite stream、private bytes digest check、Environment Builder + typed gVisor experiment Adapterを実装。旧Runtime Verification Packet / Triage writerはcurrent barrelから外し、[#129](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/129)までdirect legacy moduleと既存decoderを保持する · [code](../src/human-os/ai-reproduction.ts), [gVisor adapter](../src/human-os/gvisor-ai-reproduction-harness.ts), [contracts](../src/human-os/ai-reproduction-contracts.ts), [behavior](../tests/human-os/finding-ai-reproduction.test.ts), [legacy replay](../tests/human-os/ai-reproduction.test.ts) · [#133](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/133)
 
 ### Human Verification Environment
@@ -266,6 +272,14 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 ### Human Verification
 
+**Current contract:** 以下のRunnerは旧Packet-bound v2である。新Findingへのhuman Verification Record追記は未実装である。Findingの公開名は三つの契約を区別する必要がある。
+
+| Schema / export | 意味 |
+| --- | --- |
+| Researchの[findingSchema v1](../src/research/validation/finding.ts) | Independent Validationから生成する現行のimmutable Finding |
+| [currentFindingSchema v2](../src/human-os/current-human-review-contracts.ts) | Packet-bound Current Human Reviewが人間確認後に生成する旧Finding |
+| Human OS rootの[findingSchema / Finding](../src/human-os/index.ts) | さらに旧いHuman Review Packet v1のFinding。Researchの同名契約とは異なる |
+
 **Interface:** `CurrentHumanReviewRunner.admit`、`prepare`、`record`、`readQueue`
 
 **Read-only Interface:** `openCurrentHumanReviewReader({ store, policy }) -> CurrentHumanReviewReader.readCase / readQueue`。Packet-bound v2の保存済みCase、Queue、Preparation、Resultを元の意味で読む。必要な依存は読取Storeと固定Queue Policyだけで、AI reader、version lookup、環境生成、clockは要求しない。書込Runnerも同じReaderを使う。policy不一致はerrorにし、未登録Caseは`undefined`、未登録Campaignは空Queueを返す。[reader](../src/human-os/current-human-review-reader.ts) · [immutable fixtureの公開読取Test](../tests/human-os/current-human-review-reader.test.ts)
@@ -275,6 +289,7 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 - **Preparation:** 人間の直前にCurrent Version Reviewを実行する。新stableは同じCampaign、plugin、Causal Identity、Security Effect、attacker premiseにbindされた新しいruntime-confirmed Attemptだけを選べる。Human environmentは選択Target、Runtime Profile、Setup Planと一致し、AI environmentとは異なるfresh IDを要求する。
 - **Failure semantics:** 前提一致かつRecipe完走後のeffect非観測だけを`rejected`にする。環境不一致は`blocked`、曖昧な観測は`runtime-inconclusive`、不足証拠は`more-evidence-required`。
 - **Finding gate:** 全Recipe stepとexact payloadの人間によるfresh再実行を記録した`verified-finding`だけがFindingを生成する。Findingは元Campaign Target、検証Target、Triage Packet、Recipe / Private Evidence refs、人間のRecordへbindする。external actionは`not-authorized`であり、report、vendor contact、公開は別承認を必要とする。
+- **Evidence boundary:** 旧v2 Recordが保持する環境identity、effect、cleanupは入力された値の整合性を検査する。永続化済みEnvironment Builder DispositionやPrivate Evidenceとの照合を伴う、Harnessが観測した事実の証明ではない。新契約では人間の申告とHarness由来の証拠参照を区別する必要がある。
 - **Status / Tests:** v2 append-only Case stream、二車線Queue、promotion、version refresh、fresh environment gate、Disposition、Finding、reopen replayを実装 · [runner](../src/human-os/current-human-review.ts), [contracts](../src/human-os/current-human-review-contracts.ts), [behavior](../tests/human-os/current-human-review.test.ts) · [#110](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/110)
 - **Accepted next:** Human VerificationはFinding生成gateではなく`human-confirmed / disproved / inconclusive / blocked` Verification Recordを追加する。exact Draft revisionとdestinationに対するExternal Action Authorizationだけがform staging / submitを許可する（[#126](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/126)）。
 - **Migration constraint:** Finding Environment Request v1は同一contentへ同じrequest digestを使い、保存済みDispositionを再利用する。AI / humanの用途や独立試行を識別する項目はない。同じ要求をもう一度渡すことを別fresh環境の証拠にはできない。人間の申告だけで`human-confirmed`へ移行せず、別環境の永続化済み証拠との対応を#126の受入条件として確認する。
@@ -327,14 +342,16 @@ ADR 0122以前のHuman Review Packet v1、Human Verification、Findingを元の�
 - **Invariants:** 保存呼出し時の入力を保持し、完了待ちの間にcallerが元のJSONやbyte bufferを更新しても、保存内容とdigestを変えない。同一digestが既に存在する場合は、既存内容のschema / digestを検査してから再利用する。正常な並行再保存は同じdigestへ収束し、JSON byte形式とprivate bytesを保持する。
 - **Failure semantics:** 既存内容の破損はerrorとして返し、正しい入力の再保存で黙って修復しない。cleanup failureは先行する保存・検証failureを置き換えない。
 - **Behavior Test:** [public artifact store integrity](../tests/infrastructure/file-artifact-integrity.test.ts)は4つの読書きInterfaceで並行再保存、reopen、破損後の再保存拒否と既存bytes保持を確認する。保存中のJSON更新と、Uint8Array / Bufferの部分view再利用も回帰対象にする。
-- **Guarantee limit:** CAS file / directoryのsyncによる電源断耐久性と、稼働中のSQLite / CAS一括backupからの復元は未検証。正常なreopenや合成fixtureの成功を、その保証として扱わない。
+- **Stopped backup scope:** 復元検証は全writerとDB connectionの正常停止後を対象とする。各ownerのSQLite本体と存在するWAL / SHM、参照public CAS、Private Evidenceを同じ世代の集合として取得し、空directoryへ復元する。公開Readerのprojectionだけでは未読CASの欠損を検出しないため、参照先のdigest確認も必要になる。
+- **Restore behavior:** [合成記録のbackup / restore Test](../tests/infrastructure/artifact-backup-restore.test.ts)は旧Researchのrun / progress、Packet-bound Human Reviewのqueue、独立したcurrent private JSON / bytesの意味・digestを復元先で確認し、public / private artifactの欠損・破損を拒否する。確認のためにproviderや対象runtimeを起動しない。
+- **Guarantee limit:** 現行Research Finding + CoverageとAI Verification Record、Private Evidenceを一つの参照集合として復元するAcceptanceは未達。世代混在・参照集合の完全性、稼働中snapshot、異常停止・電源断耐久性も未保証である。file / directoryのsyncは未実装であり、正常なreopenと停止済みfixtureの復元成功を電源断の保証へ読み替えない。残条件は[#141](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/141)で追跡する。
 - **Code:** [Research JSON](../src/research/research-record/file-json-artifact-store.ts)、[Human OS JSON](../src/human-os/human-os-record/file-json-artifact-store.ts)、[private JSON / bytes](../src/human-os/human-os-record/file-private-artifact-store.ts)。
 
 ### Verified artifact access
 
 - **Purpose:** store seamはintegrityを約束しないため、callerが毎回digestを照合しschemaでparseしていた。その義務を一か所に閉じる。ResearchとHuman OSはどちらもcanonical encodingのSHA-256でartifactを名指しし、store contractも同じ2 methodなので、seamは1つでありcontextごとの複製を置かない。
 - **Interface:** `openVerifiedArtifacts(store) -> VerifiedArtifacts.put / read`。`put(artifact, value, expected?)`はcanonical digestを返し、`read(artifact, schema, digest)`は検証済みのparse結果を返す。`artifact`はfailureを説明するための名前であり、storage keyではない。
-- **Invariants:** `put`はstoreが返したdigestをcanonical digestと照合し、`expected`を渡した場合はcallerが持つrefとの一致も要求する。`read`は**parseより先に**保存bytesを`digest`へ照合する。逆順は、adapterが差し替えた内容をshape errorとして報告し、integrity failureを隠す。
+- **Invariants:** `put`はstoreが返したdigestをcanonical digestと照合し、`expected`を渡した場合はcallerが持つrefとの一致も要求する。`read`はstoreから返されたJSON値のcanonical digestを**schema parseより先に**照合する。逆順は、adapterが差し替えた内容をshape errorとして報告し、integrity failureを隠す。元のfileの空白・改行等のbytesを比較するInterfaceではなく、private bytesの保存・検証やbackup耐久性も保証しない。
 - **Failure semantics:** どちらの方向のdigest不一致も`ArtifactIntegrityError`（`artifact` / `digest`を保持）にする。artifactが健全でschemaを満たさない場合はschema自身のerrorを返し、integrity failureへ丸めない。
 - **Behavior Test:** [verified artifacts](../tests/infrastructure/verified-artifacts.test.ts)は、digestを詐称するadapter、別内容を返すadapter、検証とparseの順序、schema failureの分離を確認する。
 - **Code:** [verified-artifacts](../src/infrastructure/verified-artifacts.ts)

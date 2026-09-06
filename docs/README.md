@@ -7,9 +7,12 @@
 | 図を追ってsystem全体の処理、artifact、状態、隔離境界を理解したい | [System Walkthrough](SYSTEM-WALKTHROUGH.md) |
 | system全体、Module、artifact、Research loopを理解したい | [Harness Architecture](ARCHITECTURE.md) |
 | 現在どこまで動き、どのcode/testがownerか知りたい | [Codebase Guide](CODEBASE-GUIDE.md) |
+| 次に何を直すか、何が未完了か知りたい | [Issue #86](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/86)（全体の入口）、[Issue #119](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/119)（保守性） |
 | 探索・Validation・costの判断原則を知りたい | [Research Design](RESEARCH-DESIGN.md) |
 
 通常のcode変更は **Codebase GuideのModule節 -> Behavior Test -> implementation** で進める。全ADRやKnowledgeを通読しない。
+
+完成度はCodebase Guideの[Current capability](CODEBASE-GUIDE.md#current-capability)から読む。採用した設計、実装・Test、実対象での運用証拠を区別し、図やopen Issue件数を完成率へ換算しない。
 
 ## Repository map
 
