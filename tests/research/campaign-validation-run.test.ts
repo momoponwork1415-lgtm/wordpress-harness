@@ -2,6 +2,7 @@ import { copyFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import Database from "better-sqlite3";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 
@@ -980,6 +981,8 @@ describe("CampaignRunner.run source-only Validation", () => {
         databasePath: reservationBoundaryDatabasePath,
         campaignExecution: reservationBoundaryExecution,
       });
+      let reservationBoundaryPlan:
+        z.infer<typeof campaignDefaultSemanticRunPlanV3Schema> | undefined;
       try {
         const boundaryPreparation =
           await reservationBoundaryResearch.runner.prepare(
@@ -988,14 +991,13 @@ describe("CampaignRunner.run source-only Validation", () => {
         if (boundaryPreparation.targetFileManifest === undefined) {
           throw new Error("Expected a reservation-boundary manifest");
         }
-        const reservationBoundaryPlan =
-          campaignDefaultSemanticRunPlanV3Schema.parse({
-            ...plan,
-            campaignId: reservationBoundaryInput.campaignId,
-            runId: "reservation-boundary-run",
-            preparationDigest: boundaryPreparation.inputDigest,
-            manifest: boundaryPreparation.targetFileManifest,
-          });
+        reservationBoundaryPlan = campaignDefaultSemanticRunPlanV3Schema.parse({
+          ...plan,
+          campaignId: reservationBoundaryInput.campaignId,
+          runId: "reservation-boundary-run",
+          preparationDigest: boundaryPreparation.inputDigest,
+          manifest: boundaryPreparation.targetFileManifest,
+        });
         await expect(
           reservationBoundaryResearch.runner.run(reservationBoundaryPlan),
         ).rejects.toThrow("Injected reservation-boundary restart");
@@ -1039,6 +1041,96 @@ describe("CampaignRunner.run source-only Validation", () => {
         });
       } finally {
         reservationBoundaryReplay.close();
+      }
+      if (reservationBoundaryPlan === undefined) {
+        throw new Error("Expected a reservation-boundary plan");
+      }
+      const missingAttemptReservationWriter = openResearch({
+        databasePath: reservationBoundaryDatabasePath,
+        campaignExecution: {
+          ...campaignExecution,
+          modelExecution: {
+            run: async (attemptPlan) => {
+              if (attemptPlan.schemaVersion !== 2) {
+                throw new Error("Expected a current Attempt Plan");
+              }
+              return failedResult(attemptPlan, "provider-failed");
+            },
+          },
+        },
+      });
+      try {
+        await expect(
+          missingAttemptReservationWriter.runner.run(reservationBoundaryPlan),
+        ).resolves.toMatchObject({ schemaVersion: 3, decision: "incomplete" });
+      } finally {
+        missingAttemptReservationWriter.close();
+      }
+      const reservationTamperer = new Database(reservationBoundaryDatabasePath);
+      try {
+        const reservedEvent = z
+          .object({ campaign_sequence: z.number().int().positive() })
+          .parse(
+            reservationTamperer
+              .prepare(
+                `SELECT campaign_sequence
+                 FROM research_events
+                 WHERE campaign_id = ?
+                   AND kind = 'campaign.attempt-budget-reserved'
+                 ORDER BY campaign_sequence ASC
+                 LIMIT 1`,
+              )
+              .get(reservationBoundaryInput.campaignId),
+          );
+        reservationTamperer.transaction(() => {
+          reservationTamperer
+            .prepare(
+              `DELETE FROM research_events
+               WHERE campaign_id = ? AND campaign_sequence = ?`,
+            )
+            .run(
+              reservationBoundaryInput.campaignId,
+              reservedEvent.campaign_sequence,
+            );
+          reservationTamperer
+            .prepare(
+              `UPDATE research_events
+               SET campaign_sequence = campaign_sequence + 1000000
+               WHERE campaign_id = ? AND campaign_sequence > ?`,
+            )
+            .run(
+              reservationBoundaryInput.campaignId,
+              reservedEvent.campaign_sequence,
+            );
+          reservationTamperer
+            .prepare(
+              `UPDATE research_events
+               SET campaign_sequence = campaign_sequence - 1000001
+               WHERE campaign_id = ? AND campaign_sequence > ?`,
+            )
+            .run(
+              reservationBoundaryInput.campaignId,
+              reservedEvent.campaign_sequence + 1_000_000,
+            );
+        })();
+      } finally {
+        reservationTamperer.close();
+      }
+      const missingAttemptReservationReader = openResearch({
+        databasePath: reservationBoundaryDatabasePath,
+      });
+      try {
+        await expect(
+          missingAttemptReservationReader.reader.inspect(
+            reservationBoundaryInput.campaignId,
+            { kind: "budget", runId: reservationBoundaryPlan.runId },
+          ),
+        ).rejects.toMatchObject({
+          name: "LedgerIntegrityError",
+          reason: "invalid-event-order",
+        });
+      } finally {
+        missingAttemptReservationReader.close();
       }
 
       expectedValidationRunId = plan.runId;

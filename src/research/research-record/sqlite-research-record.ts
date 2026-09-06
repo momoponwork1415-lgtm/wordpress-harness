@@ -795,7 +795,12 @@ function projectStoredSemanticCampaignBudget(
   for (const attempt of ledger.semanticAttempts.values()) {
     if (explicitReservationIds.has(attempt.intent.attemptId)) continue;
     const attemptRun = ledger.semanticRuns.get(attempt.intent.runId);
-    if (attemptRun?.plan.schemaVersion !== 3) continue;
+    if (
+      attemptRun?.plan.schemaVersion !== 3 ||
+      isCurrentSemanticResearchBudgetPolicy(attemptRun.plan.budgetPolicy)
+    ) {
+      continue;
+    }
     const reservation = reserveUnrecordedCampaignAttemptBudget(
       attemptRun.plan,
       attempt.intent,
@@ -5226,6 +5231,9 @@ class SqliteResearchRecord
             run === undefined ||
             run.completed !== undefined ||
             semanticAttempts.has(intent.attemptId) ||
+            (run.plan.schemaVersion === 3 &&
+              isCurrentSemanticResearchBudgetPolicy(run.plan.budgetPolicy) &&
+              reservation === undefined) ||
             (run.plan.schemaVersion === 3 &&
               isCurrentSemanticResearchBudgetPolicy(run.plan.budgetPolicy) &&
               intent.role === "finder" &&
