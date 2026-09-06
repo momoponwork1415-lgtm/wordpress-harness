@@ -18,6 +18,7 @@ describe("Human OS context Interface", () => {
     expect(humanOsContext).not.toHaveProperty("triageReproductionPacketSchema");
     expect(humanOsContext).not.toHaveProperty("openLegacyPacketAIReproduction");
     expect(humanOsContext).toHaveProperty("openCurrentHumanReview");
+    expect(humanOsContext).toHaveProperty("openCurrentHumanReviewReader");
     expect(humanOsContext).toHaveProperty("openLegacyHumanVerificationReplay");
     expect(humanOsContext).toHaveProperty("humanReviewCaseSchema");
     expect(humanOsContext).not.toHaveProperty("openSqliteHumanOsRecord");

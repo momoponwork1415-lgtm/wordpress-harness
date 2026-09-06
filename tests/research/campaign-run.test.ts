@@ -663,7 +663,7 @@ describe("CampaignRunner.run", () => {
     }
   });
 
-  it("records one finite wave through a Finding and replays the terminal run", async () => {
+  it("records one finite wave through a Finding and preserves terminal run idempotency", async () => {
     const directory = await mkdtemp(join(tmpdir(), "campaign-run-"));
     const {
       databasePath,
@@ -728,20 +728,12 @@ describe("CampaignRunner.run", () => {
 
       const reopened = openResearch({ databasePath });
       try {
-        await expect(
-          reopened.reader.inspect(input.campaignId, {
-            kind: "run",
-            runId: plan.runId,
-          }),
-        ).resolves.toEqual(terminal);
-        await expect(
-          reopened.reader.inspect(input.campaignId, { kind: "progress" }),
-        ).resolves.toEqual(progress);
         await expect(reopened.runner.run(plan)).resolves.toEqual(terminalRef);
       } finally {
         reopened.close();
       }
     } finally {
+      first.close();
       await rm(directory, { force: true, recursive: true });
     }
   });

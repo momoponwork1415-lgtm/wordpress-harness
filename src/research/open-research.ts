@@ -1,3 +1,4 @@
+import type { CampaignExecutionDependencies } from "./campaign-control/contracts.js";
 import {
   openCampaignControl,
   openLegacyCampaignControlForTests,
@@ -29,9 +30,16 @@ export function openResearch(options: OpenResearchOptions): ResearchModule {
   };
 }
 
+interface OpenLegacyResearchOptions extends Omit<
+  OpenResearchOptions,
+  "campaignExecution"
+> {
+  readonly campaignExecution?: CampaignExecutionDependencies;
+}
+
 /** Internal compatibility harness for behavior tests that create legacy ledgers. */
 export function openLegacyResearchForTests(
-  options: OpenResearchOptions,
+  options: OpenLegacyResearchOptions,
 ): ResearchModule {
   const artifactStore =
     options.artifactStore ?? options.campaignExecution?.artifactStore;
@@ -54,7 +62,7 @@ export function openLegacyResearchForTests(
 
 /** Backward-compatible name for archived Map-first test fixtures. */
 export function openLegacyMapFirstResearchForTests(
-  options: OpenResearchOptions,
+  options: OpenLegacyResearchOptions,
 ): ResearchModule {
   return openLegacyResearchForTests(options);
 }

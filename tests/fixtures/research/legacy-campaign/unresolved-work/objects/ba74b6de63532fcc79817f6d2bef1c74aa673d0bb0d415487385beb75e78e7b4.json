@@ -1,0 +1,11 @@
+{
+  "campaignId": "campaign-brizy-2-8-11",
+  "kind": "finite-work",
+  "mapDigest": "sha256:7629b362194e88e55c4aae0ac64e8aa6e1fc9e9d7b71774cbe66ea91eeb13ac9",
+  "objective": "source-bound-hypothesis",
+  "predecessorWaveDigest": "sha256:a24d46302feed8fccb22d58e55e294f5673f1ecfe1875a26477b9490ccaa84fb",
+  "remainingFinderAttempts": 1,
+  "schemaVersion": 1,
+  "sourceRunId": "run-brizy-2-8-11-a",
+  "stopWhen": "source-bound-hypothesis-or-budget-exhausted"
+}

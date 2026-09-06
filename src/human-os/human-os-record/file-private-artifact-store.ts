@@ -1,9 +1,10 @@
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { z } from "zod";
 
+import { publishImmutableFile } from "../../infrastructure/immutable-file.js";
 import type { HumanOsPrivateArtifactStore } from "../ai-reproduction.js";
 import {
   privateEvidenceBundleSchema,
@@ -29,14 +30,11 @@ class FileHumanOsPrivateArtifactStore implements HumanOsPrivateArtifactStore {
     const digest = humanOsDigest(artifact);
     await mkdir(this.#directory, { mode: 0o700, recursive: true });
     const destination = this.#artifactPath(digest);
-    const temporary = join(
-      this.#directory,
-      `.${digest.slice("sha256:".length)}.${process.pid}.${randomUUID()}.tmp`,
+    await publishImmutableFile(
+      destination,
+      `${canonicalHumanOsJson(artifact)}\n`,
+      () => this.readPrivateJson(digest),
     );
-    await writeFile(temporary, `${canonicalHumanOsJson(artifact)}\n`, {
-      mode: 0o600,
-    });
-    await rename(temporary, destination);
     return digest;
   }
 
@@ -52,15 +50,13 @@ class FileHumanOsPrivateArtifactStore implements HumanOsPrivateArtifactStore {
   }
 
   async putPrivateBytes(value: Uint8Array): Promise<string> {
-    const digest = `sha256:${createHash("sha256").update(value).digest("hex")}`;
+    const content = new Uint8Array(value);
+    const digest = `sha256:${createHash("sha256").update(content).digest("hex")}`;
     await mkdir(this.#directory, { mode: 0o700, recursive: true });
     const destination = this.#blobPath(digest);
-    const temporary = join(
-      this.#directory,
-      `.${digest.slice("sha256:".length)}.${process.pid}.${randomUUID()}.tmp`,
+    await publishImmutableFile(destination, content, () =>
+      this.readPrivateBytes(digest),
     );
-    await writeFile(temporary, value, { mode: 0o600 });
-    await rename(temporary, destination);
     return digest;
   }
 

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { readyIntakeDispositionSchema } from "../target-intelligence/acquisition/contracts.js";
 import type {
   CampaignExecutionDependencies,
+  CurrentCampaignExecutionDependencies,
   AnyCampaignRunPlan,
   AnyCampaignRunRecord,
   AnyCampaignRunRecordRef,
@@ -220,7 +221,8 @@ export interface OpenResearchOptions {
   readonly databasePath: string;
   readonly clock?: () => Date;
   readonly artifactStore?: JsonArtifactStore;
-  readonly campaignExecution?: CampaignExecutionDependencies;
+  readonly campaignExecution?:
+    CurrentCampaignExecutionDependencies | CampaignExecutionDependencies;
 }
 
 export class CampaignPreparationIntegrityError extends Error {

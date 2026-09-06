@@ -2,6 +2,8 @@
 
 同じsystemを六つの問いで順に見る。図を選んで拡大できる。実装状況の正本は[Codebase Guide](CODEBASE-GUIDE.md)、設計の正本は[Harness Architecture](ARCHITECTURE.md)とversioned contractである。
 
+図は採用した設計のViewであり、全接続の実装完了を表さない。初期利用はTarget選定・Verificationの対話操作を許容する。自動化の完成を初期利用の前提にしない。
+
 ## 1. 誰が何を所有するか
 
 [![Target Intelligence、Research、Human OSと外部actorの所有境界](architecture.svg)](architecture.svg)

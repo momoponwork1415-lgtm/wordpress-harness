@@ -1,0 +1,19 @@
+{
+  "admittedAt": "2026-09-05T04:00:00.000Z",
+  "campaignId": "campaign-human-review",
+  "firstDeliveryRequestDigest": "sha256:b4ef235b1b7118539b337338a59d62f76db6c28a1ef6b1d0419d97403cb9576e",
+  "id": "sha256:271d7adf56a201180711641d16963c702f885d5d5545497e0089c47204514921",
+  "kind": "human-review-case",
+  "mechanismDigest": "sha256:f9116893f7b69d294dd77fe47d08451213206e4dc58480f1018f3f82a01e7290",
+  "packet": {
+    "candidateId": "sha256:e5b6d9f6e42c53cbaf558508dc0ca88b2a1d03b88e4cb17475feff16a0454b8b",
+    "digest": "sha256:22f954a5cdb7674d37d4c9cee4a7570a9ed4807d4a1493eb2e2e98dacaca5e9d",
+    "id": "sha256:478c6f0052c040b0d318a98d359048fc0d239e688ccb2ce23e90de9dd32437d8",
+    "kind": "human-review-packet",
+    "manifestDigest": "sha256:216573902ae51f21978065cc876e9c57eef27bff455a1a0a2354ad5c3f3a538d",
+    "schemaVersion": 1,
+    "targetSnapshotDigest": "sha256:39dee9f164bf23533f9987d47526722b6ffd8d09483e826d3a53bed035f910b0"
+  },
+  "queueStatus": "active",
+  "schemaVersion": 1
+}

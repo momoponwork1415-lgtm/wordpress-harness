@@ -33,6 +33,32 @@ export function formatCampaignProgress(progress: CampaignProgressView): string {
   const attempts = progress.counts.attempts;
   const checkpoints = progress.counts.checkpoints;
   const verifications = progress.counts.verifications;
+  if (progress.schemaVersion === 2) {
+    const validations = progress.counts.validations;
+    return [
+      "[research]",
+      `status=${progress.status}`,
+      `head=${progress.ledgerHead}`,
+      `last=${progress.lastDurableEvent.kind}`,
+      `attempts=${attempts.completed}/${attempts.started}`,
+      `active=${activeRoles.length === 0 ? "none" : activeRoles}`,
+      `checkpoints=${checkpoints.total}`,
+      `hypotheses=${checkpoints.hypotheses}`,
+      `validations=${validations.completed}/${validations.started}`,
+      `validation-active=${validations.active}`,
+      `findings=${progress.counts.findings}`,
+      `source-validated=${validations.sourceValidated}`,
+      `needs-research=${validations.needsResearch}`,
+      `disproven=${validations.disproven}`,
+      `pending=${validations.pending}`,
+      `legacy-verifications=${verifications.completed}/${verifications.started}`,
+      `legacy-findings=${verifications.finding}`,
+      `legacy-blocked=${verifications.blocked}`,
+      `depth=${progress.counts.depthIterations}`,
+      `tokens=${progress.usage.modelTokens.total}`,
+      `cost-usd=${progress.usage.estimatedCostUsd.toFixed(6)}`,
+    ].join(" ");
+  }
   return [
     "[research]",
     `status=${progress.status}`,

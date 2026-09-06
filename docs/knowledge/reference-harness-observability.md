@@ -1,152 +1,82 @@
 # Knowledge: reference harness comparison
 
-Status: official-source comparison and first Prospective measurement, 2026-09-06
+Status: official-source maintenance comparison, checked 2026-09-06
 
 ## Conclusion
 
-参照Harnessと同じstage graphへ全面改築する根拠はない。採るべきものは工程名ではなく、次のcontrolである。
+**Inference:** 6〜12か月のproduct寿命を考えても、参照Harnessの工程図へ全面改築する根拠はない。既存のcontext境界を起点に、正本データ、表示、schema互換、復旧の責任を段階的に整理する方が妥当である。小さな見た目の整理だけで十分という意味ではない。callerが保存形式や旧世代の状態を知る必要がある境界は、独立した受入条件で構造を見直す対象になる。
 
-1. DiscoveryとIndependent Validationを分け、Finderに自己採点させない。
-2. Finding、Coverage、実行状態を別artifactにし、停止時もFindingと未完了範囲を失わない。
-3. target identity、source evidence、runtime evidence、外部行動承認を別々にbindする。
-4. 並列探索は互いに異なるfocusを与える一方、whole-target wildcardを残す。
-5. model外へdurable state、予算、retry、failure classificationを置く。
-6. recallを推測値で主張せず、Prospective runの生存率、coverage growth、runtime成立率、人間負荷を測る。
+比較で直接役立つのはCodex Securityのcanonical contractとprojectionの分離、Anthropicの明示的な失敗分類、両者の境界を検証するtestである。stage数、Module数、総LOCは保守性の証明にならない。AVDHとCloudflareの記事は評価観点の根拠にはなるが、非公開のInterfaceや復旧保証の実装根拠にはならない。
 
-これらは現行の`Target Intelligence -> Research -> Human OS`、Semantic Wave、conditional Depthを捨てなくても導入できる。現時点で最も強い独自部分は、vulnerability oracleをResearchから隔離するProspective評価、broken security semanticsを優先する探索、minority candidate保持、WordPress固有semanticsである。最も弱い独自部分は、実TargetをFindingまで完走する前に細分化されたartifactとcontrol planeである。
-
-最初の実Target Prospective Campaignはsource Researchまで到達したが、Root Evaluation前にbudgetで`Incomplete`となった。したがってhigh-impact recall、false-positive率、runtime成立率、人間負荷は未実証であり、stage追加より先に一件を完走して比較可能なbaselineを作る必要がある。
+このnoteは外部根拠と推論を記録する。設計採用、現行実装の一覧、次の作業の正本はそれぞれ[Architecture](../ARCHITECTURE.md)、[Codebase Guide](../CODEBASE-GUIDE.md)、GitHub Issuesとする。
 
 ## Evidence boundary
 
-| Reference | Public evidence checked | What cannot be concluded |
+「Observed / code」は固定commitの実装・testを静的に確認した事実、「Observed / docs」は公式文書の記述、「Observed / article」は提供者の記事による説明・自己申告、「Inference」はこのrepositoryに対する判断である。testの存在と実行成功は区別する。
+
+| Reference | Verified source | Evidence limit |
 | --- | --- | --- |
-| Wordfence Argus | [Wordfence official article, 2026-08-27](https://www.wordfence.com/blog/2026/08/wordfence-argus-moving-beyond-human-research-capability/) | 10個のcontrol verb、目的、model-agnostic方針以外のarchitecture、prompt、model、評価方法は非公開 |
-| Anthropic | [`defending-code-reference-harness@d3bea6b`](https://github.com/anthropics/defending-code-reference-harness/tree/d3bea6b5793b5f3d59a75ebe69a58efa88383145) | 公開実装はC/C++ memory-safety中心であり、WordPress logic flawへの効果は直接示さない |
-| OpenAI | [`codex-security@c829688`](https://github.com/openai/codex-security/tree/c8296885fbbf593edc1b405dc49859496b2bd8e4) | 汎用repository scannerのcontractであり、prospective target selectionや人間の外部提出判断は直接扱わない |
-| Cloudflare | [Build your own vulnerability harness](https://blog.cloudflare.com/build-your-own-vulnerability-harness/)、[Vulnerability Discovery and Remediation](https://blog.cloudflare.com/vulnerability-discovery-remediation/) | 内部Harnessのcodeとpromptは公開されておらず、記事の運用実績を再現検証できない |
-| Google / Mandiant AVDH | [official architecture and evaluation](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review) | point-in-time内部architectureの説明であり、実装とbenchmark datasetは非公開 |
-| Current harness | [Research Design](../RESEARCH-DESIGN.md)、[Architecture](../ARCHITECTURE.md)、[Codebase Guide](../CODEBASE-GUIDE.md) | 最初のProspective runがRoot Evaluation前に停止したため、発見能力の比較値はまだない |
+| OpenAI Codex Security | [`c8296885fbbf593edc1b405dc49859496b2bd8e4`](https://github.com/openai/codex-security/tree/c8296885fbbf593edc1b405dc49859496b2bd8e4)、2026-09-04 commit。調査時のHEADと一致。 | 公開SDK / pluginのcodeを確認できる。WordPressでの性能や6〜12か月の保守保証は示さない。 |
+| Anthropic Defending Code Reference Harness | [`d3bea6b5793b5f3d59a75ebe69a58efa88383145`](https://github.com/anthropics/defending-code-reference-harness/tree/d3bea6b5793b5f3d59a75ebe69a58efa88383145)、2026-08-06 commit。調査時のHEADと一致。 | [README](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/README.md#L12-L39)は保守終了とC/C++ memory-safety向けreferenceであることを明記。managed Claude Securityの実装を表すものではない。 |
+| Google / Mandiant AVDH | [公式記事、2026-08-18](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review) | 内部のpoint-in-time architectureと評価方法の説明。この記事から公開source、永続化schema、障害注入test、benchmark datasetは検証できない。 |
+| Cloudflare | [Harness記事、2026-06-18](https://blog.cloudflare.com/build-your-own-vulnerability-harness/)、[VDR記事、2026-09-03](https://blog.cloudflare.com/vulnerability-discovery-remediation/) | 内部運用の説明と顧客向けservice方針。記事の図や実績値から非公開Moduleの実装品質を推定しない。 |
 
-以下では「Observed」を公開一次資料から確認できる事実、「Inference」をこのHarnessへ適用した場合の判断として分ける。
+## Public code: Interface, state, recovery
 
-## What to adopt
-
-| Practice | Observed | Inference for this harness | Primary gain | Decision |
-| --- | --- | --- | --- | --- |
-| DiscoveryとValidationの独立 | Anthropicはnoisy Discoveryとadversarial Verificationを分け、fresh sandboxにはPoCだけを渡す。Cloudflareも機械検査後に自分ではFindingを作れないisolated Validatorを置く（[Anthropic best practices](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L45-L78)、[Cloudflare](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#making-findings-you-can-trust)）。 | Finderの自己抑制を避けながら、source根拠のない候補を人間へ送らずに済む。 | recall / validation quality | **Adopt now.** 現行single fresh Independent ValidationをFinding writerにする。 |
-| Canonical FindingとCoverageの分離 | Codex Securityはimmutable `scan-manifest.json`、semantic `findings.json`、structured `coverage.json`を正本にし、`report.md`を再生成可能なprojectionにする。停止結果ではFindingとCoverageを保持し、Finding不在を結論にしない（[scan contract](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/plugins/codex-security/references/scan-contract.md#L1-L38)）。 | Findingの真偽と「どこまで探したか」を混同しなくなる。旧Packet変換も減らせる。 | maintainability / coverage honesty | **Adopt now.** schema全体はコピーせず、Finding、Verification Record、Coverage projectionだけを深いcontractにする。 |
-| Semantic root identity | Codex Securityはline numberではなくrule family、semantic root-control anchor、independently attackable instanceからidentityを作り、曖昧なfingerprint一致を同一Findingの証明としない（[scan contract](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/plugins/codex-security/references/scan-contract.md#L70-L103)）。 | version更新や近接line移動を越えて、同じbroken controlと別instanceを追跡できる。 | maintainability / operations | **Adopt with the Finding contract.** 既存Causal Identityをroot-control中心へ単純化する。 |
-| Persistence before parallelism | Cloudflareは各stageを`run_id, repo, stage`でSQLiteへ保存し、crash時はin-flight taskだけを失う構成にしている。Anthropicも段階artifactとterminal resultを逐次保存し、killed batchをresumeする（[Cloudflare](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#codifying-the-skill-into-a-pipeline)、[Anthropic pipeline](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/pipeline.md#L100-L115)）。 | 現行Ledger / CASは方向として正しい。ただしevent粒度を増やすより、各public stageのidempotent resumeを実測すべきである。 | operations / maintainability | **Keep, then simplify.** current writerとlegacy replayを分け、未使用eventを増やさない。 |
-| Focused parallelism plus wildcard | AnthropicはReconで異なるsurfaceへ分割し、同じ浅いbugへの収束を抑えるが、単一fileには固定しない。複数runの結果はunionする（[best practices](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L16-L36)、[iteration](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L114-L142)）。 | target-specific thesisで重複を減らし、wildcard thesisでReconの誤りとcross-surface chainを拾う現行policyは合理的である。 | high-impact recall / cost | **Keep and measure.** 最大4という数値自体は仮説なので、重複率とnet-new Findingで調整する。 |
-| Threat context as evidence, not a cage | AVDHはExplorer / Specialist / SynthesisでThreat Modelを作り、人間確認後にentry-point分析へ進む。CloudflareはReconがrepo固有attack classを生成し、各Hunterにattackerとbroken boundaryの明示を要求する（[AVDH](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review#threat-modeling)、[Cloudflare](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#dynamic-threat-modeling)）。 | plugin固有のrole、capability、nonce、REST/AJAX/hooks、filesystem、deserialization、integration boundaryを短いartifactにすると高impact routeを見つけやすい。ただし誤ったMapをhard gateにするとrecallを落とす。 | high-impact recall / validation quality | **Adopt as a revisable input.** 人間承認を全Campaignの必須gateにせず、wildcard探索を残す。 |
-| Honest Coverage and targeted gapfill | Codex Securityはreviewed surface、receipt、exclusion、deferred、completenessを分ける。Cloudflareは`area × attack-class` cellのcoverage growthとre-runのnet-new Findingをproxyとして追い、recall値は主張しない（[Codex contract](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/plugins/codex-security/references/scan-contract.md#L105-L163)、[Cloudflare](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#making-findings-you-can-trust)）。 | v6 Missing-link / Closureを接続する価値はあるが、固定CWE matrixを探索空間にしてはいけない。Gapは追加探索を選ぶ材料であり、安全判定ではない。 | coverage honesty / recall | **Finish the existing Closure first.** 新しいCoverage engineはpilot後に必要性を判断する。 |
-| Fresh runtime proof and exact witness | Anthropicのgraderはfresh containerで元snapshotへPoCを再実行する。Cloudflareはuntouched sourceに対するworking PoCを要求する。AVDHもAI findingを人間がdynamic PoCで検証する（[Anthropic pipeline](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/pipeline.md#L55-L84)、[Cloudflare](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#making-findings-you-can-trust)、[AVDH](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review#expert-validation)）。 | source-validなlogic flawと実interfaceで成立するimpactを区別できる。再現失敗もFindingを削除せず、`disproved / inconclusive / setup-blocked`を残す方が監査可能である。 | validation quality / operations | **Keep two assurance levels.** Researchでtargetを実行せず、Human OSのfresh gVisorだけでruntime evidenceを作る。 |
-| Provider/model replaceability | Argusはmodel-agnosticでcapabilityとpriceを継続評価すると説明する。CloudflareはDiscoveryとVVSで異なるmodelを使い、provider volatilityをHarnessで吸収する（[Argus](https://www.wordfence.com/blog/2026/08/wordfence-argus-moving-beyond-human-research-capability/)、[Cloudflare](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#a-two-stage-vulnerability-research-workflow)）。Codex Securityは複数providerをCLIから選べる（[README](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/README.md#L79-L92)）。 | provider-neutral contractは保守性と相関誤りの検出に効くが、「別modelなら独立」という保証にはならない。 | validation quality / operations | **Keep the port; add a second adapter only with an eval.** frameworkだけを先に増やさない。 |
-| Prospective evaluation | AVDHはmanually verified synthetic targetsを複数domainで反復し、人間がAI gradingも監査する。Cloudflareはvalidation funnelとheld-out repositoryでprompt変更を比較する（[AVDH](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review#measuring-success)、[Cloudflare](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#how-we-tell-its-working)）。 | 公開CVEだけではmemorizationを排除できない。known fixtures、oracle-free Prospective、held-out regressionを別目的で使うべきである。 | all five | **Adopt before architecture expansion.** 同一Target群で旧/新policyを比較する。 |
-| Human gate on external action | Anthropicはopen-source report前に人間がreal releaseとreal interfaceで再現することを求める。CloudflareのFixerは自動mergeせず、人間がbranchをreviewする（[Anthropic best practices](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L242-L260)、[Cloudflare](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#automated-fixing)）。 | AIがsource-validated Findingを作ることと、外部のvendorへ送る権限は別である。 | safety / operations | **Keep.** exact Draft revisionとdestinationにbindした人間承認だけを外部行動gateにする。 |
-
-## What not to copy
-
-| Reference pattern | Observed | Why not copy it here |
+| Concern | Observed | Inference for maintenance |
 | --- | --- | --- |
-| Argusを10-stage pipelineと解釈する | 公開記事は`confine / constrain / focus / motivate / parallelize / hypothesize / verify / record / prioritize / iterate`をdesign approachとして列挙するだけで、内部architectureを開示していない（[Argus](https://www.wordfence.com/blog/2026/08/wordfence-argus-moving-beyond-human-research-capability/)）。 | verbはacceptance checklistにはなるが、stage、agent、database schemaを推測する根拠にならない。 |
-| Research中にtargetをbuild / executeする | Anthropicの公開pipelineはC/C++ targetをASAN buildし、Finderもgraderも実行する。agentはgVisorとAPI-only egressで隔離される（[pipeline](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/pipeline.md#L3-L11)）。 | WordPress package scriptやbootstrapをResearch hostで実行しない現行boundaryを弱める。Runtime proofはHuman OSのdisposable environmentへ置く。 |
-| ASAN crash 3/3を全classのvalidation barにする | Anthropic pipelineのFinderはASAN crashを3/3で要求し、graderがfresh containerで再現する（[pipeline](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/pipeline.md#L44-L68)）。 | authz、CSRF、stored XSS、confused deputy、unsafe deserialization等のbroken semanticsには別のsuccess criterionが必要である。 |
-| area × class cellを探索の入場条件にする | CloudflareはGapfillを`area × attack-class` cellで運用する（[Cloudflare](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#stage-1-vulnerability-discovery-harness-vdh)）。 | coverage帳簿には有効だが、未知のclass、複数component chain、minority routeを排除し得る。wildcard thesisの代替にしない。 |
-| PoC不成立を即fake / deleteとする | Cloudflareはworking PoCのないFindingをfakeとして扱い、AVDHはhuman dynamic testingに失敗したFindingをdiscardすると説明する（[Cloudflare](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#making-findings-you-can-trust)、[AVDH](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review#expert-validation)）。 | setup failure、環境差、非決定性とsource contradictionを区別できない。Findingはimmutable observationとして残し、assurance stateを追記する。 |
-| AVDHのwaterfallとconfidence filterをそのまま採る | AVDHは各phaseを順番に完了するwaterfallで、Hypothesis段階にconsultant設定のConfidence Filterを置く（[architecture](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review#architecting-the-pipeline)、[hypothesis generation](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review#hypothesis-generation)）。 | early filterはlow-confidence / high-impact candidateをIndependent Validation前に落とす。現行minority保持と衝突する。 |
-| 複数high-temperature Validatorを常に必須にする | AVDHは各Hypothesisへ複数のhigh-temperature Validation agentと一つのSynthesis agentを使う（[AVDH validation](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review#hypothesis-validation)）。 | 相関誤りが減る可能性はあるが、costと精度の公開ablationはない。まずsingle fresh Validatorとruntime/human結果の相関を測る。 |
-| Codex Securityの汎用product surfaceを移植する | Codex SecurityはCLI / SDK、bulk scan、findings service、exports、provider選択まで持つ（[README](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/README.md#L23-L92)）。 | WordPress prospective Campaignに不要なservice、export、patch workflowまで持つとLOCとmaintenance surfaceだけが増える。contract semanticsだけを借りる。 |
-| Deep scanを通常運転にする | Codex Security Deepは同じscopeへ独立したcomplete Standard scanを反復してaggregateする（[Deep skill](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/plugins/codex-security/skills/deep-security-scan/SKILL.md#L1-L14)）。 | variance低減には効くが、現行pilotは一回でも約398万tokenを使って未完了だった。repeat countより先にstage budgetを直す。 |
-| production / bounty contextをtechnical validityへ混ぜる | Cloudflare VDRはroute trafficとsecurity eventsをpriorityへ使う一方、vulnerability existenceはsource evidenceで裏付けると明記する（[VDR](https://blog.cloudflare.com/vulnerability-discovery-remediation/#adding-context-to-a-vulnerability-harness)）。 | programme、payout、既知CVEをResearchへ渡すとProspective評価を汚す。production contextもFinding後のpriorityまたは再現計画に限定する。 |
-| fleet-scale機能を先回りする | Cloudflare自身が最小HarnessはRecon / Hunt / Validateとdatabaseでよく、複数repoが必要になるまでcross-repo tracingを、noiseに溺れるまで専用Dedup agentを作るなと勧めている（[Cloudflare](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#it-all-starts-with-a-skill)）。 | 現行の優先事項は一件完走であり、Trace、Feedback、central Finding service、50–200 worker運用ではない。 |
+| Canonical dataとprojection | **Docs + code:** Codex Securityはmanifest、findings、coverageをsealed observationとし、可変のlifecycle情報をconsumer側へ分離する。report / exportはprojection。[Contract](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/plugins/codex-security/references/scan-contract.md#L5-L38)と[finalizer](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/plugins/codex-security/scripts/finalize_scan_contract.py#L2799-L2845)の両方で確認できる。既sealedの再処理はcanonical JSONを変更しない。 | readerごとに別の意味を再構築させず、表示を再生成可能にすると互換性の管理箇所を絞れる。ただしこのterminal bundleは進行中のworkflow stateやLedgerを置換するものではない。 |
+| Consumer Interface | **Code:** Codex Securityの[ScanResult](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/sdk/typescript/src/result.ts#L36-L127)はtyped manifest / findings / coverageとartifact位置、usage-derived costを公開する。**Docs:** reportは既存Markdownを意味の復元元にせず、optional field欠落時にもcanonical JSONから決定的に生成する。[Compatibility](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/plugins/codex-security/references/scan-contract.md#L165-L183) | 外側が狭いこととModuleが深いことは別である。callerが保存世代やreport解析を知らずに必要な結果を得られるかを評価する。SDKの全機能を移植する必要はない。 |
+| Stopとnegative result | **Docs:** Codex Securityはcompleted / failed / canceled / interruptedを区別し、停止時のFinding不在を結論にしない。cancel後は凍結済みsource setだけが対象になる。[Terminal semantics](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/plugins/codex-security/references/scan-contract.md#L29-L48)。**Code:** late workerが停止結果のsealを変更しない[process-boundary test](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/sdk/typescript/tests-ts/stopped-scan-results.test.ts#L203-L232)がある。 | 保存済み観測、実行終了理由、再開可能性を一つの成功flagへ潰さない。resumeの受入条件には遅着結果と停止済み結果の不変性も含められる。 |
+| 小さなstage contractの利点と限界 | **Code:** Anthropicは[stage dataclass](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/artifacts.py#L15-L62)と[RunResult](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/artifacts.py#L150-L192)で受け渡す。ただし[checkpoint loader / writer](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/cli.py#L145-L201)はCLIにあり、statusは文字列、serialisationはdict変換である。 | 小さなartifactは読解を助けるが、型があるだけでruntime validationやversion互換を満たすわけではない。短いreferenceをproductionの安定したModule Interfaceと同一視しない。 |
+| Failure分類 | **Code:** Anthropicの[agent wrapper](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/agent.py#L363-L422)はturn上限、error result、terminal resultのないstream終了、死んだcontainerを区別する。[Checkpoint](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/cli.py#L145-L165)はagent / build failureを完了済み扱いにしない。 | transport成功、モデルの完了、domain上の結論を別々に扱うことは、provider変更後も再利用できる保守上の性質である。retry回数や具体的なstage順序まで借りる根拠にはならない。 |
+| Durabilityの説明と実装 | **Code:** Anthropicの[冒頭コメント](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/agent.py#L10-L20)はtranscriptをfsyncすると説明するが、[実際のwriter](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/agent.py#L340-L347)はflushのみ。[Result writer](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/cli.py#L182-L201)も直接JSONを書き込む。 | transcriptを残すことから電源断耐性や原子的checkpointを推定できない。debug streamの観測性と再開時の正本を分け、保証を説明する箇所と実装を対応させる。 |
 
-## Assessment of the original design
+## Isolation and test evidence
 
-独自であること自体は問題ではない。参照Harnessは対象、権限、実行環境、評価目的が異なるため、差分に明確なsecurity propertyまたはProspective evidenceがあれば独自設計の方が正しい。
-
-### Keep as deliberate differentiation
-
-- **Oracle separation.** Vulnerability history、programme、payoutをResearchから隔離する。これは公開CVEのmemorizationではなくprospective capabilityを測るために必要である。
-- **Broken-security-semantics-first.** sink/CWE quotaより、認証、認可、identity、trust transition、filesystem、deserialization、cross-component invariantを先に考える。Cloudflareの[動的taxonomy](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#dynamic-threat-modeling)やAVDHの[Access Control分析](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review#hypothesis-generation)とも矛盾しない。
-- **Minority preservation.** Finder支持数やmodel多数決で候補を消さず、Independent Validationへ渡す。noisy Discoveryを推奨する[Anthropicの原則](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L45-L52)に整合する。
-- **WordPress specialization.** role / capability、nonce、AJAX / REST、hook、option、upload、plugin integration等のoracle-safeなdomain knowledgeは汎用Harnessより強くできる場所である。
-- **Source Findingとruntime assuranceの分離.** source-only Independent ValidationでFindingを作り、fresh runtime / human結果をVerification Recordとして追記する。host safetyと外部提出品質の両方を保てる。
-
-### Simplify unless evidence justifies it
-
-- **Artifact vocabulary.** Runtime Verification Packet、Triage Reproduction Packet、Human-only Findingへの多段変換は、Finding + Verification Recordで表現できる。
-- **Fine-grained control events.** Ledger / CASは残すが、各private stepをpublicly meaningfulなeventにする必要はない。stage resumeとevidence integrityを満たす最小粒度へ縮める。
-- **Fixed four-thesis ceiling.** 安全なresource ceilingではあるが、最適値ではない。duplicate率、unique route、Finding生存率、costで決める。
-- **Mandatory long stage chain.** Map、Synthesis、Critic、Root、Validationの各段がhigh-impact recallまたはFP削減へ寄与するかをablationする。budgetで後段が一度も走らない構成は失敗である。
-- **Two fresh runtime runs for every source Finding.** 外部提出品質には有益だが、人間負荷が高い。AI再現の成功率、human再現率、setup-blocked率を測り、impact別queue policyを調整する。
-- **Six internal Research modules as a design target.** Module数を守ることは目的ではない。caller knowledge、変更Locality、replay可能性が改善しないModule boundaryは統合する。
-
-判断基準は「他社と同じか」ではなく次の五つである。
-
-| Dimension | Evidence required before keeping extra complexity |
-| --- | --- |
-| High-impact recall | net-new high-impact candidate / Finding、partial chainからの昇格、held-out targetでの比較 |
-| Validation quality | source Findingのruntime-confirm率、disproved率、setup-blocked率、human再現率 |
-| Maintainability | hot-path LOC、public concept数、変更file数、legacy writer数、test fixture世代数 |
-| Coverage honesty | reviewed / deferred / unknownを区別でき、未完了をno-findingsへ丸めないこと |
-| Operations | Target/hour、Finding当たりcost、resume時の再実行量、人間review分、failure分類 |
-
-## Current fit against Argus controls
-
-Argusの記事から検証できるのは10個のcontrol verbとmodel-agnostic方針だけである（[official article](https://www.wordfence.com/blog/2026/08/wordfence-argus-moving-beyond-human-research-capability/)）。以下はArgus実装の再現ではなく、現行Harnessをそのverbで評価した結果である。
-
-| Verb | Current fit | Assessment |
+| Reference | Observed | Limit / reusable lesson |
 | --- | --- | --- |
-| Confine | manifest-bound source tools、credential/network分離、gVisor Human environment | Strong |
-| Constrain | scope、tool、parallelism、USD/time/Wave ceilingをmodel外で強制 | Strong |
-| Focus | high-impact goalや具体的Gapを与え、file/CWE/手順を固定しない | Strong |
-| Motivate | high-impact semantic recallを最優先する | Policyは明確、Prospective実績は未測定 |
-| Parallelize | Source Mapping + 最大4 independent thesis | Initial Waveは実装済み。focus別重複率は未測定 |
-| Hypothesize | premise、route、impact、unknown、falsifierをtyped artifact化 | Strongだがartifact数の費用対効果は未測定 |
-| Verify | single fresh source Validation、AI Reproduction、別fresh Human Verification | 各段は実装済みだが新Finding lifecycleへ移行中 |
-| Record | append-only Ledger、immutable CAS、checkpoint、replay | Strongだが重い |
-| Prioritize | Root EvaluationとDepth Admission | 実装済み。最初のProspective runはRoot Evaluation前にbudget停止 |
-| Iterate | Synthesis、Critic、Missing-link、Closure | Missing-link / Closureがv6未接続 |
+| Codex Security trust boundary | **Docs:** [SECURITY.md](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/SECURITY.md#L39-L90)はlocal OS account / Git / selected toolsを信頼境界の前提とし、同じaccountを使うjob同士の隔離を保証しない。subprocessへ一部ambient credentialが残ることも明記する。 | WordPressのuntrusted package向け隔離契約と同等とは言えない。artifactの完全性、OS隔離、権限、credentialの分離は別の保証である。 |
+| Anthropic isolation owner | **Code + docs:** [agent_container](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/sandbox.py#L59-L98)がcontainer lifecycleを集約し、[公式文書](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/agent-sandbox.md#L7-L42)はgVisorとnetwork allowlistの役割を分ける。一方、[provider credentialはagentから見える](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/agent-sandbox.md#L79-L97)構成である。 | lifecycleを一箇所で所有する設計は参考になる。具体的な権限設定やcredential配置の移植は、現行security invariantを満たす根拠にならない。 |
+| Codex Security tests | **Docs + code:** [Testing guide](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/sdk/typescript/TESTING.md#L47-L74)はobservable failure / cleanupと、filesystem / Git / SQLiteの実境界を選んで検証する。前節のlate-worker testはPython subprocessを通す。 | coverage率やtest件数より、schema互換、再開、停止、再読込みの契約を外側から観測できるかが重要。今回testは実行していない。 |
+| Anthropic tests | **Code:** [agent failure tests](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/tests/test_agent.py#L85-L158)と[checkpoint tests](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/tests/test_checkpoint.py#L19-L54)がある。実infraの[isolation tests](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/tests/test_agent_sandbox.py#L3-L31)は明示的なopt-inで通常suiteから除かれる。 | private helper testやmockされたprocess testだけでは実環境の保証にならない。testが存在する、通常gateで走る、対象環境で通った、の三つを区別する。 |
 
-## Concrete weaknesses
+## Article-only comparisons
 
-1. **Root Evaluationのbudget admissionは実際に誤っていた。** 最初のProspectiveでは探索後にRoot Evaluatorの100,000 token reservationを確保できず、mandatoryな評価へ到達しなかった。[#123](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/123)でprospective follow-up前の修正対象にした。
-2. **Coverage / Iterateが未完成。** v6 Missing-link / Closureがつながっていない。Argusの[`iterate`](https://www.wordfence.com/blog/2026/08/wordfence-argus-moving-beyond-human-research-capability/)、Cloudflareの[Gapfill](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#stage-1-vulnerability-discovery-harness-vdh)、Codex Securityの[structured coverage](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/plugins/codex-security/references/scan-contract.md#L105-L163)に対する最大の差である。
-3. **Finding lifecycleは移行中である。** current writerはRuntime Verification PacketからHuman-only Findingへ進む。accepted designはIndependent Validationがsource-validated Findingを作り、runtime / human outcomeをappend-only Verification Recordにする。
-4. **Prospective evidenceは一件のpartial runだけである。** oracle-free source Researchのcostは測れたが、Root Evaluation前に停止したためrecall、FP、runtime成立率は評価できない。
-5. **source screenと二段runtime reproductionのバランスが未検証である。** AIのruntime成立率、人間の再現率、Escalation Queue量、review時間をProspectiveで測れていない。
-6. **model-agnosticはinterfaceだけである。** 現実装はClaude Adapterだけで、Finder、Root、Validatorの相関誤りを異なるproviderで比較できない。
-7. **control planeが研究実績に先行している。** fine-grained schema、Ledger、CAS、fresh role分離は安全だが、targets/hourやreview minutesを改善する証拠がない部分は過剰設計になり得る。
-8. **外側は狭いが内側のSeamが広い。** `openResearch`はrunner / readerだけを公開する一方、internal recordとlegacy互換の表面積が大きい。current writeとlegacy read/replayをさらに分離する余地がある。
-
-次は最初の計測をbudget admission判断へ入力し、現行public seamを使ってfreshなfollow-upを回す。`candidate -> source-validated Finding -> runtime-confirmed -> human-confirmed`率、disproved理由、setup-blocked率、review時間、Finding当たりcost、Coverage stateを測る。その後にThreat Model / Gapfill policy、二つ目のprovider、外側Interfaceの必要性を決める。
-
-## First Prospective measurement
-
-Issue #109のsingle-target runは、durable Approved Target Batch、dispatch直前のversion / digest再検証、oracle-free source Research、Ledger / CAS replayまでをproduction seamで通した。Target sourceは実行せず、programme情報とcredentialをworkerへ渡さなかった。
-
-| Metric | Observed |
-| --- | ---: |
-| Provider attempts | 3 completed / 3 started |
-| Durable checkpoints | 13 |
-| Hypothesis / Route Fragment / Frontier Gap | 3 / 3 / 7 |
-| Model tokens / estimated cost | 3,976,741 / USD 7.1014455 |
-| Model wall time / source queries | 1,170,960 ms / 80 |
-| Root Evaluation / Validation | 0 / 0 |
-| Runtime Verification Packet / AI Reproduction / Human Verification | 0 / not started / not queued |
-
-探索ownerの3,600,000 token ceilingに対してreported usageが3,976,741となり、campaign全体の残りは23,259 tokenだった。次のRoot Evaluatorが要求する100,000 token reservationを満たせず、source dispositionは`evaluation-incomplete`、Target Research Historyは`budget-exhausted`の`Incomplete`で閉じた。400,000 token / USD 30のValidation reserveは全量未使用である。
-
-これはnegative resultでもCoverage Closureでもない。Root Evaluationとsingle fresh Validationが実行されていないため、候補0件を「脆弱性なし」へ読み替えず、coverageは`unknown`のままにする。budget overshootと次段reservationの関係は、次のpilot前に別の設計判断として扱う。
-
-## Operational observability
-
-[Anthropicのraw transcript追跡](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/pipeline.md#L100-L115)と[Codex Securityのprogress、cost、partial-result recovery](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/sdk/typescript/README.md#L578-L598)を組み合わせる方針は妥当である。ただしEvidenceの正本はdebug streamではなくResearch Recordとする。
-
-| Reference | Observed practice | Local decision |
+| Reference | Observed / article | Inference and limit |
 | --- | --- | --- |
-| Anthropic | tool/text transcript、逐次result、resumeを保存する。transcript writerは`flush()`を使うがdurabilityを保証する`fsync()`ではない（[`agent.py`](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/agent.py#L340-L347)、[pipeline recovery](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/pipeline.md#L161-L170)）。 | debug transcriptは観測用、CAS / Ledgerだけをreplay authorityにする。 |
-| Codex Security | model、token、costをresult / history / bulk receiptへ記録し、cost limit到達時もcompleted discoveryからpartial reportとunvalidated follow-upを残す（[SDK](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/sdk/typescript/README.md#L578-L598)）。 | budget停止をnegativeへ丸めず、保存済みcandidateと未完了stageを一つのprojectionで示す。 |
-| Cloudflare | exceptionだけでなく`200 OK` stream内のerror textも明示分類しないとempty runを成功と誤認すると報告する（[Cloudflare](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#stage-1-vulnerability-discovery-harness-vdh)）。 | provider adapterにtransport successとsemantic completionの別判定を持たせる。 |
+| AVDH: architecture | ADKによる逐次phase、consultantによるThreat Model確認、domain / language / framework等の知識の階層を説明する。[Architecture](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review#architecting-the-pipeline)、[Distilled knowledge](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review#distilled-knowledge) | 方針や知識のownerを明示する着眼点は再利用できる。工程図からModule Interfaceの狭さ、state ownership、failure semantics、変更localityは分からない。waterfall構成の採用根拠にはしない。 |
+| AVDH: evidence quality | 非公開synthetic benchmark、埋込み欠陥の人間確認、AI gradingの人間監査、複数回の評価を説明する。[Measuring success](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review#measuring-success) | ground truthと採点者の品質を別々に検証する観点は有用。記事の実績は再現した測定ではなく、公開datasetの暗記問題を避ける方針だけで将来のWordPress recallを保証しない。 |
+| Cloudflare: recovery | 各stageの結果をSQLiteへ保存し、中断後に再利用すると説明する。また成功HTTP stream内のerrorを完了扱いした経験を報告する。[Persistence and errors](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#codifying-the-skill-into-a-pipeline) | 永続化とsemantic completionを先に考える動機は分かる。SQL schema、transaction、再開時の照合やcrash testは記事から確認できず、「失うのはin-flight taskだけ」という保証を実証済みと扱わない。 |
+| Cloudflare: measurement | validation通過数、人間へ届く未確認結果、held-out repositoryでの変更比較を指標とし、推測recallを中心指標にしない。[Evaluation](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#how-we-tell-its-working) | lifetime funnelや一repoの例は同一条件の比較試験ではない。母集団、対象、モデル、判定基準が異なる数字をWordPressのFP率、recall、cost baselineへ転用できない。 |
+| Cloudflare VDR: authority | source evidenceで存在を裏付け、production contextを優先度へ使う。tool callと提案をmodel外で検査し、曖昧な結果を診断へ回し、顧客がtest / deployを判断すると説明する。[Context](https://blog.cloudflare.com/vulnerability-discovery-remediation/#adding-context-to-a-vulnerability-harness)、[Execution and review](https://blog.cloudflare.com/vulnerability-discovery-remediation/#where-the-model-runs) | 技術的観測、運用上の優先度、外部変更の権限を別にする観点を支持する。記事からexact draft revisionへの承認bindingや監査recordの実装までは確認できない。 |
+
+## Local measurement: initial stop and source follow-up
+
+以前の「Root Evaluation前で停止した一回だけ」という記述は最新の公開実測を表さない。同じimmutable targetに対する、初回と別途承認されたsource follow-upを区別する。出典は[#109初回sanitized outcome](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/109#issuecomment-5553789772)と[#109 source follow-up outcome](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/109#issuecomment-5557161663)。
+
+| Public observation | Initial run | Source follow-up |
+| --- | --- | --- |
+| Completed model Attempts | 3 / 3 | 6 / 6 |
+| Durable checkpoints | 13 | 21 |
+| Root Evaluation / fresh Validation | 0 / 0 | 1 / 1 |
+| Immutable source-validated Finding | 0 | 1 |
+| Coverage | unknown、budget-exhausted | incomplete / research-work-remains |
+| Tokens / estimated provider cost | 3,976,741 / USD 7.1014455 | 8,074,223 / USD 13.9636 |
+| Ledger / CAS close-reopen | replay一致 | replay一致 |
+| Runtime / Human Verification | 未着手 | 未着手 |
+
+**Observed / public outcome:** follow-upはsource-onlyの縦sliceを完了したが、target codeの実行、runtime verification、人間による再現、外部提出は行っていない。Findingの存在はCoverage Closureを意味しない。private evidenceの内容はこのnoteへ含めない。
+
+**Inference:** これはlifecycleとreplayが一例で通った証拠であり、high-impact recall、false-positive率、runtime成立率、人間負荷の比較値ではない。二回は途中の修正と条件が異なるため、cost差も効率改善・悪化の証明には使えない。現在の実装対応はCodebase Guideを参照する。
+
+## Reusable maintenance judgement for 6–12 months
+
+以下は採用済み設計ではなく、上の比較に基づく判断材料である。
+
+1. **全面rewriteを選ぶ理由は不足している。** Codex Securityはconsumer向けcanonical contract、Anthropicは狭い用途のreference、AVDH / Cloudflareは内部運用であり、どれも現行productの代替実装ではない。特に保守終了のreferenceを取り込むと、互換性と修正の責任も引き受けることになる。
+2. **段階的な構造整理には根拠がある。** 正本recordとprojection、current writeとlegacy read、実行終了とdomain outcomeの責任がcallerへ漏れている場合は、その境界一つを受入条件にして整理する。旧artifactを再読込みできることとcurrent pathのInterfaceが単純になることを同時に確認する。
+3. **最小化の単位はModule数ではなくcaller knowledgeにする。** 外側APIが短くても、内部callerが保存順、旧schema、provider streamを知れば変更が広がる。逆に一つのownerがこれらを隠し、public seamから成功・失敗・再読込みを検証できるなら、内部のcode量だけで浅いModuleと断定しない。
+4. **保証はtestと観測に結びつける。** crash recovery、schema互換、late result、隔離、承認bindingは異なる性質である。公式文書の表現やdefault suiteの成功だけで一括して保証せず、どの境界をどの条件で確認したかを残す。
+
+調査では固定commitのsource / tests / docsと公式記事だけを読んだ。参照Harnessのinstall、build、test、scan、target runtime、model呼出しは実行していない。

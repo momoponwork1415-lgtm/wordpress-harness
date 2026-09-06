@@ -1,0 +1,37 @@
+{
+  "artifactRefs": [],
+  "bindings": {
+    "adapterVersion": "stored-xss-browser@v1",
+    "configurationDigest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "labBaselineDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "runtimeProfileDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "setupPlanDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "causalFactor": {
+    "id": "attacker-controlled-stored-value",
+    "state": "removed"
+  },
+  "experimentId": "sha256:f083a4840b341072dec895a637f20da5718651188d13e56f7d27834aa923499d",
+  "hypothesisDigest": "sha256:a969137ae26b9907d23ed37e80b645bd14129d213ad40de48512bc4e8a03c636",
+  "isolation": {
+    "fallbackUsed": false,
+    "fresh": true,
+    "labId": "fresh-control-lab",
+    "runtime": "gvisor",
+    "runtimeDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "siblingGroupId": "sha256:74af6e4d4dfec96d955601485e277c4f586c05a83f0c8b05d3cf8e57ea7b4292"
+  },
+  "kind": "experiment-observation",
+  "normalFunction": "preserved",
+  "result": {
+    "attackerRequestAccepted": true,
+    "browserCanaryExecuted": false,
+    "kind": "stored-xss-browser",
+    "persistentStateObserved": false,
+    "schemaVersion": 1
+  },
+  "role": "control",
+  "schemaVersion": 1,
+  "verificationId": "verification:215a9909ee8a7f74f4e4455a72598074ad6c0fa28b46fc30388d6b94f5dbe4a2"
+}

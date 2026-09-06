@@ -1,0 +1,421 @@
+{
+  "assignment": {
+    "kind": "chain-critique",
+    "proposalIds": [
+      "sha256:4dea2ab44dbfd3a20d22d41d86b6f74636f85a65a812e39b07c972e4333990e3"
+    ],
+    "schemaVersion": 1,
+    "synthesisDigest": "sha256:6d06fa7a66e9992f501f140debdcb87bbbca6f5ab09e974a091825e7b275761a"
+  },
+  "attemptId": "adversarial-critic:66227216feed5d6ef793c6e00c97492a2561aafe244479308d42adae372d9e17",
+  "budget": {
+    "maxModelTokens": 300000,
+    "maxModelTurns": 128,
+    "maxOutputBytes": 2097152,
+    "maxProviderCostUsd": 10,
+    "maxSourceQueries": 256,
+    "maxSourceResponseBytes": 268435456,
+    "maxSourceScanBytes": 17179869184,
+    "maxWallTimeMs": 3600000,
+    "reportedUsageEnforcement": "telemetry-only",
+    "sourceLimitTerminalOutput": "preserve"
+  },
+  "kind": "attempt-plan",
+  "manifest": {
+    "digest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+    "kind": "target-file-manifest",
+    "schemaVersion": 1,
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "targetSnapshotId": "brizy-2.8.11"
+  },
+  "modelProfile": {
+    "effort": "high",
+    "eligibilityReceiptDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "executableVersion": "2.1.258",
+    "model": "claude-opus-5",
+    "provider": "anthropic",
+    "transport": "claude-code-process"
+  },
+  "outputJsonSchema": {
+    "additionalProperties": false,
+    "properties": {
+      "dispositions": {
+        "items": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "challenges": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "category": {
+                        "enum": [
+                          "attacker-premise",
+                          "actor",
+                          "state-identity",
+                          "request-ordering",
+                          "defense",
+                          "causal-hop",
+                          "source-binding"
+                        ],
+                        "type": "string"
+                      },
+                      "claim": {
+                        "maxLength": 1000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "evidence": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "endLine": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "type": "integer"
+                            },
+                            "fileDigest": {
+                              "pattern": "^sha256:[a-f0-9]{64}$",
+                              "type": "string"
+                            },
+                            "path": {
+                              "maxLength": 4096,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "startLine": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "path",
+                            "fileDigest",
+                            "startLine",
+                            "endLine"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 32,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "falsifier": {
+                        "maxLength": 1000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 1000,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "category",
+                      "claim",
+                      "evidence",
+                      "reason",
+                      "falsifier"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 64,
+                  "type": "array"
+                },
+                "proposalId": {
+                  "pattern": "^sha256:[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "verdict": { "const": "survives", "type": "string" }
+              },
+              "required": ["proposalId", "challenges", "verdict"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "challenges": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "category": {
+                        "enum": [
+                          "attacker-premise",
+                          "actor",
+                          "state-identity",
+                          "request-ordering",
+                          "defense",
+                          "causal-hop",
+                          "source-binding"
+                        ],
+                        "type": "string"
+                      },
+                      "claim": {
+                        "maxLength": 1000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "evidence": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "endLine": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "type": "integer"
+                            },
+                            "fileDigest": {
+                              "pattern": "^sha256:[a-f0-9]{64}$",
+                              "type": "string"
+                            },
+                            "path": {
+                              "maxLength": 4096,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "startLine": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "path",
+                            "fileDigest",
+                            "startLine",
+                            "endLine"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 32,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "falsifier": {
+                        "maxLength": 1000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 1000,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "category",
+                      "claim",
+                      "evidence",
+                      "reason",
+                      "falsifier"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 64,
+                  "type": "array"
+                },
+                "gap": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "expectedObservation": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "falsifier": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "nextAction": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "requiredFact": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "sourceEvidence": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "endLine": {
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "type": "integer"
+                          },
+                          "fileDigest": {
+                            "pattern": "^sha256:[a-f0-9]{64}$",
+                            "type": "string"
+                          },
+                          "path": {
+                            "maxLength": 4096,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "startLine": {
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "path",
+                          "fileDigest",
+                          "startLine",
+                          "endLine"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 32,
+                      "minItems": 1,
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "requiredFact",
+                    "sourceEvidence",
+                    "expectedObservation",
+                    "falsifier",
+                    "nextAction"
+                  ],
+                  "type": "object"
+                },
+                "proposalId": {
+                  "pattern": "^sha256:[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "verdict": { "const": "needs-evidence", "type": "string" }
+              },
+              "required": ["proposalId", "challenges", "verdict", "gap"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "challenges": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "category": {
+                        "enum": [
+                          "attacker-premise",
+                          "actor",
+                          "state-identity",
+                          "request-ordering",
+                          "defense",
+                          "causal-hop",
+                          "source-binding"
+                        ],
+                        "type": "string"
+                      },
+                      "claim": {
+                        "maxLength": 1000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "evidence": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "endLine": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "type": "integer"
+                            },
+                            "fileDigest": {
+                              "pattern": "^sha256:[a-f0-9]{64}$",
+                              "type": "string"
+                            },
+                            "path": {
+                              "maxLength": 4096,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "startLine": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "path",
+                            "fileDigest",
+                            "startLine",
+                            "endLine"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 32,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "falsifier": {
+                        "maxLength": 1000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 1000,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "category",
+                      "claim",
+                      "evidence",
+                      "reason",
+                      "falsifier"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 64,
+                  "type": "array"
+                },
+                "proposalId": {
+                  "pattern": "^sha256:[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "verdict": { "const": "contradicted", "type": "string" }
+              },
+              "required": ["proposalId", "challenges", "verdict"],
+              "type": "object"
+            }
+          ]
+        },
+        "maxItems": 32,
+        "type": "array"
+      },
+      "kind": { "const": "adversarial-critic-output", "type": "string" },
+      "schemaVersion": { "const": 1, "type": "number" }
+    },
+    "required": ["kind", "schemaVersion", "dispositions"],
+    "type": "object"
+  },
+  "owner": "exploration",
+  "prompt": "Act as a fresh Adversarial Critic over an immutable Chain Synthesis artifact.\nCurrent research attacker scope permits only unauthenticated attackers and subscriber-equivalent low-privilege users. Treat customer as a known subscriber-equivalent role, and treat a custom role as subscriber-equivalent only when its effective capabilities do not exceed the built-in Subscriber baseline. Do not discover, retain, deepen, validate, or hand off a route whose minimum starting attacker is Contributor or higher or unresolved. A route may escalate privileges after starting within the permitted scope.\nUse the Manifest-bound source tools to independently challenge attacker premise, actor, state identity, request ordering, defenses, causal hops, and source binding.\nDisposition every proposal exactly once as survives, needs-evidence, or contradicted.\nA needs-evidence disposition must name one concrete Frontier Gap with a falsifier and next source action.\nDo not add semantic edges, produce a Finding or Verification verdict, schedule work, or change Family state.\nChain synthesis context: {\"attempt\":{\"attemptId\":\"root-synthesizer:9cbf73b71eb9b049c101d2dba3f20fdee32f61c08532321fd5b29588a64b4ca0\",\"digest\":\"sha256:bb1fa45282a32aed447e0ca6a7dc41fa871d9503fdd107a62262a6f2fefd7cb1\",\"kind\":\"attempt-execution-result\",\"owner\":\"exploration\",\"planDigest\":\"sha256:8c82bd33c2cb82f8ac320eae66fdb50f729fe98edb45cd3134d05c5350620a7f\",\"role\":\"root-synthesizer\",\"schemaVersion\":2},\"batchId\":\"sha256:2b8425b1be948348542f97433fcddc8f9ba7bc66ccdd64f683426a091df723ab\",\"id\":\"sha256:6d06fa7a66e9992f501f140debdcb87bbbca6f5ab09e974a091825e7b275761a\",\"itemDispositions\":[{\"disposition\":\"used\",\"itemId\":\"sha256:d983225011e7ae101e367d6eefb2639d2dd1b578d9047f9f92e4c550e81b9183\",\"reason\":\"The hypothesis and fragment form a composable route.\"}],\"kind\":\"chain-synthesis\",\"manifest\":{\"digest\":\"sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7\",\"kind\":\"target-file-manifest\",\"schemaVersion\":1,\"targetSnapshotDigest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"targetSnapshotId\":\"brizy-2.8.11\"},\"proposals\":[{\"attackerPremise\":\"unauthenticated\",\"attempt\":{\"attemptId\":\"root-synthesizer:9cbf73b71eb9b049c101d2dba3f20fdee32f61c08532321fd5b29588a64b4ca0\",\"digest\":\"sha256:bb1fa45282a32aed447e0ca6a7dc41fa871d9503fdd107a62262a6f2fefd7cb1\",\"kind\":\"attempt-execution-result\",\"owner\":\"exploration\",\"planDigest\":\"sha256:8c82bd33c2cb82f8ac320eae66fdb50f729fe98edb45cd3134d05c5350620a7f\",\"role\":\"root-synthesizer\",\"schemaVersion\":2},\"batchId\":\"sha256:2b8425b1be948348542f97433fcddc8f9ba7bc66ccdd64f683426a091df723ab\",\"falsifier\":\"The producer and consumer use unrelated state.\",\"id\":\"sha256:4dea2ab44dbfd3a20d22d41d86b6f74636f85a65a812e39b07c972e4333990e3\",\"itemIds\":[\"sha256:d983225011e7ae101e367d6eefb2639d2dd1b578d9047f9f92e4c550e81b9183\"],\"kind\":\"chain-proposal\",\"manifest\":{\"digest\":\"sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7\",\"kind\":\"target-file-manifest\",\"schemaVersion\":1,\"targetSnapshotDigest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"targetSnapshotId\":\"brizy-2.8.11\"},\"nextAction\":\"Challenge proposed state connection 1.\",\"queue\":{\"batches\":1,\"digest\":\"sha256:3f84b3db1570bcddf10b441d59c802dcb183f3c3e292b30659dbd416dd48ccb1\",\"items\":1,\"kind\":\"semantic-depth-work-queue\",\"manifestDigest\":\"sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7\",\"predecessorDecisionDigest\":\"sha256:f93f1fddf714182e1ef467e97edee0374bc5e0fc04c2a65ee1090944af849322\",\"schemaVersion\":1,\"targetSnapshotDigest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\"},\"schemaVersion\":1,\"securityProperty\":\"Privileged browser integrity route 1.\",\"steps\":[{\"actor\":\"unauthenticated-attacker\",\"consumedValues\":[\"public-input\"],\"evidence\":[{\"endLine\":20,\"fileDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"path\":\"plugin.php\",\"startLine\":10}],\"ordinal\":1,\"producedValues\":[\"stored-value\"],\"relation\":\"observed\",\"request\":\"Persist a cross-request value.\",\"stateIdentity\":\"shared-option\"},{\"actor\":\"privileged-browser\",\"consumedValues\":[\"stored-value\"],\"evidence\":[{\"endLine\":20,\"fileDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"path\":\"plugin.php\",\"startLine\":10}],\"ordinal\":2,\"producedValues\":[\"browser-script-execution\"],\"relation\":\"proposed-connection\",\"request\":\"Render the stored value.\",\"stateIdentity\":\"shared-option\"}],\"subjects\":[{\"attemptId\":\"attempt:7eae752739986939c74621bf5c70052eb382ac8fd126ec9da16f5f56f4f1948e\",\"digest\":\"sha256:599aea5094cc7f7c976d8c924033a6912508d259b32f745b65aaaaf8e5b883ab\",\"id\":\"sha256:3cc99a6909a58dbd0ac303c65b34f6e089867d15c012eeda766d486e7d3c7e00\",\"kind\":\"route-fragment\",\"leaseId\":\"sha256:ded988256d2afa3bbf705a742828a3785f86deeb31d2cf6c0035e26b7f4c4d1a\",\"manifestDigest\":\"sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7\",\"schemaVersion\":2,\"targetSnapshotDigest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"workWaveDigest\":\"sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3\"},{\"attemptId\":\"attempt:7eae752739986939c74621bf5c70052eb382ac8fd126ec9da16f5f56f4f1948e\",\"digest\":\"sha256:43f29b85ee11b747698ce82538916922eef30248c55745294b79606d82ad093f\",\"id\":\"sha256:9e931fe92ad28f412a03a13e63a21e7d4f8bc746469d6e8fbd9ba2b6f3319706\",\"kind\":\"source-bound-hypothesis\",\"leaseId\":\"sha256:ded988256d2afa3bbf705a742828a3785f86deeb31d2cf6c0035e26b7f4c4d1a\",\"manifestDigest\":\"sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7\",\"schemaVersion\":2,\"targetSnapshotDigest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"workWaveDigest\":\"sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3\"}],\"target\":{\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"id\":\"brizy-2.8.11\",\"pluginSlug\":\"brizy\",\"version\":\"2.8.11\"},\"unknowns\":[{\"claim\":\"The reader uses the same option value.\",\"requiredEvidence\":\"Freshly trace the exact state identity.\"}]}],\"queue\":{\"batches\":1,\"digest\":\"sha256:3f84b3db1570bcddf10b441d59c802dcb183f3c3e292b30659dbd416dd48ccb1\",\"items\":1,\"kind\":\"semantic-depth-work-queue\",\"manifestDigest\":\"sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7\",\"predecessorDecisionDigest\":\"sha256:f93f1fddf714182e1ef467e97edee0374bc5e0fc04c2a65ee1090944af849322\",\"schemaVersion\":1,\"targetSnapshotDigest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\"},\"schemaVersion\":1,\"target\":{\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"id\":\"brizy-2.8.11\",\"pluginSlug\":\"brizy\",\"version\":\"2.8.11\"}}",
+  "promptSet": {
+    "digest": "sha256:e933d9b8e9c3635af727d03f70292efe9784c3c9ede524a87025c823504a2241",
+    "id": "semantic-adversarial-critic-v1"
+  },
+  "role": "adversarial-critic",
+  "schemaVersion": 2,
+  "sourceToolPolicy": {
+    "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "id": "semantic-source-tools-v1",
+    "kind": "source-tool-policy",
+    "schemaVersion": 1
+  },
+  "target": {
+    "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "id": "brizy-2.8.11",
+    "pluginSlug": "brizy",
+    "version": "2.8.11"
+  }
+}

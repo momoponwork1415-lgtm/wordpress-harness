@@ -1,0 +1,106 @@
+{
+  "actions": [
+    {
+      "hypothesis": {
+        "attackerPremise": "unauthenticated",
+        "causalIdentity": {
+          "attackerControlledPrimitive": "unauthenticated-persistent-value",
+          "brokenSecurityProperty": "privileged-browser-integrity",
+          "rootCause": "stored-value-output-without-context-escaping"
+        },
+        "falsifier": "The value is context-escaped before rendering.",
+        "impact": "stored-xss",
+        "kind": "source-bound-hypothesis",
+        "nextExperiment": "Compare browser canaries with the stored value removed.",
+        "route": {
+          "anchors": [
+            {
+              "endLine": 20,
+              "fileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "path": "plugin.php",
+              "startLine": 10
+            }
+          ]
+        },
+        "schemaVersion": 1,
+        "unknowns": [
+          {
+            "claim": "A privileged browser renders the stored value.",
+            "requiredEvidence": "Fresh witness and causal control."
+          }
+        ]
+      },
+      "kind": "request-verification",
+      "proposal": {
+        "batchId": "sha256:2b8425b1be948348542f97433fcddc8f9ba7bc66ccdd64f683426a091df723ab",
+        "id": "sha256:4dea2ab44dbfd3a20d22d41d86b6f74636f85a65a812e39b07c972e4333990e3",
+        "kind": "chain-proposal",
+        "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+        "queueDigest": "sha256:3f84b3db1570bcddf10b441d59c802dcb183f3c3e292b30659dbd416dd48ccb1",
+        "schemaVersion": 1,
+        "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "reason": "The independently criticized route remains suitable for fresh Verification."
+    }
+  ],
+  "attempt": {
+    "attemptId": "depth-root-evaluator:a316ddb5ae577775e7bfd43cc0c7246814f738872443ad85b650dfbf93788bdb",
+    "digest": "sha256:1cf2df9e2a60f231547e0c4bc868b198a5a21f90807ebf3b9ac62f9440991342",
+    "kind": "attempt-execution-result",
+    "owner": "exploration",
+    "planDigest": "sha256:c083e9ab8cd80fc4fccd7f206a3aab63181e05c13f780087392d9a73aae68026",
+    "role": "root-evaluator",
+    "schemaVersion": 2
+  },
+  "critique": {
+    "dispositions": 1,
+    "id": "sha256:88afe9cfa7a7ffd36c97e4b0ed32e1d1b5f0d865d75375fa189b79f611919b9a",
+    "kind": "adversarial-critique",
+    "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+    "schemaVersion": 1,
+    "synthesisId": "sha256:6d06fa7a66e9992f501f140debdcb87bbbca6f5ab09e974a091825e7b275761a",
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "id": "sha256:4f137d0f1fc56d9bbda03c5a6071506ad10446e5ae896bd0e70f27e75f96d754",
+  "kind": "depth-iteration-decision",
+  "manifest": {
+    "digest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+    "kind": "target-file-manifest",
+    "schemaVersion": 1,
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "targetSnapshotId": "brizy-2.8.11"
+  },
+  "registry": {
+    "campaignId": "semantic-e2e",
+    "decisions": 1,
+    "depthDecisions": 0,
+    "digest": "sha256:f585f11b80193982bd5269ff165f87f6a2183b65b149a9e47c9b4060fdadfc77",
+    "families": 1,
+    "kind": "approach-family-registry",
+    "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+    "maxRound": 1,
+    "pendingVerifications": 0,
+    "runId": "semantic-e2e-run",
+    "schemaVersion": 2,
+    "states": { "active": 1, "blocked": 0, "exhausted": 0 },
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "verificationOutcomes": 0
+  },
+  "schemaVersion": 1,
+  "synthesis": {
+    "batchId": "sha256:2b8425b1be948348542f97433fcddc8f9ba7bc66ccdd64f683426a091df723ab",
+    "id": "sha256:6d06fa7a66e9992f501f140debdcb87bbbca6f5ab09e974a091825e7b275761a",
+    "kind": "chain-synthesis",
+    "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+    "proposals": 1,
+    "queueDigest": "sha256:3f84b3db1570bcddf10b441d59c802dcb183f3c3e292b30659dbd416dd48ccb1",
+    "schemaVersion": 1,
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "target": {
+    "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "id": "brizy-2.8.11",
+    "pluginSlug": "brizy",
+    "version": "2.8.11"
+  }
+}

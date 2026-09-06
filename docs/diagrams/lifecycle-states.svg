@@ -55,7 +55,7 @@
     <rect width="1520" height="610" rx="24" class="panel" filter="url(#shadow)"/>
     <text x="28" y="38" class="section-no">05 · LIFECYCLE STATES</text>
     <text x="28" y="78" class="section-title">いまどこで止まり、何が次の遷移を許すか</text>
-    <text x="28" y="107" class="question">「complete」を一つにしない。失敗、反証、未解決、stale、pausedを別の結果として残す。</text>
+    <text x="28" y="107" class="question">設計View：実行終了、Finding、Coverage、assuranceを別々に読む。</text>
 
     <rect x="28" y="140" width="1464" height="82" rx="14" class="gray"/>
     <text x="50" y="169" class="box-title-small">Target dispatch</text>
@@ -84,9 +84,9 @@
       <path d="M482 21 H508" class="line"/>
       <rect x="518" y="0" width="160" height="42" rx="11" class="purple"/><text x="598" y="26" class="small center">depth / validation</text>
       <path d="M678 21 H704" class="line"/>
-      <rect x="714" y="0" width="150" height="42" rx="11" class="green"/><text x="789" y="26" class="small center">runtime packet</text>
-      <text x="886" y="26" class="small center">or</text>
-      <rect x="914" y="0" width="200" height="42" rx="11" class="amber"/><text x="1014" y="26" class="small center">incomplete + resume</text>
+      <rect x="714" y="0" width="150" height="42" rx="11" class="green"/><text x="789" y="26" class="small center">Finding refs</text>
+      <text x="886" y="26" class="small center">+</text>
+      <rect x="914" y="0" width="200" height="42" rx="11" class="amber"/><text x="1014" y="26" class="small center">Coverage + unresolved</text>
     </g>
 
     <rect x="28" y="336" width="1464" height="82" rx="14" class="gray"/>
@@ -96,7 +96,7 @@
       <path d="M120 21 H146" class="line"/>
       <rect x="156" y="0" width="170" height="42" rx="11" class="purple"/><text x="241" y="26" class="small center">fresh source review</text>
       <path d="M326 21 H352" class="line"/>
-      <rect x="362" y="0" width="160" height="42" rx="11" class="green"/><text x="442" y="26" class="small center">ready-for-runtime</text>
+      <rect x="362" y="0" width="160" height="42" rx="11" class="green"/><text x="442" y="26" class="small center">source-validated</text>
       <text x="545" y="26" class="small center">/</text>
       <rect x="562" y="0" width="150" height="42" rx="11" class="amber"/><text x="637" y="26" class="small center">needs-research</text>
       <text x="735" y="26" class="small center">/</text>
@@ -106,19 +106,19 @@
     </g>
 
     <rect x="28" y="434" width="1464" height="82" rx="14" class="gray"/>
-    <text x="50" y="463" class="box-title-small">Human Review</text>
+    <text x="50" y="463" class="box-title-small">Finding assurance</text>
     <g transform="translate(250 447)">
-      <rect x="0" y="0" width="150" height="42" rx="11" class="purple"/><text x="75" y="26" class="small center">AI reproduction</text>
+      <rect x="0" y="0" width="150" height="42" rx="11" class="purple"/><text x="75" y="26" class="small center">Finding</text>
       <path d="M150 21 H176" class="line"/>
-      <rect x="186" y="0" width="145" height="42" rx="11" class="purple"/><text x="258" y="26" class="small center">triage packet</text>
+      <rect x="186" y="0" width="145" height="42" rx="11" class="purple"/><text x="258" y="26" class="small center">AI / human review</text>
       <path d="M331 21 H357" class="line"/>
-      <rect x="367" y="0" width="190" height="42" rx="11" class="blue"/><text x="462" y="26" class="small center">human reproduction</text>
+      <rect x="367" y="0" width="190" height="42" rx="11" class="blue"/><text x="462" y="26" class="small center">Verification Record</text>
       <path d="M557 21 H583" class="line-green"/>
-      <rect x="593" y="0" width="150" height="42" rx="11" class="green"/><text x="668" y="26" class="small center">verified Finding</text>
+      <rect x="593" y="0" width="150" height="42" rx="11" class="green"/><text x="668" y="26" class="small center">confirmed</text>
       <text x="768" y="26" class="small center">or</text>
-      <rect x="792" y="0" width="110" height="42" rx="11" class="gray"/><text x="847" y="26" class="small center">rejected</text>
+      <rect x="792" y="0" width="110" height="42" rx="11" class="gray"/><text x="847" y="26" class="small center">disproved</text>
       <text x="927" y="26" class="small center">or</text>
-      <rect x="951" y="0" width="190" height="42" rx="11" class="amber"/><text x="1046" y="26" class="small center">blocked / evidence</text>
+      <rect x="951" y="0" width="190" height="42" rx="11" class="amber"/><text x="1046" y="26" class="small center">inconclusive / blocked</text>
     </g>
 
     <rect x="28" y="538" width="348" height="46" rx="11" class="red"/>
@@ -126,7 +126,7 @@
     <rect x="392" y="538" width="348" height="46" rx="11" class="red"/>
     <text x="566" y="566" class="small center">budget exhaustion ≠ coverage-closed</text>
     <rect x="756" y="538" width="348" height="46" rx="11" class="red"/>
-    <text x="930" y="566" class="small center">AI runtime failure ≠ disproven</text>
+    <text x="930" y="566" class="small center">AI runtime failure ≠ disproved</text>
     <rect x="1120" y="538" width="372" height="46" rx="11" class="red"/>
     <text x="1306" y="566" class="small center">new version ≠ approved source replacement</text>
   </g>

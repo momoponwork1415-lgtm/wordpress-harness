@@ -1,0 +1,129 @@
+{
+  "attemptOutcomes": [
+    {
+      "attempt": {
+        "attemptId": "attempt:2e528ddedf39444a296c8d4057268866aa4ff7a9d2332bbcb9e840818008c562",
+        "digest": "sha256:3c2be9fccaff6b3ec28c44f7913cdeb5a9cf67ba411c889ff95fef394fc10045",
+        "kind": "attempt-execution-result",
+        "owner": "exploration",
+        "planDigest": "sha256:762a7b4f6553995aeecc975ae9a727c59aeca578828416ab0121c621154babe9",
+        "role": "finder",
+        "schemaVersion": 2
+      },
+      "status": "completed"
+    },
+    {
+      "attempt": {
+        "attemptId": "attempt:314ad3e0ba7e664e2c1e0ced460d4c52d9d0bc9b9f6050976145d26033557f62",
+        "digest": "sha256:61eae9d45dbf5e580321fa357dfb32fb84a2a463a5dbce819acd47ae1c7e7343",
+        "kind": "attempt-execution-result",
+        "owner": "exploration",
+        "planDigest": "sha256:8728681029277329559279a42753be44b8a1d3335974b756e566a188bc75956f",
+        "role": "finder",
+        "schemaVersion": 2
+      },
+      "status": "completed"
+    },
+    {
+      "attempt": {
+        "attemptId": "attempt:9c4ecdaf1fc355dc75f0d4721ba4fbbd66b40a64d693d31d69d6b0ff470b235c",
+        "digest": "sha256:38a567f6d7f191b377c01039a9ebcd6a6c135acbd6872c0080c065c67ce9be12",
+        "kind": "attempt-execution-result",
+        "owner": "exploration",
+        "planDigest": "sha256:77a372319e24a78b707a2d29dc22ec9aac0f4d6f9c3f698dda183fdf33949228",
+        "role": "finder",
+        "schemaVersion": 2
+      },
+      "status": "completed"
+    },
+    {
+      "attempt": {
+        "attemptId": "attempt:fea0997d91d2f03dd14689fe558a2088457fe7ecfd8069059c94cc6ae5da80f0",
+        "digest": "sha256:b9bbdac20aa21fa6ffdcc3c2d3248b6f26b221684e079a9573ce985fd1575a0a",
+        "kind": "attempt-execution-result",
+        "owner": "exploration",
+        "planDigest": "sha256:2dd4b6913f9a423e029b76e3518b44e956f5e0576a7744a565db12989f205d6a",
+        "role": "finder",
+        "schemaVersion": 2
+      },
+      "status": "completed"
+    }
+  ],
+  "attempts": [
+    {
+      "attemptId": "attempt:2e528ddedf39444a296c8d4057268866aa4ff7a9d2332bbcb9e840818008c562",
+      "digest": "sha256:3c2be9fccaff6b3ec28c44f7913cdeb5a9cf67ba411c889ff95fef394fc10045",
+      "kind": "attempt-execution-result",
+      "owner": "exploration",
+      "planDigest": "sha256:762a7b4f6553995aeecc975ae9a727c59aeca578828416ab0121c621154babe9",
+      "role": "finder",
+      "schemaVersion": 2
+    },
+    {
+      "attemptId": "attempt:314ad3e0ba7e664e2c1e0ced460d4c52d9d0bc9b9f6050976145d26033557f62",
+      "digest": "sha256:61eae9d45dbf5e580321fa357dfb32fb84a2a463a5dbce819acd47ae1c7e7343",
+      "kind": "attempt-execution-result",
+      "owner": "exploration",
+      "planDigest": "sha256:8728681029277329559279a42753be44b8a1d3335974b756e566a188bc75956f",
+      "role": "finder",
+      "schemaVersion": 2
+    },
+    {
+      "attemptId": "attempt:9c4ecdaf1fc355dc75f0d4721ba4fbbd66b40a64d693d31d69d6b0ff470b235c",
+      "digest": "sha256:38a567f6d7f191b377c01039a9ebcd6a6c135acbd6872c0080c065c67ce9be12",
+      "kind": "attempt-execution-result",
+      "owner": "exploration",
+      "planDigest": "sha256:77a372319e24a78b707a2d29dc22ec9aac0f4d6f9c3f698dda183fdf33949228",
+      "role": "finder",
+      "schemaVersion": 2
+    },
+    {
+      "attemptId": "attempt:fea0997d91d2f03dd14689fe558a2088457fe7ecfd8069059c94cc6ae5da80f0",
+      "digest": "sha256:b9bbdac20aa21fa6ffdcc3c2d3248b6f26b221684e079a9573ce985fd1575a0a",
+      "kind": "attempt-execution-result",
+      "owner": "exploration",
+      "planDigest": "sha256:2dd4b6913f9a423e029b76e3518b44e956f5e0576a7744a565db12989f205d6a",
+      "role": "finder",
+      "schemaVersion": 2
+    }
+  ],
+  "frontierGaps": [],
+  "hypotheses": [],
+  "issues": [],
+  "kind": "semantic-wave-terminal",
+  "manifest": {
+    "digest": "sha256:f64a29e8fe0689661b3638d393c18b51f0bb3eeb19c558c878fd9d4d481fcd48",
+    "kind": "target-file-manifest",
+    "schemaVersion": 1,
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "targetSnapshotId": "brizy-2.8.11"
+  },
+  "routeFragments": [
+    {
+      "attemptId": "attempt:9c4ecdaf1fc355dc75f0d4721ba4fbbd66b40a64d693d31d69d6b0ff470b235c",
+      "digest": "sha256:cb5b2d3fc5bc18a2e3f9980cafaa099fc6e5654d95f5706449308581b5080891",
+      "id": "sha256:7b72f55531118e34f9897ce94180bdb681bb5c2f672e7c88e7f1d9379488cd68",
+      "kind": "route-fragment",
+      "leaseId": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "manifestDigest": "sha256:f64a29e8fe0689661b3638d393c18b51f0bb3eeb19c558c878fd9d4d481fcd48",
+      "schemaVersion": 2,
+      "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "workWaveDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+    }
+  ],
+  "schemaVersion": 2,
+  "target": {
+    "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "id": "brizy-2.8.11",
+    "pluginSlug": "brizy",
+    "version": "2.8.11"
+  },
+  "wave": {
+    "digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "id": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "kind": "work-wave",
+    "manifestDigest": "sha256:f64a29e8fe0689661b3638d393c18b51f0bb3eeb19c558c878fd9d4d481fcd48",
+    "schemaVersion": 2,
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  }
+}

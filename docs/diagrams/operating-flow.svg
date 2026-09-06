@@ -55,7 +55,7 @@
     <rect width="1520" height="790" rx="24" class="panel" filter="url(#shadow)"/>
     <text x="28" y="38" class="section-no">02 · OPERATING ACTIVITY</text>
     <text x="28" y="78" class="section-title">一件のTargetは、どの分岐と人間gateを通るか</text>
-    <text x="28" y="107" class="question">上から下へ進む。別TargetのCampaignを約5件並行できるが、一件の責任境界は変わらない。</text>
+    <text x="28" y="107" class="question">採用した設計のView。初期利用は選定・検証を対話で進め、自動化の完成を待たない。</text>
 
     <rect x="28" y="140" width="456" height="610" rx="18" class="blue"/>
     <text x="52" y="172" class="label">TARGET INTELLIGENCE · 選ぶ</text>
@@ -72,7 +72,7 @@
     <rect x="52" y="446" width="408" height="92" rx="13" class="panel"/>
     <text x="74" y="474" class="box-title">3 · Freshness &amp; dispatch</text>
     <text x="74" y="498" class="body">実行直前にsource/versionを再確認。staleなら停止。</text>
-    <text x="74" y="518" class="body">別Targetをdurable queueからCampaignへ送る。</text>
+    <text x="74" y="518" class="body">無人queueは後続slice。初期はoperatorが確認する。</text>
     <rect x="52" y="574" width="408" height="130" rx="13" class="amber"/>
     <text x="74" y="602" class="box-title">分岐</text>
     <text x="74" y="627" class="body">approved → Target Intake Packet</text>
@@ -80,7 +80,7 @@
     <text x="74" y="673" class="body">excluded → 理由付きResearch History</text>
 
     <path d="M484 435 H514" class="line-purple"/>
-    <text x="499" y="423" class="micro center">versioned handoff</text>
+    <text x="499" y="423" class="micro center">handoff</text>
 
     <rect x="532" y="140" width="456" height="610" rx="18" class="purple"/>
     <text x="556" y="172" class="label">RESEARCH · 仮説を作る</text>
@@ -104,33 +104,33 @@
     <rect x="556" y="612" width="408" height="92" rx="13" class="panel"/>
     <text x="578" y="640" class="box-title">7 · Single source Validation</text>
     <text x="578" y="664" class="body">fresh reviewが決定的な反証だけを除く。</text>
-    <text x="578" y="684" class="small">output: Runtime Packet / needs-research / disproved</text>
+    <text x="578" y="684" class="small">output: Finding / needs-research / disproven / pending</text>
 
     <path d="M988 435 H1018" class="line-purple"/>
-    <text x="1003" y="423" class="micro center">versioned handoff</text>
+    <text x="1003" y="423" class="micro center">handoff</text>
 
     <rect x="1036" y="140" width="456" height="610" rx="18" class="green"/>
     <text x="1060" y="172" class="label">HUMAN OS · 成立を確認する</text>
     <rect x="1060" y="194" width="408" height="92" rx="13" class="panel"/>
     <text x="1082" y="222" class="box-title">8 · AI Reproduction</text>
     <text x="1082" y="246" class="body">fresh隔離環境で実interfaceを試し、再実行可能な</text>
-    <text x="1082" y="266" class="body">RecipeとTriage Packetを作る。</text>
+    <text x="1082" y="266" class="body">private evidenceとVerification Recordを残す。</text>
     <path d="M1264 286 V310" class="line"/>
     <rect x="1060" y="320" width="408" height="112" rx="13" class="panel"/>
-    <text x="1082" y="348" class="box-title">9 · Understand &amp; human reproduce</text>
+    <text x="1082" y="348" class="box-title">9 · Understand &amp; add assurance</text>
     <text x="1082" y="372" class="body">source→sink、effect、confirmed impact、plausible</text>
-    <text x="1082" y="394" class="body">scenarioを理解し、別fresh環境で全stepを再実行。</text>
-    <text x="1082" y="414" class="label" fill="#315d93">省略できない人間gate</text>
+    <text x="1082" y="394" class="body">scenarioを区別し、人間の確認は別fresh環境で行う。</text>
+    <text x="1082" y="414" class="label" fill="#315d93">Findingは不変・assuranceを追記</text>
     <path d="M1264 432 V456" class="line"/>
     <rect x="1060" y="466" width="408" height="92" rx="13" class="panel"/>
-    <text x="1082" y="494" class="box-title">10 · Finding gate</text>
-    <text x="1082" y="518" class="body">人間がSecurity Effectを観測した場合だけ昇格。</text>
-    <text x="1082" y="538" class="body">AIの成功判定だけではFindingにしない。</text>
+    <text x="1082" y="494" class="box-title">10 · Review assurance</text>
+    <text x="1082" y="518" class="body">source Findingへruntime / humanの観測を追記。</text>
+    <text x="1082" y="538" class="body">反証・未完了を理由付きで残し、元のFindingを消さない。</text>
     <path d="M1264 558 V582" class="line"/>
     <rect x="1060" y="592" width="408" height="112" rx="13" class="panel"/>
     <text x="1082" y="620" class="box-title">11 · Report, stage, submit</text>
     <text x="1082" y="644" class="body">AI draft → 人間がPoC / Descriptionを承認 →</text>
-    <text x="1082" y="666" class="body">formを自動入力。最後のSubmitは人間だけ。</text>
-    <text x="1082" y="688" class="label" fill="#9c6710">report / stagingは拡張中</text>
+    <text x="1082" y="666" class="body">外部行動は別の明示承認。最後のSubmitは人間だけ。</text>
+    <text x="1082" y="688" class="label" fill="#9c6710">report / stagingは後続slice</text>
   </g>
 </svg>

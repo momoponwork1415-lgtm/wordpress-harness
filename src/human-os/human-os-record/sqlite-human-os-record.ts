@@ -323,6 +323,10 @@ class SqliteHumanOsRecord implements HumanOsRecord {
     `);
   }
 
+  close(): void {
+    this.#database.close();
+  }
+
   async readAIReproductionIntake(
     deliveryRequestDigestValue: string,
   ): Promise<AIReproductionIntakeRecordView | undefined> {

@@ -1,0 +1,129 @@
+{
+  "effectiveConfiguration": {
+    "credentialBearingHostPathMounted": false,
+    "egressDestinations": [],
+    "engineSocketMounted": false,
+    "hostNetwork": false,
+    "images": {
+      "browser": "registry.invalid/browser@sha256:39947ec8a7a07dedb13b9ef9ad288be276fc1e7a87c98ac38189f073ef8447c0",
+      "database": "registry.invalid/mariadb@sha256:a888ee25d95961156c78618d6f5a348b238cfcb11c08b1c367ff3e6d6d7dfdac",
+      "wordpress": "registry.invalid/wordpress@sha256:c20bd4950741fb8ff5f4b75ba045b9053692e93d8ce8b0df8504515d5089b269",
+      "wordpressCli": "registry.invalid/wordpress-cli@sha256:05a6e6bb8f15a5e31653bea36e5fac71e2a6d08746494a894db6adcc38961aa3"
+    },
+    "isolationBackend": "gvisor",
+    "kind": "human-verification-effective-configuration",
+    "locale": "en_US",
+    "pluginSlug": "review-plugin",
+    "policyDigest": "sha256:48dc6a288d29f5915cd54f310a70213bd07cc1b70cbef4d33626a87b8566af4e",
+    "privileged": false,
+    "requestDigest": "sha256:40aa3ecf2bb699fa153c618ae37b68f4f62735fac855900923d29382578dfdec",
+    "runtimeProfileDigest": "sha256:e9336f90acb7ca50a8d91c4b186a2f5e0766a33fe13853cdac0091e464a7b858",
+    "schemaVersion": 1,
+    "siteMode": "single-site",
+    "timezone": "UTC"
+  },
+  "environment": {
+    "disposable": true,
+    "id": "lab-review-plugin-evidence",
+    "isolationBackend": "gvisor",
+    "kind": "human-verification-environment",
+    "requestDigest": "sha256:40aa3ecf2bb699fa153c618ae37b68f4f62735fac855900923d29382578dfdec",
+    "runtimeProfileDigest": "sha256:e9336f90acb7ca50a8d91c4b186a2f5e0766a33fe13853cdac0091e464a7b858",
+    "schemaVersion": 1,
+    "targetSnapshotDigest": "sha256:39dee9f164bf23533f9987d47526722b6ffd8d09483e826d3a53bed035f910b0"
+  },
+  "gate": {
+    "credentialBearingHostPathMounted": false,
+    "engineSocketMounted": false,
+    "fallbackUsed": false,
+    "hostNetwork": false,
+    "hostTargetExecution": false,
+    "kind": "human-verification-isolation-gate-observation",
+    "observedAt": "2026-09-05T04:00:00.000Z",
+    "observedBackend": "gvisor",
+    "observedRuntimeName": "runsc",
+    "observedRuntimeVersion": "20260901.0",
+    "privileged": false,
+    "requestDigest": "sha256:40aa3ecf2bb699fa153c618ae37b68f4f62735fac855900923d29382578dfdec",
+    "schemaVersion": 1,
+    "status": "passed",
+    "unauthorizedEgress": false
+  },
+  "kind": "human-verification-environment-disposition",
+  "requestDigest": "sha256:40aa3ecf2bb699fa153c618ae37b68f4f62735fac855900923d29382578dfdec",
+  "schemaVersion": 1,
+  "setupReceipt": {
+    "cleanup": "pending-after-verification",
+    "completedAt": "2026-09-05T04:00:00.000Z",
+    "environmentId": "lab-review-plugin-evidence",
+    "kind": "human-verification-setup-receipt",
+    "requestDigest": "sha256:40aa3ecf2bb699fa153c618ae37b68f4f62735fac855900923d29382578dfdec",
+    "schemaVersion": 1,
+    "setupPlanDigest": "sha256:05e87425ae689fac6d83639af07dc7571b524692e955dfac4aa351a116374b09",
+    "stages": [
+      {
+        "observationDigest": "sha256:8f0b5ecea80433b8a11a5ab9fba67fe91b7b21a9820ca373dba41b8ee67e4758",
+        "ordinal": 1,
+        "stage": "install-wordpress",
+        "status": "completed"
+      },
+      {
+        "observationDigest": "sha256:c81d805cf5d3aa3ad2f348d0c0828fc65f12910f34fd3f30dca074bbd0147905",
+        "ordinal": 2,
+        "stage": "install-target",
+        "status": "completed"
+      },
+      {
+        "observationDigest": "sha256:86c663db6e5a487e9074d57aefe4eb720cb687880753985ceb5f50d5c21f0276",
+        "ordinal": 3,
+        "stage": "activate-target",
+        "status": "completed"
+      },
+      {
+        "observationDigest": "sha256:8d3df9381d2f34d3d4463a7760a251cf55e1a0b6f3f1a94b7bd73915e0a6b83e",
+        "ordinal": 4,
+        "stage": "apply-configuration",
+        "status": "completed"
+      },
+      {
+        "observationDigest": "sha256:6558c9821e006044948ad7ad22867b1521b50ff2a686ccdd1034bb195f1b3fcb",
+        "ordinal": 5,
+        "stage": "functional-smoke",
+        "status": "completed"
+      }
+    ],
+    "startedAt": "2026-09-05T04:00:00.000Z",
+    "status": "ready"
+  },
+  "status": "ready",
+  "targetRuntimeIdentity": {
+    "kind": "human-verification-target-runtime-identity",
+    "manifest": {
+      "digest": "sha256:216573902ae51f21978065cc876e9c57eef27bff455a1a0a2354ad5c3f3a538d",
+      "kind": "target-file-manifest",
+      "schemaVersion": 1,
+      "targetSnapshotDigest": "sha256:39dee9f164bf23533f9987d47526722b6ffd8d09483e826d3a53bed035f910b0",
+      "targetSnapshotId": "review-plugin-evidence"
+    },
+    "observedDatabaseVersion": "11.8.3",
+    "observedImages": {
+      "browser": "registry.invalid/browser@sha256:39947ec8a7a07dedb13b9ef9ad288be276fc1e7a87c98ac38189f073ef8447c0",
+      "database": "registry.invalid/mariadb@sha256:a888ee25d95961156c78618d6f5a348b238cfcb11c08b1c367ff3e6d6d7dfdac",
+      "wordpress": "registry.invalid/wordpress@sha256:c20bd4950741fb8ff5f4b75ba045b9053692e93d8ce8b0df8504515d5089b269",
+      "wordpressCli": "registry.invalid/wordpress-cli@sha256:05a6e6bb8f15a5e31653bea36e5fac71e2a6d08746494a894db6adcc38961aa3"
+    },
+    "observedPhpVersion": "8.3.24",
+    "observedWebServerVersion": "2.4.65",
+    "observedWordpressVersion": "6.8.2",
+    "requestDigest": "sha256:40aa3ecf2bb699fa153c618ae37b68f4f62735fac855900923d29382578dfdec",
+    "runtimeProfileDigest": "sha256:e9336f90acb7ca50a8d91c4b186a2f5e0766a33fe13853cdac0091e464a7b858",
+    "schemaVersion": 1,
+    "sourceArtifactDigest": "sha256:89409bec0b444bfebc8915f8da58200436979af136908cc189592a5ed8d40a87",
+    "targetSnapshot": {
+      "digest": "sha256:39dee9f164bf23533f9987d47526722b6ffd8d09483e826d3a53bed035f910b0",
+      "id": "review-plugin-evidence",
+      "pluginSlug": "review-plugin",
+      "version": "1.2.3"
+    }
+  }
+}

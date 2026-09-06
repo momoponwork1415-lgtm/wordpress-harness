@@ -11,17 +11,17 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Target Acquisition / Intake | local directory、WordPress.org archiveを実装済み | premium acquisition |
 | Target selection / approval | Research History、programme / route観測、自律選定、人間のBatch承認を実装済み | Campaign Coverage Receipt、unattended dispatch |
 | Vulnerability Intelligence | Wordfence Intelligence v3のlocal indexとoracle-separated projectionを実装済み | なし（Wordfence-only方針を#102で確定済み） |
-| Semantic Research | v6 initial Wave、Decision@3、conditional Depth実行まで実装済み | Missing-link / Closure |
-| Source-only Validation | v6 single fresh Attempt、4 disposition、source-validated Findingを実装済み | Frontier Gapの次Wave |
+| Semantic Research | v7 initial Wave、Decision@3、conditional Depth実行まで実装済み | Missing-link / Closure |
+| Source-only Validation | v7 single fresh Attempt、4 disposition、source-validated Findingを実装済み | Frontier Gapの次Wave |
 | Runtime handoff | FindingをAI Reproductionへ直接渡すcurrent contract、旧Runtime Verification Packetのread-only replayを実装済み | Human Verification移行（#126 / #129） |
 | AI Reproduction | Finding-bound Attempt、gVisor experiment、private evidence、append-only AI Verification Recordを実装済み | なし |
 | Human Verification | mandatory fresh再実行、二車線Queue、Current Version Review、human-only Finding gateを実装済み | Finding gateをsubmission gateへ移す（#126） |
 | Finding | fresh Independent Validationからimmutable source-validated Findingを生成し、runtime Verification Recordを追記 | human Verification Record（#126） |
 | Understanding / report | 設計とIssue分割まで完了 | grounded explanation、template draft、人間承認、form staging |
 
-現在のResearch production sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / single source Validation -> source-validated Finding + Coverage`である。Findingの存在とCoverage状態は別々にterminal viewへ返す。旧Runtime Verification Packet、Human Review Packet、human-only Findingは元の意味でread-only replay境界に残す。v6 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Missing-link / Closureはlegacy v5に実装済みだがv6へ未接続。
+現在のResearch production sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / single source Validation -> source-validated Finding + Coverage`である。Findingの存在とCoverage状態は別々にterminal viewへ返す。Researchの旧Packetはread-only replayに限定する。Human OSには移行前のHuman Review writerとdirect legacy AI writerが残り、物理的な退役は#126 / #129で扱う。v7 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Missing-link / Closureはlegacy v5に実装済みだがcurrent v7へ未接続。
 
-手動Target Intakeから旧Findingまでのflowはversioned contractで接続済みである。[ADR 0124](adr/0124-align-campaign-and-finding-lifecycle-with-reference-harnesses.md)ではFinding lifecycleだけを変更し、現行のSemantic Research Waveとpublic seamは維持する。Target Intelligence内の自律選定とBatch承認は実装済みだが、Approved Target BatchからTarget Acquisition / Researchへのdispatchは未接続であり、完成度をpercentでは表さない。次の有限workと順序は[Issue #124](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/124)と[Issue #86](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/86)を正本とする。
+Finding handoffとAI Reproductionのcurrent contractは接続済みであり、Human Verificationは旧Finding gateから移行中である。[ADR 0124](adr/0124-align-campaign-and-finding-lifecycle-with-reference-harnesses.md)ではFinding lifecycleだけを変更し、現行のSemantic Research Waveとpublic seamは維持する。Target Intelligence内の自律選定とBatch承認は実装済みだが、Approved Target BatchからTarget Acquisition / Researchへのdispatchは未接続であり、完成度をpercentでは表さない。進捗表示はcurrent Validation / Findingをv2、旧VerificationだけのCampaignをv1で返す。集計は保存recordから再生成する（[Issue #132](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/132)）。次の有限workと順序は[Issue #124](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/124)と[Issue #86](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/86)を正本とする。
 
 ## Target Intelligence
 
@@ -151,9 +151,10 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 ### Campaign Control
 
-**Interface:** `CampaignRunner.prepare / prepareFromTargetIntake / run`、`CampaignReader.inspect`（`{ kind: "budget", runId }`と`{ kind: "finding", runId, findingId } -> FindingSubjectView`を含む）
+**Interface:** `CampaignRunner.prepare / prepareFromTargetIntake / run`、`CampaignReader.inspect`（`{ kind: "budget", runId }`、`{ kind: "finding", runId, findingId } -> FindingSubjectView`、`{ kind: "progress" } -> CampaignProgressView`を含む）
 
 - **Purpose:** fixed Targetをfinite Wave、Independent Validation、source-validated Finding / Coverage terminalまで進める。
+- **Composition:** `openResearch`のcurrent contractは`CurrentCampaignExecutionDependencies`であり、requiredな依存は`artifactStore`と`modelExecution`だけである。従来の`CampaignExecutionDependencies`は既存callerの型互換のため残すが、current処理へ渡すのはcurrent fieldだけに限定する。旧materializer、Verifier、Lab、calibration、Packet deliveryをcurrent callerへ要求しない。旧依存を使うwriter入口はinternalなlegacy fixture factoryだけに残す。
 - **Invariants:** PlanへTarget、Manifest、policy、profile、tool、budgetを固定する。artifactをCASへ置き、Ledger eventを記録してから次stageへ進む。
 - **Normal Wave policy:** current v7は3 Finder、target-specific thesisは最大2、whole-target wildcard thesisは最低1。`maxConcurrentFinders = 4`はschema上のhard ceilingとして維持する。legacy 4-Finder Plan / Ledgerはread-only replayする。
 - **Attacker scope:** current Campaignは未認証、Subscriber、subscriber-equivalent custom role（`customer`を含む）だけを許可する。Contributor以上と`unresolved`はcheckpoint、Root Evaluation、Validation admission、Finding projectionでfail closedにする。legacy enumとLedgerはreplay互換を維持する。
@@ -161,7 +162,7 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 - **Budget enforcement:** ExplorationとValidationのtoken、wall time、provider costをowner partitionでadmitし、Explorationのreported overshootでValidation reserveを減らさない。providerが返すtoken / turnはreported postconditionとしてovershootを残し、owner / Campaign remainingを0未満にしない。
 - **Attempt observability:** ValidatorもCampaign Attempt Ledgerへstart / result-stored / completionを記録する。completion前の再起動ではidentityとCASを検証して同じresultを再利用する。
 - **Failure semantics:** policy / profile / prompt / reservation ownerまたはclaim identityの不一致と、reservationを欠くv7 replayはfail closedにする。budget exhaustionをnegativeまたはCoverage Closureへ丸めず、Explorationは`Incomplete`、Validationは`validation-pending`にする。
-- **Behavior Test:** [v7 public run / budget / binding / restart](../tests/research/campaign-validation-run.test.ts)、[v7 contract](../tests/research/semantic-recall-budget.test.ts)、[legacy replay](../tests/research/ledger-compatibility.test.ts)。
+- **Behavior Test:** [current composition / independent recovery scenarios](../tests/research/campaign-validation-run.test.ts)、[old composition input / dependency-free replay](../tests/research/campaign-composition.test.ts)、[v7 contract](../tests/research/semantic-recall-budget.test.ts)、[legacy replay](../tests/research/ledger-compatibility.test.ts)。
 - **Status:** v7 initial Wave、durable Root Evaluation reservation、single Validation、conditional Depth、Finding / Coverage terminal、terminal replay、progressを実装。v6とlegacy Ledgerは元の意味でread-only replayする。Missing-link / Closureは未接続。
 - **Code:** [campaign-control](../src/research/campaign-control)、[open-research](../src/research/open-research.ts)。
 
@@ -228,9 +229,13 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 - **Interface:** current writeはprivate `CurrentCampaignStore`、全世代のread-only replayは`LegacyResearchReplay`。context外はpublic `CampaignRunner / CampaignReader`だけを使う。
 - **Invariants:** artifactを保存してから参照eventをappendする。Attempt reservation / intentとcompletion / settlementはそれぞれ一transactionでappendする。v7 Root Evaluation reservationはrun startとatomicにappendし、initial Root Attemptのreservation / intent / claimを一transactionでappendする。Campaign budget projectionはprotected reservationを含めてLedgerから再構築する。cacheを削除しても同じview digestを再構築する。
 - **Failure semantics:** event順序、artifact digest、Plan binding、reservation owner、claim identityの不一致はreplayまたはwrite admissionでfail closedにする。partial transactionを公開せず、unknown usageは保守的にreservation全量をchargeする。
-- **Behavior Test:** [current public behavior](../tests/research/campaign-validation-run.test.ts)、[legacy compatibility](../tests/research/ledger-compatibility.test.ts)。
+- **Progress projection:** validated recordの集計とusage読取はinternal projectionへ分離する。SQL、Ledger decode、transactionはStoreの責任であり、projectionへwrite capabilityを渡さない。current v7 Planまたはcompleted v4 Runがあれば`CampaignProgressViewV2`を返し、prepared-only / legacy-onlyは既存v1を維持する。
+- **Progress semantics:** v2の`counts.validations`はcurrent Runのdurable intent / completionをValidation IDで重複排除し、started、completed、activeと4 dispositionを投影する。別Runで既存Validationを再利用しても件数は増やさない。`pending`は完了した未確定結果であり、activeやdisprovenではない。`counts.findings`はcompleted v4 Runが参照するimmutable Finding IDの重複なし件数で、terminal commit前のValidation完了だけでは増えない。旧`counts.verifications`の意味は維持し、v2のテキスト表示では`legacy-`を付ける。active一覧はLedger順のopaque ID / 時刻だけを返し、Finding内容やprivate evidenceを含めない。
+- **Progress failures:** v2の集計整合性はpublic `campaignProgressViewV2Schema`で検証する。usage artifactを読めなければ従来どおり`partial`。reporterの読取・出力失敗は診断して停止し、実行結果を変更しない。
+- **Behavior Test:** [current public behavior / progress replay](../tests/research/campaign-validation-run.test.ts)、[legacy compatibility](../tests/research/ledger-compatibility.test.ts)、[immutable legacy replay](../tests/research/legacy-campaign-replay.test.ts)、[legacy writer behavior](../tests/research/campaign-run.test.ts)、[reporter / progress schema](../tests/research/campaign-progress-reporter.test.ts)。
 - **Status:** current writeをlegacy `ResearchRecord`から分離し、Finding / Coverageを持つCampaign Run Record v4だけを新規作成する。v1 / v2、Packetを持つv3、旧Runtime Packet eventは既存Ledgerのread-only replayだけを許可する。v7 Root Evaluation reservation、single Validation、Finding / Coverage terminal、Campaign budget、progress replayを実装。
-- **Code:** [current store](../src/research/research-record/current-campaign-store.ts)、[legacy replay](../src/research/research-record/legacy-research-replay.ts)。
+- **Code:** [current store](../src/research/research-record/current-campaign-store.ts)、[legacy replay](../src/research/research-record/legacy-research-replay.ts)、[progress projection](../src/research/research-record/campaign-progress-projection.ts)。
+- **Stored replay evidence:** 8組の固定SQLite / CASで旧Run v1のFinding、Boundary Pair、環境不足、provider failure、未解決work、中断と、旧Run v2のSemantic Wave / Evaluation後の状態を公開`CampaignReader`から読む。旧writerや実行依存を使わず、campaign / preparation / run / progress / Finding groupの元のprojectionとDB / WAL / CAS不変を確認する。fixtureは既存の合成Testから一度だけ採取したもので、実対象の評価結果ではない。
 
 ## Human OS
 
@@ -257,6 +262,8 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 **Interface:** `CurrentHumanReviewRunner.admit`、`prepare`、`record`、`readQueue`
 
+**Read-only Interface:** `openCurrentHumanReviewReader({ store, policy }) -> CurrentHumanReviewReader.readCase / readQueue`。Packet-bound v2の保存済みCase、Queue、Preparation、Resultを元の意味で読む。必要な依存は読取Storeと固定Queue Policyだけで、AI reader、version lookup、環境生成、clockは要求しない。書込Runnerも同じReaderを使う。policy不一致はerrorにし、未登録Caseは`undefined`、未登録Campaignは空Queueを返す。[reader](../src/human-os/current-human-review-reader.ts) · [immutable fixtureの公開読取Test](../tests/human-os/current-human-review-reader.test.ts)
+
 - **Purpose:** Triage Reproduction Packetを人間がAIと別のfresh instanceで必ず再実行し、Findingまたは理由付きnegativeまで閉じる。
 - **Queue:** runtime-confirmedを通常Queue、policy指定のhigh-impact runtime-inconclusiveを人間選択のEscalation Queueへ置く。総件数を制限せずactive concurrencyだけを設定し、完了後はimpact、attacker premise、Recipe cost、Case IDのstable priorityで繰り上げる。
 - **Preparation:** 人間の直前にCurrent Version Reviewを実行する。新stableは同じCampaign、plugin、Causal Identity、Security Effect、attacker premiseにbindされた新しいruntime-confirmed Attemptだけを選べる。Human environmentは選択Target、Runtime Profile、Setup Planと一致し、AI environmentとは異なるfresh IDを要求する。
@@ -264,6 +271,7 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 - **Finding gate:** 全Recipe stepとexact payloadの人間によるfresh再実行を記録した`verified-finding`だけがFindingを生成する。Findingは元Campaign Target、検証Target、Triage Packet、Recipe / Private Evidence refs、人間のRecordへbindする。external actionは`not-authorized`であり、report、vendor contact、公開は別承認を必要とする。
 - **Status / Tests:** v2 append-only Case stream、二車線Queue、promotion、version refresh、fresh environment gate、Disposition、Finding、reopen replayを実装 · [runner](../src/human-os/current-human-review.ts), [contracts](../src/human-os/current-human-review-contracts.ts), [behavior](../tests/human-os/current-human-review.test.ts) · [#110](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/110)
 - **Accepted next:** Human VerificationはFinding生成gateではなく`human-confirmed / disproved / inconclusive / blocked` Verification Recordを追加する。exact Draft revisionとdestinationに対するExternal Action Authorizationだけがform staging / submitを許可する（[#126](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/126)）。
+- **Migration constraint:** Finding Environment Request v1は同一contentへ同じrequest digestを使い、保存済みDispositionを再利用する。AI / humanの用途や独立試行を識別する項目はない。同じ要求をもう一度渡すことを別fresh環境の証拠にはできない。人間の申告だけで`human-confirmed`へ移行せず、別環境の永続化済み証拠との対応を#126の受入条件として確認する。
 
 ### Understanding and submission preparation
 
@@ -275,13 +283,50 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 ### Legacy Verification
 
-ADR 0122以前のHuman Review Packet v1、Human Verification、Findingを元の意味でread/replayする互換境界。ADR 0124移行後はRuntime Verification Packet v2、Triage Reproduction Packet、human-only Findingも同じくread-only replayへ閉じる。現行Human OS contextは`openLegacyHumanVerificationReplay`だけを公開し、v1 writerを公開しない。[replay](../src/human-os/legacy-human-verification-replay.ts)
+ADR 0122以前のHuman Review Packet v1、Human Verification、Findingを元の意味でread/replayする互換境界。ADR 0124移行後はRuntime Verification Packet v2、Triage Reproduction Packet、human-only Findingも同じくread-only replayへ閉じる。v1互換Interfaceは`openLegacyHumanVerificationReplay`として公開し、v1 writerは公開しない。Packet-boundな`openCurrentHumanReview`は別のpublic Interfaceとして残っている。[replay](../src/human-os/legacy-human-verification-replay.ts)
 
 - 旧Findingを`ready-for-runtime`や現行Findingへ自動変換しない。
+- v1 Human replayは[immutable fixtureの公開読取Test](../tests/human-os/legacy-human-verification-replay.test.ts)でQueue、Finding、Evidence Request、Rejected、Blockedを確認する。固定SQLite / CASと期待projectionはsanitizedな旧Testから採取し、Test実行時に旧writerで再生成しない。
 - gVisor Lab、Witness、Causal Control、固定mechanism Adapterはlegacy replayと参考実装に限定する。
 - **Status / Tests:** replay compatibility実装済み · [code](../src/research/verification), [tests](../tests/research/verification.test.ts), [gVisor](../tests/research/gvisor-account-takeover-lab.test.ts)
 
+### Legacy Packet AI reader
+
+- **Purpose:** 保存済みのPacket-bound AI結果を旧schemaと元の意味で読む。
+- **Interface:** direct legacy moduleの`openLegacyPacketAIReproductionReader({ record }) -> read(attemptId)`。必要な依存は`readAIReproductionResult`だけで、旧writerの`read`も同じReaderへ委譲する。root barrelは広げない。[reader](../src/human-os/legacy-packet-ai-reproduction-reader.ts)
+- **Owned state / invariants:** 既存の公開CAS / SQLiteを読むだけで、新しいAttempt、Finding、private evidenceを作らない。旧結果をcurrent Finding streamへ混入させない。
+- **Failure semantics:** 未登録Attemptは`undefined`。保存済みschema / digest / bindingの不整合はrecord側のerrorをそのまま返す。未確定・設定不足・provider failure・budget exhaustionを棄却へ読み替えない。
+- **Behavior Test:** [immutable legacy AI replay](../tests/human-os/legacy-packet-ai-reproduction-replay.test.ts)は5状態の合成SQLite / 公開CASを使い、旧result digest、reopen、current public readerとの分離、DB / WAL不変を確認する。private Recipe / Evidence / payloadはfixtureへ含めない。
+
+## Legacy retention and retirement
+
+現行入口で実行できないこと、公開barrelから外れていること、実装を削除済みであることは区別する。下表は現在保持している実装と読取の根拠であり、削除の有限workは[#129](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/129)を正本とする。
+
+| Owner / retained implementation | Current reachability and compatibility evidence | Retirement condition |
+| --- | --- | --- |
+| Research旧Campaign / Verification writer | current `openResearch`はlegacy write capabilityを渡さない。internal [fixture entrypoints](../src/research/open-research.ts)と[legacy writer tests](../tests/research/campaign-run.test.ts)が旧recordを作る。[固定8状態の公開replay](../tests/research/legacy-campaign-replay.test.ts)はwriterから独立し、[Ledger compatibility](../tests/research/ledger-compatibility.test.ts)は不正なevent順序・digest・世代を拒否する。 | 固定fixtureによる旧Run v1 / v2読取の保護は実装済み。writer / writer Testの物理削除は#126 / #109の条件成立後に#129で行う。 |
+| Researchの旧Packet builder / writer | [Human Review builder](../src/research/validation/human-review-packet.ts) / [Runtime builder](../src/research/validation/runtime-verification-packet.ts)はtestからのみ呼ばれる。[Store](../src/research/research-record/sqlite-research-record.ts)のPacket作成 / handoffの4 methodはrepo内callerがない。decoderは[固定旧Ledgerのpublic replay](../tests/research/campaign-validation-run.test.ts)に必要。 | #129で物理的削除を扱う。参照がないwriter bodyと必要なdecoder / payload schemaを別々に扱う。 |
+| Human OSの旧Packet-bound AI writer | [direct legacy module](../src/human-os/legacy-packet-ai-reproduction.ts)はbarrel非公開で、[旧AI writer tests](../tests/human-os/ai-reproduction.test.ts)が呼ぶ。[固定5状態のReader Test](../tests/human-os/legacy-packet-ai-reproduction-replay.test.ts)はwriterに依存せず、保存済みAttemptはCurrent Human Reviewも読む。 | 固定fixtureと独立Readerを実装済み。writer / writer Testの物理削除は#126 / #109の条件成立後に#129で行う。 |
+| Human OSの旧v1 Human writer | [direct writer](../src/human-os/human-verification.ts)はbarrel非公開。[Human tests](../tests/human-os/human-verification.test.ts)は未退役writerのbehaviorを保護し、[公開Readerの互換Test](../tests/human-os/legacy-human-verification-replay.test.ts)は旧writerに依存しない固定SQLite / CASを読む。 | immutable fixtureへの読取Test移行済み。writer / writer Testの物理削除は#126 / #109の条件成立後に#129で行う。 |
+| Human OSのPacket-bound Current Human Review | [current-human-review](../src/human-os/current-human-review.ts)は依然root-publicで、旧human-only Findingを生成する。[Behavior Test](../tests/human-os/current-human-review.test.ts)がQueueとreopenを保護する。[独立Readerの互換Test](../tests/human-os/current-human-review-reader.test.ts)はwriter不要の固定SQLite / CASでv2の優先順、promotion後の状態、Escalation選択、旧Findingを読む。 | #126のFinding-bound human Verificationへの置換と、#109のAcceptance後に退役する。 |
+
+#129の削除条件には#126の移行と#109のruntime / human Acceptanceが含まれる。#133のAI slice統合だけでは満たさない。read-only auditや通常Testの成功を実Target Acceptanceの代わりにしない。現行Interface・stateless処理・表示の整理は[#119](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/119)で別に進める。
+
 ## Adapters and runtime policy
+
+### File artifact persistence
+
+- **Purpose:** ResearchとHuman OSのcontent-addressed artifactを、再保存時にも既存の証拠を置換せず保持する。
+- **Interface:** Researchの`JsonArtifactStore.putJson / readJson`、Human OSの`HumanOsArtifactStore.putJson / readJson`と`HumanOsPrivateArtifactStore.putPrivateJson / readPrivateJson / putPrivateBytes / readPrivateBytes`。各Contextがschema、digest、保存directoryを所有し、file publicationだけを共有する。
+- **Invariants:** 保存呼出し時の入力を保持し、完了待ちの間にcallerが元のJSONやbyte bufferを更新しても、保存内容とdigestを変えない。同一digestが既に存在する場合は、既存内容のschema / digestを検査してから再利用する。正常な並行再保存は同じdigestへ収束し、JSON byte形式とprivate bytesを保持する。
+- **Failure semantics:** 既存内容の破損はerrorとして返し、正しい入力の再保存で黙って修復しない。cleanup failureは先行する保存・検証failureを置き換えない。
+- **Behavior Test:** [public artifact store integrity](../tests/infrastructure/file-artifact-integrity.test.ts)は4つの読書きInterfaceで並行再保存、reopen、破損後の再保存拒否と既存bytes保持を確認する。保存中のJSON更新と、Uint8Array / Bufferの部分view再利用も回帰対象にする。
+- **Guarantee limit:** CAS file / directoryのsyncによる電源断耐久性と、稼働中のSQLite / CAS一括backupからの復元は未検証。正常なreopenや合成fixtureの成功を、その保証として扱わない。
+- **Code:** [Research JSON](../src/research/research-record/file-json-artifact-store.ts)、[Human OS JSON](../src/human-os/human-os-record/file-json-artifact-store.ts)、[private JSON / bytes](../src/human-os/human-os-record/file-private-artifact-store.ts)。
+
+### Shared encoding and execution policy
+
+- statelessな[canonical JSON encoder](../src/infrastructure/canonical-json.ts)を3 Contextで共有する。各Contextの入力検証とdigest Interfaceは維持し、[互換Test](../tests/infrastructure/canonical-json.test.ts)で既存の保存byte列・digest・入力拒否を確認する。共有するのはencodingだけであり、domain schemaやstateのownerは移さない。
 
 - CLIは`prepare / inspect`だけを持つthin adapter。[code](../src/cli.ts) · [tests](../tests/cli/campaign-cli.test.ts)
 - current policyは`semantic-research-recall-baseline-v7`。Campaign token ceilingは4,600,000、Explorationは4,200,000、その内100,000をinitial Root Evaluationへdurableにreserveし、Validation 400,000へ再配分しない。

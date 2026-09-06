@@ -1,0 +1,15 @@
+{
+  "entries": [
+    {
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "path": "plugin.php",
+      "size": 1000
+    }
+  ],
+  "kind": "target-file-manifest",
+  "schemaVersion": 1,
+  "targetSnapshot": {
+    "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "id": "brizy-2.8.11"
+  }
+}

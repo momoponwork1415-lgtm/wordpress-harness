@@ -1,0 +1,274 @@
+{
+  "id": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+  "kind": "work-wave-plan",
+  "leases": [
+    {
+      "assignment": {
+        "kind": "research-thesis",
+        "schemaVersion": 1,
+        "thesisId": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "budget": {
+        "maxHypotheses": 8,
+        "maxModelTokens": 100000,
+        "maxModelTurns": 66,
+        "maxOutputBytes": 524288,
+        "maxProviderCostUsd": 2.5,
+        "maxSourceQueries": 64,
+        "maxWallTimeMs": 900000
+      },
+      "id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "kind": "work-lease",
+      "manifest": {
+        "digest": "sha256:f64a29e8fe0689661b3638d393c18b51f0bb3eeb19c558c878fd9d4d481fcd48",
+        "kind": "target-file-manifest",
+        "schemaVersion": 1,
+        "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "targetSnapshotId": "brizy-2.8.11"
+      },
+      "role": "finder",
+      "schemaVersion": 2,
+      "target": {
+        "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "id": "brizy-2.8.11",
+        "pluginSlug": "brizy",
+        "version": "2.8.11"
+      }
+    },
+    {
+      "assignment": {
+        "kind": "research-thesis",
+        "schemaVersion": 1,
+        "thesisId": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "budget": {
+        "maxHypotheses": 8,
+        "maxModelTokens": 100000,
+        "maxModelTurns": 66,
+        "maxOutputBytes": 524288,
+        "maxProviderCostUsd": 2.5,
+        "maxSourceQueries": 64,
+        "maxWallTimeMs": 900000
+      },
+      "id": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "kind": "work-lease",
+      "manifest": {
+        "digest": "sha256:f64a29e8fe0689661b3638d393c18b51f0bb3eeb19c558c878fd9d4d481fcd48",
+        "kind": "target-file-manifest",
+        "schemaVersion": 1,
+        "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "targetSnapshotId": "brizy-2.8.11"
+      },
+      "role": "finder",
+      "schemaVersion": 2,
+      "target": {
+        "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "id": "brizy-2.8.11",
+        "pluginSlug": "brizy",
+        "version": "2.8.11"
+      }
+    },
+    {
+      "assignment": {
+        "kind": "research-thesis",
+        "schemaVersion": 1,
+        "thesisId": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+      },
+      "budget": {
+        "maxHypotheses": 8,
+        "maxModelTokens": 100000,
+        "maxModelTurns": 66,
+        "maxOutputBytes": 524288,
+        "maxProviderCostUsd": 2.5,
+        "maxSourceQueries": 64,
+        "maxWallTimeMs": 900000
+      },
+      "id": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "kind": "work-lease",
+      "manifest": {
+        "digest": "sha256:f64a29e8fe0689661b3638d393c18b51f0bb3eeb19c558c878fd9d4d481fcd48",
+        "kind": "target-file-manifest",
+        "schemaVersion": 1,
+        "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "targetSnapshotId": "brizy-2.8.11"
+      },
+      "role": "finder",
+      "schemaVersion": 2,
+      "target": {
+        "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "id": "brizy-2.8.11",
+        "pluginSlug": "brizy",
+        "version": "2.8.11"
+      }
+    },
+    {
+      "assignment": {
+        "kind": "research-thesis",
+        "schemaVersion": 1,
+        "thesisId": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "budget": {
+        "maxHypotheses": 8,
+        "maxModelTokens": 100000,
+        "maxModelTurns": 66,
+        "maxOutputBytes": 524288,
+        "maxProviderCostUsd": 2.5,
+        "maxSourceQueries": 64,
+        "maxWallTimeMs": 900000
+      },
+      "id": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+      "kind": "work-lease",
+      "manifest": {
+        "digest": "sha256:f64a29e8fe0689661b3638d393c18b51f0bb3eeb19c558c878fd9d4d481fcd48",
+        "kind": "target-file-manifest",
+        "schemaVersion": 1,
+        "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "targetSnapshotId": "brizy-2.8.11"
+      },
+      "role": "finder",
+      "schemaVersion": 2,
+      "target": {
+        "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "id": "brizy-2.8.11",
+        "pluginSlug": "brizy",
+        "version": "2.8.11"
+      }
+    }
+  ],
+  "manifest": {
+    "digest": "sha256:f64a29e8fe0689661b3638d393c18b51f0bb3eeb19c558c878fd9d4d481fcd48",
+    "kind": "target-file-manifest",
+    "schemaVersion": 1,
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "targetSnapshotId": "brizy-2.8.11"
+  },
+  "plannerAttempt": {
+    "attemptId": "root-planner-attempt",
+    "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "kind": "attempt-execution-result",
+    "owner": "exploration",
+    "planDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "role": "root-planner",
+    "schemaVersion": 2
+  },
+  "policy": {
+    "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "id": "semantic-research-baseline-v1",
+    "kind": "semantic-root-planning-policy",
+    "schemaVersion": 1
+  },
+  "purpose": { "kind": "raw-source" },
+  "ref": {
+    "digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "id": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "kind": "work-wave",
+    "manifestDigest": "sha256:f64a29e8fe0689661b3638d393c18b51f0bb3eeb19c558c878fd9d4d481fcd48",
+    "schemaVersion": 2,
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "schemaVersion": 2,
+  "target": {
+    "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "id": "brizy-2.8.11",
+    "pluginSlug": "brizy",
+    "version": "2.8.11"
+  },
+  "theses": [
+    {
+      "id": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "independence": "This thesis uses an independent assumption 1.",
+      "kind": "research-thesis",
+      "manifest": {
+        "digest": "sha256:f64a29e8fe0689661b3638d393c18b51f0bb3eeb19c558c878fd9d4d481fcd48",
+        "kind": "target-file-manifest",
+        "schemaVersion": 1,
+        "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "targetSnapshotId": "brizy-2.8.11"
+      },
+      "motivation": "Investigate independent security meaning 1.",
+      "question": "Which broken semantic follows from assumption 1?",
+      "schemaVersion": 1,
+      "scope": "target-specific",
+      "securityAssumption": "independent-security-assumption-1",
+      "startingBasis": "Oracle-free Target metadata only.",
+      "target": {
+        "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "id": "brizy-2.8.11",
+        "pluginSlug": "brizy",
+        "version": "2.8.11"
+      }
+    },
+    {
+      "id": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "independence": "This thesis uses an independent assumption 2.",
+      "kind": "research-thesis",
+      "manifest": {
+        "digest": "sha256:f64a29e8fe0689661b3638d393c18b51f0bb3eeb19c558c878fd9d4d481fcd48",
+        "kind": "target-file-manifest",
+        "schemaVersion": 1,
+        "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "targetSnapshotId": "brizy-2.8.11"
+      },
+      "motivation": "Investigate independent security meaning 2.",
+      "question": "Which broken semantic follows from assumption 2?",
+      "schemaVersion": 1,
+      "scope": "target-specific",
+      "securityAssumption": "independent-security-assumption-2",
+      "startingBasis": "Oracle-free Target metadata only.",
+      "target": {
+        "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "id": "brizy-2.8.11",
+        "pluginSlug": "brizy",
+        "version": "2.8.11"
+      }
+    },
+    {
+      "id": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "independence": "This thesis uses an independent assumption 3.",
+      "kind": "research-thesis",
+      "manifest": {
+        "digest": "sha256:f64a29e8fe0689661b3638d393c18b51f0bb3eeb19c558c878fd9d4d481fcd48",
+        "kind": "target-file-manifest",
+        "schemaVersion": 1,
+        "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "targetSnapshotId": "brizy-2.8.11"
+      },
+      "motivation": "Investigate independent security meaning 3.",
+      "question": "Which broken semantic follows from assumption 3?",
+      "schemaVersion": 1,
+      "scope": "target-specific",
+      "securityAssumption": "independent-security-assumption-3",
+      "startingBasis": "Oracle-free Target metadata only.",
+      "target": {
+        "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "id": "brizy-2.8.11",
+        "pluginSlug": "brizy",
+        "version": "2.8.11"
+      }
+    },
+    {
+      "id": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "independence": "This thesis uses an independent assumption 4.",
+      "kind": "research-thesis",
+      "manifest": {
+        "digest": "sha256:f64a29e8fe0689661b3638d393c18b51f0bb3eeb19c558c878fd9d4d481fcd48",
+        "kind": "target-file-manifest",
+        "schemaVersion": 1,
+        "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "targetSnapshotId": "brizy-2.8.11"
+      },
+      "motivation": "Investigate independent security meaning 4.",
+      "question": "Which broken semantic follows from assumption 4?",
+      "schemaVersion": 1,
+      "scope": "wildcard",
+      "securityAssumption": "independent-security-assumption-4",
+      "startingBasis": "Oracle-free Target metadata only.",
+      "target": {
+        "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "id": "brizy-2.8.11",
+        "pluginSlug": "brizy",
+        "version": "2.8.11"
+      }
+    }
+  ]
+}

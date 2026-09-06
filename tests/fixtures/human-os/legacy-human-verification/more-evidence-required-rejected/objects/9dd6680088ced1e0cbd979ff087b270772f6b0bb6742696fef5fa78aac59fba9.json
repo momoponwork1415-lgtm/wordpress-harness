@@ -1,0 +1,42 @@
+{
+  "evidenceRequest": null,
+  "finding": null,
+  "kind": "human-verification-result",
+  "schemaVersion": 1,
+  "verification": {
+    "attackerRole": "unauthenticated",
+    "caseId": "sha256:16c4dd3d8b939c9a77fd8d1bcbeb616268f341539943aeca396785372b61d9c0",
+    "disposition": {
+      "reason": "The protected state remained owned by the original actor.",
+      "status": "rejected"
+    },
+    "environment": {
+      "disposable": true,
+      "id": "lab-review-plugin-rejected",
+      "isolationBackend": "gvisor",
+      "kind": "human-verification-environment",
+      "requestDigest": "sha256:25044a071ee8ad86267e222f9a21852dcb0d3520eaeac2cb01d931a408851b73",
+      "runtimeProfileDigest": "sha256:e9336f90acb7ca50a8d91c4b186a2f5e0766a33fe13853cdac0091e464a7b858",
+      "schemaVersion": 1,
+      "targetSnapshotDigest": "sha256:51ee02fdce8fcc26461f435a14448cd955f0ec36bd71978217351e849f8d7f4a"
+    },
+    "id": "sha256:dff8e4bcc221b8b27264bb3de5d061d294f407434a7446a283904979f9819715",
+    "kind": "human-verification-record",
+    "packetDigest": "sha256:7464c1b9cee15732c60e77b4af705a6a7e6a1e7d0fc90a609f19bb7eb16488ad",
+    "performedAt": "2026-09-05T04:00:00.000Z",
+    "reviewer": { "id": "reviewer-alice", "kind": "human-reviewer" },
+    "schemaVersion": 1,
+    "securityEffect": {
+      "description": "The protected state remained unchanged.",
+      "status": "not-observed"
+    },
+    "targetInterfaceSteps": [
+      {
+        "action": "Request the Packet-bound public state transition.",
+        "interface": "wordpress-public-site",
+        "observation": "The protected state transition was objectively observed.",
+        "ordinal": 1
+      }
+    ]
+  }
+}

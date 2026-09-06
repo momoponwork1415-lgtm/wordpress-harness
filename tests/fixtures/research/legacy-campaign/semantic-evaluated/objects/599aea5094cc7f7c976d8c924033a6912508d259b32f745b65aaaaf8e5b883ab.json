@@ -1,0 +1,62 @@
+{
+  "attemptId": "attempt:7eae752739986939c74621bf5c70052eb382ac8fd126ec9da16f5f56f4f1948e",
+  "id": "sha256:3cc99a6909a58dbd0ac303c65b34f6e089867d15c012eeda766d486e7d3c7e00",
+  "kind": "route-fragment",
+  "leaseId": "sha256:ded988256d2afa3bbf705a742828a3785f86deeb31d2cf6c0035e26b7f4c4d1a",
+  "manifest": {
+    "digest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+    "kind": "target-file-manifest",
+    "schemaVersion": 1,
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "targetSnapshotId": "brizy-2.8.11"
+  },
+  "schemaVersion": 2,
+  "target": {
+    "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "id": "brizy-2.8.11",
+    "pluginSlug": "brizy",
+    "version": "2.8.11"
+  },
+  "value": {
+    "attackerPremise": "unauthenticated",
+    "consumedValues": [
+      { "identity": "public-input", "provenance": "attacker-controlled" }
+    ],
+    "evidence": [
+      {
+        "endLine": 20,
+        "fileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "path": "plugin.php",
+        "startLine": 10
+      }
+    ],
+    "falsifier": "No privileged consumer reads the state.",
+    "kind": "route-fragment-proposal",
+    "nextInvestigation": "Trace all privileged readers.",
+    "operation": "Persist data consumed by another actor.",
+    "preconditions": ["A public request persists the value."],
+    "producedValues": [{ "capability": "write", "identity": "stored-value" }],
+    "schemaVersion": 1,
+    "stateTransitions": [
+      {
+        "effect": "Input becomes cross-request state.",
+        "operation": "write",
+        "stateIdentity": "shared-option"
+      }
+    ],
+    "unknowns": [
+      {
+        "claim": "Other privileged consumers may trust the value.",
+        "requiredEvidence": "Trace every reader."
+      }
+    ]
+  },
+  "workWave": {
+    "digest": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3",
+    "id": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3",
+    "kind": "work-wave",
+    "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+    "schemaVersion": 2,
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  }
+}

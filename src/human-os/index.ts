@@ -54,6 +54,11 @@ export type {
   HumanReproductionRuntimeIdentity,
 } from "./current-human-review-contracts.js";
 export { openCurrentHumanReview } from "./current-human-review.js";
+export { openCurrentHumanReviewReader } from "./current-human-review-reader.js";
+export type {
+  CurrentHumanReviewReader,
+  OpenCurrentHumanReviewReaderOptions,
+} from "./current-human-review-reader.js";
 export type {
   CurrentHumanReviewAdmission,
   CurrentHumanReviewCaseView,

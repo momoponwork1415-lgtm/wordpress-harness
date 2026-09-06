@@ -1,0 +1,90 @@
+{
+  "evidenceRequest": null,
+  "finding": {
+    "attackerRole": "unauthenticated",
+    "caseId": "sha256:9e194fda95830482cad23a43afe82a482a1d6fa497f87566345ce83cfefd24ab",
+    "causalIdentity": {
+      "attackerControlledPrimitive": "public-state-transition",
+      "brokenSecurityProperty": "state-ownership",
+      "rootCause": "root-v"
+    },
+    "environment": {
+      "disposable": true,
+      "id": "lab-review-plugin-verified",
+      "isolationBackend": "gvisor",
+      "kind": "human-verification-environment",
+      "requestDigest": "sha256:8e86ce456f241e81852ed1121c4958b19a703590eaccac53d6c513d19819ca8f",
+      "runtimeProfileDigest": "sha256:e9336f90acb7ca50a8d91c4b186a2f5e0766a33fe13853cdac0091e464a7b858",
+      "schemaVersion": 1,
+      "targetSnapshotDigest": "sha256:4941aacbc9a59ec46d5e7cda0e97e330dda2d51fccd264a9253df72c9bb48fed"
+    },
+    "externalAction": { "status": "not-authorized" },
+    "id": "sha256:1829ec5ea4af4f1e77a472d5f48d76f15103e4e8708d3fb5133e324cdf051fbd",
+    "kind": "finding",
+    "packet": {
+      "candidateId": "sha256:28d348ec75b207c466316ad949154ae513ef5143aa8791bee8630c8ba3afcbda",
+      "digest": "sha256:403cae5744c239aba283e55250383c4c0085256d5699a39cf9b256c914d3dfc8",
+      "id": "sha256:6e212129141455f1660b1b9a0474a9213c2d64e129ab027f1fb6f9e0d30a9fa3",
+      "kind": "human-review-packet",
+      "manifestDigest": "sha256:cfa80286216d4224583f007fce59c5bac7fc45e171035360046d84293a98259c",
+      "schemaVersion": 1,
+      "targetSnapshotDigest": "sha256:4941aacbc9a59ec46d5e7cda0e97e330dda2d51fccd264a9253df72c9bb48fed"
+    },
+    "reviewer": { "id": "reviewer-alice", "kind": "human-reviewer" },
+    "schemaVersion": 1,
+    "securityEffect": "Another actor's protected state changed.",
+    "target": {
+      "digest": "sha256:4941aacbc9a59ec46d5e7cda0e97e330dda2d51fccd264a9253df72c9bb48fed",
+      "id": "review-plugin-verified",
+      "pluginSlug": "review-plugin",
+      "version": "1.2.3"
+    },
+    "verification": {
+      "caseId": "sha256:9e194fda95830482cad23a43afe82a482a1d6fa497f87566345ce83cfefd24ab",
+      "digest": "sha256:aa57bb4e6dee5f524e10cc844cc68c3c07861f3ab079e5d0267321d3eb256fbb",
+      "disposition": "verified-finding",
+      "id": "sha256:f97cd8ff375ada074c78d4212ab780b0d17e7c19f0b547a1570b88906c2d0e22",
+      "kind": "human-verification-record",
+      "schemaVersion": 1
+    },
+    "verifiedAt": "2026-09-05T04:00:00.000Z"
+  },
+  "kind": "human-verification-result",
+  "schemaVersion": 1,
+  "verification": {
+    "attackerRole": "unauthenticated",
+    "caseId": "sha256:9e194fda95830482cad23a43afe82a482a1d6fa497f87566345ce83cfefd24ab",
+    "disposition": {
+      "reason": "The broken state-ownership property was independently observed.",
+      "status": "verified-finding"
+    },
+    "environment": {
+      "disposable": true,
+      "id": "lab-review-plugin-verified",
+      "isolationBackend": "gvisor",
+      "kind": "human-verification-environment",
+      "requestDigest": "sha256:8e86ce456f241e81852ed1121c4958b19a703590eaccac53d6c513d19819ca8f",
+      "runtimeProfileDigest": "sha256:e9336f90acb7ca50a8d91c4b186a2f5e0766a33fe13853cdac0091e464a7b858",
+      "schemaVersion": 1,
+      "targetSnapshotDigest": "sha256:4941aacbc9a59ec46d5e7cda0e97e330dda2d51fccd264a9253df72c9bb48fed"
+    },
+    "id": "sha256:f97cd8ff375ada074c78d4212ab780b0d17e7c19f0b547a1570b88906c2d0e22",
+    "kind": "human-verification-record",
+    "packetDigest": "sha256:403cae5744c239aba283e55250383c4c0085256d5699a39cf9b256c914d3dfc8",
+    "performedAt": "2026-09-05T04:00:00.000Z",
+    "reviewer": { "id": "reviewer-alice", "kind": "human-reviewer" },
+    "schemaVersion": 1,
+    "securityEffect": {
+      "description": "Another actor's protected state changed.",
+      "status": "observed"
+    },
+    "targetInterfaceSteps": [
+      {
+        "action": "Request the Packet-bound public state transition.",
+        "interface": "wordpress-public-site",
+        "observation": "The protected state transition was objectively observed.",
+        "ordinal": 1
+      }
+    ]
+  }
+}

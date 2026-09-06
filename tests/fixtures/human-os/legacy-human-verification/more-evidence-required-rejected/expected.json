@@ -1,0 +1,195 @@
+{
+  "origin": {
+    "commit": "9bc1ee6",
+    "sourceTest": "tests/human-os/human-verification.test.ts",
+    "scope": "Synthetic packets and a mocked environment provisioner; no target code, provider, or container was executed.",
+    "encoding": "Captured with the byte-compatible canonical JSON refactor in the working tree."
+  },
+  "databaseSha256": "e9c9c6c9ce53ccfbc39c16faa6231efdc1bc38f6708d2c028f9e6ea0dc4dd6ea",
+  "expectedQueue": {
+    "campaignId": "campaign-human-review",
+    "active": [
+      {
+        "reviewCase": {
+          "kind": "human-review-case",
+          "schemaVersion": 1,
+          "id": "sha256:271d7adf56a201180711641d16963c702f885d5d5545497e0089c47204514921",
+          "campaignId": "campaign-human-review",
+          "packet": {
+            "kind": "human-review-packet",
+            "schemaVersion": 1,
+            "id": "sha256:478c6f0052c040b0d318a98d359048fc0d239e688ccb2ce23e90de9dd32437d8",
+            "digest": "sha256:22f954a5cdb7674d37d4c9cee4a7570a9ed4807d4a1493eb2e2e98dacaca5e9d",
+            "candidateId": "sha256:e5b6d9f6e42c53cbaf558508dc0ca88b2a1d03b88e4cb17475feff16a0454b8b",
+            "targetSnapshotDigest": "sha256:39dee9f164bf23533f9987d47526722b6ffd8d09483e826d3a53bed035f910b0",
+            "manifestDigest": "sha256:216573902ae51f21978065cc876e9c57eef27bff455a1a0a2354ad5c3f3a538d"
+          },
+          "mechanismDigest": "sha256:f9116893f7b69d294dd77fe47d08451213206e4dc58480f1018f3f82a01e7290",
+          "queueStatus": "active",
+          "admittedAt": "2026-09-05T04:00:00.000Z",
+          "firstDeliveryRequestDigest": "sha256:b4ef235b1b7118539b337338a59d62f76db6c28a1ef6b1d0419d97403cb9576e"
+        },
+        "verifications": [
+          {
+            "ledgerHead": 1,
+            "occurredAt": "2026-09-05T04:00:00.000Z",
+            "resultArtifactDigest": "sha256:c8572d6434822aeb3cfd9c16f56751f70d96c0c2d1f3017508480e37385cca2d",
+            "result": {
+              "kind": "human-verification-result",
+              "schemaVersion": 1,
+              "verification": {
+                "kind": "human-verification-record",
+                "schemaVersion": 1,
+                "caseId": "sha256:271d7adf56a201180711641d16963c702f885d5d5545497e0089c47204514921",
+                "packetDigest": "sha256:22f954a5cdb7674d37d4c9cee4a7570a9ed4807d4a1493eb2e2e98dacaca5e9d",
+                "environment": {
+                  "kind": "human-verification-environment",
+                  "schemaVersion": 1,
+                  "id": "lab-review-plugin-evidence",
+                  "requestDigest": "sha256:40aa3ecf2bb699fa153c618ae37b68f4f62735fac855900923d29382578dfdec",
+                  "targetSnapshotDigest": "sha256:39dee9f164bf23533f9987d47526722b6ffd8d09483e826d3a53bed035f910b0",
+                  "runtimeProfileDigest": "sha256:e9336f90acb7ca50a8d91c4b186a2f5e0766a33fe13853cdac0091e464a7b858",
+                  "isolationBackend": "gvisor",
+                  "disposable": true
+                },
+                "reviewer": {
+                  "kind": "human-reviewer",
+                  "id": "reviewer-alice"
+                },
+                "performedAt": "2026-09-05T04:00:00.000Z",
+                "attackerRole": "unauthenticated",
+                "targetInterfaceSteps": [
+                  {
+                    "ordinal": 1,
+                    "interface": "wordpress-public-site",
+                    "action": "Request the Packet-bound public state transition.",
+                    "observation": "The protected state transition was objectively observed."
+                  }
+                ],
+                "securityEffect": {
+                  "status": "uncertain",
+                  "description": "The Security Effect could not be determined."
+                },
+                "disposition": {
+                  "status": "more-evidence-required",
+                  "reason": "The runtime ownership boundary remains ambiguous.",
+                  "requestedEvidence": [
+                    {
+                      "kind": "runtime",
+                      "question": "Which actor owns the terminal state transition?",
+                      "acceptanceCriterion": "Observe the owner identity before and after the transition."
+                    }
+                  ]
+                },
+                "id": "sha256:ace3c8717425c29134657023dae2ac2311f86e12ff72b6c6f7ea06f69ffb9c82"
+              },
+              "finding": null,
+              "evidenceRequest": {
+                "kind": "evidence-request",
+                "schemaVersion": 1,
+                "caseId": "sha256:271d7adf56a201180711641d16963c702f885d5d5545497e0089c47204514921",
+                "packetDigest": "sha256:22f954a5cdb7674d37d4c9cee4a7570a9ed4807d4a1493eb2e2e98dacaca5e9d",
+                "verification": {
+                  "kind": "human-verification-record",
+                  "schemaVersion": 1,
+                  "id": "sha256:ace3c8717425c29134657023dae2ac2311f86e12ff72b6c6f7ea06f69ffb9c82",
+                  "digest": "sha256:101deef83842cdf84dfee0debb2c5d1a279d6ffeb8573175babeb2d4785c42fd",
+                  "caseId": "sha256:271d7adf56a201180711641d16963c702f885d5d5545497e0089c47204514921",
+                  "disposition": "more-evidence-required"
+                },
+                "requestedBy": {
+                  "kind": "human-reviewer",
+                  "id": "reviewer-alice"
+                },
+                "requestedAt": "2026-09-05T04:00:00.000Z",
+                "reason": "The runtime ownership boundary remains ambiguous.",
+                "requestedEvidence": [
+                  {
+                    "kind": "runtime",
+                    "question": "Which actor owns the terminal state transition?",
+                    "acceptanceCriterion": "Observe the owner identity before and after the transition."
+                  }
+                ],
+                "id": "sha256:d244e234056d53d52c60e813e9a93b56dd0a9061e174d432211faf423be2f5d8"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "reviewCase": {
+          "kind": "human-review-case",
+          "schemaVersion": 1,
+          "id": "sha256:16c4dd3d8b939c9a77fd8d1bcbeb616268f341539943aeca396785372b61d9c0",
+          "campaignId": "campaign-human-review",
+          "packet": {
+            "kind": "human-review-packet",
+            "schemaVersion": 1,
+            "id": "sha256:baa62335c8177b63d345f8c95015672d1ab86cd279037fe74461783fd42e43c7",
+            "digest": "sha256:7464c1b9cee15732c60e77b4af705a6a7e6a1e7d0fc90a609f19bb7eb16488ad",
+            "candidateId": "sha256:6630286e81e605738e0c4e236e889b7d56bd852806453f1d46f6dfc543e176fa",
+            "targetSnapshotDigest": "sha256:51ee02fdce8fcc26461f435a14448cd955f0ec36bd71978217351e849f8d7f4a",
+            "manifestDigest": "sha256:50a3db76efe573a892219b5b4bfa4ff69968d3f3a4499894b9ab06264b2381df"
+          },
+          "mechanismDigest": "sha256:6f09e8a7b6fd49796bb8159b7ae13904761c8afb137a0c927c03578eafe875dd",
+          "queueStatus": "active",
+          "admittedAt": "2026-09-05T04:00:00.000Z",
+          "firstDeliveryRequestDigest": "sha256:c5b6b77734d63ee7c6964ebd985a226741458623213de75d286aeca657bdb954"
+        },
+        "verifications": [
+          {
+            "ledgerHead": 2,
+            "occurredAt": "2026-09-05T04:00:00.000Z",
+            "resultArtifactDigest": "sha256:9dd6680088ced1e0cbd979ff087b270772f6b0bb6742696fef5fa78aac59fba9",
+            "result": {
+              "kind": "human-verification-result",
+              "schemaVersion": 1,
+              "verification": {
+                "kind": "human-verification-record",
+                "schemaVersion": 1,
+                "caseId": "sha256:16c4dd3d8b939c9a77fd8d1bcbeb616268f341539943aeca396785372b61d9c0",
+                "packetDigest": "sha256:7464c1b9cee15732c60e77b4af705a6a7e6a1e7d0fc90a609f19bb7eb16488ad",
+                "environment": {
+                  "kind": "human-verification-environment",
+                  "schemaVersion": 1,
+                  "id": "lab-review-plugin-rejected",
+                  "requestDigest": "sha256:25044a071ee8ad86267e222f9a21852dcb0d3520eaeac2cb01d931a408851b73",
+                  "targetSnapshotDigest": "sha256:51ee02fdce8fcc26461f435a14448cd955f0ec36bd71978217351e849f8d7f4a",
+                  "runtimeProfileDigest": "sha256:e9336f90acb7ca50a8d91c4b186a2f5e0766a33fe13853cdac0091e464a7b858",
+                  "isolationBackend": "gvisor",
+                  "disposable": true
+                },
+                "reviewer": {
+                  "kind": "human-reviewer",
+                  "id": "reviewer-alice"
+                },
+                "performedAt": "2026-09-05T04:00:00.000Z",
+                "attackerRole": "unauthenticated",
+                "targetInterfaceSteps": [
+                  {
+                    "ordinal": 1,
+                    "interface": "wordpress-public-site",
+                    "action": "Request the Packet-bound public state transition.",
+                    "observation": "The protected state transition was objectively observed."
+                  }
+                ],
+                "securityEffect": {
+                  "status": "not-observed",
+                  "description": "The protected state remained unchanged."
+                },
+                "disposition": {
+                  "status": "rejected",
+                  "reason": "The protected state remained owned by the original actor."
+                },
+                "id": "sha256:dff8e4bcc221b8b27264bb3de5d061d294f407434a7446a283904979f9819715"
+              },
+              "finding": null,
+              "evidenceRequest": null
+            }
+          }
+        ]
+      }
+    ],
+    "humanDeferred": []
+  }
+}

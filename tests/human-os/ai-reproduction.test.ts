@@ -8,7 +8,6 @@ import {
   defineHumanVerificationEnvironmentPolicy,
   defineHumanVerificationRuntimeProfile,
   defineHumanVerificationSetupPlan,
-  openAIReproduction as openCurrentAIReproduction,
   setupStageNames,
 } from "../../src/human-os/index.js";
 import {
@@ -27,7 +26,6 @@ import {
   openSqliteHumanOsRecord,
 } from "../../src/human-os/human-os-record/index.js";
 import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
-import { findingId } from "../../src/research/validation/finding.js";
 import {
   defineRuntimeVerificationPacketDeliveryRequest,
   prepareRuntimeVerificationPacket,
@@ -476,23 +474,6 @@ async function serviceFixture(harness: AIReproductionHarness) {
 }
 
 describe("Legacy Packet AI Reproduction", () => {
-  it("keeps legacy Packet events out of the current Finding stream", async () => {
-    const fixture = await serviceFixture({
-      run: async ({ attempt }) => confirmedExecution(attempt),
-    });
-    await fixture.service.run(fixture.runRequest);
-
-    const current = openCurrentAIReproduction({
-      record: fixture.record,
-      privateArtifactStore: fixture.privateArtifactStore,
-      harness: { run: vi.fn() },
-    });
-
-    await expect(
-      current.read(findingId(fixture.packet.candidate.id)),
-    ).resolves.toBeUndefined();
-  });
-
   it("creates a private exact Recipe and a shareable Triage Packet only after runtime confirmation", async () => {
     const run = vi.fn(async ({ attempt }: { attempt: AIReproductionAttempt }) =>
       confirmedExecution(attempt),

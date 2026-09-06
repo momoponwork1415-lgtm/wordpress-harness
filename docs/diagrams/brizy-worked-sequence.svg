@@ -88,21 +88,21 @@
     <circle cx="848" cy="220" r="10" class="dot-green"/>
     <text x="878" y="212" class="small">RESEARCH</text>
     <text x="878" y="235" class="box-title-small">Finder wave → Root Evaluation → single source Validation</text>
-    <text x="878" y="255" class="small">ここではFindingにせず、Runtime Verification Packetを作る</text>
+    <text x="878" y="255" class="small">Independent Validationだけがsource-validated Findingを作る</text>
     <circle cx="848" cy="306" r="10" class="dot-green"/>
     <text x="878" y="298" class="small">HUMAN OS · AI LAB</text>
     <text x="878" y="321" class="box-title-small">fresh隔離環境でAI Reproduction</text>
-    <text x="878" y="341" class="small">runtime observationと再実行可能なRecipeをTriage Packetへ</text>
+    <text x="878" y="341" class="small">private evidenceを保存し、Verification Recordを追記する</text>
     <circle cx="848" cy="392" r="10" class="dot-green"/>
     <text x="878" y="384" class="small">HUMAN OS · UNDERSTANDING</text>
     <text x="878" y="407" class="box-title-small">source→sink、effect、confirmed impact、scenarioを説明</text>
     <text x="878" y="427" class="small">XSSなら「どの入力を、どの画面で、何を観測するか」を明示</text>
     <circle cx="848" cy="478" r="10" class="dot-green"/>
     <text x="878" y="470" class="small">HUMAN OS · SEPARATE HUMAN LAB</text>
-    <text x="878" y="493" class="box-title-small">人間が別fresh環境で同じpayloadと全stepを必ず再実行</text>
+    <text x="878" y="493" class="box-title-small">人間の確認は別fresh環境で行い、assuranceを追加する</text>
     <circle cx="848" cy="548" r="10" class="dot-green"/>
     <text x="878" y="540" class="small">HUMAN DECISION</text>
-    <text x="878" y="563" class="box-title-small">Security Effectを観測した場合だけFindingへ昇格</text>
+    <text x="878" y="563" class="box-title-small">元Findingを保ち、外部行動は人間が別途承認する</text>
 
     <rect x="28" y="622" width="1464" height="1" class="divider"/>
     <text x="28" y="640" class="small">重要：Brizyはknown-caseで探索経路を実証したが、未知Targetでのprospective recallやTarget選定の優位性はまだ証明していない。</text>

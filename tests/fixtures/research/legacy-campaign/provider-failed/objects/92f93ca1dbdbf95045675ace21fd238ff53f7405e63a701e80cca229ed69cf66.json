@@ -1,0 +1,8 @@
+{
+  "attemptId": "attempt:77ee700fdd583937cfdb2975ec544d9eb84f7b7b1ce181c85086698ed497f8a4",
+  "kind": "finder-attempt-result",
+  "leaseId": "sha256:ae21f7c84a99eb9f3b02566a610a00095a4e381284577fc862a85d2a6d786fd7",
+  "reason": "provider-exit-1",
+  "schemaVersion": 1,
+  "status": "provider-failed"
+}

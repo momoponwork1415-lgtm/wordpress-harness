@@ -1,4 +1,10 @@
 import {
+  openCurrentHumanReviewReader,
+  type CurrentHumanReviewReader,
+  type CurrentHumanReviewCaseView,
+  type CurrentHumanReviewQueueView,
+} from "./current-human-review-reader.js";
+import {
   aiReproductionAttemptSchema,
   referenceAIReproductionAttempt,
   type AIReproductionAttempt,
@@ -9,7 +15,6 @@ import {
 import { canonicalHumanOsJson, humanOsDigest } from "./canonical-json.js";
 import {
   currentFindingSchema,
-  currentHumanReviewCaseSchema,
   currentHumanReviewPolicySchema,
   currentHumanReviewResultSchema,
   currentVersionReviewProviderOutputSchema,
@@ -30,11 +35,13 @@ import {
   type HumanReproductionPreparation,
   type HumanReproductionRecord,
 } from "./current-human-review-contracts.js";
-import type {
-  CurrentHumanReviewResultRecordView,
-  CurrentHumanReviewStore,
-  HumanReproductionPreparationRecordView,
-} from "./human-os-record/contracts.js";
+import type { CurrentHumanReviewStore } from "./human-os-record/contracts.js";
+
+export type {
+  CurrentHumanReviewCaseView,
+  CurrentHumanReviewQueueView,
+  CurrentHumanReviewQueueStatus,
+} from "./current-human-review-reader.js";
 
 export interface CurrentVersionReviewer {
   review(input: {
@@ -71,25 +78,6 @@ export interface HumanReviewAIReproductionReader {
   >;
 }
 
-export type CurrentHumanReviewQueueStatus =
-  "active" | "deferred" | "escalation" | "completed";
-
-export interface CurrentHumanReviewCaseView {
-  readonly reviewCase: CurrentHumanReviewCase;
-  readonly queueStatus: CurrentHumanReviewQueueStatus;
-  readonly escalationSelected: boolean;
-  readonly preparations: readonly HumanReproductionPreparationRecordView[];
-  readonly result: CurrentHumanReviewResultRecordView | undefined;
-}
-
-export interface CurrentHumanReviewQueueView {
-  readonly campaignId: string;
-  readonly active: readonly CurrentHumanReviewCaseView[];
-  readonly deferred: readonly CurrentHumanReviewCaseView[];
-  readonly escalation: readonly CurrentHumanReviewCaseView[];
-  readonly completed: readonly CurrentHumanReviewCaseView[];
-}
-
 export type CurrentHumanReviewAdmission =
   | {
       readonly status: "admitted" | "already-admitted";
@@ -100,7 +88,7 @@ export type CurrentHumanReviewAdmission =
       readonly reason: "not-runtime-confirmed-or-high-impact-inconclusive";
     };
 
-export interface CurrentHumanReviewRunner {
+export interface CurrentHumanReviewRunner extends CurrentHumanReviewReader {
   admit(attemptId: string): Promise<CurrentHumanReviewAdmission>;
   selectEscalation(
     caseId: string,
@@ -110,8 +98,6 @@ export interface CurrentHumanReviewRunner {
   record(
     verification: HumanReproductionRecord,
   ): Promise<CurrentHumanReviewResult>;
-  readCase(caseId: string): Promise<CurrentHumanReviewCaseView | undefined>;
-  readQueue(campaignId: string): Promise<CurrentHumanReviewQueueView>;
 }
 
 export interface OpenCurrentHumanReviewOptions {
@@ -148,20 +134,6 @@ const attackerOrder = [
 function rank<T extends string>(order: readonly T[], value: T): number {
   const result = order.indexOf(value);
   return result < 0 ? order.length : result;
-}
-
-function compareCases(
-  left: CurrentHumanReviewCaseView,
-  right: CurrentHumanReviewCaseView,
-): number {
-  const leftPriority = left.reviewCase.priority;
-  const rightPriority = right.reviewCase.priority;
-  return (
-    leftPriority.impact - rightPriority.impact ||
-    leftPriority.attackerPremise - rightPriority.attackerPremise ||
-    leftPriority.reproductionCost - rightPriority.reproductionCost ||
-    leftPriority.stableTieBreaker.localeCompare(rightPriority.stableTieBreaker)
-  );
 }
 
 function environmentMatches(
@@ -224,6 +196,7 @@ function completedAllSteps(
 
 class DefaultCurrentHumanReview implements CurrentHumanReviewRunner {
   readonly #store: CurrentHumanReviewStore;
+  readonly #reader: CurrentHumanReviewReader;
   readonly #aiReproductionReader: OpenCurrentHumanReviewOptions["aiReproductionReader"];
   readonly #policy: CurrentHumanReviewPolicy;
   readonly #versionReviewer: CurrentVersionReviewer;
@@ -232,6 +205,7 @@ class DefaultCurrentHumanReview implements CurrentHumanReviewRunner {
 
   constructor(options: OpenCurrentHumanReviewOptions) {
     this.#store = options.store;
+    this.#reader = openCurrentHumanReviewReader(options);
     this.#aiReproductionReader = options.aiReproductionReader;
     this.#policy = currentHumanReviewPolicySchema.parse(options.policy);
     this.#versionReviewer = options.versionReviewer;
@@ -245,7 +219,7 @@ class DefaultCurrentHumanReview implements CurrentHumanReviewRunner {
     if (existing !== undefined) {
       return {
         status: "already-admitted",
-        view: await this.#view(existing.reviewCase),
+        view: await this.#requireCase(existing.reviewCase.id),
       };
     }
     const aiView =
@@ -301,7 +275,7 @@ class DefaultCurrentHumanReview implements CurrentHumanReviewRunner {
     const recorded = await this.#store.recordCurrentHumanReviewCase(reviewCase);
     return {
       status: recorded.status === "appended" ? "admitted" : "already-admitted",
-      view: await this.#view(recorded.view.reviewCase),
+      view: await this.#requireCase(recorded.view.reviewCase.id),
     };
   }
 
@@ -325,7 +299,7 @@ class DefaultCurrentHumanReview implements CurrentHumanReviewRunner {
       view.reviewCase,
       event,
     );
-    return this.#view(view.reviewCase);
+    return this.#requireCase(view.reviewCase.id);
   }
 
   async prepare(caseId: string): Promise<HumanReproductionPreparation> {
@@ -474,56 +448,11 @@ class DefaultCurrentHumanReview implements CurrentHumanReviewRunner {
   async readCase(
     caseId: string,
   ): Promise<CurrentHumanReviewCaseView | undefined> {
-    const record = await this.#store.readCurrentHumanReviewCase(caseId);
-    return record === undefined ? undefined : this.#view(record.reviewCase);
+    return this.#reader.readCase(caseId);
   }
 
   async readQueue(campaignId: string): Promise<CurrentHumanReviewQueueView> {
-    const records = await this.#store.listCurrentHumanReviewCases(campaignId);
-    const views = await Promise.all(
-      records.map((record) => this.#view(record.reviewCase)),
-    );
-    const sorted = [...views].sort(compareCases);
-    return {
-      campaignId,
-      active: sorted.filter((view) => view.queueStatus === "active"),
-      deferred: sorted.filter((view) => view.queueStatus === "deferred"),
-      escalation: sorted.filter((view) => view.queueStatus === "escalation"),
-      completed: sorted.filter((view) => view.queueStatus === "completed"),
-    };
-  }
-
-  async #view(
-    reviewCaseValue: CurrentHumanReviewCase,
-  ): Promise<CurrentHumanReviewCaseView> {
-    const reviewCase = currentHumanReviewCaseSchema.parse(reviewCaseValue);
-    if (reviewCase.policyDigest !== this.#policy.digest) {
-      throw new Error("Human Review Case belongs to another Queue Policy");
-    }
-    const [schedule, preparations, results] = await Promise.all([
-      this.#store.listCurrentHumanReviewSchedule(reviewCase.id),
-      this.#store.listHumanReproductionPreparations(reviewCase.id),
-      this.#store.listCurrentHumanReviewResults(reviewCase.id),
-    ]);
-    const result = results[0];
-    const queueStatus: CurrentHumanReviewQueueStatus =
-      result !== undefined
-        ? "completed"
-        : reviewCase.lane === "escalation"
-          ? "escalation"
-          : reviewCase.initialQueueStatus === "active" ||
-              schedule.some((item) => item.event.event === "promoted")
-            ? "active"
-            : "deferred";
-    return {
-      reviewCase,
-      queueStatus,
-      escalationSelected: schedule.some(
-        (item) => item.event.event === "escalation-selected",
-      ),
-      preparations,
-      result,
-    };
+    return this.#reader.readQueue(campaignId);
   }
 
   async #requireCase(caseId: string): Promise<CurrentHumanReviewCaseView> {

@@ -1,0 +1,52 @@
+{
+  "attempt": {
+    "attemptId": "adversarial-critic:66227216feed5d6ef793c6e00c97492a2561aafe244479308d42adae372d9e17",
+    "digest": "sha256:b6d48a0db9271fdad56df28a1cc67690ea0f7f427a3dd2de0ccad99131fe0540",
+    "kind": "attempt-execution-result",
+    "owner": "exploration",
+    "planDigest": "sha256:188953939514998a72b7af541e7bf582be8c4c7412a75f9e0de26820ad2f8fbd",
+    "role": "adversarial-critic",
+    "schemaVersion": 2
+  },
+  "dispositions": [
+    {
+      "challenges": [],
+      "proposal": {
+        "batchId": "sha256:2b8425b1be948348542f97433fcddc8f9ba7bc66ccdd64f683426a091df723ab",
+        "id": "sha256:4dea2ab44dbfd3a20d22d41d86b6f74636f85a65a812e39b07c972e4333990e3",
+        "kind": "chain-proposal",
+        "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+        "queueDigest": "sha256:3f84b3db1570bcddf10b441d59c802dcb183f3c3e292b30659dbd416dd48ccb1",
+        "schemaVersion": 1,
+        "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "verdict": "survives"
+    }
+  ],
+  "id": "sha256:88afe9cfa7a7ffd36c97e4b0ed32e1d1b5f0d865d75375fa189b79f611919b9a",
+  "kind": "adversarial-critique",
+  "manifest": {
+    "digest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+    "kind": "target-file-manifest",
+    "schemaVersion": 1,
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "targetSnapshotId": "brizy-2.8.11"
+  },
+  "schemaVersion": 1,
+  "synthesis": {
+    "batchId": "sha256:2b8425b1be948348542f97433fcddc8f9ba7bc66ccdd64f683426a091df723ab",
+    "id": "sha256:6d06fa7a66e9992f501f140debdcb87bbbca6f5ab09e974a091825e7b275761a",
+    "kind": "chain-synthesis",
+    "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+    "proposals": 1,
+    "queueDigest": "sha256:3f84b3db1570bcddf10b441d59c802dcb183f3c3e292b30659dbd416dd48ccb1",
+    "schemaVersion": 1,
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "target": {
+    "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "id": "brizy-2.8.11",
+    "pluginSlug": "brizy",
+    "version": "2.8.11"
+  }
+}

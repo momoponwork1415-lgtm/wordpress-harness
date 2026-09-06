@@ -1,0 +1,257 @@
+{
+  "actions": [
+    {
+      "kind": "request-verification",
+      "request": {
+        "hypothesis": {
+          "attemptId": "attempt:7eae752739986939c74621bf5c70052eb382ac8fd126ec9da16f5f56f4f1948e",
+          "digest": "sha256:43f29b85ee11b747698ce82538916922eef30248c55745294b79606d82ad093f",
+          "id": "sha256:9e931fe92ad28f412a03a13e63a21e7d4f8bc746469d6e8fbd9ba2b6f3319706",
+          "kind": "source-bound-hypothesis",
+          "leaseId": "sha256:ded988256d2afa3bbf705a742828a3785f86deeb31d2cf6c0035e26b7f4c4d1a",
+          "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+          "schemaVersion": 2,
+          "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "workWaveDigest": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3"
+        },
+        "id": "sha256:76fc25d1c8d24f799263fa096965d469ace2ac7b7d2ec5e01c4f5a7b261e1d12",
+        "kind": "verification-request",
+        "manifest": {
+          "digest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+          "kind": "target-file-manifest",
+          "schemaVersion": 1,
+          "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "targetSnapshotId": "brizy-2.8.11"
+        },
+        "reason": "The source-bound route can break browser integrity.",
+        "schemaVersion": 1,
+        "target": {
+          "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "id": "brizy-2.8.11",
+          "pluginSlug": "brizy",
+          "version": "2.8.11"
+        },
+        "wave": {
+          "digest": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3",
+          "id": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3",
+          "kind": "work-wave",
+          "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+          "schemaVersion": 2,
+          "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      },
+      "subjects": [
+        {
+          "attemptId": "attempt:7eae752739986939c74621bf5c70052eb382ac8fd126ec9da16f5f56f4f1948e",
+          "digest": "sha256:43f29b85ee11b747698ce82538916922eef30248c55745294b79606d82ad093f",
+          "id": "sha256:9e931fe92ad28f412a03a13e63a21e7d4f8bc746469d6e8fbd9ba2b6f3319706",
+          "kind": "source-bound-hypothesis",
+          "leaseId": "sha256:ded988256d2afa3bbf705a742828a3785f86deeb31d2cf6c0035e26b7f4c4d1a",
+          "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+          "schemaVersion": 2,
+          "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "workWaveDigest": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3"
+        }
+      ]
+    },
+    {
+      "admission": {
+        "composition": "Connect the writer to all privileged readers.",
+        "falsifier": "No privileged reader consumes the state.",
+        "highImpactPotential": "The cross-actor state may reach additional privileged consumers.",
+        "id": "sha256:ebc6707ed75183fa7dc2eef39083e828139a891398bc2adcfa7d85c4b3787afc",
+        "kind": "depth-admission",
+        "manifest": {
+          "digest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+          "kind": "target-file-manifest",
+          "schemaVersion": 1,
+          "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "targetSnapshotId": "brizy-2.8.11"
+        },
+        "nextAction": "Run a bounded missing-link reader trace.",
+        "schemaVersion": 1,
+        "target": {
+          "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "id": "brizy-2.8.11",
+          "pluginSlug": "brizy",
+          "version": "2.8.11"
+        },
+        "wave": {
+          "digest": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3",
+          "id": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3",
+          "kind": "work-wave",
+          "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+          "schemaVersion": 2,
+          "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      },
+      "kind": "admit-depth",
+      "subjects": [
+        {
+          "attemptId": "attempt:7eae752739986939c74621bf5c70052eb382ac8fd126ec9da16f5f56f4f1948e",
+          "digest": "sha256:43f29b85ee11b747698ce82538916922eef30248c55745294b79606d82ad093f",
+          "id": "sha256:9e931fe92ad28f412a03a13e63a21e7d4f8bc746469d6e8fbd9ba2b6f3319706",
+          "kind": "source-bound-hypothesis",
+          "leaseId": "sha256:ded988256d2afa3bbf705a742828a3785f86deeb31d2cf6c0035e26b7f4c4d1a",
+          "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+          "schemaVersion": 2,
+          "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "workWaveDigest": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3"
+        },
+        {
+          "attemptId": "attempt:7eae752739986939c74621bf5c70052eb382ac8fd126ec9da16f5f56f4f1948e",
+          "digest": "sha256:599aea5094cc7f7c976d8c924033a6912508d259b32f745b65aaaaf8e5b883ab",
+          "id": "sha256:3cc99a6909a58dbd0ac303c65b34f6e089867d15c012eeda766d486e7d3c7e00",
+          "kind": "route-fragment",
+          "leaseId": "sha256:ded988256d2afa3bbf705a742828a3785f86deeb31d2cf6c0035e26b7f4c4d1a",
+          "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+          "schemaVersion": 2,
+          "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "workWaveDigest": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3"
+        }
+      ]
+    },
+    {
+      "kind": "retain",
+      "reason": "Keep the research direction active after one Finding.",
+      "subjects": [
+        {
+          "digest": "sha256:8918b47d9f9ff2928115dbad5d20aa752758de434a34ebb076075955dfa04a60",
+          "id": "sha256:7e9c62789daec9664d0645e36cf9e4493859c41b7e1dffd71ad4578917dd5174",
+          "kind": "research-thesis",
+          "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+          "schemaVersion": 1,
+          "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        {
+          "digest": "sha256:50bddf99c7ee15407a1ee240183508365ddaad1e1ad5fcbd73f3e3e3585f06ff",
+          "id": "sha256:ff874b40df50477d5bcd2154e1e20457500f0399adc4236770e959994fa9aa67",
+          "kind": "research-thesis",
+          "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+          "schemaVersion": 1,
+          "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ]
+    }
+  ],
+  "campaignDisposition": "continue",
+  "context": {
+    "attemptResults": [
+      {
+        "attemptId": "attempt:fde00d882984a65f9e8394c58bf1ae9d88a052b51582c81e2334b1270efaf750",
+        "digest": "sha256:bf04a33600874612cd3525013331f39e986d3b763d67f74ff09558d5aa85557d",
+        "kind": "attempt-execution-result",
+        "owner": "exploration",
+        "planDigest": "sha256:41bf7f4f30008b91e8034f64cf0d053144c79e2d116b4e693f813a594f61af3a",
+        "role": "finder",
+        "schemaVersion": 2
+      },
+      {
+        "attemptId": "attempt:7eae752739986939c74621bf5c70052eb382ac8fd126ec9da16f5f56f4f1948e",
+        "digest": "sha256:a5df190d3d6b8e304b1aba2f0b26f2fbf45c05d90e27bfd79b57aecf50c567c6",
+        "kind": "attempt-execution-result",
+        "owner": "exploration",
+        "planDigest": "sha256:eefa7a9d572a4b9a73cefda66a51d8bbd7ee591683d0c9a307dab2f6bf64b374",
+        "role": "finder",
+        "schemaVersion": 2
+      }
+    ],
+    "kind": "wave-evaluation",
+    "rootEvaluatorAttempts": [
+      {
+        "attemptId": "root-evaluator:fbb5db0568541c8a89bbfd6a12e2268a30dd566a70304080aa0ddbcdba733c2d",
+        "digest": "sha256:de94bc5571aa5747ce85e0671a8a45a3e5d5750043ce784c0829107efa8298e2",
+        "kind": "attempt-execution-result",
+        "owner": "exploration",
+        "planDigest": "sha256:a7c09d817dc7b9ec108f7ea6b8d642a7dcde379a600ebd7fc40ea68531658360",
+        "role": "root-evaluator",
+        "schemaVersion": 2
+      }
+    ],
+    "terminalDigest": "sha256:2446aa77713719cc55dfd2ddd1bc40d5fcbef301845b1356bb08dfd4dcde7773",
+    "toolReceipts": [],
+    "workLeases": [
+      {
+        "digest": "sha256:4a1deb3a666e754984c2f412b77d56d8a8e169b595048b01746ddbd21c339890",
+        "id": "sha256:95695611d854f97463553f6de97c2957af8a8d6426bd8b4513c85413c3285105",
+        "kind": "work-lease",
+        "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+        "schemaVersion": 2,
+        "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "workWaveDigest": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3"
+      },
+      {
+        "digest": "sha256:e59d48bbf92fcb6e6c39a379cddcd81ae9f7178d4cfe847a1e4028e61b30b799",
+        "id": "sha256:ded988256d2afa3bbf705a742828a3785f86deeb31d2cf6c0035e26b7f4c4d1a",
+        "kind": "work-lease",
+        "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+        "schemaVersion": 2,
+        "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "workWaveDigest": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3"
+      }
+    ]
+  },
+  "evaluationSubjects": [
+    {
+      "digest": "sha256:8918b47d9f9ff2928115dbad5d20aa752758de434a34ebb076075955dfa04a60",
+      "id": "sha256:7e9c62789daec9664d0645e36cf9e4493859c41b7e1dffd71ad4578917dd5174",
+      "kind": "research-thesis",
+      "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+      "schemaVersion": 1,
+      "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "digest": "sha256:50bddf99c7ee15407a1ee240183508365ddaad1e1ad5fcbd73f3e3e3585f06ff",
+      "id": "sha256:ff874b40df50477d5bcd2154e1e20457500f0399adc4236770e959994fa9aa67",
+      "kind": "research-thesis",
+      "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+      "schemaVersion": 1,
+      "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "attemptId": "attempt:7eae752739986939c74621bf5c70052eb382ac8fd126ec9da16f5f56f4f1948e",
+      "digest": "sha256:43f29b85ee11b747698ce82538916922eef30248c55745294b79606d82ad093f",
+      "id": "sha256:9e931fe92ad28f412a03a13e63a21e7d4f8bc746469d6e8fbd9ba2b6f3319706",
+      "kind": "source-bound-hypothesis",
+      "leaseId": "sha256:ded988256d2afa3bbf705a742828a3785f86deeb31d2cf6c0035e26b7f4c4d1a",
+      "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+      "schemaVersion": 2,
+      "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "workWaveDigest": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3"
+    },
+    {
+      "attemptId": "attempt:7eae752739986939c74621bf5c70052eb382ac8fd126ec9da16f5f56f4f1948e",
+      "digest": "sha256:599aea5094cc7f7c976d8c924033a6912508d259b32f745b65aaaaf8e5b883ab",
+      "id": "sha256:3cc99a6909a58dbd0ac303c65b34f6e089867d15c012eeda766d486e7d3c7e00",
+      "kind": "route-fragment",
+      "leaseId": "sha256:ded988256d2afa3bbf705a742828a3785f86deeb31d2cf6c0035e26b7f4c4d1a",
+      "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+      "schemaVersion": 2,
+      "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "workWaveDigest": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3"
+    }
+  ],
+  "kind": "iteration-decision",
+  "manifest": {
+    "digest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+    "kind": "target-file-manifest",
+    "schemaVersion": 1,
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "targetSnapshotId": "brizy-2.8.11"
+  },
+  "schemaVersion": 2,
+  "target": {
+    "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "id": "brizy-2.8.11",
+    "pluginSlug": "brizy",
+    "version": "2.8.11"
+  },
+  "wave": {
+    "digest": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3",
+    "id": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3",
+    "kind": "work-wave",
+    "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+    "schemaVersion": 2,
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  }
+}

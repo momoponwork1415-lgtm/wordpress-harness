@@ -1,0 +1,9 @@
+{
+  "caseId": "sha256:cd0e6f601d74244bddfde67952cf3cb3b10b5b09fd319a76c5b34a2a3f1d8831",
+  "event": "escalation-selected",
+  "id": "sha256:6fa3fd85de19390697b61434193796db071c422a038947138c15333400925eb6",
+  "kind": "current-human-review-schedule-event",
+  "occurredAt": "2026-09-05T10:00:00.000Z",
+  "schemaVersion": 2,
+  "selectedBy": { "id": "reviewer-1", "kind": "human-reviewer" }
+}

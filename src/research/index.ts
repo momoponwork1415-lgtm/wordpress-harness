@@ -1,6 +1,9 @@
+export { campaignProgressViewV2Schema } from "./campaign-progress-contracts.js";
 export type {
   CampaignProgressSubjectRef,
   CampaignProgressView,
+  CampaignProgressViewV1,
+  CampaignProgressViewV2,
   CampaignProgressUsage,
   CampaignProgressRole,
 } from "./campaign-progress-contracts.js";
@@ -51,6 +54,7 @@ export type {
   CalibrationReviewResult,
   BoundaryPairEvidenceRef,
   CampaignExecutionDependencies,
+  CurrentCampaignExecutionDependencies,
   AnyCampaignRunPlan,
   AnyCampaignRunRecord,
   AnyCampaignRunRecordRef,

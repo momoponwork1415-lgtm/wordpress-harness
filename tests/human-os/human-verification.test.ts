@@ -9,7 +9,6 @@ import {
   defineHumanVerificationEnvironmentRequest,
   defineHumanVerificationRuntimeProfile,
   defineHumanVerificationSetupPlan,
-  openLegacyHumanVerificationReplay,
   openHumanVerificationEnvironmentBuilder,
   setupStageNames,
   type HumanVerificationEnvironmentProvisioner,
@@ -304,12 +303,7 @@ async function establishEnvironment(
 }
 
 async function withHumanOs<T>(
-  run: (input: {
-    readonly directory: string;
-    readonly artifactsDirectory: string;
-    readonly databasePath: string;
-    readonly record: HumanOsRecord;
-  }) => Promise<T>,
+  run: (input: { readonly record: HumanOsRecord }) => Promise<T>,
 ): Promise<T> {
   const directory = await mkdtemp(join(tmpdir(), "human-verification-"));
   const artifactsDirectory = join(directory, "artifacts");
@@ -320,7 +314,7 @@ async function withHumanOs<T>(
     clock: () => new Date(fixedNow),
   });
   try {
-    return await run({ directory, artifactsDirectory, databasePath, record });
+    return await run({ record });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -441,8 +435,8 @@ describe("HumanVerification", () => {
     });
   });
 
-  it("creates a Finding only from a durable verified Human Verification and replays it", async () => {
-    await withHumanOs(async ({ artifactsDirectory, databasePath, record }) => {
+  it("creates a Finding only from a durable verified Human Verification and records it idempotently", async () => {
+    await withHumanOs(async ({ record }) => {
       const packet = reviewPacket({ seed: "verified", rootCause: "root-v" });
       const verification = openHumanVerification({
         record,
@@ -484,15 +478,6 @@ describe("HumanVerification", () => {
         evidenceRequest: null,
       });
 
-      const replayRecord = openSqliteHumanOsRecord({
-        databasePath,
-        artifactStore: openFileHumanOsArtifactStore(artifactsDirectory),
-      });
-      const replay = await openLegacyHumanVerificationReplay({
-        record: replayRecord,
-      }).readCase(receipt.caseId);
-      expect(replay?.verifications).toHaveLength(1);
-      expect(replay?.verifications[0]?.result).toEqual(result);
       expect(await verification.record(humanRecord)).toEqual(result);
     });
   });

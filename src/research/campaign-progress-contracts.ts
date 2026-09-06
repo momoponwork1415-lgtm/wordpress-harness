@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export type CampaignProgressRole =
   | "finder"
   | "root-planner"
@@ -32,7 +34,7 @@ export interface CampaignProgressUsage {
   };
 }
 
-export interface CampaignProgressView {
+export interface CampaignProgressViewV1 {
   readonly kind: "progress";
   readonly schemaVersion: 1;
   readonly campaignId: string;
@@ -74,3 +76,144 @@ export interface CampaignProgressView {
 export interface CampaignProgressSubjectRef {
   readonly kind: "progress";
 }
+
+export interface CampaignProgressViewV2 extends Omit<
+  CampaignProgressViewV1,
+  "schemaVersion" | "counts"
+> {
+  readonly schemaVersion: 2;
+  readonly counts: CampaignProgressViewV1["counts"] & {
+    readonly validations: CampaignProgressCount & {
+      readonly sourceValidated: number;
+      readonly needsResearch: number;
+      readonly disproven: number;
+      readonly pending: number;
+    };
+    readonly findings: number;
+  };
+  readonly activeValidations: readonly {
+    readonly validationId: string;
+    readonly startedAt: string;
+  }[];
+}
+
+export type CampaignProgressView =
+  CampaignProgressViewV1 | CampaignProgressViewV2;
+
+const count = z.number().int().nonnegative();
+const progressCountSchema = z.strictObject({
+  started: count,
+  completed: count,
+  active: count,
+});
+const validationCountsSchema = progressCountSchema.extend({
+  sourceValidated: count,
+  needsResearch: count,
+  disproven: count,
+  pending: count,
+});
+
+export const campaignProgressViewV2Schema = z
+  .strictObject({
+    kind: z.literal("progress"),
+    schemaVersion: z.literal(2),
+    campaignId: z.string().min(1),
+    status: z.enum(["prepared", "running", "completed"]),
+    ledgerHead: count,
+    counts: z.strictObject({
+      runs: progressCountSchema,
+      attempts: progressCountSchema,
+      checkpoints: z.strictObject({
+        total: count,
+        hypotheses: count,
+        routeFragments: count,
+        frontierGaps: count,
+      }),
+      verifications: progressCountSchema.extend({
+        finding: count,
+        disproved: count,
+        blocked: count,
+      }),
+      validations: validationCountsSchema,
+      findings: count,
+      depthIterations: count,
+    }),
+    activeAttempts: z.array(
+      z.strictObject({
+        attemptId: z.string().min(1),
+        role: z.enum([
+          "finder",
+          "root-planner",
+          "root-evaluator",
+          "root-synthesizer",
+          "adversarial-critic",
+          "validator",
+        ]),
+        startedAt: z.string(),
+      }),
+    ),
+    activeVerifications: z.array(
+      z.strictObject({
+        verificationId: z.string().min(1),
+        startedAt: z.string(),
+      }),
+    ),
+    activeValidations: z.array(
+      z.strictObject({
+        validationId: z.string().min(1),
+        startedAt: z.string(),
+      }),
+    ),
+    usage: z.strictObject({
+      measurement: z.enum(["reported", "partial"]),
+      modelAttempts: count,
+      reportedModelAttempts: count,
+      modelTurns: count,
+      modelTokens: z.strictObject({
+        input: count,
+        cacheCreation: count,
+        cacheRead: count,
+        output: count,
+        total: count,
+      }),
+      estimatedCostUsd: z.number().nonnegative(),
+      source: z.strictObject({
+        queries: count,
+        scanBytes: count,
+        responseBytes: count,
+      }),
+    }),
+    lastDurableEvent: z.strictObject({
+      sequence: count,
+      kind: z.string().min(1),
+      occurredAt: z.string(),
+    }),
+  })
+  .superRefine((view, context) => {
+    const groups = [
+      view.counts.runs,
+      view.counts.attempts,
+      view.counts.verifications,
+      view.counts.validations,
+    ];
+    const validation = view.counts.validations;
+    if (
+      groups.some(
+        (group) => group.started !== group.completed + group.active,
+      ) ||
+      validation.completed !==
+        validation.sourceValidated +
+          validation.needsResearch +
+          validation.disproven +
+          validation.pending ||
+      validation.active !== view.activeValidations.length ||
+      view.counts.attempts.active !== view.activeAttempts.length ||
+      view.counts.verifications.active !== view.activeVerifications.length ||
+      view.ledgerHead !== view.lastDurableEvent.sequence
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Campaign progress counters do not match durable state",
+      });
+    }
+  });

@@ -1920,12 +1920,9 @@ export interface CalibrationReview {
   review(input: CalibrationReviewInput): Promise<unknown>;
 }
 
-export interface CampaignExecutionDependencies {
+export interface CurrentCampaignExecutionDependencies {
   readonly artifactStore: JsonArtifactStore;
-  readonly attemptPlanMaterializer: AttemptPlanMaterializer;
   readonly modelExecution: ModelExecution;
-  readonly independentVerifier: IndependentVerifier;
-  readonly labControl: LabControl;
   readonly campaignRunStartFaultBoundary?: {
     afterStarted(plan: DefaultSemanticCampaignRunPlanV3): void | Promise<void>;
   };
@@ -1934,6 +1931,16 @@ export interface CampaignExecutionDependencies {
       intent: Extract<CampaignAttemptIntentV2, { role: "validator" }>,
     ): void | Promise<void>;
   };
+}
+
+/**
+ * @deprecated Use CurrentCampaignExecutionDependencies for current composition.
+ * Retained for existing callers and legacy replay fixtures.
+ */
+export interface CampaignExecutionDependencies extends CurrentCampaignExecutionDependencies {
+  readonly attemptPlanMaterializer: AttemptPlanMaterializer;
+  readonly independentVerifier: IndependentVerifier;
+  readonly labControl: LabControl;
   readonly calibrationReview?: CalibrationReview;
   readonly humanReviewPacketDelivery?: HumanReviewPacketDelivery;
   readonly runtimeVerificationPacketDelivery?: RuntimeVerificationPacketDelivery;

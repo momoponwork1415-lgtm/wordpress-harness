@@ -1,4 +1,4 @@
-<mxfile host="app.diagrams.net" modified="2026-09-05T00:00:00.000Z" agent="Codex documentation" version="24.7.17" type="device" compressed="false">
+<mxfile host="app.diagrams.net" modified="2026-09-06T00:00:00.000Z" agent="Codex documentation" version="24.7.17" type="device" compressed="false">
   <diagram id="whole-system" name="Whole System">
     <mxGraphModel dx="1800" dy="1080" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1080" math="0" shadow="0">
       <root>
@@ -8,11 +8,15 @@
         <mxCell id="title" value="WordPress Semantic Security Research Harness" style="text;html=1;align=left;verticalAlign=middle;fontSize=28;fontStyle=1;fontColor=#172033;" vertex="1" parent="1">
           <mxGeometry x="40" y="20" width="900" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="subtitle" value="Three ownership contexts · Independent Validation creates Findings · humans authorize external action" style="text;html=1;align=left;verticalAlign=middle;fontSize=14;fontColor=#526078;" vertex="1" parent="1">
+        <mxCell id="subtitle" value="Design view · stable ownership · versioned records · human-authorized external action" style="text;html=1;align=left;verticalAlign=middle;fontSize=14;fontColor=#526078;" vertex="1" parent="1">
           <mxGeometry x="40" y="60" width="900" height="30" as="geometry" />
         </mxCell>
         <mxCell id="mission" value="Operating loop: select → approve batch → semantic research → independent validation → Finding → runtime verify → authorize external action" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#172033;strokeColor=#172033;fontColor=#FFFFFF;fontSize=14;fontStyle=1;spacing=12;" vertex="1" parent="1">
           <mxGeometry x="40" y="100" width="1720" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="initial-use" value="Initial use: operator-assisted selection / verification · automation is a later slice · implementation status: Codebase Guide" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontColor=#526078;" vertex="1" parent="1">
+          <mxGeometry x="40" y="160" width="1600" height="24" as="geometry" />
         </mxCell>
 
         <mxCell id="ti" value="TARGET INTELLIGENCE" style="swimlane;html=1;rounded=1;startSize=44;horizontal=1;fillColor=#EAF3FF;swimlaneFillColor=#F8FBFF;strokeColor=#4D86C6;fontColor=#173B64;fontSize=15;fontStyle=1;spacingLeft=14;" vertex="1" parent="1">
@@ -47,31 +51,31 @@
         <mxCell id="campaign" value="Campaign Control&#xa;lifecycle · budget · replay" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
           <mxGeometry x="25" y="70" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="source" value="Source Understanding&#xa;inventory · evidence · optional maps" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
+        <mxCell id="source" value="Source Understanding&#xa;source evidence · optional map" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
           <mxGeometry x="245" y="70" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="exploration" value="Exploration&#xa;theses · hypotheses · conditional Depth" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
+        <mxCell id="exploration" value="Exploration&#xa;theses · hypotheses · Depth" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
           <mxGeometry x="465" y="70" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="validation" value="Independent Validation&#xa;fresh source review · Finding projection" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
+        <mxCell id="validation" value="Validation&#xa;independent source review" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
           <mxGeometry x="685" y="70" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="execution" value="Model Execution&#xa;Opus capacity · process · tool binding" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7F4FF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
+        <mxCell id="execution" value="Model Execution&#xa;process · tools · capacity" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7F4FF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
           <mxGeometry x="245" y="220" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="gateway" value="Read-only Source Gateway&#xa;list · search · read" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7F4FF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
+        <mxCell id="gateway" value="Source Gateway&#xa;read-only · list / search / read" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7F4FF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="research">
           <mxGeometry x="465" y="220" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="record" value="Research Record / CAS&#xa;append-only facts · artifacts · replay" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#E4DAFF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=12;fontStyle=1;" vertex="1" parent="research">
+        <mxCell id="record" value="Research Record / CAS&#xa;current write · versioned read" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#E4DAFF;strokeColor=#7457C5;fontColor=#3F2D7D;fontSize=12;fontStyle=1;" vertex="1" parent="research">
           <mxGeometry x="685" y="210" width="190" height="90" as="geometry" />
         </mxCell>
-        <mxCell id="snapshot" value="Immutable Target Snapshot&#xa;untrusted source · manifest-bound" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#EDF1F7;strokeColor=#64748B;fontColor=#273449;fontSize=12;fontStyle=1;" vertex="1" parent="research">
+        <mxCell id="snapshot" value="Target Snapshot&#xa;immutable · manifest-bound" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#EDF1F7;strokeColor=#64748B;fontColor=#273449;fontSize=12;fontStyle=1;" vertex="1" parent="research">
           <mxGeometry x="465" y="360" width="190" height="90" as="geometry" />
         </mxCell>
         <mxCell id="agent" value="Agent Sandbox&#xa;fresh context · isolated scratch · no ambient shell/network" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#FFF2F1;strokeColor=#C85B51;fontColor=#7B2F2A;fontSize=12;fontStyle=1;spacing=10;" vertex="1" parent="research">
           <mxGeometry x="245" y="360" width="190" height="90" as="geometry" />
         </mxCell>
-        <mxCell id="review-packet" value="Source-validated Finding&#xa;claim · premise · property · evidence" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#FFF4CC;strokeColor=#C79A20;fontColor=#5C4610;fontSize=12;fontStyle=1;spacing=8;" vertex="1" parent="research">
+        <mxCell id="review-packet" value="Finding&#xa;source-validated · immutable&#xa;evidence · counterevidence" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#FFF4CC;strokeColor=#C79A20;fontColor=#5C4610;fontSize=12;fontStyle=1;spacing=8;" vertex="1" parent="research">
           <mxGeometry x="685" y="360" width="190" height="90" as="geometry" />
         </mxCell>
 
@@ -81,7 +85,7 @@
         <mxCell id="understanding" value="Vulnerability Understanding&#xa;route · broken semantics · impact · scenario" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3A9567;fontColor=#205E42;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="human">
           <mxGeometry x="25" y="138" width="320" height="58" as="geometry" />
         </mxCell>
-        <mxCell id="human-verify" value="Human Verification&#xa;separate fresh instance · adds assurance" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3A9567;fontColor=#205E42;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="human">
+        <mxCell id="human-verify" value="Human Verification&#xa;separate fresh instance · additional assurance" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3A9567;fontColor=#205E42;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="human">
           <mxGeometry x="25" y="218" width="320" height="66" as="geometry" />
         </mxCell>
         <mxCell id="finding" value="Submission Gate&#xa;human authorization only" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D8F1E3;strokeColor=#3A9567;fontColor=#205E42;fontSize=13;fontStyle=1;spacing=10;" vertex="1" parent="human">

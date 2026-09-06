@@ -1,0 +1,109 @@
+{
+  "campaignId": "campaign-human-review",
+  "digest": "sha256:2b4f7f61fded032c1ac1ab436ced3ea390ab43a3755790f24aa3942e7d78799d",
+  "kind": "human-review-packet-delivery-request",
+  "packet": {
+    "attackerPremise": "unauthenticated",
+    "candidate": {
+      "digest": "sha256:d56781d3ecee88d02496ee42c741c911db646f2be7a63fa233e4b87b4b9ffc2b",
+      "id": "sha256:fd4fd5c1f4900afb6ffc01d78260ae754061fbf0823f356cfafd82f5cf1a4e0d",
+      "kind": "validation-candidate",
+      "manifestDigest": "sha256:e9dd513cdc96b069b0e247b6e577d86ce549e029726c102063de78b4366381ab",
+      "origins": 1,
+      "schemaVersion": 1,
+      "targetSnapshotDigest": "sha256:77f163aea202fb9915e11bf8e580b3ffb12a0946a57347d8bb7c8661a632cefa"
+    },
+    "causalIdentity": {
+      "attackerControlledPrimitive": "public-state-transition",
+      "brokenSecurityProperty": "state-ownership",
+      "rootCause": "root-4"
+    },
+    "counterevidence": [
+      {
+        "criterion": "counterevidence-and-proof-gap",
+        "evidence": [
+          {
+            "endLine": 20,
+            "fileDigest": "sha256:c28a271e3085e78ed0ec536f02b76645a7dad12bcfafda7e6ebddd82acb52072",
+            "path": "plugin.php",
+            "startLine": 10
+          }
+        ],
+        "reason": "Independent review did not locate an effective control."
+      }
+    ],
+    "humanReproductionSketch": {
+      "attackerRole": "unauthenticated",
+      "expectedSecurityEffect": "Another actor's protected state changes.",
+      "preconditions": ["Use a fresh isolated environment."],
+      "steps": [
+        {
+          "action": "Use the public Target interface to request the state transition.",
+          "ordinal": 1,
+          "sourceEvidence": [
+            {
+              "endLine": 20,
+              "fileDigest": "sha256:c28a271e3085e78ed0ec536f02b76645a7dad12bcfafda7e6ebddd82acb52072",
+              "path": "plugin.php",
+              "startLine": 10
+            }
+          ]
+        }
+      ],
+      "stopConditions": ["Stop if the Target identity differs from the Packet."]
+    },
+    "id": "sha256:d86740280483847f3e5c0bc23807a7db058c2587ccdb443696fb0ea6d694289f",
+    "kind": "human-review-packet",
+    "manifest": {
+      "digest": "sha256:e9dd513cdc96b069b0e247b6e577d86ce549e029726c102063de78b4366381ab",
+      "kind": "target-file-manifest",
+      "schemaVersion": 1,
+      "targetSnapshotDigest": "sha256:77f163aea202fb9915e11bf8e580b3ffb12a0946a57347d8bb7c8661a632cefa",
+      "targetSnapshotId": "review-plugin-4"
+    },
+    "orderedRoute": [
+      {
+        "claim": "Public input reaches an ownership-sensitive state transition.",
+        "evidence": [
+          {
+            "endLine": 20,
+            "fileDigest": "sha256:c28a271e3085e78ed0ec536f02b76645a7dad12bcfafda7e6ebddd82acb52072",
+            "path": "plugin.php",
+            "startLine": 10
+          }
+        ],
+        "ordinal": 1
+      }
+    ],
+    "reviewBoundary": {
+      "findingEligible": false,
+      "validity": "source-validated-not-human-verified"
+    },
+    "riskAssessment": {
+      "candidateId": "sha256:fd4fd5c1f4900afb6ffc01d78260ae754061fbf0823f356cfafd82f5cf1a4e0d",
+      "digest": "sha256:cc2ebdc3056a106dc13f0c8de2cde9db1f8d99465cfdc7036e97a2cb2f2a80b3",
+      "id": "sha256:9d5b3c8f91c9340f14bc0ae348f40f92c109641375ef1f0d7091d14c169ccc67",
+      "kind": "risk-assessment",
+      "schemaVersion": 1,
+      "validationId": "sha256:fd4fd5c1f4900afb6ffc01d78260ae754061fbf0823f356cfafd82f5cf1a4e0d"
+    },
+    "runtimeUncertainties": ["Runtime behavior remains unobserved."],
+    "schemaVersion": 1,
+    "sourceEvidence": [
+      {
+        "endLine": 20,
+        "fileDigest": "sha256:c28a271e3085e78ed0ec536f02b76645a7dad12bcfafda7e6ebddd82acb52072",
+        "path": "plugin.php",
+        "startLine": 10
+      }
+    ],
+    "target": {
+      "digest": "sha256:77f163aea202fb9915e11bf8e580b3ffb12a0946a57347d8bb7c8661a632cefa",
+      "id": "review-plugin-4",
+      "pluginSlug": "review-plugin",
+      "version": "1.2.3"
+    }
+  },
+  "runId": "run-repeat",
+  "schemaVersion": 1
+}

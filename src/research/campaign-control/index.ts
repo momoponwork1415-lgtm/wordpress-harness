@@ -131,6 +131,7 @@ import {
   type CampaignAttemptIntentV2,
   type CampaignAttemptResultStoredV2,
   type CampaignExecutionDependencies,
+  type CurrentCampaignExecutionDependencies,
   type CampaignRunPlan,
   type CampaignRunPlanV2,
   type DefaultSemanticCampaignRunPlanV2,
@@ -211,7 +212,7 @@ function campaignAttemptId(
 }
 
 async function readFinderResult(
-  dependencies: CampaignExecutionDependencies,
+  dependencies: CurrentCampaignExecutionDependencies,
   refValue: AttemptExecutionResultRef,
 ): Promise<FinderAttemptResult> {
   const ref = attemptExecutionResultRefSchema.parse(refValue);
@@ -259,9 +260,18 @@ function requireLegacyExecution(
   return record;
 }
 
+function requireLegacyCampaignDependencies(
+  dependencies: CampaignExecutionDependencies | undefined,
+): CampaignExecutionDependencies {
+  if (dependencies === undefined) {
+    throw new Error("Campaign execution dependencies are unavailable");
+  }
+  return dependencies;
+}
+
 async function preflightSemanticFinderWave(
   record: ResearchRecord,
-  dependencies: CampaignExecutionDependencies,
+  dependencies: CurrentCampaignExecutionDependencies,
   plan: PreparedWaveCampaignRunPlanV2,
 ): Promise<{
   readonly wave: SemanticWorkWavePlan;
@@ -359,7 +369,7 @@ async function preflightSemanticFinderWave(
 }
 
 async function readSemanticFinderResult(
-  dependencies: CampaignExecutionDependencies,
+  dependencies: CurrentCampaignExecutionDependencies,
   refValue: unknown,
 ): Promise<{
   readonly ref: ReturnType<typeof attemptExecutionResultV2RefSchema.parse> & {
@@ -394,7 +404,7 @@ async function readSemanticFinderResult(
 }
 
 async function readSemanticAttemptResult(
-  dependencies: CampaignExecutionDependencies,
+  dependencies: CurrentCampaignExecutionDependencies,
   refValue: unknown,
 ): Promise<AttemptExecutionResultV2> {
   const ref = attemptExecutionResultV2RefSchema.parse(refValue);
@@ -416,7 +426,7 @@ async function readSemanticAttemptResult(
 }
 
 async function materializeCampaignBudgetExhaustedResult(
-  dependencies: CampaignExecutionDependencies,
+  dependencies: CurrentCampaignExecutionDependencies,
   plan: Extract<ModelAttemptPlan, { schemaVersion: 2 }>,
   exhaustedDimensions: readonly string[],
 ): Promise<AttemptExecutionResultV2> {
@@ -601,7 +611,7 @@ function validateValidatorAttemptResult(
 }
 
 async function readStoredValidatorAttemptResult(
-  dependencies: CampaignExecutionDependencies,
+  dependencies: CurrentCampaignExecutionDependencies,
   plan: Extract<ModelAttemptPlan, { schemaVersion: 2; role: "validator" }>,
   refValue: unknown,
 ): Promise<AttemptExecutionResultV2> {
@@ -612,7 +622,7 @@ async function readStoredValidatorAttemptResult(
 
 function recordedValidationModelExecution(
   record: CurrentCampaignStore,
-  dependencies: CampaignExecutionDependencies,
+  dependencies: CurrentCampaignExecutionDependencies,
   campaignId: string,
   runId: string,
   candidateOrdinals: ReadonlyMap<string, number>,
@@ -662,7 +672,7 @@ function recordedValidationModelExecution(
 
 async function executeRecordedSemanticAttempt(
   record: CampaignExecutionStore,
-  dependencies: CampaignExecutionDependencies,
+  dependencies: CurrentCampaignExecutionDependencies,
   plan: Extract<ModelAttemptPlan, { schemaVersion: 2 }>,
   intent: CampaignAttemptIntentV2,
   onFinderCheckpoint?: (checkpoint: SemanticFinderCheckpointRef) => void,
@@ -850,7 +860,7 @@ async function executeRecordedSemanticAttempt(
 
 async function openSemanticFinderCheckpointObserver(
   record: CampaignExecutionStore,
-  dependencies: CampaignExecutionDependencies,
+  dependencies: CurrentCampaignExecutionDependencies,
   plan: Extract<AttemptPlanV2, { role: "finder" }>,
   intent: Extract<CampaignAttemptIntentV2, { role: "finder" }>,
   onCheckpoint?: (checkpoint: SemanticFinderCheckpointRef) => void,
@@ -976,7 +986,7 @@ async function openSemanticFinderCheckpointObserver(
 
 async function executeSemanticFinderWave(
   record: ResearchRecord,
-  dependencies: CampaignExecutionDependencies,
+  dependencies: CurrentCampaignExecutionDependencies,
   plan: PreparedWaveCampaignRunPlanV2,
 ) {
   const preflight = await preflightSemanticFinderWave(
@@ -1161,7 +1171,7 @@ interface CurrentDepthExecutionInput {
 
 async function executeCurrentSemanticDepthRound(
   record: CurrentCampaignStore,
-  dependencies: CampaignExecutionDependencies,
+  dependencies: CurrentCampaignExecutionDependencies,
   plan: DefaultSemanticCampaignRunPlanV3,
   input: CurrentDepthExecutionInput,
 ): Promise<{
@@ -1511,7 +1521,7 @@ async function executeCurrentSemanticDepthRound(
 }
 
 async function prepareSourceValidatedFindings(
-  dependencies: CampaignExecutionDependencies,
+  dependencies: CurrentCampaignExecutionDependencies,
   candidates: readonly ValidationCandidate[],
   validations: readonly ValidationRecord[],
 ): Promise<readonly FindingRef[]> {
@@ -1546,7 +1556,7 @@ async function prepareSourceValidatedFindings(
 
 async function completeCurrentSemanticIteration(
   record: CurrentCampaignStore,
-  dependencies: CampaignExecutionDependencies,
+  dependencies: CurrentCampaignExecutionDependencies,
   plan: DefaultSemanticCampaignRunPlanV3,
   planDigest: string,
   decision: IterationDecisionV3,
@@ -1804,9 +1814,10 @@ async function completeCurrentSemanticIteration(
 
 async function executeDefaultSemanticCampaign(
   record: CampaignExecutionStore,
-  dependencies: CampaignExecutionDependencies,
+  dependencies: CurrentCampaignExecutionDependencies,
   plan: DefaultSemanticCampaignRunPlanV2 | DefaultSemanticCampaignRunPlanV3,
   legacyExecution?: ResearchRecord,
+  legacyDependencies?: CampaignExecutionDependencies,
 ) {
   const campaignStartedAt = performance.now();
   const preparation = await record.readPreparation(plan.campaignId);
@@ -1839,7 +1850,7 @@ async function executeDefaultSemanticCampaign(
     plan.schemaVersion === 2
       ? openSemanticVerificationQueue(
           requireLegacyExecution(legacyExecution),
-          dependencies,
+          requireLegacyCampaignDependencies(legacyDependencies),
           plan,
         )
       : undefined;
@@ -3705,10 +3716,31 @@ async function executeRun(
 function createCampaignControl(
   currentStore: CampaignExecutionStore,
   replay: LegacyResearchReplay,
-  dependencies?: CampaignExecutionDependencies,
+  configuredDependencies?: CurrentCampaignExecutionDependencies,
   preparationArtifactStore?: JsonArtifactStore,
   legacyExecution?: ResearchRecord,
+  legacyDependencies?: CampaignExecutionDependencies,
 ): CampaignControl {
+  const dependencies: CurrentCampaignExecutionDependencies | undefined =
+    configuredDependencies === undefined
+      ? undefined
+      : {
+          artifactStore: configuredDependencies.artifactStore,
+          modelExecution: configuredDependencies.modelExecution,
+          ...(configuredDependencies.campaignRunStartFaultBoundary === undefined
+            ? {}
+            : {
+                campaignRunStartFaultBoundary:
+                  configuredDependencies.campaignRunStartFaultBoundary,
+              }),
+          ...(configuredDependencies.validationAttemptFaultBoundary ===
+          undefined
+            ? {}
+            : {
+                validationAttemptFaultBoundary:
+                  configuredDependencies.validationAttemptFaultBoundary,
+              }),
+        };
   const validatePreparationHandoff = async (
     preparation: PreparationRecord,
   ): Promise<void> => {
@@ -3821,6 +3853,7 @@ function createCampaignControl(
                     dependencies,
                     plan,
                     legacyExecution,
+                    legacyDependencies,
                   ))
             ).ref;
           }
@@ -3868,7 +3901,7 @@ function createCampaignControl(
         return (
           await executeRun(
             legacyExecution,
-            dependencies,
+            requireLegacyCampaignDependencies(legacyDependencies),
             plan,
             start.planDigest,
           )
@@ -4009,7 +4042,7 @@ function createCampaignControl(
 export function openCampaignControl(
   currentStore: CurrentCampaignStore,
   replay: LegacyResearchReplay,
-  dependencies?: CampaignExecutionDependencies,
+  dependencies?: CurrentCampaignExecutionDependencies,
   preparationArtifactStore?: JsonArtifactStore,
 ): CampaignControl {
   return createCampaignControl(
@@ -4032,5 +4065,6 @@ export function openLegacyCampaignControlForTests(
     dependencies,
     preparationArtifactStore,
     record,
+    dependencies,
   );
 }

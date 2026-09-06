@@ -1,0 +1,31 @@
+{
+  "evidenceRequest": null,
+  "finding": null,
+  "kind": "human-verification-result",
+  "schemaVersion": 1,
+  "verification": {
+    "attackerRole": "unauthenticated",
+    "caseId": "sha256:ee1e83f6cedbf445860e460769a11c9078d98506e5c47b5e7e196cedec95fdc6",
+    "disposition": {
+      "blocker": "environment-unavailable",
+      "reason": "The required gVisor runtime was unavailable.",
+      "status": "blocked"
+    },
+    "environment": {
+      "kind": "human-verification-environment-unavailable",
+      "requestDigest": "sha256:8e233ad0bad0b4e2eaf6a52537ed38a1c0db6489f59ec58de5d199e5422e9df0",
+      "schemaVersion": 1
+    },
+    "id": "sha256:6494e3a22478fd215422706eaad90175f4c63510c8207339c49234f12c2c85d4",
+    "kind": "human-verification-record",
+    "packetDigest": "sha256:2a47bd6023342defd0f797010aaa677d7108210cdb261e956c42892879a9edd1",
+    "performedAt": "2026-09-05T04:00:00.000Z",
+    "reviewer": { "id": "reviewer-alice", "kind": "human-reviewer" },
+    "schemaVersion": 1,
+    "securityEffect": {
+      "description": "The Security Effect could not be determined.",
+      "status": "uncertain"
+    },
+    "targetInterfaceSteps": []
+  }
+}

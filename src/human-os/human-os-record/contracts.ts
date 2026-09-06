@@ -255,6 +255,7 @@ export interface HumanOsRecord
     AIReproductionRecord,
     FindingAIReproductionStore,
     CurrentHumanReviewStore {
+  close(): void;
   readEnvironmentDisposition(
     requestDigest: string,
   ): Promise<HumanVerificationEnvironmentRecordView | undefined>;

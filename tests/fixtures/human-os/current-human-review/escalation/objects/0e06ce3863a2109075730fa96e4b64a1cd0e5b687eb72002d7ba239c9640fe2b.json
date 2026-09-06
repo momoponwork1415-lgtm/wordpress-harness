@@ -1,0 +1,49 @@
+{
+  "admittedAt": "2026-09-05T10:00:00.000Z",
+  "attackerPremise": "unauthenticated",
+  "campaignId": "campaign-human-v2",
+  "causalIdentity": {
+    "attackerControlledPrimitive": "public-state-transition",
+    "brokenSecurityProperty": "state-ownership",
+    "rootCause": "cross-actor-state"
+  },
+  "id": "sha256:cd0e6f601d74244bddfde67952cf3cb3b10b5b09fd319a76c5b34a2a3f1d8831",
+  "initialQueueStatus": "escalation",
+  "kind": "current-human-review-case",
+  "lane": "escalation",
+  "originAttempt": {
+    "digest": "sha256:4ad323c691b802b2ba211f7fa4f057e7db474e84d0fcc12a659d2836e27cd9c4",
+    "id": "sha256:883cd68b12ba90d6a63d76600c35f4c2c1e0129a15ce339eab24b6e3c391f45c",
+    "intakeId": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "kind": "ai-reproduction-attempt",
+    "packetDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "runtimeProfileDigest": "sha256:24b6971ac95f2d1116e7e12ea43d3a1ebaf4e1776f356d345cceeaef51c4c341",
+    "schemaVersion": 2,
+    "setupPlanDigest": "sha256:05e87425ae689fac6d83639af07dc7571b524692e955dfac4aa351a116374b09",
+    "targetSnapshotDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "toolPolicyDigest": "sha256:023efdf06f4a21fd246e6d372848fdfb11d817c6e823b74c03c8ad99540ac726"
+  },
+  "originOutcome": {
+    "reason": "effect-unclear",
+    "status": "runtime-inconclusive"
+  },
+  "originTarget": {
+    "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "id": "review-plugin-2.0.0",
+    "pluginSlug": "review-plugin",
+    "version": "2.0.0"
+  },
+  "policyDigest": "sha256:c211a7eac9debef08d116e0e74af57b2e3bc47c30958aae71a717caa53bfb1c8",
+  "priority": {
+    "attackerPremise": 0,
+    "impact": 3,
+    "reproductionCost": 65,
+    "stableTieBreaker": "sha256:cd0e6f601d74244bddfde67952cf3cb3b10b5b09fd319a76c5b34a2a3f1d8831"
+  },
+  "runId": "run-human-v2",
+  "schemaVersion": 2,
+  "securityEffect": {
+    "claimedPropertyChange": "state-ownership",
+    "impact": "sql-injection"
+  }
+}

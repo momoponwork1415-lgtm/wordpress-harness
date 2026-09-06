@@ -1,0 +1,13 @@
+{
+  "eligibleModelFamilies": ["claude"],
+  "id": "closed-slice-wave-v1",
+  "kind": "exploration-bootstrap-policy",
+  "leaseBudget": {
+    "maxHypotheses": 2,
+    "maxModelTokens": 10000,
+    "maxWallTimeMs": 60000
+  },
+  "maxFocusAreas": 1,
+  "maxLeases": 2,
+  "schemaVersion": 1
+}

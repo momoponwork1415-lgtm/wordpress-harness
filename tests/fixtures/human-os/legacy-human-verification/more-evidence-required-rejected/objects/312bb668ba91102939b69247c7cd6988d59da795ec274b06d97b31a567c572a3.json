@@ -1,0 +1,208 @@
+{
+  "digest": "sha256:40aa3ecf2bb699fa153c618ae37b68f4f62735fac855900923d29382578dfdec",
+  "grants": [],
+  "kind": "human-verification-environment-request",
+  "packet": {
+    "attackerPremise": "unauthenticated",
+    "candidate": {
+      "digest": "sha256:8f64e342213d82956caadb497809262c539c69ce78a33c4b20c6fce6386314cc",
+      "id": "sha256:e5b6d9f6e42c53cbaf558508dc0ca88b2a1d03b88e4cb17475feff16a0454b8b",
+      "kind": "validation-candidate",
+      "manifestDigest": "sha256:216573902ae51f21978065cc876e9c57eef27bff455a1a0a2354ad5c3f3a538d",
+      "origins": 1,
+      "schemaVersion": 1,
+      "targetSnapshotDigest": "sha256:39dee9f164bf23533f9987d47526722b6ffd8d09483e826d3a53bed035f910b0"
+    },
+    "causalIdentity": {
+      "attackerControlledPrimitive": "public-state-transition",
+      "brokenSecurityProperty": "state-ownership",
+      "rootCause": "root-evidence"
+    },
+    "counterevidence": [
+      {
+        "criterion": "counterevidence-and-proof-gap",
+        "evidence": [
+          {
+            "endLine": 20,
+            "fileDigest": "sha256:1c14be7bdf076fcdb3f7dc148407d9ccfcb1b8c99a1d6c72888e0f721b4a8f8e",
+            "path": "plugin.php",
+            "startLine": 10
+          }
+        ],
+        "reason": "Independent review did not locate an effective control."
+      }
+    ],
+    "humanReproductionSketch": {
+      "attackerRole": "unauthenticated",
+      "expectedSecurityEffect": "Another actor's protected state changes.",
+      "preconditions": ["Use a fresh isolated environment."],
+      "steps": [
+        {
+          "action": "Use the public Target interface to request the state transition.",
+          "ordinal": 1,
+          "sourceEvidence": [
+            {
+              "endLine": 20,
+              "fileDigest": "sha256:1c14be7bdf076fcdb3f7dc148407d9ccfcb1b8c99a1d6c72888e0f721b4a8f8e",
+              "path": "plugin.php",
+              "startLine": 10
+            }
+          ]
+        }
+      ],
+      "stopConditions": ["Stop if the Target identity differs from the Packet."]
+    },
+    "id": "sha256:478c6f0052c040b0d318a98d359048fc0d239e688ccb2ce23e90de9dd32437d8",
+    "kind": "human-review-packet",
+    "manifest": {
+      "digest": "sha256:216573902ae51f21978065cc876e9c57eef27bff455a1a0a2354ad5c3f3a538d",
+      "kind": "target-file-manifest",
+      "schemaVersion": 1,
+      "targetSnapshotDigest": "sha256:39dee9f164bf23533f9987d47526722b6ffd8d09483e826d3a53bed035f910b0",
+      "targetSnapshotId": "review-plugin-evidence"
+    },
+    "orderedRoute": [
+      {
+        "claim": "Public input reaches an ownership-sensitive state transition.",
+        "evidence": [
+          {
+            "endLine": 20,
+            "fileDigest": "sha256:1c14be7bdf076fcdb3f7dc148407d9ccfcb1b8c99a1d6c72888e0f721b4a8f8e",
+            "path": "plugin.php",
+            "startLine": 10
+          }
+        ],
+        "ordinal": 1
+      }
+    ],
+    "reviewBoundary": {
+      "findingEligible": false,
+      "validity": "source-validated-not-human-verified"
+    },
+    "riskAssessment": {
+      "candidateId": "sha256:e5b6d9f6e42c53cbaf558508dc0ca88b2a1d03b88e4cb17475feff16a0454b8b",
+      "digest": "sha256:d14dcc86be88790368f404787fd4e5ddb9fe39ecc374342679d67d2b7bc184e0",
+      "id": "sha256:657fc724e5dfc1b6dbd2c371328c2131db49e891ed49589c6fd28bfda473253a",
+      "kind": "risk-assessment",
+      "schemaVersion": 1,
+      "validationId": "sha256:e5b6d9f6e42c53cbaf558508dc0ca88b2a1d03b88e4cb17475feff16a0454b8b"
+    },
+    "runtimeUncertainties": ["Runtime behavior remains unobserved."],
+    "schemaVersion": 1,
+    "sourceEvidence": [
+      {
+        "endLine": 20,
+        "fileDigest": "sha256:1c14be7bdf076fcdb3f7dc148407d9ccfcb1b8c99a1d6c72888e0f721b4a8f8e",
+        "path": "plugin.php",
+        "startLine": 10
+      }
+    ],
+    "target": {
+      "digest": "sha256:39dee9f164bf23533f9987d47526722b6ffd8d09483e826d3a53bed035f910b0",
+      "id": "review-plugin-evidence",
+      "pluginSlug": "review-plugin",
+      "version": "1.2.3"
+    }
+  },
+  "policy": {
+    "container": {
+      "engineSocketMounted": false,
+      "hostNetwork": false,
+      "privileged": false
+    },
+    "credentials": {
+      "ambientCredentials": false,
+      "brokeredSecretRefsOnly": true,
+      "credentialBearingHostPaths": false
+    },
+    "digest": "sha256:48dc6a288d29f5915cd54f310a70213bd07cc1b70cbef4d33626a87b8566af4e",
+    "egress": { "mode": "deny-all" },
+    "isolation": { "requiredBackend": "gvisor", "silentFallback": false },
+    "kind": "human-verification-environment-policy",
+    "lifecycle": { "disposable": true, "fresh": true },
+    "schemaVersion": 1
+  },
+  "runtimeProfile": {
+    "databaseVersion": "11.8.3",
+    "digest": "sha256:e9336f90acb7ca50a8d91c4b186a2f5e0766a33fe13853cdac0091e464a7b858",
+    "images": {
+      "browser": "registry.invalid/browser@sha256:39947ec8a7a07dedb13b9ef9ad288be276fc1e7a87c98ac38189f073ef8447c0",
+      "database": "registry.invalid/mariadb@sha256:a888ee25d95961156c78618d6f5a348b238cfcb11c08b1c367ff3e6d6d7dfdac",
+      "wordpress": "registry.invalid/wordpress@sha256:c20bd4950741fb8ff5f4b75ba045b9053692e93d8ce8b0df8504515d5089b269",
+      "wordpressCli": "registry.invalid/wordpress-cli@sha256:05a6e6bb8f15a5e31653bea36e5fac71e2a6d08746494a894db6adcc38961aa3"
+    },
+    "isolation": {
+      "backend": "gvisor",
+      "runtimeName": "runsc",
+      "runtimeVersion": "20260901.0"
+    },
+    "kind": "human-verification-runtime-profile",
+    "phpVersion": "8.3.24",
+    "schemaVersion": 1,
+    "webServerVersion": "2.4.65",
+    "wordpressVersion": "6.8.2"
+  },
+  "schemaVersion": 1,
+  "setupPlan": {
+    "configuration": {
+      "locale": "en_US",
+      "siteMode": "single-site",
+      "timezone": "UTC",
+      "variantDigest": null
+    },
+    "digest": "sha256:05e87425ae689fac6d83639af07dc7571b524692e955dfac4aa351a116374b09",
+    "kind": "human-verification-setup-plan",
+    "mainPluginFile": "plugin.php",
+    "pluginSlug": "review-plugin",
+    "schemaVersion": 1,
+    "stages": [
+      {
+        "ordinal": 1,
+        "stage": "install-wordpress",
+        "successCriterion": "wordpress-installed"
+      },
+      {
+        "ordinal": 2,
+        "stage": "install-target",
+        "successCriterion": "target-files-match-manifest"
+      },
+      {
+        "ordinal": 3,
+        "stage": "activate-target",
+        "successCriterion": "target-reports-active"
+      },
+      {
+        "ordinal": 4,
+        "stage": "apply-configuration",
+        "successCriterion": "canonical-configuration-observed"
+      },
+      {
+        "ordinal": 5,
+        "stage": "functional-smoke",
+        "successCriterion": "normal-target-function-observed"
+      }
+    ]
+  },
+  "target": {
+    "kind": "human-verification-target",
+    "manifest": {
+      "digest": "sha256:216573902ae51f21978065cc876e9c57eef27bff455a1a0a2354ad5c3f3a538d",
+      "kind": "target-file-manifest",
+      "schemaVersion": 1,
+      "targetSnapshotDigest": "sha256:39dee9f164bf23533f9987d47526722b6ffd8d09483e826d3a53bed035f910b0",
+      "targetSnapshotId": "review-plugin-evidence"
+    },
+    "schemaVersion": 1,
+    "snapshot": {
+      "digest": "sha256:39dee9f164bf23533f9987d47526722b6ffd8d09483e826d3a53bed035f910b0",
+      "id": "review-plugin-evidence",
+      "pluginSlug": "review-plugin",
+      "version": "1.2.3"
+    },
+    "sourceArtifact": {
+      "digest": "sha256:89409bec0b444bfebc8915f8da58200436979af136908cc189592a5ed8d40a87",
+      "kind": "content-addressed-target-source",
+      "mediaType": "application/zip"
+    }
+  }
+}

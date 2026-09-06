@@ -34,6 +34,10 @@ import type {
   HumanVerificationSetupPlan,
   HumanVerificationTarget,
 } from "./human-verification-environment-contracts.js";
+import {
+  openLegacyPacketAIReproductionReader,
+  type LegacyPacketAIReproductionReader,
+} from "./legacy-packet-ai-reproduction-reader.js";
 
 export interface HumanOsPrivateArtifactStore {
   putPrivateJson(value: unknown): Promise<string>;
@@ -56,11 +60,11 @@ export interface LegacyPacketAIReproductionRunRequest {
   readonly grants: readonly ExternalDependencyGrant[];
 }
 
-export interface LegacyPacketAIReproduction extends RuntimeVerificationPacketDelivery {
+export interface LegacyPacketAIReproduction
+  extends RuntimeVerificationPacketDelivery, LegacyPacketAIReproductionReader {
   run(
     request: LegacyPacketAIReproductionRunRequest,
   ): Promise<AIReproductionResult>;
-  read(attemptId: string): Promise<AIReproductionResult | undefined>;
 }
 
 export interface OpenLegacyPacketAIReproductionOptions {
@@ -240,12 +244,16 @@ function failedResult(input: {
 
 class DefaultLegacyPacketAIReproduction implements LegacyPacketAIReproduction {
   readonly #record: AIReproductionRecord;
+  readonly #reader: LegacyPacketAIReproductionReader;
   readonly #privateArtifactStore: HumanOsPrivateArtifactStore;
   readonly #harness: LegacyPacketAIReproductionHarness;
   readonly #clock: () => Date;
 
   constructor(options: OpenLegacyPacketAIReproductionOptions) {
     this.#record = options.record;
+    this.#reader = openLegacyPacketAIReproductionReader({
+      record: options.record,
+    });
     this.#privateArtifactStore = options.privateArtifactStore;
     this.#harness = options.harness;
     this.#clock = options.clock ?? (() => new Date());
@@ -311,7 +319,7 @@ class DefaultLegacyPacketAIReproduction implements LegacyPacketAIReproduction {
   }
 
   async read(attemptId: string): Promise<AIReproductionResult | undefined> {
-    return (await this.#record.readAIReproductionResult(attemptId))?.result;
+    return this.#reader.read(attemptId);
   }
 
   async #execute(

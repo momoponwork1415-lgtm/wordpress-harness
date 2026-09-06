@@ -1,0 +1,24 @@
+{
+  "experiment": {
+    "adapterVersion": "browser-script-execution@v1",
+    "causalFactor": "attacker-controlled-stored-value",
+    "kind": "browser-script-execution",
+    "schemaVersion": 1,
+    "successCriterion": "browser-execution-canary",
+    "victimContext": "privileged"
+  },
+  "hypothesisDigest": "sha256:f8aabebcab0c085c9c18105697a30301536b20e958e9fe42a4ae7a31e631c35e",
+  "kind": "source-rederivation",
+  "schemaVersion": 1,
+  "sourceEvidence": [
+    {
+      "endLine": 20,
+      "fileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "path": "plugin.php",
+      "startLine": 10
+    }
+  ],
+  "status": "supported",
+  "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "verificationId": "verification:9e931fe92ad28f412a03a13e63a21e7d4f8bc746469d6e8fbd9ba2b6f3319706"
+}

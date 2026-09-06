@@ -1,0 +1,43 @@
+{
+  "attemptId": "attempt:77ee700fdd583937cfdb2975ec544d9eb84f7b7b1ce181c85086698ed497f8a4",
+  "kind": "finder-attempt-result",
+  "leaseId": "sha256:ae21f7c84a99eb9f3b02566a610a00095a4e381284577fc862a85d2a6d786fd7",
+  "output": {
+    "hypotheses": [
+      {
+        "attackerPremise": "unauthenticated",
+        "causalIdentity": {
+          "attackerControlledPrimitive": "unauthenticated-persistent-form-value",
+          "brokenSecurityProperty": "admin-browser-script-integrity",
+          "rootCause": "stored-value-output-without-context-escaping"
+        },
+        "falsifier": "the rendered value is context-escaped",
+        "impact": "stored-xss",
+        "kind": "source-bound-hypothesis",
+        "nextExperiment": "compare browser canaries with the causal factor removed",
+        "route": {
+          "anchors": [
+            {
+              "endLine": 18,
+              "fileDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "path": "includes/form.php",
+              "startLine": 12
+            }
+          ]
+        },
+        "schemaVersion": 1,
+        "unknowns": [
+          {
+            "claim": "the value reaches a privileged browser",
+            "requiredEvidence": "fresh browser witness and causal control"
+          }
+        ]
+      }
+    ],
+    "kind": "finder-output",
+    "leaseId": "sha256:ae21f7c84a99eb9f3b02566a610a00095a4e381284577fc862a85d2a6d786fd7",
+    "schemaVersion": 1
+  },
+  "schemaVersion": 1,
+  "status": "completed"
+}

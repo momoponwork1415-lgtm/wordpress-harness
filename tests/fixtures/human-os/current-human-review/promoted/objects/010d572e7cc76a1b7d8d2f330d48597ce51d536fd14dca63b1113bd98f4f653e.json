@@ -1,0 +1,149 @@
+{
+  "admittedAt": "2026-09-05T10:00:00.000Z",
+  "attackerPremise": "unauthenticated",
+  "campaignId": "campaign-human-v2",
+  "causalIdentity": {
+    "attackerControlledPrimitive": "public-state-transition",
+    "brokenSecurityProperty": "state-ownership",
+    "rootCause": "cross-actor-state"
+  },
+  "id": "sha256:8c03a4fc275b5aa22317273a0012466e03a8d41784e676e7fb0e56e0f254cb96",
+  "initialQueueStatus": "deferred",
+  "kind": "current-human-review-case",
+  "lane": "human-verification",
+  "originAttempt": {
+    "digest": "sha256:7c9e9bd9ec349800aba2912c7f003939dd9e2e45adb249d2c872904cc8d44c93",
+    "id": "sha256:8eddfd43819f6604380f4439f9063e3d8ecabe5134e456a8a5a128ff0c350825",
+    "intakeId": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "kind": "ai-reproduction-attempt",
+    "packetDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "runtimeProfileDigest": "sha256:24b6971ac95f2d1116e7e12ea43d3a1ebaf4e1776f356d345cceeaef51c4c341",
+    "schemaVersion": 2,
+    "setupPlanDigest": "sha256:05e87425ae689fac6d83639af07dc7571b524692e955dfac4aa351a116374b09",
+    "targetSnapshotDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "toolPolicyDigest": "sha256:023efdf06f4a21fd246e6d372848fdfb11d817c6e823b74c03c8ad99540ac726"
+  },
+  "originOutcome": {
+    "status": "runtime-confirmed",
+    "triagePacket": {
+      "attempt": {
+        "digest": "sha256:7c9e9bd9ec349800aba2912c7f003939dd9e2e45adb249d2c872904cc8d44c93",
+        "id": "sha256:8eddfd43819f6604380f4439f9063e3d8ecabe5134e456a8a5a128ff0c350825",
+        "intakeId": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "kind": "ai-reproduction-attempt",
+        "packetDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+        "runtimeProfileDigest": "sha256:24b6971ac95f2d1116e7e12ea43d3a1ebaf4e1776f356d345cceeaef51c4c341",
+        "schemaVersion": 2,
+        "setupPlanDigest": "sha256:05e87425ae689fac6d83639af07dc7571b524692e955dfac4aa351a116374b09",
+        "targetSnapshotDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "toolPolicyDigest": "sha256:023efdf06f4a21fd246e6d372848fdfb11d817c6e823b74c03c8ad99540ac726"
+      },
+      "boundary": {
+        "findingEligible": false,
+        "humanDisposition": false,
+        "humanVerified": false,
+        "programmeEligibility": false,
+        "runtimeConfirmed": true
+      },
+      "confirmedAt": "2026-09-05T10:00:00.000Z",
+      "id": "sha256:048c794f5b886e11fc53ff313a30a69da2cfa9fb4f924570a7f5975da02a7220",
+      "kind": "triage-reproduction-packet",
+      "observation": {
+        "description": "The Packet-bound Security Effect was observed.",
+        "securityEffect": "observed"
+      },
+      "privateEvidence": {
+        "artifactKind": "private-evidence-bundle",
+        "attemptId": "sha256:8eddfd43819f6604380f4439f9063e3d8ecabe5134e456a8a5a128ff0c350825",
+        "digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+        "id": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+        "kind": "human-os-private-artifact",
+        "schemaVersion": 2,
+        "storage": "human-os-private-store",
+        "targetSnapshotDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+      },
+      "proof": { "causalControl": null, "witness": null },
+      "recipe": {
+        "artifactKind": "reproduction-recipe",
+        "attemptId": "sha256:8eddfd43819f6604380f4439f9063e3d8ecabe5134e456a8a5a128ff0c350825",
+        "digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "kind": "human-os-private-artifact",
+        "schemaVersion": 2,
+        "storage": "human-os-private-store",
+        "targetSnapshotDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+      },
+      "recipeMetadata": {
+        "class": "generic",
+        "criterion": {
+          "class": "generic",
+          "expectedSecurityEffect": "Observe the Packet-bound Security Effect.",
+          "proof": "security-effect-observation"
+        },
+        "expectedSecurityEffect": "state-ownership",
+        "stepCount": 2
+      },
+      "runtimeIdentity": {
+        "ambientCredentials": false,
+        "ambientHostShell": false,
+        "arbitraryNetwork": false,
+        "disposable": true,
+        "environmentId": "ai-1-0-2",
+        "fresh": true,
+        "hostTargetExecution": false,
+        "isolation": {
+          "backend": "gvisor",
+          "fallbackUsed": false,
+          "runtimeName": "runsc",
+          "runtimeVersion": "20260901.0"
+        },
+        "kind": "ai-reproduction-runtime-identity",
+        "manifestDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "observedDatabaseVersion": "11.8.3",
+        "observedImages": {
+          "browser": "registry.invalid/browser@sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "database": "registry.invalid/mariadb@sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "wordpress": "registry.invalid/wordpress@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "wordpressCli": "registry.invalid/wordpress-cli@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        "observedPhpVersion": "8.3.24",
+        "observedWebServerVersion": "2.4.65",
+        "observedWordpressVersion": "6.8.2",
+        "runtimeProfileDigest": "sha256:24b6971ac95f2d1116e7e12ea43d3a1ebaf4e1776f356d345cceeaef51c4c341",
+        "schemaVersion": 2,
+        "setupPlanDigest": "sha256:05e87425ae689fac6d83639af07dc7571b524692e955dfac4aa351a116374b09",
+        "targetSnapshotDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "toolPolicyDigest": "sha256:023efdf06f4a21fd246e6d372848fdfb11d817c6e823b74c03c8ad99540ac726"
+      },
+      "runtimePacket": {
+        "candidateId": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+        "id": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+        "kind": "runtime-verification-packet",
+        "manifestDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "schemaVersion": 2,
+        "targetSnapshotDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+      },
+      "schemaVersion": 2
+    }
+  },
+  "originTarget": {
+    "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "id": "review-plugin-1.0.2",
+    "pluginSlug": "review-plugin",
+    "version": "1.0.2"
+  },
+  "policyDigest": "sha256:c211a7eac9debef08d116e0e74af57b2e3bc47c30958aae71a717caa53bfb1c8",
+  "priority": {
+    "attackerPremise": 0,
+    "impact": 1,
+    "reproductionCost": 2,
+    "stableTieBreaker": "sha256:8c03a4fc275b5aa22317273a0012466e03a8d41784e676e7fb0e56e0f254cb96"
+  },
+  "runId": "run-human-v2",
+  "schemaVersion": 2,
+  "securityEffect": {
+    "claimedPropertyChange": "state-ownership",
+    "impact": "site-wide-compromise"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "attemptId": "attempt:2e528ddedf39444a296c8d4057268866aa4ff7a9d2332bbcb9e840818008c562",
+  "kind": "model-attempt-result",
+  "output": {
+    "frontierGaps": [],
+    "hypotheses": [],
+    "kind": "finder-output",
+    "leaseId": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+    "routeFragments": [],
+    "schemaVersion": 2
+  },
+  "owner": "exploration",
+  "planDigest": "sha256:762a7b4f6553995aeecc975ae9a727c59aeca578828416ab0121c621154babe9",
+  "role": "finder",
+  "schemaVersion": 2,
+  "status": "completed"
+}

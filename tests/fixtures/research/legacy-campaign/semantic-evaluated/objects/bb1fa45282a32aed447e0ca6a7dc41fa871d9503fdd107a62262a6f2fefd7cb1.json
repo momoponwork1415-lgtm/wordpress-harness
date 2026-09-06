@@ -1,0 +1,107 @@
+{
+  "attemptId": "root-synthesizer:9cbf73b71eb9b049c101d2dba3f20fdee32f61c08532321fd5b29588a64b4ca0",
+  "kind": "model-attempt-result",
+  "output": {
+    "itemDispositions": [
+      {
+        "disposition": "used",
+        "itemId": "sha256:d983225011e7ae101e367d6eefb2639d2dd1b578d9047f9f92e4c550e81b9183",
+        "reason": "The hypothesis and fragment form a composable route."
+      }
+    ],
+    "kind": "root-synthesis-output",
+    "proposals": [
+      {
+        "attackerPremise": "unauthenticated",
+        "falsifier": "The producer and consumer use unrelated state.",
+        "itemIds": [
+          "sha256:d983225011e7ae101e367d6eefb2639d2dd1b578d9047f9f92e4c550e81b9183"
+        ],
+        "nextAction": "Challenge proposed state connection 1.",
+        "securityProperty": "Privileged browser integrity route 1.",
+        "steps": [
+          {
+            "actor": "unauthenticated-attacker",
+            "consumedValues": ["public-input"],
+            "evidence": [
+              {
+                "endLine": 20,
+                "fileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "path": "plugin.php",
+                "startLine": 10
+              }
+            ],
+            "ordinal": 1,
+            "producedValues": ["stored-value"],
+            "relation": "observed",
+            "request": "Persist a cross-request value.",
+            "stateIdentity": "shared-option"
+          },
+          {
+            "actor": "privileged-browser",
+            "consumedValues": ["stored-value"],
+            "evidence": [
+              {
+                "endLine": 20,
+                "fileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "path": "plugin.php",
+                "startLine": 10
+              }
+            ],
+            "ordinal": 2,
+            "producedValues": ["browser-script-execution"],
+            "relation": "proposed-connection",
+            "request": "Render the stored value.",
+            "stateIdentity": "shared-option"
+          }
+        ],
+        "subjectDigests": [
+          "sha256:599aea5094cc7f7c976d8c924033a6912508d259b32f745b65aaaaf8e5b883ab",
+          "sha256:43f29b85ee11b747698ce82538916922eef30248c55745294b79606d82ad093f"
+        ],
+        "unknowns": [
+          {
+            "claim": "The reader uses the same option value.",
+            "requiredEvidence": "Freshly trace the exact state identity."
+          }
+        ]
+      }
+    ],
+    "schemaVersion": 1
+  },
+  "owner": "exploration",
+  "planDigest": "sha256:8c82bd33c2cb82f8ac320eae66fdb50f729fe98edb45cd3134d05c5350620a7f",
+  "role": "root-synthesizer",
+  "schemaVersion": 2,
+  "status": "completed",
+  "usage": {
+    "kind": "model-attempt-usage",
+    "measurement": "reported",
+    "modelTokens": {
+      "cacheCreation": 20,
+      "cacheRead": 30,
+      "input": 10,
+      "output": 40,
+      "total": 100
+    },
+    "modelTurns": 2,
+    "models": [
+      {
+        "canonicalModel": "claude-opus-5",
+        "id": "claude-opus-5",
+        "tokens": {
+          "cacheCreation": 20,
+          "cacheRead": 30,
+          "input": 10,
+          "output": 40,
+          "total": 100
+        }
+      }
+    ],
+    "providerDurationMs": 8,
+    "schemaVersion": 1,
+    "source": { "queries": 0, "responseBytes": 0, "scanBytes": 0 },
+    "structuredOutputBytes": 1000,
+    "wallTimeMs": 10
+  }
+}

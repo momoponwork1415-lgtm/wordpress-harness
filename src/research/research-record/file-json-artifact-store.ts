@@ -1,9 +1,9 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { z } from "zod";
 
+import { publishImmutableFile } from "../../infrastructure/immutable-file.js";
 import { canonicalJson, sha256Digest } from "./canonical-json.js";
 import type { JsonArtifactStore } from "./contracts.js";
 
@@ -21,12 +21,9 @@ class FileJsonArtifactStore implements JsonArtifactStore {
     const content = canonicalJson(value);
     await mkdir(this.#directory, { mode: 0o700, recursive: true });
     const destination = this.#artifactPath(digest);
-    const temporary = join(
-      this.#directory,
-      `.${digest.slice("sha256:".length)}.${process.pid}.${randomUUID()}.tmp`,
+    await publishImmutableFile(destination, `${content}\n`, () =>
+      this.readJson(digest),
     );
-    await writeFile(temporary, `${content}\n`, { mode: 0o600 });
-    await rename(temporary, destination);
     return digest;
   }
 

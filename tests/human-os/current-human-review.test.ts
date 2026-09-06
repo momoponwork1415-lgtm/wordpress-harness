@@ -11,6 +11,7 @@ import {
   defineHumanVerificationRuntimeProfile,
   defineHumanVerificationSetupPlan,
   openCurrentHumanReview,
+  openCurrentHumanReviewReader,
   setupStageNames,
   type HumanReproductionPreparation,
   type HumanReviewAIReproductionReader,
@@ -550,19 +551,13 @@ describe("Current Human Review", () => {
       result.finding?.id,
     );
 
-    const reopened = openCurrentHumanReview({
+    const reopened = openCurrentHumanReviewReader({
       store: openSqliteHumanOsRecord({
         databasePath,
         artifactStore: openFileHumanOsArtifactStore(artifactDirectory),
         clock: () => new Date(fixedNow),
       }),
-      aiReproductionReader: reader,
       policy,
-      versionReviewer: { review: async () => ({ status: "current" }) },
-      environment: {
-        establish: async ({ attempt }) => humanEnvironment(attempt),
-      },
-      clock: () => new Date(fixedNow),
     });
     expect(await reopened.readQueue("campaign-human-v2")).toEqual(after);
   });

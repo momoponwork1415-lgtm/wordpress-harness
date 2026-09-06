@@ -13,7 +13,7 @@ import {
   bindCurrentSemanticCampaignConfiguration,
   defineCurrentSemanticRootPlanningPolicy,
   openResearch,
-  type CampaignExecutionDependencies,
+  type CurrentCampaignExecutionDependencies,
 } from "../../src/research/index.js";
 import {
   chainSynthesisIncompleteSchema,
@@ -154,734 +154,1211 @@ function failedResult(
   };
 }
 
-describe("CampaignRunner.run source-only Validation", () => {
-  it("recovers lost Exploration and durable Validator results while replaying pre-result-event ledgers", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "campaign-validation-"));
-    const databasePath = join(directory, "research.sqlite");
-    const artifacts = openFileJsonArtifactStore(join(directory, "artifacts"));
-    const input = {
-      ...createCampaignInput("campaign-validation-run"),
-      schemaVersion: 2 as const,
-      promptSet: {
-        id: "semantic-research-source-screen-v6r3",
-        digest: digest("4"),
+async function createCampaignValidationFixture() {
+  const directory = await mkdtemp(join(tmpdir(), "campaign-validation-"));
+  const databasePath = join(directory, "research.sqlite");
+  const artifacts = openFileJsonArtifactStore(join(directory, "artifacts"));
+  const input = {
+    ...createCampaignInput("campaign-validation-run"),
+    schemaVersion: 2 as const,
+    promptSet: {
+      id: "semantic-research-source-screen-v6r3",
+      digest: digest("4"),
+    },
+    modelProfiles: [
+      {
+        id: "claude-opus-5-root-planner-high-v6",
+        digest: digest("5"),
       },
-      modelProfiles: [
+      { id: "claude-opus-5-finder-high-v6", digest: digest("6") },
+      {
+        id: "claude-opus-5-root-evaluator-high-v6",
+        digest: digest("7"),
+      },
+      { id: "claude-opus-5-validator-high-v6", digest: digest("8") },
+    ],
+    canonicalFileManifest: {
+      kind: "canonical-file-manifest" as const,
+      schemaVersion: 1 as const,
+      entries: [{ path: "plugin.php", digest: digest("a"), size: 1_000 }],
+    },
+    budget: {
+      maxAttempts: 128,
+      maxWallTimeMs: 43_200_000,
+      maxModelTokens: 4_600_000,
+    },
+  };
+  const anchor = {
+    path: "plugin.php",
+    fileDigest: digest("a"),
+    startLine: 10,
+    endLine: 20,
+  };
+  const secondaryAnchor = {
+    ...anchor,
+    startLine: 30,
+    endLine: 40,
+  };
+  const observedPlans: ModelAttemptPlan[] = [];
+  const depthQueuesObservedBeforeValidation: string[] = [];
+  const depthQueuesObservedBeforeSynthesis: string[] = [];
+  const validatorProgressSnapshots: unknown[] = [];
+  const dispatchBudgetSnapshots: Array<{
+    readonly runId: string;
+    readonly role: string;
+    readonly assignmentKind: string;
+    readonly reservedAttempts: number;
+    readonly ownReservationDurable: boolean;
+    readonly protectedRootTokens: number;
+    readonly explorationSpentTokens: number;
+    readonly explorationReservedTokens: number;
+    readonly validationRemainingTokens: number;
+    readonly overshootTokens: number;
+  }> = [];
+  const controls = {
+    activeCampaignId: input.campaignId,
+    expectedValidationRunId: "",
+    validationDisposition: "source-validated" as
+      "source-validated" | "needs-research" | "disproven",
+    depthFailure: "none" as "none" | "budget-exhausted",
+    candidateIdentitySuffix: "",
+    validationCandidateCount: 1,
+    validatorReportedTokens: undefined as number | undefined,
+    finderReportedTokens: undefined as readonly number[] | undefined,
+    finderReportedTokenIndex: 0,
+    reverseValidationEvidence: false,
+    injectUnknownExplorationResult: false,
+    injectUnknownValidatorResult: false,
+    firstFindingId: undefined as string | undefined,
+  };
+  const modelExecution: ModelExecution = {
+    run: async (plan) => {
+      if (plan.schemaVersion !== 2) {
+        throw new Error("Current Campaign used a legacy Attempt Plan");
+      }
+      const dispatchBudget = await research.reader.inspect(
+        controls.activeCampaignId,
         {
-          id: "claude-opus-5-root-planner-high-v6",
-          digest: digest("5"),
-        },
-        { id: "claude-opus-5-finder-high-v6", digest: digest("6") },
-        {
-          id: "claude-opus-5-root-evaluator-high-v6",
-          digest: digest("7"),
-        },
-        { id: "claude-opus-5-validator-high-v6", digest: digest("8") },
-      ],
-      canonicalFileManifest: {
-        kind: "canonical-file-manifest" as const,
-        schemaVersion: 1 as const,
-        entries: [{ path: "plugin.php", digest: digest("a"), size: 1_000 }],
-      },
-      budget: {
-        maxAttempts: 128,
-        maxWallTimeMs: 43_200_000,
-        maxModelTokens: 4_600_000,
-      },
-    };
-    const anchor = {
-      path: "plugin.php",
-      fileDigest: digest("a"),
-      startLine: 10,
-      endLine: 20,
-    };
-    const secondaryAnchor = {
-      ...anchor,
-      startLine: 30,
-      endLine: 40,
-    };
-    const observedPlans: ModelAttemptPlan[] = [];
-    const depthQueuesObservedBeforeValidation: string[] = [];
-    const depthQueuesObservedBeforeSynthesis: string[] = [];
-    const validatorProgressSnapshots: unknown[] = [];
-    const dispatchBudgetSnapshots: Array<{
-      readonly runId: string;
-      readonly role: string;
-      readonly assignmentKind: string;
-      readonly reservedAttempts: number;
-      readonly ownReservationDurable: boolean;
-      readonly protectedRootTokens: number;
-      readonly explorationSpentTokens: number;
-      readonly explorationReservedTokens: number;
-      readonly validationRemainingTokens: number;
-      readonly overshootTokens: number;
-    }> = [];
-    let activeCampaignId = input.campaignId;
-    let expectedValidationRunId = "";
-    let validationDisposition:
-      "source-validated" | "needs-research" | "disproven" = "source-validated";
-    let depthFailure: "none" | "budget-exhausted" = "none";
-    let candidateIdentitySuffix = "";
-    let validationCandidateCount = 1;
-    let validatorReportedTokens: number | undefined;
-    let finderReportedTokens: readonly number[] | undefined;
-    let finderReportedTokenIndex = 0;
-    let reverseValidationEvidence = false;
-    let injectUnknownExplorationResult = false;
-    let injectUnknownValidatorResult = false;
-    let firstFindingId: string | undefined;
-    const modelExecution: ModelExecution = {
-      run: async (plan) => {
-        if (plan.schemaVersion !== 2) {
-          throw new Error("Current Campaign used a legacy Attempt Plan");
-        }
-        const dispatchBudget = await research.reader.inspect(activeCampaignId, {
           kind: "budget",
-          runId: expectedValidationRunId,
-        });
-        if (dispatchBudget.kind !== "budget") {
-          throw new Error("Expected a durable reservation before dispatch");
-        }
-        dispatchBudgetSnapshots.push({
-          runId: expectedValidationRunId,
-          role: plan.role,
-          assignmentKind: plan.assignment.kind,
-          reservedAttempts: dispatchBudget.reserved.modelAttempts,
-          ownReservationDurable: dispatchBudget.activeReservations.some(
-            (reservation) => reservation.attemptId === plan.attemptId,
-          ),
-          protectedRootTokens:
-            dispatchBudget.schemaVersion === 2
-              ? dispatchBudget.protectedReservations.reduce(
-                  (total, reservation) =>
-                    total + reservation.amount.modelTokens,
-                  0,
-                )
-              : 0,
-          explorationSpentTokens:
-            dispatchBudget.owners.exploration.spent.modelTokens,
-          explorationReservedTokens:
-            dispatchBudget.owners.exploration.reserved.modelTokens,
-          validationRemainingTokens:
-            dispatchBudget.owners.validation.remaining.modelTokens,
-          overshootTokens: dispatchBudget.overshoot.modelTokens,
-        });
-        observedPlans.push(plan);
-        if (plan.role === "root-planner") {
-          if (injectUnknownExplorationResult) {
-            injectUnknownExplorationResult = false;
-            throw new Error("Injected Exploration provider result loss");
-          }
-          return completedResult(plan, {
-            kind: "root-planner-output",
-            schemaVersion: 1,
-            theses: [
-              {
-                kind: "research-thesis-proposal",
-                schemaVersion: 1,
-                scope: "target-specific",
-                securityAssumption:
-                  "public writes preserve the originating actor boundary",
-                question:
-                  "Can public state cross into a more privileged consumer?",
-                motivation:
-                  "The Target exposes a source-backed persistent state path.",
-                startingBasis: "Oracle-free Target source only.",
-                startingEvidence: [anchor],
-                independence:
-                  "This thesis studies cross-actor state ownership.",
-              },
-              {
-                kind: "research-thesis-proposal",
-                schemaVersion: 1,
-                scope: "target-specific",
-                securityAssumption:
-                  "producer and consumer preserve the same value meaning",
-                question:
-                  "Can a representation transition change the security meaning of a value?",
-                motivation:
-                  "The Target moves values across a source-backed processing boundary.",
-                startingBasis: "Oracle-free Target source only.",
-                startingEvidence: [anchor],
-                independence:
-                  "This thesis studies representation meaning rather than state ownership.",
-              },
-            ],
-          });
-        }
-        if (plan.role === "finder") {
-          const reportedModelTokens =
-            finderReportedTokens?.[finderReportedTokenIndex++];
-          return completedResult(
-            plan,
-            {
-              kind: "finder-output",
-              schemaVersion: 2,
-              leaseId: plan.assignment.leaseId,
-              hypotheses: plan.prompt.includes(
-                "a whole-target review may reveal broken security semantics",
+          runId: controls.expectedValidationRunId,
+        },
+      );
+      if (dispatchBudget.kind !== "budget") {
+        throw new Error("Expected a durable reservation before dispatch");
+      }
+      dispatchBudgetSnapshots.push({
+        runId: controls.expectedValidationRunId,
+        role: plan.role,
+        assignmentKind: plan.assignment.kind,
+        reservedAttempts: dispatchBudget.reserved.modelAttempts,
+        ownReservationDurable: dispatchBudget.activeReservations.some(
+          (reservation) => reservation.attemptId === plan.attemptId,
+        ),
+        protectedRootTokens:
+          dispatchBudget.schemaVersion === 2
+            ? dispatchBudget.protectedReservations.reduce(
+                (total, reservation) => total + reservation.amount.modelTokens,
+                0,
               )
-                ? Array.from(
-                    { length: validationCandidateCount },
-                    (_, index) => {
-                      const identitySuffix =
-                        validationCandidateCount === 1
-                          ? candidateIdentitySuffix
-                          : `${candidateIdentitySuffix}-${index + 1}`;
-                      return {
-                        kind: "source-bound-hypothesis",
-                        schemaVersion: 1,
-                        causalIdentity: {
-                          rootCause: `public-state-crosses-actor-boundary${identitySuffix}`,
-                          attackerControlledPrimitive:
-                            "unauthenticated-option-write",
-                          brokenSecurityProperty:
-                            validationDisposition === "needs-research"
-                              ? "state-consumer-identity"
-                              : `state-ownership${identitySuffix}`,
-                        },
-                        attackerPremise: "unauthenticated",
-                        impact: "account-takeover",
-                        route: {
-                          anchors: reverseValidationEvidence
-                            ? [anchor, secondaryAnchor]
-                            : [anchor],
-                        },
-                        unknowns: [
-                          {
-                            claim:
-                              "A privileged consumer reads the same state.",
-                            requiredEvidence:
-                              "Independently trace the exact source-bound consumer.",
-                          },
-                        ],
-                        falsifier:
-                          "Every consumer independently checks ownership.",
-                        nextExperiment: "Review every source-bound consumer.",
-                      };
-                    },
-                  )
-                : [],
-              routeFragments: [],
-              frontierGaps: [],
+            : 0,
+        explorationSpentTokens:
+          dispatchBudget.owners.exploration.spent.modelTokens,
+        explorationReservedTokens:
+          dispatchBudget.owners.exploration.reserved.modelTokens,
+        validationRemainingTokens:
+          dispatchBudget.owners.validation.remaining.modelTokens,
+        overshootTokens: dispatchBudget.overshoot.modelTokens,
+      });
+      observedPlans.push(plan);
+      if (plan.role === "root-planner") {
+        if (controls.injectUnknownExplorationResult) {
+          controls.injectUnknownExplorationResult = false;
+          throw new Error("Injected Exploration provider result loss");
+        }
+        return completedResult(plan, {
+          kind: "root-planner-output",
+          schemaVersion: 1,
+          theses: [
+            {
+              kind: "research-thesis-proposal",
+              schemaVersion: 1,
+              scope: "target-specific",
+              securityAssumption:
+                "public writes preserve the originating actor boundary",
+              question:
+                "Can public state cross into a more privileged consumer?",
+              motivation:
+                "The Target exposes a source-backed persistent state path.",
+              startingBasis: "Oracle-free Target source only.",
+              startingEvidence: [anchor],
+              independence: "This thesis studies cross-actor state ownership.",
             },
-            reportedModelTokens === undefined
-              ? undefined
-              : {
-                  modelTokens: reportedModelTokens,
-                  estimatedCostUsd: 7.1014455 / 3,
-                },
-          );
-        }
-        if (
-          plan.role === "root-evaluator" &&
-          plan.assignment.kind === "depth-evaluation"
-        ) {
-          return completedResult(plan, {
-            kind: "depth-root-evaluator-output",
-            schemaVersion: 1,
-            dispositions: plan.assignment.proposalIds.map((proposalId) => ({
-              proposalId,
-              action: "retain-route",
-              reason:
-                "Keep the source-bound route active for later missing-link work.",
-            })),
-          });
-        }
-        if (plan.role === "root-evaluator") {
-          const prefix = "Wave evaluation context: ";
-          const line = plan.prompt
-            .split("\n")
-            .find((value) => value.startsWith(prefix));
-          if (line === undefined) throw new Error("Evaluation context missing");
-          const context = evaluationContextSchema.parse(
-            JSON.parse(line.slice(prefix.length)),
-          );
-          const hypotheses = context.evaluationSubjects.filter(
-            (subject) => subject.ref.kind === "source-bound-hypothesis",
-          );
-          const hypothesis = hypotheses[0];
-          const theses = context.evaluationSubjects.filter(
-            (subject) => subject.ref.kind === "research-thesis",
-          );
-          if (hypothesis === undefined || theses.length === 0) {
-            throw new Error(
-              `Expected baseline thesis and Hypothesis: ${context.evaluationSubjects
-                .map((subject) => subject.ref.kind)
-                .join(",")}`,
-            );
-          }
-          return completedResult(plan, {
-            kind: "root-evaluator-output",
+            {
+              kind: "research-thesis-proposal",
+              schemaVersion: 1,
+              scope: "target-specific",
+              securityAssumption:
+                "producer and consumer preserve the same value meaning",
+              question:
+                "Can a representation transition change the security meaning of a value?",
+              motivation:
+                "The Target moves values across a source-backed processing boundary.",
+              startingBasis: "Oracle-free Target source only.",
+              startingEvidence: [anchor],
+              independence:
+                "This thesis studies representation meaning rather than state ownership.",
+            },
+          ],
+        });
+      }
+      if (plan.role === "finder") {
+        const reportedModelTokens =
+          controls.finderReportedTokens?.[controls.finderReportedTokenIndex++];
+        return completedResult(
+          plan,
+          {
+            kind: "finder-output",
             schemaVersion: 2,
-            approachFamilies: hypotheses.map((candidate, index) => ({
-              key: `cross-actor-state-${index + 1}`,
-              subjectDigests: [
-                candidate.ref.digest,
-                ...theses.map((thesis) => thesis.ref.digest),
-              ],
-              thesis: "Public state may cross an actor authority boundary.",
-              mechanism:
-                "Attacker-controlled state reaches a privileged consumer.",
-              falsifier: "Every consumer checks the originating actor.",
-              nextAction: "Validate the exact source-bound route.",
-            })),
-            actions: [
-              ...hypotheses.map((candidate, index) => ({
-                kind: "admit-validation",
-                approachFamilyKey: `cross-actor-state-${index + 1}`,
-                subjectDigests: [candidate.ref.digest],
-                admission: {
-                  hypothesisDigest: candidate.ref.digest,
-                  brokenSecurityProperty:
-                    validationDisposition === "needs-research"
-                      ? "state-consumer-identity"
-                      : `state-ownership${
-                          validationCandidateCount === 1
-                            ? candidateIdentitySuffix
-                            : `${candidateIdentitySuffix}-${index + 1}`
-                        }`,
-                  causalRoute: [
-                    {
-                      ordinal: 1,
-                      claim:
-                        "A public write reaches a privileged consumer without ownership enforcement.",
-                      evidence: reverseValidationEvidence
-                        ? [secondaryAnchor, anchor]
-                        : [anchor],
-                    },
-                  ],
-                  reason: "The exact route is ready for fresh source review.",
-                },
-              })),
-              {
-                kind: "admit-depth",
-                approachFamilyKey: "cross-actor-state-1",
-                subjectDigests: [
-                  hypothesis.ref.digest,
-                  ...theses.map((thesis) => thesis.ref.digest),
-                ],
-                admission: {
-                  highImpactPotential:
-                    "The same cross-actor state may reach additional privileged consumers.",
-                  composition:
-                    "Trace the persisted value into other authority boundaries.",
-                  falsifier:
-                    "Every additional consumer independently checks ownership.",
-                  nextAction:
-                    "Synthesize the source-bound state transition with adjacent consumers.",
-                },
+            leaseId: plan.assignment.leaseId,
+            hypotheses: plan.prompt.includes(
+              "a whole-target review may reveal broken security semantics",
+            )
+              ? Array.from(
+                  { length: controls.validationCandidateCount },
+                  (_, index) => {
+                    const identitySuffix =
+                      controls.validationCandidateCount === 1
+                        ? controls.candidateIdentitySuffix
+                        : `${controls.candidateIdentitySuffix}-${index + 1}`;
+                    return {
+                      kind: "source-bound-hypothesis",
+                      schemaVersion: 1,
+                      causalIdentity: {
+                        rootCause: `public-state-crosses-actor-boundary${identitySuffix}`,
+                        attackerControlledPrimitive:
+                          "unauthenticated-option-write",
+                        brokenSecurityProperty:
+                          controls.validationDisposition === "needs-research"
+                            ? "state-consumer-identity"
+                            : `state-ownership${identitySuffix}`,
+                      },
+                      attackerPremise: "unauthenticated",
+                      impact: "account-takeover",
+                      route: {
+                        anchors: controls.reverseValidationEvidence
+                          ? [anchor, secondaryAnchor]
+                          : [anchor],
+                      },
+                      unknowns: [
+                        {
+                          claim: "A privileged consumer reads the same state.",
+                          requiredEvidence:
+                            "Independently trace the exact source-bound consumer.",
+                        },
+                      ],
+                      falsifier:
+                        "Every consumer independently checks ownership.",
+                      nextExperiment: "Review every source-bound consumer.",
+                    };
+                  },
+                )
+              : [],
+            routeFragments: [],
+            frontierGaps: [],
+          },
+          reportedModelTokens === undefined
+            ? undefined
+            : {
+                modelTokens: reportedModelTokens,
+                estimatedCostUsd: 7.1014455 / 3,
               },
-              ...Array.from({ length: 4 }, (_, index) => ({
-                kind: "schedule-work" as const,
-                subjectDigests: [
-                  hypothesis.ref.digest,
-                  ...theses.map((thesis) => thesis.ref.digest),
-                ],
-                work: {
-                  requiredFact: `Resolve adjacent privileged consumer ${index + 1}.`,
-                  falsifier: `Consumer ${index + 1} does not read the shared state.`,
-                  nextAction: `Trace source-bound consumer ${index + 1}.`,
-                },
-              })),
-              {
-                kind: "retain",
-                subjectDigests: theses.map((thesis) => thesis.ref.digest),
-                reason:
-                  "Keep whole-target research active after this candidate is reviewed.",
-              },
-            ],
-            campaignDisposition: "continue",
-          });
+        );
+      }
+      if (
+        plan.role === "root-evaluator" &&
+        plan.assignment.kind === "depth-evaluation"
+      ) {
+        return completedResult(plan, {
+          kind: "depth-root-evaluator-output",
+          schemaVersion: 1,
+          dispositions: plan.assignment.proposalIds.map((proposalId) => ({
+            proposalId,
+            action: "retain-route",
+            reason:
+              "Keep the source-bound route active for later missing-link work.",
+          })),
+        });
+      }
+      if (plan.role === "root-evaluator") {
+        const prefix = "Wave evaluation context: ";
+        const line = plan.prompt
+          .split("\n")
+          .find((value) => value.startsWith(prefix));
+        if (line === undefined) throw new Error("Evaluation context missing");
+        const context = evaluationContextSchema.parse(
+          JSON.parse(line.slice(prefix.length)),
+        );
+        const hypotheses = context.evaluationSubjects.filter(
+          (subject) => subject.ref.kind === "source-bound-hypothesis",
+        );
+        const hypothesis = hypotheses[0];
+        const theses = context.evaluationSubjects.filter(
+          (subject) => subject.ref.kind === "research-thesis",
+        );
+        if (hypothesis === undefined || theses.length === 0) {
+          throw new Error(
+            `Expected baseline thesis and Hypothesis: ${context.evaluationSubjects
+              .map((subject) => subject.ref.kind)
+              .join(",")}`,
+          );
         }
-        if (plan.role === "root-synthesizer") {
-          const durableRecord = openSqliteResearchRecord({
-            databasePath,
-            artifactStore: artifacts,
-          });
-          try {
-            const queued = await durableRecord.readSemanticDepthWorkQueueV2(
-              activeCampaignId,
-              expectedValidationRunId,
-            );
-            if (queued === undefined) {
-              throw new Error(
-                "Root Synthesis started before the Depth Work Queue was durable",
-              );
-            }
-            depthQueuesObservedBeforeSynthesis.push(queued.queue.digest);
-          } finally {
-            durableRecord.close();
-          }
-          if (depthFailure !== "none") {
-            return failedResult(plan, depthFailure);
-          }
-          return completedResult(plan, {
-            kind: "root-synthesis-output",
-            schemaVersion: 1,
-            itemDispositions: plan.assignment.itemIds.map((itemId) => ({
-              itemId,
-              disposition: "used",
-              reason: "The item contributes a source-bound route subject.",
-            })),
-            proposals: [
-              {
-                itemIds: plan.assignment.itemIds,
-                subjectDigests: plan.assignment.subjectDigests,
-                attackerPremise: "unauthenticated",
-                securityProperty: "Cross-actor state ownership.",
-                steps: [
+        return completedResult(plan, {
+          kind: "root-evaluator-output",
+          schemaVersion: 2,
+          approachFamilies: hypotheses.map((candidate, index) => ({
+            key: `cross-actor-state-${index + 1}`,
+            subjectDigests: [
+              candidate.ref.digest,
+              ...theses.map((thesis) => thesis.ref.digest),
+            ],
+            thesis: "Public state may cross an actor authority boundary.",
+            mechanism:
+              "Attacker-controlled state reaches a privileged consumer.",
+            falsifier: "Every consumer checks the originating actor.",
+            nextAction: "Validate the exact source-bound route.",
+          })),
+          actions: [
+            ...hypotheses.map((candidate, index) => ({
+              kind: "admit-validation",
+              approachFamilyKey: `cross-actor-state-${index + 1}`,
+              subjectDigests: [candidate.ref.digest],
+              admission: {
+                hypothesisDigest: candidate.ref.digest,
+                brokenSecurityProperty:
+                  controls.validationDisposition === "needs-research"
+                    ? "state-consumer-identity"
+                    : `state-ownership${
+                        controls.validationCandidateCount === 1
+                          ? controls.candidateIdentitySuffix
+                          : `${controls.candidateIdentitySuffix}-${index + 1}`
+                      }`,
+                causalRoute: [
                   {
                     ordinal: 1,
-                    relation: "observed",
-                    actor: "unauthenticated-attacker",
-                    request: "Write public state.",
-                    stateIdentity: "shared-option",
-                    consumedValues: ["public-input"],
-                    producedValues: ["persisted-state"],
-                    evidence: [anchor],
-                  },
-                  {
-                    ordinal: 2,
-                    relation: "proposed-connection",
-                    actor: "privileged-consumer",
-                    request: "Read the persisted state.",
-                    stateIdentity: "shared-option",
-                    consumedValues: ["persisted-state"],
-                    producedValues: ["privileged-effect"],
-                    evidence: [anchor],
+                    claim:
+                      "A public write reaches a privileged consumer without ownership enforcement.",
+                    evidence: controls.reverseValidationEvidence
+                      ? [secondaryAnchor, anchor]
+                      : [anchor],
                   },
                 ],
-                unknowns: [
-                  {
-                    claim: "The privileged consumer reads the same state.",
-                    requiredEvidence:
-                      "Trace the exact persisted state identity.",
-                  },
-                ],
-                falsifier: "The producer and consumer use distinct state.",
-                nextAction: "Challenge the state identity in fresh source.",
+                reason: "The exact route is ready for fresh source review.",
+              },
+            })),
+            {
+              kind: "admit-depth",
+              approachFamilyKey: "cross-actor-state-1",
+              subjectDigests: [
+                hypothesis.ref.digest,
+                ...theses.map((thesis) => thesis.ref.digest),
+              ],
+              admission: {
+                highImpactPotential:
+                  "The same cross-actor state may reach additional privileged consumers.",
+                composition:
+                  "Trace the persisted value into other authority boundaries.",
+                falsifier:
+                  "Every additional consumer independently checks ownership.",
+                nextAction:
+                  "Synthesize the source-bound state transition with adjacent consumers.",
+              },
+            },
+            ...Array.from({ length: 4 }, (_, index) => ({
+              kind: "schedule-work" as const,
+              subjectDigests: [
+                hypothesis.ref.digest,
+                ...theses.map((thesis) => thesis.ref.digest),
+              ],
+              work: {
+                requiredFact: `Resolve adjacent privileged consumer ${index + 1}.`,
+                falsifier: `Consumer ${index + 1} does not read the shared state.`,
+                nextAction: `Trace source-bound consumer ${index + 1}.`,
+              },
+            })),
+            {
+              kind: "retain",
+              subjectDigests: theses.map((thesis) => thesis.ref.digest),
+              reason:
+                "Keep whole-target research active after this candidate is reviewed.",
+            },
+          ],
+          campaignDisposition: "continue",
+        });
+      }
+      if (plan.role === "root-synthesizer") {
+        const durableRecord = openSqliteResearchRecord({
+          databasePath,
+          artifactStore: artifacts,
+        });
+        try {
+          const queued = await durableRecord.readSemanticDepthWorkQueueV2(
+            controls.activeCampaignId,
+            controls.expectedValidationRunId,
+          );
+          if (queued === undefined) {
+            throw new Error(
+              "Root Synthesis started before the Depth Work Queue was durable",
+            );
+          }
+          depthQueuesObservedBeforeSynthesis.push(queued.queue.digest);
+        } finally {
+          durableRecord.close();
+        }
+        if (controls.depthFailure !== "none") {
+          return failedResult(plan, controls.depthFailure);
+        }
+        return completedResult(plan, {
+          kind: "root-synthesis-output",
+          schemaVersion: 1,
+          itemDispositions: plan.assignment.itemIds.map((itemId) => ({
+            itemId,
+            disposition: "used",
+            reason: "The item contributes a source-bound route subject.",
+          })),
+          proposals: [
+            {
+              itemIds: plan.assignment.itemIds,
+              subjectDigests: plan.assignment.subjectDigests,
+              attackerPremise: "unauthenticated",
+              securityProperty: "Cross-actor state ownership.",
+              steps: [
+                {
+                  ordinal: 1,
+                  relation: "observed",
+                  actor: "unauthenticated-attacker",
+                  request: "Write public state.",
+                  stateIdentity: "shared-option",
+                  consumedValues: ["public-input"],
+                  producedValues: ["persisted-state"],
+                  evidence: [anchor],
+                },
+                {
+                  ordinal: 2,
+                  relation: "proposed-connection",
+                  actor: "privileged-consumer",
+                  request: "Read the persisted state.",
+                  stateIdentity: "shared-option",
+                  consumedValues: ["persisted-state"],
+                  producedValues: ["privileged-effect"],
+                  evidence: [anchor],
+                },
+              ],
+              unknowns: [
+                {
+                  claim: "The privileged consumer reads the same state.",
+                  requiredEvidence: "Trace the exact persisted state identity.",
+                },
+              ],
+              falsifier: "The producer and consumer use distinct state.",
+              nextAction: "Challenge the state identity in fresh source.",
+            },
+          ],
+        });
+      }
+      if (plan.role === "adversarial-critic") {
+        return completedResult(plan, {
+          kind: "adversarial-critic-output",
+          schemaVersion: 1,
+          dispositions: plan.assignment.proposalIds.map((proposalId) => ({
+            proposalId,
+            verdict: "survives",
+            challenges: [
+              {
+                category: "state-identity",
+                claim: "Both steps refer to the same persisted state.",
+                evidence: [anchor],
+                reason: "The cited source leaves the route plausible.",
+                falsifier: "The state keys differ.",
               },
             ],
-          });
-        }
-        if (plan.role === "adversarial-critic") {
-          return completedResult(plan, {
-            kind: "adversarial-critic-output",
-            schemaVersion: 1,
-            dispositions: plan.assignment.proposalIds.map((proposalId) => ({
-              proposalId,
-              verdict: "survives",
-              challenges: [
-                {
-                  category: "state-identity",
-                  claim: "Both steps refer to the same persisted state.",
-                  evidence: [anchor],
-                  reason: "The cited source leaves the route plausible.",
-                  falsifier: "The state keys differ.",
-                },
-              ],
-            })),
-          });
-        }
-        if (plan.role === "validator") {
-          validatorProgressSnapshots.push(
-            await research.reader.inspect(activeCampaignId, {
-              kind: "progress",
-            }),
+          })),
+        });
+      }
+      if (plan.role === "validator") {
+        validatorProgressSnapshots.push(
+          await research.reader.inspect(controls.activeCampaignId, {
+            kind: "progress",
+          }),
+        );
+        const durableRecord = openSqliteResearchRecord({
+          databasePath,
+          artifactStore: artifacts,
+        });
+        try {
+          const queued = await durableRecord.readSemanticDepthWorkQueueV2(
+            controls.activeCampaignId,
+            controls.expectedValidationRunId,
           );
-          const durableRecord = openSqliteResearchRecord({
-            databasePath,
-            artifactStore: artifacts,
-          });
-          try {
-            const queued = await durableRecord.readSemanticDepthWorkQueueV2(
-              activeCampaignId,
-              expectedValidationRunId,
+          if (queued === undefined) {
+            throw new Error(
+              "Validation started before the Depth Work Queue was durable",
             );
-            if (queued === undefined) {
-              throw new Error(
-                "Validation started before the Depth Work Queue was durable",
-              );
-            }
-            depthQueuesObservedBeforeValidation.push(queued.queue.digest);
-          } finally {
-            durableRecord.close();
           }
-          if (injectUnknownValidatorResult) {
-            throw new Error("Injected provider result loss");
-          }
-          const result = completedResult(plan, {
-            kind: "validation-attempt-output",
-            schemaVersion: 3,
-            candidateId: plan.assignment.candidateId,
-            criteria: criteria.map((criterion) => ({
-              criterion,
-              status:
-                validationDisposition === "needs-research" &&
-                criterion === "reachability-and-premise"
-                  ? "unknown"
-                  : validationDisposition === "disproven" &&
-                      criterion === "broken-control"
-                    ? "fail"
-                    : "pass",
-              reason: `${plan.attemptId} independently resolved ${criterion}.`,
-              evidence: [anchor],
-            })),
-            proposedDisposition: validationDisposition,
-            ...(validationDisposition === "needs-research"
-              ? {
-                  proofGap: {
-                    requiredFact:
-                      "Confirm the privileged consumer reads the same state.",
-                    currentEvidence: [anchor],
-                    falsifier:
-                      "The consumer reads an independently owned state value.",
-                    nextAction:
-                      "Trace every source-bound reader of the persisted state.",
-                  },
-                }
-              : {}),
-          });
-          if (validatorReportedTokens === undefined) return result;
-          const usage = result.value.usage;
-          if (usage === undefined) {
-            throw new Error("Expected reported Validator usage");
-          }
-          const value = {
-            ...result.value,
-            usage: {
-              ...usage,
-              modelTokens: {
-                input: validatorReportedTokens,
-                cacheCreation: 0,
-                cacheRead: 0,
-                output: 0,
-                total: validatorReportedTokens,
-              },
-              models: [
-                {
-                  ...usage.models[0]!,
-                  tokens: {
-                    input: validatorReportedTokens,
-                    cacheCreation: 0,
-                    cacheRead: 0,
-                    output: 0,
-                    total: validatorReportedTokens,
-                  },
-                },
-              ],
-            },
-          };
-          return {
-            ...result,
-            value,
-            ref: { ...result.ref, digest: sha256Digest(value) },
-          };
+          depthQueuesObservedBeforeValidation.push(queued.queue.digest);
+        } finally {
+          durableRecord.close();
         }
-        throw new Error("Unexpected Attempt role");
+        if (controls.injectUnknownValidatorResult) {
+          throw new Error("Injected provider result loss");
+        }
+        const result = completedResult(plan, {
+          kind: "validation-attempt-output",
+          schemaVersion: 3,
+          candidateId: plan.assignment.candidateId,
+          criteria: criteria.map((criterion) => ({
+            criterion,
+            status:
+              controls.validationDisposition === "needs-research" &&
+              criterion === "reachability-and-premise"
+                ? "unknown"
+                : controls.validationDisposition === "disproven" &&
+                    criterion === "broken-control"
+                  ? "fail"
+                  : "pass",
+            reason: `${plan.attemptId} independently resolved ${criterion}.`,
+            evidence: [anchor],
+          })),
+          proposedDisposition: controls.validationDisposition,
+          ...(controls.validationDisposition === "needs-research"
+            ? {
+                proofGap: {
+                  requiredFact:
+                    "Confirm the privileged consumer reads the same state.",
+                  currentEvidence: [anchor],
+                  falsifier:
+                    "The consumer reads an independently owned state value.",
+                  nextAction:
+                    "Trace every source-bound reader of the persisted state.",
+                },
+              }
+            : {}),
+        });
+        if (controls.validatorReportedTokens === undefined) return result;
+        const usage = result.value.usage;
+        if (usage === undefined) {
+          throw new Error("Expected reported Validator usage");
+        }
+        const value = {
+          ...result.value,
+          usage: {
+            ...usage,
+            modelTokens: {
+              input: controls.validatorReportedTokens,
+              cacheCreation: 0,
+              cacheRead: 0,
+              output: 0,
+              total: controls.validatorReportedTokens,
+            },
+            models: [
+              {
+                ...usage.models[0]!,
+                tokens: {
+                  input: controls.validatorReportedTokens,
+                  cacheCreation: 0,
+                  cacheRead: 0,
+                  output: 0,
+                  total: controls.validatorReportedTokens,
+                },
+              },
+            ],
+          },
+        };
+        return {
+          ...result,
+          value,
+          ref: { ...result.ref, digest: sha256Digest(value) },
+        };
+      }
+      throw new Error("Unexpected Attempt role");
+    },
+  };
+  const campaignExecution: CurrentCampaignExecutionDependencies = {
+    artifactStore: artifacts,
+    modelExecution,
+  };
+  const research = openResearch({
+    databasePath,
+    campaignExecution,
+  });
+
+  try {
+    const prepared = await research.runner.prepare(input);
+    if (prepared.targetFileManifest === undefined) {
+      throw new Error("Expected a Target File Manifest");
+    }
+    const profile = (id: string, profileDigest: string) => ({
+      ref: {
+        kind: "model-profile" as const,
+        schemaVersion: 1 as const,
+        id,
+        family: "claude" as const,
+        digest: profileDigest,
+      },
+      execution: {
+        provider: "anthropic" as const,
+        model: "claude-opus-5",
+        transport: "claude-code-process" as const,
+        executableVersion: "2.1.260",
+        effort: "high" as const,
+        eligibilityReceiptDigest: digest("b"),
+      },
+    });
+    const promptSet = {
+      kind: "prompt-set" as const,
+      schemaVersion: 1 as const,
+      id: input.promptSet.id,
+      digest: input.promptSet.digest,
+    };
+    const sourceToolPolicy = {
+      kind: "source-tool-policy" as const,
+      schemaVersion: 1 as const,
+      id: "prospective-source-only-v1",
+      digest: digest("c"),
+    };
+    const bindingSource = {
+      semanticPolicy: defineCurrentSemanticRootPlanningPolicy({
+        plannerBudget: {
+          maxWallTimeMs: 3_600_000,
+          maxModelTokens: 100_000,
+          maxModelTurns: 128,
+          maxProviderCostUsd: 10,
+          maxOutputBytes: 2 * MEBIBYTE,
+          maxSourceQueries: 256,
+          maxSourceScanBytes: 16 * GIBIBYTE,
+          maxSourceResponseBytes: 256 * MEBIBYTE,
+          sourceLimitTerminalOutput: "preserve" as const,
+          reportedUsageEnforcement: "telemetry-only" as const,
+        },
+        finderLeaseBudget: {
+          maxWallTimeMs: 10_800_000,
+          maxModelTokens: 1_000_000,
+          maxModelTurns: 256,
+          maxProviderCostUsd: 20,
+          maxHypotheses: 8,
+          maxOutputBytes: 2 * MEBIBYTE,
+          maxSourceQueries: 512,
+          maxSourceScanBytes: 16 * GIBIBYTE,
+          maxSourceResponseBytes: 256 * MEBIBYTE,
+          sourceLimitTerminalOutput: "preserve" as const,
+          reportedUsageEnforcement: "telemetry-only" as const,
+        },
+      }),
+      planner: {
+        modelProfile: profile(
+          "claude-opus-5-root-planner-high-v6",
+          digest("5"),
+        ),
+        promptSet,
+        sourceToolPolicy,
+      },
+      finder: {
+        modelProfile: profile("claude-opus-5-finder-high-v6", digest("6")),
+        promptSet,
+        selectedKnowledge: [],
+        sourceToolPolicy,
+      },
+      evaluator: {
+        modelProfile: profile(
+          "claude-opus-5-root-evaluator-high-v6",
+          digest("7"),
+        ),
+        promptSet,
+        budget: {
+          maxWallTimeMs: 3_600_000,
+          maxModelTokens: 100_000,
+          maxModelTurns: 128,
+          maxProviderCostUsd: 10,
+          maxOutputBytes: 2 * MEBIBYTE,
+          reportedUsageEnforcement: "telemetry-only" as const,
+        },
+      },
+      validation: {
+        wordpressBaseline: {
+          id: "wordpress-threat-baseline-v1",
+          digest: digest("d"),
+        },
+        validationPolicy: {
+          id: "single-source-validation-v2",
+          digest: digest("e"),
+        },
+        promptSet,
+        validatorModelProfile: profile(
+          "claude-opus-5-validator-high-v6",
+          digest("8"),
+        ),
+        sourceToolPolicy,
+        publicSurface: ["Public WordPress request handlers"],
+        technicalExclusions: [],
+        budget: {
+          validator: {
+            maxWallTimeMs: 1_800_000,
+            maxModelTokens: 100_000,
+            maxModelTurns: 64,
+            maxProviderCostUsd: 7.5,
+            maxOutputBytes: 2 * MEBIBYTE,
+            maxSourceQueries: 128,
+            maxSourceScanBytes: 16 * GIBIBYTE,
+            maxSourceResponseBytes: 256 * MEBIBYTE,
+            sourceLimitTerminalOutput: "preserve" as const,
+            reportedUsageEnforcement: "telemetry-only" as const,
+          },
+        },
       },
     };
-    const campaignExecution: CampaignExecutionDependencies = {
-      artifactStore: artifacts,
-      attemptPlanMaterializer: {
-        materialize: async () => {
-          throw new Error("Legacy Map materializer must not run");
+    const plan = campaignDefaultSemanticRunPlanV3Schema.parse({
+      kind: "campaign-run-plan",
+      schemaVersion: 3,
+      runId: "source-validation-run",
+      campaignId: input.campaignId,
+      preparationDigest: prepared.inputDigest,
+      target: input.targetSnapshot,
+      manifest: prepared.targetFileManifest,
+      metadata: {
+        kind: "oracle-free-target-metadata",
+        schemaVersion: 1,
+        pluginIdentity: "wporg:campaign-validation-run",
+        mainPluginFile: "plugin.php",
+        canonicalInstallDirectory: "campaign-validation-run",
+      },
+      ...bindingSource,
+      bindings: bindCurrentSemanticCampaignConfiguration(bindingSource),
+      budgetPolicy: {
+        kind: "semantic-research-budget",
+        schemaVersion: 3,
+        id: "semantic-research-recall-baseline-v7",
+        maxWorkWaves: 12,
+        maxFinderAttempts: 48,
+        maxConcurrentFinders: 4,
+        maxModelAttempts: 128,
+        maxModelTokens: 4_600_000,
+        maxProviderCostUsd: 150,
+        maxWallTimeMs: 43_200_000,
+        reportedUsageEnforcement: "telemetry-only",
+        exploration: {
+          maxModelTokens: 4_200_000,
+          maxProviderCostUsd: 120,
+          maxWallTimeMs: 36_000_000,
+          rootEvaluationReserve: {
+            maxModelTokens: 100_000,
+            owner: "exploration",
+            role: "root-evaluator",
+          },
+        },
+        validationReserve: {
+          maxModelTokens: 400_000,
+          maxProviderCostUsd: 30,
+          maxWallTimeMs: 7_200_000,
         },
       },
-      modelExecution,
-      independentVerifier: {
-        rederive: async () => {
-          throw new Error("Legacy Independent Verification must not run");
-        },
-      },
-      labControl: {
-        execute: async () => {
-          throw new Error("Lab must not run in source-only Validation");
-        },
-      },
-      runtimeVerificationPacketDelivery: {
-        deliver: async () => {
-          throw new Error("Runtime Packet delivery must not run");
-        },
-      },
-    };
-    const research = openResearch({
-      databasePath,
-      campaignExecution,
     });
 
+    return {
+      anchor,
+      artifacts,
+      bindingSource,
+      campaignExecution,
+      controls,
+      databasePath,
+      depthQueuesObservedBeforeSynthesis,
+      depthQueuesObservedBeforeValidation,
+      directory,
+      dispatchBudgetSnapshots,
+      input,
+      observedPlans,
+      plan,
+      prepared,
+      research,
+      sourceToolPolicy,
+      validatorProgressSnapshots,
+      close: async () => {
+        research.close();
+        await rm(directory, { force: true, recursive: true });
+      },
+    };
+  } catch (error) {
     try {
-      const prepared = await research.runner.prepare(input);
-      if (prepared.targetFileManifest === undefined) {
-        throw new Error("Expected a Target File Manifest");
-      }
-      const profile = (id: string, profileDigest: string) => ({
-        ref: {
-          kind: "model-profile" as const,
-          schemaVersion: 1 as const,
-          id,
-          family: "claude" as const,
-          digest: profileDigest,
+      research.close();
+    } catch {}
+    try {
+      await rm(directory, { force: true, recursive: true });
+    } catch {}
+    throw error;
+  }
+}
+
+async function assertSourceValidatedBaseline(
+  fixture: Awaited<ReturnType<typeof createCampaignValidationFixture>>,
+) {
+  const {
+    anchor,
+    artifacts,
+    controls,
+    databasePath,
+    depthQueuesObservedBeforeSynthesis,
+    depthQueuesObservedBeforeValidation,
+    dispatchBudgetSnapshots,
+    input,
+    observedPlans,
+    plan,
+    prepared,
+    research,
+    sourceToolPolicy,
+    validatorProgressSnapshots,
+  } = fixture;
+  controls.expectedValidationRunId = plan.runId;
+  const ref = await research.runner.run(plan);
+  const modelCallsAfterFirstRun = observedPlans.length;
+  expect(dispatchBudgetSnapshots).toHaveLength(modelCallsAfterFirstRun);
+  expect(
+    dispatchBudgetSnapshots.every(
+      (snapshot) =>
+        snapshot.reservedAttempts >= 1 && snapshot.ownReservationDurable,
+    ),
+  ).toBe(true);
+  expect(
+    new Set(dispatchBudgetSnapshots.map((snapshot) => snapshot.role)),
+  ).toEqual(
+    new Set([
+      "root-planner",
+      "finder",
+      "root-evaluator",
+      "root-synthesizer",
+      "adversarial-critic",
+      "validator",
+    ]),
+  );
+  expect(
+    dispatchBudgetSnapshots.find(
+      (snapshot) => snapshot.runId === plan.runId && snapshot.role === "finder",
+    ),
+  ).toMatchObject({ protectedRootTokens: 100_000 });
+  expect(
+    dispatchBudgetSnapshots.find(
+      (snapshot) =>
+        snapshot.runId === plan.runId &&
+        snapshot.role === "root-evaluator" &&
+        snapshot.assignmentKind === "wave-evaluation",
+    ),
+  ).toMatchObject({
+    ownReservationDurable: true,
+    protectedRootTokens: 0,
+    explorationReservedTokens: 100_000,
+    validationRemainingTokens: 400_000,
+  });
+  expect(
+    observedPlans.every((attempt) =>
+      attempt.prompt.includes(
+        "Current research attacker scope permits only unauthenticated attackers and subscriber-equivalent low-privilege users.",
+      ),
+    ),
+  ).toBe(true);
+  const finderPlan = observedPlans.find((attempt) => attempt.role === "finder");
+  if (finderPlan?.schemaVersion !== 2) {
+    throw new Error("Expected a current Finder Attempt");
+  }
+  const finderOutputSchema = JSON.stringify(finderPlan.outputJsonSchema);
+  expect(finderOutputSchema).toContain('"unauthenticated"');
+  expect(finderOutputSchema).toContain('"subscriber"');
+  expect(finderOutputSchema).toContain('"customer"');
+  expect(finderOutputSchema).not.toContain('"contributor"');
+  expect(finderOutputSchema).not.toContain('"unresolved"');
+  const finderPlans = observedPlans.filter(
+    (
+      attempt,
+    ): attempt is Extract<
+      ModelAttemptPlan,
+      { schemaVersion: 2; role: "finder" }
+    > => attempt.schemaVersion === 2 && attempt.role === "finder",
+  );
+  expect(finderPlans).toHaveLength(3);
+  expect(new Set(finderPlans.map((attempt) => attempt.attemptId)).size).toBe(3);
+  expect(
+    new Set(finderPlans.map((attempt) => attempt.assignment.leaseId)).size,
+  ).toBe(3);
+  const finderThesisDigests = finderPlans.map((attempt) => {
+    if (attempt.assignment.kind !== "research-thesis") {
+      throw new Error("Initial normal Wave used a non-thesis assignment");
+    }
+    return attempt.assignment.thesis.digest;
+  });
+  expect(new Set(finderThesisDigests).size).toBe(3);
+  const inspected = await research.reader.inspect(input.campaignId, {
+    kind: "run",
+    runId: plan.runId,
+  });
+  expect({ ref, inspected }).toMatchObject({
+    ref: { schemaVersion: 4, decision: "incomplete" },
+    inspected: {
+      kind: "run",
+      value: {
+        schemaVersion: 4,
+        iterationDecision: {
+          schemaVersion: 3,
+          actions: [
+            { kind: "admit-validation" },
+            { kind: "admit-depth" },
+            { kind: "schedule-work" },
+            { kind: "schedule-work" },
+            { kind: "schedule-work" },
+            { kind: "schedule-work" },
+            { kind: "retain" },
+          ],
         },
-        execution: {
-          provider: "anthropic" as const,
-          model: "claude-opus-5",
-          transport: "claude-code-process" as const,
-          executableVersion: "2.1.260",
-          effort: "high" as const,
-          eligibilityReceiptDigest: digest("b"),
+        depthWorkQueue: {
+          schemaVersion: 2,
+          items: 5,
+          batches: 2,
+          familyBindings: 5,
         },
-      });
-      const promptSet = {
-        kind: "prompt-set" as const,
-        schemaVersion: 1 as const,
-        id: input.promptSet.id,
-        digest: input.promptSet.digest,
-      };
-      const sourceToolPolicy = {
-        kind: "source-tool-policy" as const,
-        schemaVersion: 1 as const,
-        id: "prospective-source-only-v1",
-        digest: digest("c"),
-      };
-      const bindingSource = {
-        semanticPolicy: defineCurrentSemanticRootPlanningPolicy({
-          plannerBudget: {
-            maxWallTimeMs: 3_600_000,
-            maxModelTokens: 100_000,
-            maxModelTurns: 128,
-            maxProviderCostUsd: 10,
-            maxOutputBytes: 2 * MEBIBYTE,
-            maxSourceQueries: 256,
-            maxSourceScanBytes: 16 * GIBIBYTE,
-            maxSourceResponseBytes: 256 * MEBIBYTE,
-            sourceLimitTerminalOutput: "preserve" as const,
-            reportedUsageEnforcement: "telemetry-only" as const,
-          },
-          finderLeaseBudget: {
-            maxWallTimeMs: 10_800_000,
-            maxModelTokens: 1_000_000,
-            maxModelTurns: 256,
-            maxProviderCostUsd: 20,
-            maxHypotheses: 8,
-            maxOutputBytes: 2 * MEBIBYTE,
-            maxSourceQueries: 512,
-            maxSourceScanBytes: 16 * GIBIBYTE,
-            maxSourceResponseBytes: 256 * MEBIBYTE,
-            sourceLimitTerminalOutput: "preserve" as const,
-            reportedUsageEnforcement: "telemetry-only" as const,
-          },
-        }),
-        planner: {
-          modelProfile: profile(
-            "claude-opus-5-root-planner-high-v6",
-            digest("5"),
-          ),
-          promptSet,
-          sourceToolPolicy,
+        depthResearch: {
+          schemaVersion: 4,
+          rounds: [
+            {
+              schemaVersion: 3,
+              batches: [
+                {
+                  schemaVersion: 2,
+                  synthesis: { ref: { proposals: 1 } },
+                  critique: { ref: { dispositions: 1 } },
+                  evaluation: { ref: { schemaVersion: 2, actions: 1 } },
+                },
+                {
+                  schemaVersion: 2,
+                  synthesis: { ref: { proposals: 1 } },
+                  critique: { ref: { dispositions: 1 } },
+                  evaluation: { ref: { schemaVersion: 2, actions: 1 } },
+                },
+              ],
+            },
+          ],
         },
-        finder: {
-          modelProfile: profile("claude-opus-5-finder-high-v6", digest("6")),
-          promptSet,
-          selectedKnowledge: [],
-          sourceToolPolicy,
-        },
-        evaluator: {
-          modelProfile: profile(
-            "claude-opus-5-root-evaluator-high-v6",
-            digest("7"),
-          ),
-          promptSet,
-          budget: {
-            maxWallTimeMs: 3_600_000,
-            maxModelTokens: 100_000,
-            maxModelTurns: 128,
-            maxProviderCostUsd: 10,
-            maxOutputBytes: 2 * MEBIBYTE,
-            reportedUsageEnforcement: "telemetry-only" as const,
-          },
-        },
-        validation: {
-          wordpressBaseline: {
-            id: "wordpress-threat-baseline-v1",
-            digest: digest("d"),
-          },
-          validationPolicy: {
-            id: "single-source-validation-v2",
-            digest: digest("e"),
-          },
-          promptSet,
-          validatorModelProfile: profile(
-            "claude-opus-5-validator-high-v6",
-            digest("8"),
-          ),
-          sourceToolPolicy,
-          publicSurface: ["Public WordPress request handlers"],
-          technicalExclusions: [],
-          budget: {
-            validator: {
-              maxWallTimeMs: 1_800_000,
-              maxModelTokens: 100_000,
-              maxModelTurns: 64,
-              maxProviderCostUsd: 7.5,
-              maxOutputBytes: 2 * MEBIBYTE,
-              maxSourceQueries: 128,
-              maxSourceScanBytes: 16 * GIBIBYTE,
-              maxSourceResponseBytes: 256 * MEBIBYTE,
-              sourceLimitTerminalOutput: "preserve" as const,
-              reportedUsageEnforcement: "telemetry-only" as const,
+        validations: [{ status: "source-validated" }],
+        findings: [
+          {
+            kind: "finding",
+            schemaVersion: 1,
+            id: expect.any(String),
+            digest: expect.any(String),
+            validation: {
+              schemaVersion: 3,
+              candidateId: expect.any(String),
             },
           },
+        ],
+        coverage: {
+          kind: "campaign-coverage",
+          schemaVersion: 1,
+          status: "incomplete",
+          reason: "research-work-remains",
         },
-      };
-      const plan = campaignDefaultSemanticRunPlanV3Schema.parse({
-        kind: "campaign-run-plan",
-        schemaVersion: 3,
-        runId: "source-validation-run",
-        campaignId: input.campaignId,
-        preparationDigest: prepared.inputDigest,
+        approachFamilyRegistry: {
+          schemaVersion: 3,
+          states: { active: 1 },
+          pendingValidations: 0,
+          validationOutcomes: 1,
+        },
+        decision: {
+          kind: "incomplete",
+          reason: "research-work-remains",
+        },
+      },
+    },
+  });
+  expect(
+    observedPlans.filter((attempt) => attempt.role === "validator"),
+  ).toHaveLength(1);
+  expect(validatorProgressSnapshots).toMatchObject([
+    {
+      kind: "progress",
+      schemaVersion: 2,
+      counts: {
+        attempts: { started: 12, completed: 11, active: 1 },
+        validations: { started: 1, completed: 0, active: 1 },
+        findings: 0,
+      },
+      activeValidations: [{ validationId: expect.any(String) }],
+      activeAttempts: [{ role: "validator" }],
+      usage: {
+        measurement: "partial",
+        modelAttempts: 11,
+        reportedModelAttempts: 11,
+        modelTokens: { total: 220 },
+        estimatedCostUsd: 2.75,
+      },
+    },
+  ]);
+  await expect(
+    research.reader.inspect(input.campaignId, { kind: "progress" }),
+  ).resolves.toMatchObject({
+    kind: "progress",
+    schemaVersion: 2,
+    counts: {
+      attempts: { started: 12, completed: 12, active: 0 },
+      validations: {
+        started: 1,
+        completed: 1,
+        active: 0,
+        sourceValidated: 1,
+        needsResearch: 0,
+        disproven: 0,
+        pending: 0,
+      },
+      findings: 1,
+      verifications: { started: 0, finding: 0 },
+    },
+    activeValidations: [],
+    activeAttempts: [],
+    usage: {
+      measurement: "reported",
+      modelAttempts: 12,
+      reportedModelAttempts: 12,
+      modelTokens: { total: 240 },
+      estimatedCostUsd: 3,
+    },
+  });
+  await expect(
+    research.reader.inspect(input.campaignId, {
+      kind: "budget",
+      runId: plan.runId,
+    }),
+  ).resolves.toMatchObject({
+    kind: "budget",
+    schemaVersion: 2,
+    campaignId: input.campaignId,
+    runId: plan.runId,
+    policy: {
+      id: "semantic-research-recall-baseline-v7",
+      digest: expect.stringMatching(/^sha256:/),
+    },
+    enforcement: {
+      modelAttempts: "hard-precondition",
+      modelWallTimeMs: "hard-precondition",
+      estimatedCostUsd: "hard-precondition",
+      modelTokens: "reported-postcondition",
+      modelTurns: "reported-postcondition",
+    },
+    spent: {
+      modelAttempts: 12,
+      modelWallTimeMs: 120,
+      modelTurns: 12,
+      modelTokens: 240,
+      structuredOutputBytes: 12_000,
+      estimatedCostUsd: 3,
+      source: { queries: 6, scanBytes: 600, responseBytes: 300 },
+    },
+    reserved: {
+      modelAttempts: 0,
+      modelWallTimeMs: 0,
+      modelTokens: 0,
+      estimatedCostUsd: 0,
+    },
+    protectedReservations: [],
+    remaining: {
+      modelAttempts: 116,
+      modelWallTimeMs: 43_199_880,
+      modelTokens: 4_599_760,
+      estimatedCostUsd: 147,
+    },
+    owners: {
+      exploration: {
+        spent: { modelAttempts: 11, modelTokens: 220 },
+        remaining: {
+          modelWallTimeMs: 35_999_890,
+          modelTokens: 4_199_780,
+          estimatedCostUsd: 117.25,
+        },
+      },
+      validation: {
+        spent: { modelAttempts: 1, modelTokens: 20 },
+        remaining: {
+          modelWallTimeMs: 7_199_990,
+          modelTokens: 399_980,
+          estimatedCostUsd: 29.75,
+        },
+      },
+    },
+    unknownUsageAttemptIds: [],
+    overshoot: {
+      modelWallTimeMs: 0,
+      modelTokens: 0,
+      estimatedCostUsd: 0,
+    },
+  });
+  expect([...new Set(depthQueuesObservedBeforeSynthesis)]).toHaveLength(1);
+  expect([...new Set(depthQueuesObservedBeforeValidation)]).toHaveLength(1);
+  const depthPlans = observedPlans.filter(
+    (attempt) =>
+      attempt.role === "root-synthesizer" ||
+      attempt.role === "adversarial-critic" ||
+      (attempt.role === "root-evaluator" &&
+        attempt.assignment.kind === "depth-evaluation"),
+  );
+  expect(depthPlans.map((attempt) => attempt.role)).toEqual([
+    "root-synthesizer",
+    "adversarial-critic",
+    "root-evaluator",
+    "root-synthesizer",
+    "adversarial-critic",
+    "root-evaluator",
+  ]);
+  expect(
+    depthPlans.filter((attempt) => attempt.role === "root-synthesizer"),
+  ).not.toContainEqual(expect.objectContaining({ sourceToolPolicy }));
+  expect(
+    depthPlans.filter((attempt) => attempt.role === "adversarial-critic"),
+  ).toEqual([
+    expect.objectContaining({ sourceToolPolicy }),
+    expect.objectContaining({ sourceToolPolicy }),
+  ]);
+  expect(
+    new Set(depthPlans.map((attempt) => attempt.attemptId)),
+  ).toHaveProperty("size", 6);
+  expect(
+    observedPlans.filter(
+      (attempt) => attempt.role === "validation-synthesizer",
+    ),
+  ).toEqual([]);
+
+  const record = openSqliteResearchRecord({
+    databasePath,
+    artifactStore: artifacts,
+  });
+  try {
+    await expect(
+      record.listValidationIntents(input.campaignId, plan.runId),
+    ).resolves.toHaveLength(1);
+    await expect(
+      record.listValidationCompletions(input.campaignId, plan.runId),
+    ).resolves.toMatchObject([
+      {
+        completion: {
+          validation: { schemaVersion: 3 },
+          disposition: "source-validated",
+        },
+      },
+    ]);
+    await expect(
+      record.listSemanticCampaignAttempts(input.campaignId, plan.runId),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          intent: expect.objectContaining({ role: "validator" }),
+          completion: expect.objectContaining({
+            value: expect.objectContaining({ role: "validator" }),
+          }),
+        }),
+      ]),
+    );
+    await expect(
+      record.listValidationFrontierGaps(input.campaignId, plan.runId),
+    ).resolves.toEqual([]);
+    await expect(
+      record.readApproachFamilyRegistryV3(input.campaignId, plan.runId),
+    ).resolves.toMatchObject({
+      value: {
+        depthDecisions: [expect.any(String), expect.any(String)],
+      },
+    });
+    if (
+      inspected.kind !== "run" ||
+      inspected.value.schemaVersion !== 4 ||
+      !("findings" in inspected.value)
+    ) {
+      throw new Error("Expected a source-validated Finding");
+    }
+    const findingRef = inspected.value.findings[0];
+    if (findingRef === undefined) {
+      throw new Error("Expected a source-validated Finding ref");
+    }
+    expect(inspected.value).not.toHaveProperty("runtimeVerificationPackets");
+    expect(inspected.value).not.toHaveProperty(
+      "runtimeVerificationPacketFailures",
+    );
+    controls.firstFindingId = findingRef.id;
+    await expect(
+      record.readRuntimeVerificationPacket(
+        input.campaignId,
+        findingRef.candidateId,
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      research.reader.inspect(input.campaignId, {
+        kind: "finding",
+        runId: plan.runId,
+        findingId: findingRef.id,
+      }),
+    ).resolves.toMatchObject({
+      kind: "finding",
+      schemaVersion: 1,
+      campaignId: input.campaignId,
+      runId: plan.runId,
+      finding: {
+        kind: "finding",
+        schemaVersion: 1,
+        id: findingRef.id,
         target: input.targetSnapshot,
         manifest: prepared.targetFileManifest,
-        metadata: {
-          kind: "oracle-free-target-metadata",
-          schemaVersion: 1,
-          pluginIdentity: "wporg:campaign-validation-run",
-          mainPluginFile: "plugin.php",
-          canonicalInstallDirectory: "campaign-validation-run",
+        candidate: { id: findingRef.candidateId },
+        validation: { schemaVersion: 3 },
+        causalIdentity: { brokenSecurityProperty: "state-ownership" },
+        attackerPremise: "unauthenticated",
+        brokenSecurityProperty: "state-ownership",
+        sourceRoute: [{ evidence: [anchor] }],
+        sourceEvidence: [anchor],
+        counterevidence: {
+          status: "pass",
+          evidence: [anchor],
         },
-        ...bindingSource,
-        bindings: bindCurrentSemanticCampaignConfiguration(bindingSource),
-        budgetPolicy: {
-          kind: "semantic-research-budget",
-          schemaVersion: 3,
-          id: "semantic-research-recall-baseline-v7",
-          maxWorkWaves: 12,
-          maxFinderAttempts: 48,
-          maxConcurrentFinders: 4,
-          maxModelAttempts: 128,
-          maxModelTokens: 4_600_000,
-          maxProviderCostUsd: 150,
-          maxWallTimeMs: 43_200_000,
-          reportedUsageEnforcement: "telemetry-only",
-          exploration: {
-            maxModelTokens: 4_200_000,
-            maxProviderCostUsd: 120,
-            maxWallTimeMs: 36_000_000,
-            rootEvaluationReserve: {
-              maxModelTokens: 100_000,
-              owner: "exploration",
-              role: "root-evaluator",
-            },
-          },
-          validationReserve: {
-            maxModelTokens: 400_000,
-            maxProviderCostUsd: 30,
-            maxWallTimeMs: 7_200_000,
-          },
-        },
-      });
+      },
+    });
+    await expect(
+      research.reader.inspect(input.campaignId, {
+        kind: "finding",
+        runId: plan.runId,
+        findingId: digest("f"),
+      }),
+    ).rejects.toEqual(
+      new CampaignFindingNotFoundError(
+        input.campaignId,
+        plan.runId,
+        digest("f"),
+      ),
+    );
+    const completion = await record.listValidationCompletions(
+      input.campaignId,
+      plan.runId,
+    );
+    expect(findingRef.validation).toEqual(completion[0]?.completion.validation);
+  } finally {
+    record.close();
+  }
 
+  await expect(research.runner.run(plan)).resolves.toEqual(ref);
+  expect(observedPlans).toHaveLength(modelCallsAfterFirstRun);
+}
+
+describe("CampaignRunner.run source-only Validation", () => {
+  it("rejects mismatched bindings and invalid attempt-reservation replay", async () => {
+    const fixture = await createCampaignValidationFixture();
+    const {
+      campaignExecution,
+      directory,
+      input,
+      observedPlans,
+      plan,
+      research,
+    } = fixture;
+    try {
       const modelCallsBeforeBindingChecks = observedPlans.length;
       await expect(
         research.runner.run({
@@ -986,14 +1463,15 @@ describe("CampaignRunner.run source-only Validation", () => {
         ...input,
         campaignId: "campaign-reservation-boundary",
       };
-      const reservationBoundaryExecution: CampaignExecutionDependencies = {
-        ...campaignExecution,
-        campaignRunStartFaultBoundary: {
-          afterStarted: () => {
-            throw new Error("Injected reservation-boundary restart");
+      const reservationBoundaryExecution: CurrentCampaignExecutionDependencies =
+        {
+          ...campaignExecution,
+          campaignRunStartFaultBoundary: {
+            afterStarted: () => {
+              throw new Error("Injected reservation-boundary restart");
+            },
           },
-        },
-      };
+        };
       const reservationBoundaryResearch = openResearch({
         databasePath: reservationBoundaryDatabasePath,
         campaignExecution: reservationBoundaryExecution,
@@ -1079,7 +1557,10 @@ describe("CampaignRunner.run source-only Validation", () => {
       try {
         await expect(
           missingAttemptReservationWriter.runner.run(reservationBoundaryPlan),
-        ).resolves.toMatchObject({ schemaVersion: 4, decision: "incomplete" });
+        ).resolves.toMatchObject({
+          schemaVersion: 4,
+          decision: "incomplete",
+        });
       } finally {
         missingAttemptReservationWriter.close();
       }
@@ -1091,11 +1572,11 @@ describe("CampaignRunner.run source-only Validation", () => {
             reservationTamperer
               .prepare(
                 `SELECT campaign_sequence
-                 FROM research_events
-                 WHERE campaign_id = ?
-                   AND kind = 'campaign.attempt-budget-reserved'
-                 ORDER BY campaign_sequence ASC
-                 LIMIT 1`,
+               FROM research_events
+               WHERE campaign_id = ?
+                 AND kind = 'campaign.attempt-budget-reserved'
+               ORDER BY campaign_sequence ASC
+               LIMIT 1`,
               )
               .get(reservationBoundaryInput.campaignId),
           );
@@ -1103,7 +1584,7 @@ describe("CampaignRunner.run source-only Validation", () => {
           reservationTamperer
             .prepare(
               `DELETE FROM research_events
-               WHERE campaign_id = ? AND campaign_sequence = ?`,
+             WHERE campaign_id = ? AND campaign_sequence = ?`,
             )
             .run(
               reservationBoundaryInput.campaignId,
@@ -1112,8 +1593,8 @@ describe("CampaignRunner.run source-only Validation", () => {
           reservationTamperer
             .prepare(
               `UPDATE research_events
-               SET campaign_sequence = campaign_sequence + 1000000
-               WHERE campaign_id = ? AND campaign_sequence > ?`,
+             SET campaign_sequence = campaign_sequence + 1000000
+             WHERE campaign_id = ? AND campaign_sequence > ?`,
             )
             .run(
               reservationBoundaryInput.campaignId,
@@ -1122,8 +1603,8 @@ describe("CampaignRunner.run source-only Validation", () => {
           reservationTamperer
             .prepare(
               `UPDATE research_events
-               SET campaign_sequence = campaign_sequence - 1000001
-               WHERE campaign_id = ? AND campaign_sequence > ?`,
+             SET campaign_sequence = campaign_sequence - 1000001
+             WHERE campaign_id = ? AND campaign_sequence > ?`,
             )
             .run(
               reservationBoundaryInput.campaignId,
@@ -1149,434 +1630,41 @@ describe("CampaignRunner.run source-only Validation", () => {
       } finally {
         missingAttemptReservationReader.close();
       }
+    } finally {
+      await fixture.close();
+    }
+  });
 
-      expectedValidationRunId = plan.runId;
-      const ref = await research.runner.run(plan);
-      const modelCallsAfterFirstRun = observedPlans.length;
-      expect(dispatchBudgetSnapshots).toHaveLength(modelCallsAfterFirstRun);
-      expect(
-        dispatchBudgetSnapshots.every(
-          (snapshot) =>
-            snapshot.reservedAttempts >= 1 && snapshot.ownReservationDurable,
-        ),
-      ).toBe(true);
-      expect(
-        new Set(dispatchBudgetSnapshots.map((snapshot) => snapshot.role)),
-      ).toEqual(
-        new Set([
-          "root-planner",
-          "finder",
-          "root-evaluator",
-          "root-synthesizer",
-          "adversarial-critic",
-          "validator",
-        ]),
-      );
-      expect(
-        dispatchBudgetSnapshots.find(
-          (snapshot) =>
-            snapshot.runId === plan.runId && snapshot.role === "finder",
-        ),
-      ).toMatchObject({ protectedRootTokens: 100_000 });
-      expect(
-        dispatchBudgetSnapshots.find(
-          (snapshot) =>
-            snapshot.runId === plan.runId &&
-            snapshot.role === "root-evaluator" &&
-            snapshot.assignmentKind === "wave-evaluation",
-        ),
-      ).toMatchObject({
-        ownReservationDurable: true,
-        protectedRootTokens: 0,
-        explorationReservedTokens: 100_000,
-        validationRemainingTokens: 400_000,
-      });
-      expect(
-        observedPlans.every((attempt) =>
-          attempt.prompt.includes(
-            "Current research attacker scope permits only unauthenticated attackers and subscriber-equivalent low-privilege users.",
-          ),
-        ),
-      ).toBe(true);
-      const finderPlan = observedPlans.find(
-        (attempt) => attempt.role === "finder",
-      );
-      if (finderPlan?.schemaVersion !== 2) {
-        throw new Error("Expected a current Finder Attempt");
-      }
-      const finderOutputSchema = JSON.stringify(finderPlan.outputJsonSchema);
-      expect(finderOutputSchema).toContain('"unauthenticated"');
-      expect(finderOutputSchema).toContain('"subscriber"');
-      expect(finderOutputSchema).toContain('"customer"');
-      expect(finderOutputSchema).not.toContain('"contributor"');
-      expect(finderOutputSchema).not.toContain('"unresolved"');
-      const finderPlans = observedPlans.filter(
-        (
-          attempt,
-        ): attempt is Extract<
-          ModelAttemptPlan,
-          { schemaVersion: 2; role: "finder" }
-        > => attempt.schemaVersion === 2 && attempt.role === "finder",
-      );
-      expect(finderPlans).toHaveLength(3);
-      expect(
-        new Set(finderPlans.map((attempt) => attempt.attemptId)).size,
-      ).toBe(3);
-      expect(
-        new Set(finderPlans.map((attempt) => attempt.assignment.leaseId)).size,
-      ).toBe(3);
-      const finderThesisDigests = finderPlans.map((attempt) => {
-        if (attempt.assignment.kind !== "research-thesis") {
-          throw new Error("Initial normal Wave used a non-thesis assignment");
-        }
-        return attempt.assignment.thesis.digest;
-      });
-      expect(new Set(finderThesisDigests).size).toBe(3);
-      const inspected = await research.reader.inspect(input.campaignId, {
-        kind: "run",
-        runId: plan.runId,
-      });
-      expect({ ref, inspected }).toMatchObject({
-        ref: { schemaVersion: 4, decision: "incomplete" },
-        inspected: {
-          kind: "run",
-          value: {
-            schemaVersion: 4,
-            iterationDecision: {
-              schemaVersion: 3,
-              actions: [
-                { kind: "admit-validation" },
-                { kind: "admit-depth" },
-                { kind: "schedule-work" },
-                { kind: "schedule-work" },
-                { kind: "schedule-work" },
-                { kind: "schedule-work" },
-                { kind: "retain" },
-              ],
-            },
-            depthWorkQueue: {
-              schemaVersion: 2,
-              items: 5,
-              batches: 2,
-              familyBindings: 5,
-            },
-            depthResearch: {
-              schemaVersion: 4,
-              rounds: [
-                {
-                  schemaVersion: 3,
-                  batches: [
-                    {
-                      schemaVersion: 2,
-                      synthesis: { ref: { proposals: 1 } },
-                      critique: { ref: { dispositions: 1 } },
-                      evaluation: { ref: { schemaVersion: 2, actions: 1 } },
-                    },
-                    {
-                      schemaVersion: 2,
-                      synthesis: { ref: { proposals: 1 } },
-                      critique: { ref: { dispositions: 1 } },
-                      evaluation: { ref: { schemaVersion: 2, actions: 1 } },
-                    },
-                  ],
-                },
-              ],
-            },
-            validations: [{ status: "source-validated" }],
-            findings: [
-              {
-                kind: "finding",
-                schemaVersion: 1,
-                id: expect.any(String),
-                digest: expect.any(String),
-                validation: {
-                  schemaVersion: 3,
-                  candidateId: expect.any(String),
-                },
-              },
-            ],
-            coverage: {
-              kind: "campaign-coverage",
-              schemaVersion: 1,
-              status: "incomplete",
-              reason: "research-work-remains",
-            },
-            approachFamilyRegistry: {
-              schemaVersion: 3,
-              states: { active: 1 },
-              pendingValidations: 0,
-              validationOutcomes: 1,
-            },
-            decision: {
-              kind: "incomplete",
-              reason: "research-work-remains",
-            },
-          },
-        },
-      });
-      expect(
-        observedPlans.filter((attempt) => attempt.role === "validator"),
-      ).toHaveLength(1);
-      expect(validatorProgressSnapshots).toMatchObject([
-        {
-          kind: "progress",
-          counts: {
-            attempts: { started: 12, completed: 11, active: 1 },
-          },
-          activeAttempts: [{ role: "validator" }],
-          usage: {
-            measurement: "partial",
-            modelAttempts: 11,
-            reportedModelAttempts: 11,
-            modelTokens: { total: 220 },
-            estimatedCostUsd: 2.75,
-          },
-        },
-      ]);
-      await expect(
-        research.reader.inspect(input.campaignId, { kind: "progress" }),
-      ).resolves.toMatchObject({
-        kind: "progress",
-        counts: {
-          attempts: { started: 12, completed: 12, active: 0 },
-        },
-        activeAttempts: [],
-        usage: {
-          measurement: "reported",
-          modelAttempts: 12,
-          reportedModelAttempts: 12,
-          modelTokens: { total: 240 },
-          estimatedCostUsd: 3,
-        },
-      });
-      await expect(
-        research.reader.inspect(input.campaignId, {
-          kind: "budget",
-          runId: plan.runId,
-        }),
-      ).resolves.toMatchObject({
-        kind: "budget",
-        schemaVersion: 2,
-        campaignId: input.campaignId,
-        runId: plan.runId,
-        policy: {
-          id: "semantic-research-recall-baseline-v7",
-          digest: expect.stringMatching(/^sha256:/),
-        },
-        enforcement: {
-          modelAttempts: "hard-precondition",
-          modelWallTimeMs: "hard-precondition",
-          estimatedCostUsd: "hard-precondition",
-          modelTokens: "reported-postcondition",
-          modelTurns: "reported-postcondition",
-        },
-        spent: {
-          modelAttempts: 12,
-          modelWallTimeMs: 120,
-          modelTurns: 12,
-          modelTokens: 240,
-          structuredOutputBytes: 12_000,
-          estimatedCostUsd: 3,
-          source: { queries: 6, scanBytes: 600, responseBytes: 300 },
-        },
-        reserved: {
-          modelAttempts: 0,
-          modelWallTimeMs: 0,
-          modelTokens: 0,
-          estimatedCostUsd: 0,
-        },
-        protectedReservations: [],
-        remaining: {
-          modelAttempts: 116,
-          modelWallTimeMs: 43_199_880,
-          modelTokens: 4_599_760,
-          estimatedCostUsd: 147,
-        },
-        owners: {
-          exploration: {
-            spent: { modelAttempts: 11, modelTokens: 220 },
-            remaining: {
-              modelWallTimeMs: 35_999_890,
-              modelTokens: 4_199_780,
-              estimatedCostUsd: 117.25,
-            },
-          },
-          validation: {
-            spent: { modelAttempts: 1, modelTokens: 20 },
-            remaining: {
-              modelWallTimeMs: 7_199_990,
-              modelTokens: 399_980,
-              estimatedCostUsd: 29.75,
-            },
-          },
-        },
-        unknownUsageAttemptIds: [],
-        overshoot: {
-          modelWallTimeMs: 0,
-          modelTokens: 0,
-          estimatedCostUsd: 0,
-        },
-      });
-      expect([...new Set(depthQueuesObservedBeforeSynthesis)]).toHaveLength(1);
-      expect([...new Set(depthQueuesObservedBeforeValidation)]).toHaveLength(1);
-      const depthPlans = observedPlans.filter(
-        (attempt) =>
-          attempt.role === "root-synthesizer" ||
-          attempt.role === "adversarial-critic" ||
-          (attempt.role === "root-evaluator" &&
-            attempt.assignment.kind === "depth-evaluation"),
-      );
-      expect(depthPlans.map((attempt) => attempt.role)).toEqual([
-        "root-synthesizer",
-        "adversarial-critic",
-        "root-evaluator",
-        "root-synthesizer",
-        "adversarial-critic",
-        "root-evaluator",
-      ]);
-      expect(
-        depthPlans.filter((attempt) => attempt.role === "root-synthesizer"),
-      ).not.toContainEqual(expect.objectContaining({ sourceToolPolicy }));
-      expect(
-        depthPlans.filter((attempt) => attempt.role === "adversarial-critic"),
-      ).toEqual([
-        expect.objectContaining({ sourceToolPolicy }),
-        expect.objectContaining({ sourceToolPolicy }),
-      ]);
-      expect(
-        new Set(depthPlans.map((attempt) => attempt.attemptId)),
-      ).toHaveProperty("size", 6);
-      expect(
-        observedPlans.filter(
-          (attempt) => attempt.role === "validation-synthesizer",
-        ),
-      ).toEqual([]);
+  it("records a source-validated Finding and stable budget telemetry", async () => {
+    const fixture = await createCampaignValidationFixture();
+    try {
+      await assertSourceValidatedBaseline(fixture);
+    } finally {
+      await fixture.close();
+    }
+  });
 
-      const record = openSqliteResearchRecord({
-        databasePath,
-        artifactStore: artifacts,
-      });
-      try {
-        await expect(
-          record.listValidationIntents(input.campaignId, plan.runId),
-        ).resolves.toHaveLength(1);
-        await expect(
-          record.listValidationCompletions(input.campaignId, plan.runId),
-        ).resolves.toMatchObject([
-          {
-            completion: {
-              validation: { schemaVersion: 3 },
-              disposition: "source-validated",
-            },
-          },
-        ]);
-        await expect(
-          record.listSemanticCampaignAttempts(input.campaignId, plan.runId),
-        ).resolves.toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({
-              intent: expect.objectContaining({ role: "validator" }),
-              completion: expect.objectContaining({
-                value: expect.objectContaining({ role: "validator" }),
-              }),
-            }),
-          ]),
-        );
-        await expect(
-          record.listValidationFrontierGaps(input.campaignId, plan.runId),
-        ).resolves.toEqual([]);
-        await expect(
-          record.readApproachFamilyRegistryV3(input.campaignId, plan.runId),
-        ).resolves.toMatchObject({
-          value: { depthDecisions: [expect.any(String), expect.any(String)] },
-        });
-        if (
-          inspected.kind !== "run" ||
-          inspected.value.schemaVersion !== 4 ||
-          !("findings" in inspected.value)
-        ) {
-          throw new Error("Expected a source-validated Finding");
-        }
-        const findingRef = inspected.value.findings[0];
-        if (findingRef === undefined) {
-          throw new Error("Expected a source-validated Finding ref");
-        }
-        expect(inspected.value).not.toHaveProperty(
-          "runtimeVerificationPackets",
-        );
-        expect(inspected.value).not.toHaveProperty(
-          "runtimeVerificationPacketFailures",
-        );
-        firstFindingId = findingRef.id;
-        await expect(
-          record.readRuntimeVerificationPacket(
-            input.campaignId,
-            findingRef.candidateId,
-          ),
-        ).resolves.toBeUndefined();
-        await expect(
-          research.reader.inspect(input.campaignId, {
-            kind: "finding",
-            runId: plan.runId,
-            findingId: findingRef.id,
-          }),
-        ).resolves.toMatchObject({
-          kind: "finding",
-          schemaVersion: 1,
-          campaignId: input.campaignId,
-          runId: plan.runId,
-          finding: {
-            kind: "finding",
-            schemaVersion: 1,
-            id: findingRef.id,
-            target: input.targetSnapshot,
-            manifest: prepared.targetFileManifest,
-            candidate: { id: findingRef.candidateId },
-            validation: { schemaVersion: 3 },
-            causalIdentity: { brokenSecurityProperty: "state-ownership" },
-            attackerPremise: "unauthenticated",
-            brokenSecurityProperty: "state-ownership",
-            sourceRoute: [{ evidence: [anchor] }],
-            sourceEvidence: [anchor],
-            counterevidence: {
-              status: "pass",
-              evidence: [anchor],
-            },
-          },
-        });
-        await expect(
-          research.reader.inspect(input.campaignId, {
-            kind: "finding",
-            runId: plan.runId,
-            findingId: digest("f"),
-          }),
-        ).rejects.toEqual(
-          new CampaignFindingNotFoundError(
-            input.campaignId,
-            plan.runId,
-            digest("f"),
-          ),
-        );
-        const completion = await record.listValidationCompletions(
-          input.campaignId,
-          plan.runId,
-        );
-        expect(findingRef.validation).toEqual(
-          completion[0]?.completion.validation,
-        );
-      } finally {
-        record.close();
-      }
-
-      await expect(research.runner.run(plan)).resolves.toEqual(ref);
-      expect(observedPlans).toHaveLength(modelCallsAfterFirstRun);
-
-      validationDisposition = "needs-research";
+  it("records Validation dispositions and reuses an immutable Finding", async () => {
+    const fixture = await createCampaignValidationFixture();
+    const {
+      artifacts,
+      campaignExecution,
+      controls,
+      databasePath,
+      directory,
+      input,
+      observedPlans,
+      plan,
+      research,
+    } = fixture;
+    try {
+      await assertSourceValidatedBaseline(fixture);
+      controls.validationDisposition = "needs-research";
       const needsResearchPlan = campaignDefaultSemanticRunPlanV3Schema.parse({
         ...plan,
         runId: "source-validation-needs-research",
       });
-      expectedValidationRunId = needsResearchPlan.runId;
+      controls.expectedValidationRunId = needsResearchPlan.runId;
       const needsResearchRef = await research.runner.run(needsResearchPlan);
       const needsResearchInspected = await research.reader.inspect(
         input.campaignId,
@@ -1635,13 +1723,13 @@ describe("CampaignRunner.run source-only Validation", () => {
         needsResearchRecord.close();
       }
 
-      validationDisposition = "disproven";
-      candidateIdentitySuffix = "-disproven";
+      controls.validationDisposition = "disproven";
+      controls.candidateIdentitySuffix = "-disproven";
       const disprovenPlan = campaignDefaultSemanticRunPlanV3Schema.parse({
         ...plan,
         runId: "source-validation-disproven",
       });
-      expectedValidationRunId = disprovenPlan.runId;
+      controls.expectedValidationRunId = disprovenPlan.runId;
       await research.runner.run(disprovenPlan);
       await expect(
         research.reader.inspect(input.campaignId, {
@@ -1656,17 +1744,17 @@ describe("CampaignRunner.run source-only Validation", () => {
         },
       });
 
-      validationDisposition = "source-validated";
-      candidateIdentitySuffix = "";
-      depthFailure = "budget-exhausted";
-      if (firstFindingId === undefined) {
+      controls.validationDisposition = "source-validated";
+      controls.candidateIdentitySuffix = "";
+      controls.depthFailure = "budget-exhausted";
+      if (controls.firstFindingId === undefined) {
         throw new Error("Expected the first Finding identity");
       }
       const failurePlan = campaignDefaultSemanticRunPlanV3Schema.parse({
         ...plan,
         runId: "source-validation-depth-budget-exhausted",
       });
-      expectedValidationRunId = failurePlan.runId;
+      controls.expectedValidationRunId = failurePlan.runId;
       const failureCallOffset = observedPlans.length;
       const failureRef = await research.runner.run(failurePlan);
       const failureInspected = await research.reader.inspect(input.campaignId, {
@@ -1701,7 +1789,7 @@ describe("CampaignRunner.run source-only Validation", () => {
               {
                 kind: "finding",
                 schemaVersion: 1,
-                id: firstFindingId,
+                id: controls.firstFindingId,
               },
             ],
             coverage: { status: "incomplete" },
@@ -1712,6 +1800,37 @@ describe("CampaignRunner.run source-only Validation", () => {
           },
         },
       });
+      const progressWithReusedFinding = await research.reader.inspect(
+        input.campaignId,
+        { kind: "progress" },
+      );
+      expect(progressWithReusedFinding).toMatchObject({
+        schemaVersion: 2,
+        counts: {
+          findings: 1,
+          validations: {
+            started: 3,
+            completed: 3,
+            active: 0,
+            sourceValidated: 1,
+            needsResearch: 1,
+            disproven: 1,
+          },
+        },
+      });
+      const progressReplay = openResearch({
+        databasePath,
+        artifactStore: openFileJsonArtifactStore(join(directory, "artifacts")),
+      });
+      try {
+        await expect(
+          progressReplay.reader.inspect(input.campaignId, {
+            kind: "progress",
+          }),
+        ).resolves.toEqual(progressWithReusedFinding);
+      } finally {
+        progressReplay.close();
+      }
       const failureCalls = observedPlans.slice(failureCallOffset);
       expect(
         failureCalls.filter((attempt) => attempt.role === "root-synthesizer"),
@@ -1720,16 +1839,33 @@ describe("CampaignRunner.run source-only Validation", () => {
         failureCalls.filter((attempt) => attempt.role === "adversarial-critic"),
       ).toEqual([]);
 
-      depthFailure = "none";
-      candidateIdentitySuffix = "-exploration-provider-loss";
+      controls.depthFailure = "none";
+    } finally {
+      await fixture.close();
+    }
+  }, 10_000);
+
+  it("recovers unknown Exploration usage and a durable Validator result", async () => {
+    const fixture = await createCampaignValidationFixture();
+    const {
+      campaignExecution,
+      controls,
+      databasePath,
+      input,
+      observedPlans,
+      plan,
+      research,
+    } = fixture;
+    try {
+      controls.candidateIdentitySuffix = "-exploration-provider-loss";
       const explorationProviderLossPlan =
         campaignDefaultSemanticRunPlanV3Schema.parse({
           ...plan,
           runId: "source-exploration-provider-loss",
         });
-      expectedValidationRunId = explorationProviderLossPlan.runId;
+      controls.expectedValidationRunId = explorationProviderLossPlan.runId;
       const explorationLossCallOffset = observedPlans.length;
-      injectUnknownExplorationResult = true;
+      controls.injectUnknownExplorationResult = true;
       const interruptedExploration = openResearch({
         databasePath,
         campaignExecution,
@@ -1740,7 +1876,7 @@ describe("CampaignRunner.run source-only Validation", () => {
         ).rejects.toThrow("Injected Exploration provider result loss");
       } finally {
         interruptedExploration.close();
-        injectUnknownExplorationResult = false;
+        controls.injectUnknownExplorationResult = false;
       }
       const interruptedAttempt = observedPlans
         .slice(explorationLossCallOffset)
@@ -1822,7 +1958,7 @@ describe("CampaignRunner.run source-only Validation", () => {
           ),
       ).toHaveLength(1);
 
-      candidateIdentitySuffix = "-crash-recovery";
+      controls.candidateIdentitySuffix = "-crash-recovery";
       const crashRecoveryValidation = {
         ...plan.validation,
         validationPolicy: {
@@ -1839,15 +1975,12 @@ describe("CampaignRunner.run source-only Validation", () => {
           validation: crashRecoveryValidation,
         }),
       });
-      expectedValidationRunId = crashRecoveryPlan.runId;
+      controls.expectedValidationRunId = crashRecoveryPlan.runId;
       const crashCallOffset = observedPlans.length;
-      const budgetBeforeCrash = await research.reader.inspect(
-        input.campaignId,
-        { kind: "budget", runId: plan.runId },
-      );
-      if (budgetBeforeCrash.kind !== "budget") {
-        throw new Error("Expected Campaign budget before injected crash");
-      }
+      const validationSpentBeforeCrash = {
+        modelAttempts: 0,
+        modelTokens: 0,
+      };
       const crashingResearch = openResearch({
         databasePath,
         campaignExecution: {
@@ -1878,6 +2011,9 @@ describe("CampaignRunner.run source-only Validation", () => {
       );
       expect(progressAfterCrash).toMatchObject({
         kind: "progress",
+        schemaVersion: 2,
+        counts: { validations: { active: 1 } },
+        activeValidations: [{ validationId: expect.any(String) }],
         activeAttempts: [{ role: "validator" }],
       });
       if (progressAfterCrash.kind !== "progress") {
@@ -1891,7 +2027,7 @@ describe("CampaignRunner.run source-only Validation", () => {
         kind: "budget",
         owners: {
           validation: {
-            spent: budgetBeforeCrash.owners.validation.spent,
+            spent: validationSpentBeforeCrash,
             reserved: { modelAttempts: 1, modelTokens: 100_000 },
           },
         },
@@ -1921,10 +2057,14 @@ describe("CampaignRunner.run source-only Validation", () => {
         });
         const progressAfterRecovery = await recoveringResearch.reader.inspect(
           input.campaignId,
-          { kind: "progress" },
+          {
+            kind: "progress",
+          },
         );
         expect(progressAfterRecovery).toMatchObject({
           kind: "progress",
+          counts: { validations: { active: 0 } },
+          activeValidations: [],
           activeAttempts: [],
           usage: {
             modelAttempts: progressAfterCrash.usage.modelAttempts + 1,
@@ -1945,10 +2085,8 @@ describe("CampaignRunner.run source-only Validation", () => {
           owners: {
             validation: {
               spent: {
-                modelAttempts:
-                  budgetBeforeCrash.owners.validation.spent.modelAttempts + 1,
-                modelTokens:
-                  budgetBeforeCrash.owners.validation.spent.modelTokens + 20,
+                modelAttempts: validationSpentBeforeCrash.modelAttempts + 1,
+                modelTokens: validationSpentBeforeCrash.modelTokens + 20,
               },
               reserved: { modelAttempts: 0, modelTokens: 0 },
             },
@@ -1972,22 +2110,36 @@ describe("CampaignRunner.run source-only Validation", () => {
           .slice(crashCallOffset)
           .filter((attempt) => attempt.role === "validator"),
       ).toHaveLength(1);
+    } finally {
+      await fixture.close();
+    }
+  });
 
-      candidateIdentitySuffix = "-unknown-provider-result";
+  it("settles unknown Validator usage and rejects a mismatched stored result", async () => {
+    const fixture = await createCampaignValidationFixture();
+    const {
+      artifacts,
+      campaignExecution,
+      controls,
+      databasePath,
+      input,
+      observedPlans,
+      plan,
+      research,
+    } = fixture;
+    try {
+      controls.candidateIdentitySuffix = "-unknown-provider-result";
       const unknownResultPlan = campaignDefaultSemanticRunPlanV3Schema.parse({
         ...plan,
         runId: "source-validation-unknown-provider-result",
       });
-      expectedValidationRunId = unknownResultPlan.runId;
+      controls.expectedValidationRunId = unknownResultPlan.runId;
       const unknownCallOffset = observedPlans.length;
-      const budgetBeforeUnknownResult = await research.reader.inspect(
-        input.campaignId,
-        { kind: "budget", runId: plan.runId },
-      );
-      if (budgetBeforeUnknownResult.kind !== "budget") {
-        throw new Error("Expected Campaign budget before provider result loss");
-      }
-      injectUnknownValidatorResult = true;
+      const validationSpentBeforeUnknownResult = {
+        modelAttempts: 0,
+        modelTokens: 0,
+      };
+      controls.injectUnknownValidatorResult = true;
       const unknownResultResearch = openResearch({
         databasePath,
         campaignExecution,
@@ -1998,7 +2150,7 @@ describe("CampaignRunner.run source-only Validation", () => {
         ).rejects.toThrow("Injected provider result loss");
       } finally {
         unknownResultResearch.close();
-        injectUnknownValidatorResult = false;
+        controls.injectUnknownValidatorResult = false;
       }
       const progressAfterUnknownResult = await research.reader.inspect(
         input.campaignId,
@@ -2019,7 +2171,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       ).resolves.toMatchObject({
         owners: {
           validation: {
-            spent: budgetBeforeUnknownResult.owners.validation.spent,
+            spent: validationSpentBeforeUnknownResult,
             reserved: { modelAttempts: 1, modelTokens: 100_000 },
           },
         },
@@ -2032,7 +2184,10 @@ describe("CampaignRunner.run source-only Validation", () => {
       try {
         await expect(
           unknownRecoveryResearch.runner.run(unknownResultPlan),
-        ).resolves.toMatchObject({ schemaVersion: 4, decision: "incomplete" });
+        ).resolves.toMatchObject({
+          schemaVersion: 4,
+          decision: "incomplete",
+        });
         await expect(
           unknownRecoveryResearch.reader.inspect(input.campaignId, {
             kind: "run",
@@ -2057,6 +2212,8 @@ describe("CampaignRunner.run source-only Validation", () => {
           });
         expect(progressAfterUnknownRecovery).toMatchObject({
           kind: "progress",
+          counts: { validations: { active: 0, pending: 1, disproven: 0 } },
+          activeValidations: [],
           activeAttempts: [],
           usage: {
             measurement: "partial",
@@ -2080,11 +2237,9 @@ describe("CampaignRunner.run source-only Validation", () => {
             validation: {
               spent: {
                 modelAttempts:
-                  budgetBeforeUnknownResult.owners.validation.spent
-                    .modelAttempts + 1,
+                  validationSpentBeforeUnknownResult.modelAttempts + 1,
                 modelTokens:
-                  budgetBeforeUnknownResult.owners.validation.spent
-                    .modelTokens + 100_000,
+                  validationSpentBeforeUnknownResult.modelTokens + 100_000,
               },
               reserved: { modelAttempts: 0, modelTokens: 0 },
             },
@@ -2096,7 +2251,10 @@ describe("CampaignRunner.run source-only Validation", () => {
         const unknownBudgetSnapshot = budgetAfterUnknownRecovery;
         await expect(
           unknownRecoveryResearch.runner.run(unknownResultPlan),
-        ).resolves.toMatchObject({ schemaVersion: 4, decision: "incomplete" });
+        ).resolves.toMatchObject({
+          schemaVersion: 4,
+          decision: "incomplete",
+        });
         await expect(
           unknownRecoveryResearch.reader.inspect(input.campaignId, {
             kind: "budget",
@@ -2112,13 +2270,13 @@ describe("CampaignRunner.run source-only Validation", () => {
           .filter((attempt) => attempt.role === "validator"),
       ).toHaveLength(1);
 
-      candidateIdentitySuffix = "-invalid-stored-result";
+      controls.candidateIdentitySuffix = "-invalid-stored-result";
       const invalidStoredResultPlan =
         campaignDefaultSemanticRunPlanV3Schema.parse({
           ...plan,
           runId: "source-validation-invalid-stored-result",
         });
-      expectedValidationRunId = invalidStoredResultPlan.runId;
+      controls.expectedValidationRunId = invalidStoredResultPlan.runId;
       const invalidResultCallOffset = observedPlans.length;
       const invalidResultCrashResearch = openResearch({
         databasePath,
@@ -2208,20 +2366,31 @@ describe("CampaignRunner.run source-only Validation", () => {
           .slice(invalidResultCallOffset)
           .filter((attempt) => attempt.role === "validator"),
       ).toHaveLength(1);
+    } finally {
+      await fixture.close();
+    }
+  });
 
-      candidateIdentitySuffix = "-cross-candidate-budget";
-      validationCandidateCount = 2;
-      validatorReportedTokens = 450_000;
+  it("stops cross-candidate Validation at its budget boundary", async () => {
+    const fixture = await createCampaignValidationFixture();
+    const { controls, input, observedPlans, plan, research } = fixture;
+    try {
+      controls.candidateIdentitySuffix = "-cross-candidate-budget";
+      controls.validationCandidateCount = 2;
+      controls.validatorReportedTokens = 450_000;
       const crossCandidateBudgetPlan =
         campaignDefaultSemanticRunPlanV3Schema.parse({
           ...plan,
           runId: "source-validation-cross-candidate-budget",
         });
-      expectedValidationRunId = crossCandidateBudgetPlan.runId;
+      controls.expectedValidationRunId = crossCandidateBudgetPlan.runId;
       const crossCandidateCallOffset = observedPlans.length;
       await expect(
         research.runner.run(crossCandidateBudgetPlan),
-      ).resolves.toMatchObject({ schemaVersion: 4, decision: "incomplete" });
+      ).resolves.toMatchObject({
+        schemaVersion: 4,
+        decision: "incomplete",
+      });
       await expect(
         research.reader.inspect(input.campaignId, {
           kind: "run",
@@ -2260,9 +2429,30 @@ describe("CampaignRunner.run source-only Validation", () => {
       const crossCandidateCallsAfterCompletion = observedPlans.length;
       await expect(
         research.runner.run(crossCandidateBudgetPlan),
-      ).resolves.toMatchObject({ schemaVersion: 4, decision: "incomplete" });
+      ).resolves.toMatchObject({
+        schemaVersion: 4,
+        decision: "incomplete",
+      });
       expect(observedPlans).toHaveLength(crossCandidateCallsAfterCompletion);
+    } finally {
+      await fixture.close();
+    }
+  });
 
+  it("protects the measured Root reserve after Finder overshoot", async () => {
+    const fixture = await createCampaignValidationFixture();
+    const {
+      artifacts,
+      campaignExecution,
+      controls,
+      databasePath,
+      dispatchBudgetSnapshots,
+      input,
+      observedPlans,
+      plan,
+      research,
+    } = fixture;
+    try {
       const measuredCampaignInput = {
         ...input,
         campaignId: "campaign-validation-measured-root-reserve",
@@ -2273,15 +2463,15 @@ describe("CampaignRunner.run source-only Validation", () => {
       if (measuredPreparation.targetFileManifest === undefined) {
         throw new Error("Expected a measured Campaign manifest");
       }
-      activeCampaignId = measuredCampaignInput.campaignId;
-      finderReportedTokens = [1_400_000, 1_400_000, 1_376_741];
-      finderReportedTokenIndex = 0;
-      validationCandidateCount = 1;
-      validatorReportedTokens = undefined;
-      validationDisposition = "source-validated";
-      depthFailure = "none";
-      reverseValidationEvidence = true;
-      candidateIdentitySuffix = "-measured-root-reserve";
+      controls.activeCampaignId = measuredCampaignInput.campaignId;
+      controls.finderReportedTokens = [1_400_000, 1_400_000, 1_376_741];
+      controls.finderReportedTokenIndex = 0;
+      controls.validationCandidateCount = 1;
+      controls.validatorReportedTokens = undefined;
+      controls.validationDisposition = "source-validated";
+      controls.depthFailure = "none";
+      controls.reverseValidationEvidence = true;
+      controls.candidateIdentitySuffix = "-measured-root-reserve";
       const measuredPlan = campaignDefaultSemanticRunPlanV3Schema.parse({
         ...plan,
         campaignId: measuredCampaignInput.campaignId,
@@ -2289,7 +2479,7 @@ describe("CampaignRunner.run source-only Validation", () => {
         preparationDigest: measuredPreparation.inputDigest,
         manifest: measuredPreparation.targetFileManifest,
       });
-      expectedValidationRunId = measuredPlan.runId;
+      controls.expectedValidationRunId = measuredPlan.runId;
       const measuredCallOffset = observedPlans.length;
       await expect(research.runner.run(measuredPlan)).resolves.toMatchObject({
         schemaVersion: 4,
@@ -2441,10 +2631,9 @@ describe("CampaignRunner.run source-only Validation", () => {
         replayAfterRootCompletion.close();
       }
     } finally {
-      research.close();
-      await rm(directory, { force: true, recursive: true });
+      await fixture.close();
     }
-  }, 30_000);
+  });
 
   it("replays a pre-result-stored Validator completion", async () => {
     const directory = await mkdtemp(

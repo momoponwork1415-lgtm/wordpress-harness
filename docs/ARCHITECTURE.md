@@ -6,9 +6,20 @@ WordPress Targetの自律選定から無人Research、人間のfresh再実行、
 
 [Editable draw.io source](architecture.drawio) · [SVG view](architecture.svg) · [Detailed system walkthrough](SYSTEM-WALKTHROUGH.md)
 
-Design comparison: [minimal lifecycle migration](architecture-minimal-lifecycle.svg) · [full reference-pipeline rebuild](architecture-reference-rebuild.svg). The first is accepted by ADR 0124; the second is an evidence-gated alternative, not the current plan.
+図は採用した設計を示す。実装済みという意味ではなく、現在の接続状況はCodebase Guideで確認する。
 
 ![WordPress Semantic Security Research Harnessの全体アーキテクチャ](architecture.svg)
+
+## Product and maintenance direction
+
+6〜12か月の継続利用に向け、3 Contextのmodular monolithと既存の主要ownerを維持し、段階的に構造を整理する。現行Interfaceが旧依存や保存世代の知識をcallerへ要求する箇所を見直す。Module数や行数だけで良し悪しを判断せず、変更と検証のLocality、互換性、失敗時の説明可能性を基準にする。
+
+- 初期利用のTarget選定とVerificationは、operatorがClaude Code / Codexとの対話で進める形を許容する。会話の結論は、versionedな承認・証拠・記録を代替しない。
+- 自律ranking、無人Batch dispatch、複数Campaignのcapacity、form automationの完成を初期利用の必須条件にしない。既存のsource identity、隔離、human authorizationは維持する。
+- 正本recordと表示を分け、表示を再生成できるようにする。current writeとlegacy readの意味を分け、旧writerの削除は移行証拠を条件とする。
+- 個別の構造変更はowner、Interface、owned state、failure semantics、Behavior Testを明確にしてから行う。既存Moduleの上へ新しい汎用workflow層を重ねない。
+
+比較の根拠は[reference harness comparison](knowledge/reference-harness-observability.md)。有限workは[Issue #119](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/119)、旧writer退役は[Issue #129](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/129)を正本とする。ADR 0084とADR 0124を維持し、参照Harnessのstage構成への全面置換は採用しない。
 
 ## Contexts
 

@@ -162,12 +162,8 @@ import {
   type TargetFileManifestRef,
 } from "../source-mapping/contracts.js";
 import { projectTargetFileManifest } from "../source-mapping/target-file-manifest.js";
-import type {
-  CampaignProgressRole,
-  CampaignProgressUsage,
-  CampaignProgressView,
-} from "../campaign-progress-contracts.js";
-import { modelAttemptResultV2Schema } from "../model-execution/contracts.js";
+import type { CampaignProgressView } from "../campaign-progress-contracts.js";
+import { projectCampaignProgress } from "./campaign-progress-projection.js";
 import { modelAttemptUsageV2Schema } from "../model-attempt-usage-contracts.js";
 import {
   referenceValidationCandidate,
@@ -211,7 +207,6 @@ import {
   runtimeVerificationPacketRefSchema,
   runtimeVerificationPacketSchema,
 } from "../validation/runtime-verification-packet.js";
-import type { ModelAttemptUsageV2 } from "../model-attempt-usage-contracts.js";
 import { canonicalJson, sha256Digest } from "./canonical-json.js";
 import type {
   OpenResearchRecordOptions,
@@ -980,197 +975,6 @@ function currentDepthResearchMatchesLedger(
       .filter(([, value]) => value.runId === runId)
       .every(([key]) => representedIncompleteEvaluations.has(key))
   );
-}
-
-function aggregateProgressUsage(
-  modelAttempts: number,
-  usages: readonly ModelAttemptUsageV2[],
-  incomplete: boolean,
-): CampaignProgressUsage {
-  const modelTokens = usages.reduce(
-    (total, usage) => ({
-      input: total.input + usage.modelTokens.input,
-      cacheCreation: total.cacheCreation + usage.modelTokens.cacheCreation,
-      cacheRead: total.cacheRead + usage.modelTokens.cacheRead,
-      output: total.output + usage.modelTokens.output,
-      total: total.total + usage.modelTokens.total,
-    }),
-    { input: 0, cacheCreation: 0, cacheRead: 0, output: 0, total: 0 },
-  );
-  return {
-    measurement:
-      !incomplete &&
-      usages.length === modelAttempts &&
-      usages.every((usage) => usage.measurement === "reported")
-        ? "reported"
-        : "partial",
-    modelAttempts,
-    reportedModelAttempts: usages.filter(
-      (usage) => usage.measurement === "reported",
-    ).length,
-    modelTurns: usages.reduce((total, usage) => total + usage.modelTurns, 0),
-    modelTokens,
-    estimatedCostUsd: usages.reduce(
-      (total, usage) => total + (usage.estimatedCostUsd ?? 0),
-      0,
-    ),
-    source: usages.reduce(
-      (total, usage) => ({
-        queries: total.queries + usage.source.queries,
-        scanBytes: total.scanBytes + usage.source.scanBytes,
-        responseBytes: total.responseBytes + usage.source.responseBytes,
-      }),
-      { queries: 0, scanBytes: 0, responseBytes: 0 },
-    ),
-  };
-}
-
-async function projectCampaignProgress(
-  campaignId: string,
-  rows: readonly StoredEventRow[],
-  ledger: LedgerProjection,
-  artifactStore: JsonArtifactStore | undefined,
-): Promise<CampaignProgressView> {
-  const runs = [...ledger.runs.values(), ...ledger.semanticRuns.values()];
-  const completedRuns = runs.filter((run) => run.completed !== undefined);
-  const activeRuns = runs.length - completedRuns.length;
-  const attempts = [
-    ...[...ledger.attempts.values()].map((attempt) => ({
-      attempt,
-      role: "finder" as const,
-    })),
-    ...[...ledger.semanticAttempts.values()].map((attempt) => ({
-      attempt,
-      role: attempt.intent.role,
-    })),
-  ];
-  const completedAttempts = attempts.filter(
-    ({ attempt }) => attempt.completion !== undefined,
-  );
-  const activeAttempts = attempts
-    .filter(({ attempt }) => attempt.completion === undefined)
-    .map(({ attempt, role }) => ({
-      attemptId: attempt.intent.attemptId,
-      role: role as CampaignProgressRole,
-      startedAt: attempt.occurredAt,
-      ledgerHead: attempt.ledgerHead,
-    }))
-    .sort((left, right) => left.ledgerHead - right.ledgerHead)
-    .map(({ ledgerHead: _ledgerHead, ...attempt }) => attempt);
-  const verifications = [...ledger.verifications.values()];
-  const completedVerifications = verifications.filter(
-    (verification) => verification.completed !== undefined,
-  );
-  const activeVerifications = verifications
-    .filter((verification) => verification.completed === undefined)
-    .sort((left, right) => left.startedLedgerHead - right.startedLedgerHead)
-    .map((verification) => ({
-      verificationId: verification.plan.verificationId,
-      startedAt: verification.startedAt,
-    }));
-  const outcomes = completedVerifications.map(
-    (verification) => verification.completed!.ref.outcome,
-  );
-  const checkpoints = [...ledger.semanticFinderCheckpoints.values()];
-  const usages: ModelAttemptUsageV2[] = [];
-  let usageIncomplete =
-    activeAttempts.length > 0 || activeVerifications.length > 0;
-  for (const { attempt } of attempts) {
-    const completion = attempt.completion;
-    if (completion === undefined || !("role" in completion.value)) continue;
-    if (artifactStore === undefined) {
-      usageIncomplete = true;
-      continue;
-    }
-    try {
-      const artifact = modelAttemptResultV2Schema.parse(
-        await artifactStore.readJson(completion.value.result.digest),
-      );
-      if (artifact.usage === undefined) usageIncomplete = true;
-      else usages.push(artifact.usage);
-    } catch {
-      usageIncomplete = true;
-    }
-  }
-  for (const verification of completedVerifications) {
-    const value = verification.completed!.value;
-    if (
-      value.schemaVersion === 2 &&
-      value.evidence.verifierUsage !== undefined
-    ) {
-      usages.push(value.evidence.verifierUsage);
-    }
-  }
-  const lastEvent = rows.at(-1);
-  if (lastEvent === undefined) {
-    throw new Error(`Campaign progress has no events: ${campaignId}`);
-  }
-  return {
-    kind: "progress",
-    schemaVersion: 1,
-    campaignId,
-    status:
-      activeRuns > 0
-        ? "running"
-        : completedRuns.length > 0
-          ? "completed"
-          : "prepared",
-    ledgerHead: lastEvent.campaign_sequence,
-    counts: {
-      runs: {
-        started: runs.length,
-        completed: completedRuns.length,
-        active: activeRuns,
-      },
-      attempts: {
-        started: attempts.length,
-        completed: completedAttempts.length,
-        active: activeAttempts.length,
-      },
-      checkpoints: {
-        total: checkpoints.length,
-        hypotheses: checkpoints.filter(
-          (checkpoint) =>
-            checkpoint.checkpoint.subject.kind === "source-bound-hypothesis",
-        ).length,
-        routeFragments: checkpoints.filter(
-          (checkpoint) =>
-            checkpoint.checkpoint.subject.kind === "route-fragment",
-        ).length,
-        frontierGaps: checkpoints.filter(
-          (checkpoint) => checkpoint.checkpoint.subject.kind === "frontier-gap",
-        ).length,
-      },
-      verifications: {
-        started: verifications.length,
-        completed: completedVerifications.length,
-        active: activeVerifications.length,
-        finding: outcomes.filter((outcome) => outcome === "finding").length,
-        disproved: outcomes.filter((outcome) => outcome === "disproved").length,
-        blocked: outcomes.filter((outcome) => outcome === "blocked").length,
-      },
-      depthIterations: rows.filter(
-        (row) => row.kind === "exploration.depth-iteration-decided",
-      ).length,
-    },
-    activeAttempts,
-    activeVerifications,
-    usage: aggregateProgressUsage(
-      completedAttempts.length +
-        completedVerifications.filter(
-          (verification) =>
-            verification.completed!.value.schemaVersion === 2 &&
-            verification.completed!.value.evidence.verifierUsage !== undefined,
-        ).length,
-      usages,
-      usageIncomplete,
-    ),
-    lastDurableEvent: {
-      sequence: lastEvent.campaign_sequence,
-      kind: lastEvent.kind,
-      occurredAt: lastEvent.occurred_at,
-    },
-  };
 }
 
 function campaignRunRef(
@@ -4978,10 +4782,32 @@ class SqliteResearchRecord
   ): Promise<CampaignProgressView | undefined> {
     const rows = this.#readRows(campaignId);
     if (rows.length === 0) return undefined;
+    const ledger = this.#decodeLedger(campaignId, rows);
+    const lastEvent = rows.at(-1);
+    if (lastEvent === undefined) {
+      throw new Error(`Campaign progress has no events: ${campaignId}`);
+    }
     return projectCampaignProgress(
-      campaignId,
-      rows,
-      this.#decodeLedger(campaignId, rows),
+      {
+        campaignId,
+        runs: [...ledger.runs.values(), ...ledger.semanticRuns.values()],
+        attempts: [
+          ...ledger.attempts.values(),
+          ...ledger.semanticAttempts.values(),
+        ],
+        checkpoints: [...ledger.semanticFinderCheckpoints.values()],
+        verifications: [...ledger.verifications.values()],
+        validationIntents: [...ledger.validationIntents.values()],
+        validationCompletions: [...ledger.validationCompletions.values()],
+        depthIterations: rows.filter(
+          (row) => row.kind === "exploration.depth-iteration-decided",
+        ).length,
+        lastDurableEvent: {
+          sequence: lastEvent.campaign_sequence,
+          kind: lastEvent.kind,
+          occurredAt: lastEvent.occurred_at,
+        },
+      },
       this.#artifactStore,
     );
   }

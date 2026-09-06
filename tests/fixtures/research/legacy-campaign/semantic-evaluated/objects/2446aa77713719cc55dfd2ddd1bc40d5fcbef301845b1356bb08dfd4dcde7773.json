@@ -1,0 +1,99 @@
+{
+  "attemptOutcomes": [
+    {
+      "attempt": {
+        "attemptId": "attempt:7eae752739986939c74621bf5c70052eb382ac8fd126ec9da16f5f56f4f1948e",
+        "digest": "sha256:a5df190d3d6b8e304b1aba2f0b26f2fbf45c05d90e27bfd79b57aecf50c567c6",
+        "kind": "attempt-execution-result",
+        "owner": "exploration",
+        "planDigest": "sha256:eefa7a9d572a4b9a73cefda66a51d8bbd7ee591683d0c9a307dab2f6bf64b374",
+        "role": "finder",
+        "schemaVersion": 2
+      },
+      "status": "completed"
+    },
+    {
+      "attempt": {
+        "attemptId": "attempt:fde00d882984a65f9e8394c58bf1ae9d88a052b51582c81e2334b1270efaf750",
+        "digest": "sha256:bf04a33600874612cd3525013331f39e986d3b763d67f74ff09558d5aa85557d",
+        "kind": "attempt-execution-result",
+        "owner": "exploration",
+        "planDigest": "sha256:41bf7f4f30008b91e8034f64cf0d053144c79e2d116b4e693f813a594f61af3a",
+        "role": "finder",
+        "schemaVersion": 2
+      },
+      "status": "completed"
+    }
+  ],
+  "attempts": [
+    {
+      "attemptId": "attempt:7eae752739986939c74621bf5c70052eb382ac8fd126ec9da16f5f56f4f1948e",
+      "digest": "sha256:a5df190d3d6b8e304b1aba2f0b26f2fbf45c05d90e27bfd79b57aecf50c567c6",
+      "kind": "attempt-execution-result",
+      "owner": "exploration",
+      "planDigest": "sha256:eefa7a9d572a4b9a73cefda66a51d8bbd7ee591683d0c9a307dab2f6bf64b374",
+      "role": "finder",
+      "schemaVersion": 2
+    },
+    {
+      "attemptId": "attempt:fde00d882984a65f9e8394c58bf1ae9d88a052b51582c81e2334b1270efaf750",
+      "digest": "sha256:bf04a33600874612cd3525013331f39e986d3b763d67f74ff09558d5aa85557d",
+      "kind": "attempt-execution-result",
+      "owner": "exploration",
+      "planDigest": "sha256:41bf7f4f30008b91e8034f64cf0d053144c79e2d116b4e693f813a594f61af3a",
+      "role": "finder",
+      "schemaVersion": 2
+    }
+  ],
+  "frontierGaps": [],
+  "hypotheses": [
+    {
+      "attemptId": "attempt:7eae752739986939c74621bf5c70052eb382ac8fd126ec9da16f5f56f4f1948e",
+      "digest": "sha256:43f29b85ee11b747698ce82538916922eef30248c55745294b79606d82ad093f",
+      "id": "sha256:9e931fe92ad28f412a03a13e63a21e7d4f8bc746469d6e8fbd9ba2b6f3319706",
+      "kind": "source-bound-hypothesis",
+      "leaseId": "sha256:ded988256d2afa3bbf705a742828a3785f86deeb31d2cf6c0035e26b7f4c4d1a",
+      "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+      "schemaVersion": 2,
+      "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "workWaveDigest": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3"
+    }
+  ],
+  "issues": [],
+  "kind": "semantic-wave-terminal",
+  "manifest": {
+    "digest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+    "kind": "target-file-manifest",
+    "schemaVersion": 1,
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "targetSnapshotId": "brizy-2.8.11"
+  },
+  "routeFragments": [
+    {
+      "attemptId": "attempt:7eae752739986939c74621bf5c70052eb382ac8fd126ec9da16f5f56f4f1948e",
+      "digest": "sha256:599aea5094cc7f7c976d8c924033a6912508d259b32f745b65aaaaf8e5b883ab",
+      "id": "sha256:3cc99a6909a58dbd0ac303c65b34f6e089867d15c012eeda766d486e7d3c7e00",
+      "kind": "route-fragment",
+      "leaseId": "sha256:ded988256d2afa3bbf705a742828a3785f86deeb31d2cf6c0035e26b7f4c4d1a",
+      "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+      "schemaVersion": 2,
+      "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "workWaveDigest": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3"
+    }
+  ],
+  "schemaVersion": 2,
+  "target": {
+    "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "id": "brizy-2.8.11",
+    "pluginSlug": "brizy",
+    "version": "2.8.11"
+  },
+  "wave": {
+    "digest": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3",
+    "id": "sha256:451e1b9f212f437d43979e4737a04f83ffb034b58c67ebd5bec8af40512e5af3",
+    "kind": "work-wave",
+    "manifestDigest": "sha256:5bc7d01ba1ead41c3fa15922a250f3a525c34533378b80624055ce25dff967a7",
+    "schemaVersion": 2,
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  }
+}

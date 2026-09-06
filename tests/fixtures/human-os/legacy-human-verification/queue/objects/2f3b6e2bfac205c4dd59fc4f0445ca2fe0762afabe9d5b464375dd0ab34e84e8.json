@@ -1,0 +1,109 @@
+{
+  "campaignId": "campaign-human-review",
+  "digest": "sha256:2c5c6b10b86e8b812215deda1416b90b70cda504070d989180d82d8b65c9a39e",
+  "kind": "human-review-packet-delivery-request",
+  "packet": {
+    "attackerPremise": "unauthenticated",
+    "candidate": {
+      "digest": "sha256:3ac5c6affbfe0e346e61c6c792bfe2560e21dc4495c40ece310aac7f44083848",
+      "id": "sha256:0f1cdb5d030d858bde28c3dde1d2d606a1aa008608e09c6cf16404b799f2bad4",
+      "kind": "validation-candidate",
+      "manifestDigest": "sha256:d718e975da6babd783f30113402332fabe46c9500adf93db354de530cc64bb09",
+      "origins": 1,
+      "schemaVersion": 1,
+      "targetSnapshotDigest": "sha256:c7ede740ea9c928dda4ba49759d88ae4657e84f3b101690758b3a5e95fb0742a"
+    },
+    "causalIdentity": {
+      "attackerControlledPrimitive": "public-state-transition",
+      "brokenSecurityProperty": "state-ownership",
+      "rootCause": "root-1"
+    },
+    "counterevidence": [
+      {
+        "criterion": "counterevidence-and-proof-gap",
+        "evidence": [
+          {
+            "endLine": 20,
+            "fileDigest": "sha256:322e5abb16aede11e83e10480d0ad7043cafe479d2383a13fcfad63a467b8925",
+            "path": "plugin.php",
+            "startLine": 10
+          }
+        ],
+        "reason": "Independent review did not locate an effective control."
+      }
+    ],
+    "humanReproductionSketch": {
+      "attackerRole": "unauthenticated",
+      "expectedSecurityEffect": "Another actor's protected state changes.",
+      "preconditions": ["Use a fresh isolated environment."],
+      "steps": [
+        {
+          "action": "Use the public Target interface to request the state transition.",
+          "ordinal": 1,
+          "sourceEvidence": [
+            {
+              "endLine": 20,
+              "fileDigest": "sha256:322e5abb16aede11e83e10480d0ad7043cafe479d2383a13fcfad63a467b8925",
+              "path": "plugin.php",
+              "startLine": 10
+            }
+          ]
+        }
+      ],
+      "stopConditions": ["Stop if the Target identity differs from the Packet."]
+    },
+    "id": "sha256:5df4b884b63204888c3ea0687d6b8cfa54877448d93fc3129d12385cf7f0ff7e",
+    "kind": "human-review-packet",
+    "manifest": {
+      "digest": "sha256:d718e975da6babd783f30113402332fabe46c9500adf93db354de530cc64bb09",
+      "kind": "target-file-manifest",
+      "schemaVersion": 1,
+      "targetSnapshotDigest": "sha256:c7ede740ea9c928dda4ba49759d88ae4657e84f3b101690758b3a5e95fb0742a",
+      "targetSnapshotId": "review-plugin-same-mechanism"
+    },
+    "orderedRoute": [
+      {
+        "claim": "Public input reaches an ownership-sensitive state transition.",
+        "evidence": [
+          {
+            "endLine": 20,
+            "fileDigest": "sha256:322e5abb16aede11e83e10480d0ad7043cafe479d2383a13fcfad63a467b8925",
+            "path": "plugin.php",
+            "startLine": 10
+          }
+        ],
+        "ordinal": 1
+      }
+    ],
+    "reviewBoundary": {
+      "findingEligible": false,
+      "validity": "source-validated-not-human-verified"
+    },
+    "riskAssessment": {
+      "candidateId": "sha256:0f1cdb5d030d858bde28c3dde1d2d606a1aa008608e09c6cf16404b799f2bad4",
+      "digest": "sha256:6483770b4f63428f5e52b6dc11f27bbfc3bdf4c1fd828ebab1e09b500d1533e7",
+      "id": "sha256:eaa46940663f24cb54b458e55eb7fa4f7d571308ebf856bb2ac1c8d3e894f4f6",
+      "kind": "risk-assessment",
+      "schemaVersion": 1,
+      "validationId": "sha256:0f1cdb5d030d858bde28c3dde1d2d606a1aa008608e09c6cf16404b799f2bad4"
+    },
+    "runtimeUncertainties": ["A different runtime premise remains unresolved."],
+    "schemaVersion": 1,
+    "sourceEvidence": [
+      {
+        "endLine": 20,
+        "fileDigest": "sha256:322e5abb16aede11e83e10480d0ad7043cafe479d2383a13fcfad63a467b8925",
+        "path": "plugin.php",
+        "startLine": 10
+      }
+    ],
+    "target": {
+      "digest": "sha256:c7ede740ea9c928dda4ba49759d88ae4657e84f3b101690758b3a5e95fb0742a",
+      "id": "review-plugin-same-mechanism",
+      "pluginSlug": "review-plugin",
+      "version": "1.2.3"
+    }
+  },
+  "runId": "run-same-mechanism",
+  "schemaVersion": 1
+}

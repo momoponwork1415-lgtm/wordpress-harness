@@ -1,0 +1,77 @@
+{
+  "attemptId": "root-evaluator:fbb5db0568541c8a89bbfd6a12e2268a30dd566a70304080aa0ddbcdba733c2d",
+  "kind": "model-attempt-result",
+  "output": {
+    "actions": [
+      {
+        "kind": "request-verification",
+        "request": {
+          "hypothesisDigest": "sha256:43f29b85ee11b747698ce82538916922eef30248c55745294b79606d82ad093f",
+          "reason": "The source-bound route can break browser integrity."
+        },
+        "subjectDigests": [
+          "sha256:43f29b85ee11b747698ce82538916922eef30248c55745294b79606d82ad093f"
+        ]
+      },
+      {
+        "admission": {
+          "composition": "Connect the writer to all privileged readers.",
+          "falsifier": "No privileged reader consumes the state.",
+          "highImpactPotential": "The cross-actor state may reach additional privileged consumers.",
+          "nextAction": "Run a bounded missing-link reader trace."
+        },
+        "kind": "admit-depth",
+        "subjectDigests": [
+          "sha256:43f29b85ee11b747698ce82538916922eef30248c55745294b79606d82ad093f",
+          "sha256:599aea5094cc7f7c976d8c924033a6912508d259b32f745b65aaaaf8e5b883ab"
+        ]
+      },
+      {
+        "kind": "retain",
+        "reason": "Keep the research direction active after one Finding.",
+        "subjectDigests": [
+          "sha256:8918b47d9f9ff2928115dbad5d20aa752758de434a34ebb076075955dfa04a60",
+          "sha256:50bddf99c7ee15407a1ee240183508365ddaad1e1ad5fcbd73f3e3e3585f06ff"
+        ]
+      }
+    ],
+    "campaignDisposition": "continue",
+    "kind": "root-evaluator-output",
+    "schemaVersion": 1
+  },
+  "owner": "exploration",
+  "planDigest": "sha256:a7c09d817dc7b9ec108f7ea6b8d642a7dcde379a600ebd7fc40ea68531658360",
+  "role": "root-evaluator",
+  "schemaVersion": 2,
+  "status": "completed",
+  "usage": {
+    "kind": "model-attempt-usage",
+    "measurement": "reported",
+    "modelTokens": {
+      "cacheCreation": 20,
+      "cacheRead": 30,
+      "input": 10,
+      "output": 40,
+      "total": 100
+    },
+    "modelTurns": 2,
+    "models": [
+      {
+        "canonicalModel": "claude-opus-5",
+        "id": "claude-opus-5",
+        "tokens": {
+          "cacheCreation": 20,
+          "cacheRead": 30,
+          "input": 10,
+          "output": 40,
+          "total": 100
+        }
+      }
+    ],
+    "providerDurationMs": 8,
+    "schemaVersion": 1,
+    "source": { "queries": 0, "responseBytes": 0, "scanBytes": 0 },
+    "structuredOutputBytes": 1000,
+    "wallTimeMs": 10
+  }
+}

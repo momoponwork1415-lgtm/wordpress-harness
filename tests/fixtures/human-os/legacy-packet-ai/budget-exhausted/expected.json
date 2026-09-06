@@ -1,0 +1,16 @@
+{
+  "provenance": {
+    "synthetic": true,
+    "derivedTest": "tests/human-os/ai-reproduction.test.ts Legacy Packet AI Reproduction",
+    "baselineCommit": "9bc1ee605f585f25faade34b263303718ac17d0a"
+  },
+  "databaseSha256": "75a262795beef951cd7e9c339e5f8d951338cb44c47ba844cd1505811d4028f3",
+  "expected": {
+    "attemptId": "sha256:fd4cb5e7f1f3cd9a859752ac6ddd50bd5261efe8d6540f59dc1c6832bd909733",
+    "resultDigest": "sha256:cfc0d32a072c4e947b195ca5ad79602b2eb580b1f61bdac4c69027772403d764",
+    "status": "execution-failed",
+    "reason": "budget-exhausted",
+    "hasTriagePacket": false,
+    "findingId": "sha256:e9981a54c681392e2ca07cb6a3f17078f7bf9880bc003d018b56aef15cd926c5"
+  }
+}

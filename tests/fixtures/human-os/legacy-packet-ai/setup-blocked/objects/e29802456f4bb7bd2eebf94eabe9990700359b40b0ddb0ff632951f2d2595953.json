@@ -1,0 +1,18 @@
+{
+  "admittedAt": "2026-09-05T08:00:00.000Z",
+  "campaignId": "campaign-ai-reproduction",
+  "deliveryRequestDigest": "sha256:6053d272801b2e40057ad1736d6489ebf86ec193aa4f6a772aff0d2d51ef4dfb",
+  "id": "sha256:05111fe9394df2f0e1af2755679904431bdfd352a662e596c825ae4b85123a8f",
+  "kind": "ai-reproduction-intake",
+  "packet": {
+    "candidateId": "sha256:f0a585718b4a343deb23a7fbdf6805ff94301c6cf37e6bf7dca99ea276a4b588",
+    "digest": "sha256:7a899d491fb22699cc94d86384a36e01b443ad346f66a14a19e1dc20a377c38e",
+    "id": "sha256:d28aaa6cbdb80b0c1863644dcc83d95c9ef66a462b339db863f3456d1b349b2e",
+    "kind": "runtime-verification-packet",
+    "manifestDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "schemaVersion": 2,
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "runId": "run-ai-reproduction",
+  "schemaVersion": 2
+}

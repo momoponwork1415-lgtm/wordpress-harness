@@ -55,7 +55,7 @@
     <rect width="1520" height="600" rx="24" class="panel" filter="url(#shadow)"/>
     <text x="28" y="38" class="section-no">03 · ARTIFACT LINEAGE</text>
     <text x="28" y="78" class="section-title">処理は何を読み、何をdurableに残し、誰へ渡すか</text>
-    <text x="28" y="107" class="question">会話を渡すのではなく、identity・根拠・不確実性を固定したversioned artifactを渡す。</text>
+    <text x="28" y="107" class="question">設計View：対話操作でも、identity・根拠・不確実性はversioned artifactで残す。</text>
 
     <text x="28" y="152" class="label">TARGETを固定する</text>
     <g transform="translate(28 170)">
@@ -107,11 +107,11 @@
       <text x="1113" y="52" class="small center">反証 · gap · disposition</text>
       <path d="M1218 40 H1250" class="line-purple"/>
       <rect x="1260" y="0" width="204" height="80" rx="13" class="purple"/>
-      <text x="1362" y="30" class="box-title-small center">Runtime Packet</text>
-      <text x="1362" y="52" class="small center">route · effect · uncertainty</text>
+      <text x="1362" y="30" class="box-title-small center">Finding</text>
+      <text x="1362" y="52" class="small center">immutable source claim</text>
     </g>
 
-    <text x="28" y="432" class="label">人間が成立を判断する</text>
+    <text x="28" y="432" class="label">既存Findingへ観測とassuranceを追加する</text>
     <g transform="translate(28 450)">
       <rect x="0" y="0" width="210" height="80" rx="13" class="purple"/>
       <text x="105" y="30" class="box-title-small center">AI Attempt</text>
@@ -122,22 +122,23 @@
       <text x="357" y="52" class="small center">payload · request · logs</text>
       <path d="M462 40 H494" class="line-purple"/>
       <rect x="504" y="0" width="210" height="80" rx="13" class="purple"/>
-      <text x="609" y="30" class="box-title-small center">Triage Packet</text>
-      <text x="609" y="52" class="small center">Recipe · observation · refs</text>
+      <text x="609" y="30" class="box-title-small center">AI Verification Record</text>
+      <text x="609" y="52" class="small center">outcome · private evidence refs</text>
       <path d="M714 40 H746" class="line-purple"/>
       <rect x="756" y="0" width="210" height="80" rx="13" class="blue"/>
-      <text x="861" y="30" class="box-title-small center">Human Record</text>
+      <text x="861" y="30" class="box-title-small center">Human Verification Record</text>
       <text x="861" y="52" class="small center">fresh reproduction · result</text>
       <path d="M966 40 H998" class="line-green"/>
       <rect x="1008" y="0" width="210" height="80" rx="13" class="green"/>
-      <text x="1113" y="30" class="box-title-small center">Finding</text>
-      <text x="1113" y="52" class="small center">人間が昇格した技術的事実</text>
+      <text x="1113" y="30" class="box-title-small center">Assurance view</text>
+      <text x="1113" y="52" class="small center">Finding + append-only records</text>
       <path d="M1218 40 H1250" class="line-green"/>
       <rect x="1260" y="0" width="204" height="80" rx="13" class="green"/>
       <text x="1362" y="30" class="box-title-small center">Approved Draft</text>
       <text x="1362" y="52" class="small center">PoC · Description · revision</text>
     </g>
 
-    <text x="28" y="570" class="small">CASへartifactを保存してからLedger eventで参照する。digestは同一性を保証するが、脆弱性の正しさは保証しない。</text>
+    <text x="28" y="570" class="small">CASへartifactを保存してからLedger eventで参照する。digestはcontentの整合性を確認する。技術的正しさや外部行動の承認を代替しない。</text>
+    <text x="28" y="590" class="small">Draftの人間承認と、exact revision / destinationに対するExternal Action Authorizationは別の判断。</text>
   </g>
 </svg>

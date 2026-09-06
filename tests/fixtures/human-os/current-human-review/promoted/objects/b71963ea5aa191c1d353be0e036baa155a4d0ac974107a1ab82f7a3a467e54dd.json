@@ -1,0 +1,194 @@
+{
+  "caseId": "sha256:bad03bbe7b8a95ea3e1538eb7f07da0fcb32d6014f75106dc8273a06d518bf31",
+  "environment": {
+    "ambientCredentials": false,
+    "ambientHostShell": false,
+    "arbitraryNetwork": false,
+    "disposable": true,
+    "environmentId": "human-1-0-0",
+    "fresh": true,
+    "hostTargetExecution": false,
+    "isolation": {
+      "backend": "gvisor",
+      "fallbackUsed": false,
+      "runtimeName": "runsc",
+      "runtimeVersion": "20260901.0"
+    },
+    "kind": "human-reproduction-runtime-identity",
+    "manifestDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "observedDatabaseVersion": "11.8.3",
+    "observedImages": {
+      "browser": "registry.invalid/browser@sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "database": "registry.invalid/mariadb@sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "wordpress": "registry.invalid/wordpress@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "wordpressCli": "registry.invalid/wordpress-cli@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    "observedPhpVersion": "8.3.24",
+    "observedWebServerVersion": "2.4.65",
+    "observedWordpressVersion": "6.8.2",
+    "runtimeProfileDigest": "sha256:24b6971ac95f2d1116e7e12ea43d3a1ebaf4e1776f356d345cceeaef51c4c341",
+    "schemaVersion": 2,
+    "setupPlanDigest": "sha256:05e87425ae689fac6d83639af07dc7571b524692e955dfac4aa351a116374b09",
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "id": "sha256:1095ca77621d368c181f66849a2cd7d227a2fcc3540c7c421820316809c1b0c3",
+  "kind": "human-reproduction-preparation",
+  "preparedAt": "2026-09-05T10:00:00.000Z",
+  "schemaVersion": 2,
+  "selectedAttempt": {
+    "digest": "sha256:ed36d7e9167e1b817bfc82d110b0f37dd883cef0634e99dd1ee7b1eb6333fd44",
+    "id": "sha256:c88ca0c42445633ac8886d1dabc5e095746b81bd8f4720d916c074c089d6ae66",
+    "intakeId": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "kind": "ai-reproduction-attempt",
+    "packetDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "runtimeProfileDigest": "sha256:24b6971ac95f2d1116e7e12ea43d3a1ebaf4e1776f356d345cceeaef51c4c341",
+    "schemaVersion": 2,
+    "setupPlanDigest": "sha256:05e87425ae689fac6d83639af07dc7571b524692e955dfac4aa351a116374b09",
+    "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "toolPolicyDigest": "sha256:023efdf06f4a21fd246e6d372848fdfb11d817c6e823b74c03c8ad99540ac726"
+  },
+  "status": "ready",
+  "triagePacket": {
+    "attempt": {
+      "digest": "sha256:ed36d7e9167e1b817bfc82d110b0f37dd883cef0634e99dd1ee7b1eb6333fd44",
+      "id": "sha256:c88ca0c42445633ac8886d1dabc5e095746b81bd8f4720d916c074c089d6ae66",
+      "intakeId": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "kind": "ai-reproduction-attempt",
+      "packetDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "runtimeProfileDigest": "sha256:24b6971ac95f2d1116e7e12ea43d3a1ebaf4e1776f356d345cceeaef51c4c341",
+      "schemaVersion": 2,
+      "setupPlanDigest": "sha256:05e87425ae689fac6d83639af07dc7571b524692e955dfac4aa351a116374b09",
+      "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "toolPolicyDigest": "sha256:023efdf06f4a21fd246e6d372848fdfb11d817c6e823b74c03c8ad99540ac726"
+    },
+    "boundary": {
+      "findingEligible": false,
+      "humanDisposition": false,
+      "humanVerified": false,
+      "programmeEligibility": false,
+      "runtimeConfirmed": true
+    },
+    "confirmedAt": "2026-09-05T10:00:00.000Z",
+    "id": "sha256:20f174a30efd421b8215be964259a55efa9679e8d4951a6aa75f2f8135a8e529",
+    "kind": "triage-reproduction-packet",
+    "observation": {
+      "description": "The Packet-bound Security Effect was observed.",
+      "securityEffect": "observed"
+    },
+    "privateEvidence": {
+      "artifactKind": "private-evidence-bundle",
+      "attemptId": "sha256:c88ca0c42445633ac8886d1dabc5e095746b81bd8f4720d916c074c089d6ae66",
+      "digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+      "id": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "kind": "human-os-private-artifact",
+      "schemaVersion": 2,
+      "storage": "human-os-private-store",
+      "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "proof": { "causalControl": null, "witness": null },
+    "recipe": {
+      "artifactKind": "reproduction-recipe",
+      "attemptId": "sha256:c88ca0c42445633ac8886d1dabc5e095746b81bd8f4720d916c074c089d6ae66",
+      "digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "kind": "human-os-private-artifact",
+      "schemaVersion": 2,
+      "storage": "human-os-private-store",
+      "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "recipeMetadata": {
+      "class": "generic",
+      "criterion": {
+        "class": "generic",
+        "expectedSecurityEffect": "Observe the Packet-bound Security Effect.",
+        "proof": "security-effect-observation"
+      },
+      "expectedSecurityEffect": "state-ownership",
+      "stepCount": 2
+    },
+    "runtimeIdentity": {
+      "ambientCredentials": false,
+      "ambientHostShell": false,
+      "arbitraryNetwork": false,
+      "disposable": true,
+      "environmentId": "ai-1-0-0",
+      "fresh": true,
+      "hostTargetExecution": false,
+      "isolation": {
+        "backend": "gvisor",
+        "fallbackUsed": false,
+        "runtimeName": "runsc",
+        "runtimeVersion": "20260901.0"
+      },
+      "kind": "ai-reproduction-runtime-identity",
+      "manifestDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "observedDatabaseVersion": "11.8.3",
+      "observedImages": {
+        "browser": "registry.invalid/browser@sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "database": "registry.invalid/mariadb@sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "wordpress": "registry.invalid/wordpress@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "wordpressCli": "registry.invalid/wordpress-cli@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "observedPhpVersion": "8.3.24",
+      "observedWebServerVersion": "2.4.65",
+      "observedWordpressVersion": "6.8.2",
+      "runtimeProfileDigest": "sha256:24b6971ac95f2d1116e7e12ea43d3a1ebaf4e1776f356d345cceeaef51c4c341",
+      "schemaVersion": 2,
+      "setupPlanDigest": "sha256:05e87425ae689fac6d83639af07dc7571b524692e955dfac4aa351a116374b09",
+      "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "toolPolicyDigest": "sha256:023efdf06f4a21fd246e6d372848fdfb11d817c6e823b74c03c8ad99540ac726"
+    },
+    "runtimePacket": {
+      "candidateId": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "id": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+      "kind": "runtime-verification-packet",
+      "manifestDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "schemaVersion": 2,
+      "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "schemaVersion": 2
+  },
+  "versionReview": {
+    "kind": "current-version-review",
+    "originalAttempt": {
+      "digest": "sha256:ed36d7e9167e1b817bfc82d110b0f37dd883cef0634e99dd1ee7b1eb6333fd44",
+      "id": "sha256:c88ca0c42445633ac8886d1dabc5e095746b81bd8f4720d916c074c089d6ae66",
+      "intakeId": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "kind": "ai-reproduction-attempt",
+      "packetDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "runtimeProfileDigest": "sha256:24b6971ac95f2d1116e7e12ea43d3a1ebaf4e1776f356d345cceeaef51c4c341",
+      "schemaVersion": 2,
+      "setupPlanDigest": "sha256:05e87425ae689fac6d83639af07dc7571b524692e955dfac4aa351a116374b09",
+      "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "toolPolicyDigest": "sha256:023efdf06f4a21fd246e6d372848fdfb11d817c6e823b74c03c8ad99540ac726"
+    },
+    "originalTarget": {
+      "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "id": "review-plugin-1.0.0",
+      "pluginSlug": "review-plugin",
+      "version": "1.0.0"
+    },
+    "reviewedAt": "2026-09-05T10:00:00.000Z",
+    "schemaVersion": 2,
+    "selectedAttempt": {
+      "digest": "sha256:ed36d7e9167e1b817bfc82d110b0f37dd883cef0634e99dd1ee7b1eb6333fd44",
+      "id": "sha256:c88ca0c42445633ac8886d1dabc5e095746b81bd8f4720d916c074c089d6ae66",
+      "intakeId": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "kind": "ai-reproduction-attempt",
+      "packetDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "runtimeProfileDigest": "sha256:24b6971ac95f2d1116e7e12ea43d3a1ebaf4e1776f356d345cceeaef51c4c341",
+      "schemaVersion": 2,
+      "setupPlanDigest": "sha256:05e87425ae689fac6d83639af07dc7571b524692e955dfac4aa351a116374b09",
+      "targetSnapshotDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "toolPolicyDigest": "sha256:023efdf06f4a21fd246e6d372848fdfb11d817c6e823b74c03c8ad99540ac726"
+    },
+    "selectedTarget": {
+      "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "id": "review-plugin-1.0.0",
+      "pluginSlug": "review-plugin",
+      "version": "1.0.0"
+    },
+    "status": "current"
+  }
+}

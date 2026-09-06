@@ -1,0 +1,68 @@
+{
+  "gate": {
+    "credentialBearingHostPathMounted": false,
+    "engineSocketMounted": false,
+    "fallbackUsed": false,
+    "hostNetwork": false,
+    "hostTargetExecution": false,
+    "kind": "human-verification-isolation-gate-observation",
+    "observedAt": "2026-09-05T04:00:00.000Z",
+    "observedBackend": null,
+    "observedRuntimeName": null,
+    "observedRuntimeVersion": null,
+    "privileged": false,
+    "requestDigest": "sha256:8e233ad0bad0b4e2eaf6a52537ed38a1c0db6489f59ec58de5d199e5422e9df0",
+    "schemaVersion": 1,
+    "status": "blocked",
+    "unauthorizedEgress": false
+  },
+  "kind": "human-verification-environment-disposition",
+  "phase": "isolation-gate",
+  "reason": "isolation-capability-unavailable",
+  "requestDigest": "sha256:8e233ad0bad0b4e2eaf6a52537ed38a1c0db6489f59ec58de5d199e5422e9df0",
+  "schemaVersion": 1,
+  "setupReceipt": {
+    "cleanup": "not-required",
+    "completedAt": "2026-09-05T04:00:00.000Z",
+    "environmentId": null,
+    "kind": "human-verification-setup-receipt",
+    "requestDigest": "sha256:8e233ad0bad0b4e2eaf6a52537ed38a1c0db6489f59ec58de5d199e5422e9df0",
+    "schemaVersion": 1,
+    "setupPlanDigest": "sha256:05e87425ae689fac6d83639af07dc7571b524692e955dfac4aa351a116374b09",
+    "stages": [
+      {
+        "observationDigest": null,
+        "ordinal": 1,
+        "stage": "install-wordpress",
+        "status": "not-run"
+      },
+      {
+        "observationDigest": null,
+        "ordinal": 2,
+        "stage": "install-target",
+        "status": "not-run"
+      },
+      {
+        "observationDigest": null,
+        "ordinal": 3,
+        "stage": "activate-target",
+        "status": "not-run"
+      },
+      {
+        "observationDigest": null,
+        "ordinal": 4,
+        "stage": "apply-configuration",
+        "status": "not-run"
+      },
+      {
+        "observationDigest": null,
+        "ordinal": 5,
+        "stage": "functional-smoke",
+        "status": "not-run"
+      }
+    ],
+    "startedAt": "2026-09-05T04:00:00.000Z",
+    "status": "setup-blocked"
+  },
+  "status": "setup-blocked"
+}
