@@ -10,7 +10,10 @@ export type {
   FindingAIReproductionAttempt,
   FindingAIReproductionAttemptRef,
 } from "./ai-reproduction-contracts.js";
-export { openAIReproduction } from "./ai-reproduction.js";
+export {
+  FindingAIReproductionInProgressError,
+  openAIReproduction,
+} from "./ai-reproduction.js";
 export type {
   AIReproduction,
   AIReproductionView,
