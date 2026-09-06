@@ -1,7 +1,7 @@
 import { extname } from "node:path";
 
 import { openFileJsonArtifactStore } from "../research-record/file-json-artifact-store.js";
-import { openVerifiedArtifacts } from "../research-record/verified-artifacts.js";
+import { openVerifiedArtifacts } from "../../infrastructure/verified-artifacts.js";
 import {
   canonicalJson,
   sha256Digest,

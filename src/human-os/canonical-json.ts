@@ -1,8 +1,9 @@
-import { createHash } from "node:crypto";
-
 import { z } from "zod";
 
-import { encodeCanonicalJson } from "../infrastructure/canonical-json.js";
+import {
+  canonicalDigest,
+  encodeCanonicalJson,
+} from "../infrastructure/canonical-json.js";
 
 const jsonValueSchema = z.json();
 
@@ -11,7 +12,5 @@ export function canonicalHumanOsJson(value: unknown): string {
 }
 
 export function humanOsDigest(value: unknown): string {
-  return `sha256:${createHash("sha256")
-    .update(canonicalHumanOsJson(value))
-    .digest("hex")}`;
+  return canonicalDigest(value);
 }

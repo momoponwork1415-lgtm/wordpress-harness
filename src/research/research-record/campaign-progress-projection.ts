@@ -22,7 +22,7 @@ import type {
   ValidationIntentRecordView,
   ValidationCompletionRecordView,
 } from "./contracts.js";
-import { openVerifiedArtifacts } from "./verified-artifacts.js";
+import { openVerifiedArtifacts } from "../../infrastructure/verified-artifacts.js";
 
 // Validated read records only; no SQL rows, database handles, or write capability.
 interface CampaignProgressRecords {

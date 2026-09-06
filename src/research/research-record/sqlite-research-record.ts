@@ -211,7 +211,7 @@ import { canonicalJson, sha256Digest } from "./canonical-json.js";
 import {
   openVerifiedArtifacts,
   type VerifiedArtifacts,
-} from "./verified-artifacts.js";
+} from "../../infrastructure/verified-artifacts.js";
 import type {
   OpenResearchRecordOptions,
   PreparationRecord,

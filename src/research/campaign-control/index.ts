@@ -98,7 +98,7 @@ import type { JsonArtifactStore } from "../research-record/contracts.js";
 import {
   openVerifiedArtifacts,
   type VerifiedArtifacts,
-} from "../research-record/verified-artifacts.js";
+} from "../../infrastructure/verified-artifacts.js";
 import {
   FindingMechanismGroupingIntegrityError,
   openVerification,

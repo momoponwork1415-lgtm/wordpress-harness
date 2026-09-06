@@ -4,9 +4,9 @@ import { z } from "zod";
 import {
   ArtifactIntegrityError,
   openVerifiedArtifacts,
-} from "../../src/research/research-record/verified-artifacts.js";
-import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
-import type { JsonArtifactStore } from "../../src/research/research-record/contracts.js";
+  type ContentAddressedStore,
+} from "../../src/infrastructure/verified-artifacts.js";
+import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 
 const subjectSchema = z.strictObject({
   kind: z.literal("subject"),
@@ -15,11 +15,11 @@ const subjectSchema = z.strictObject({
 
 const subject = { kind: "subject" as const, name: "brizy" };
 
-function memoryStore(): JsonArtifactStore {
+function memoryStore(): ContentAddressedStore {
   const entries = new Map<string, unknown>();
   return {
     putJson: async (value) => {
-      const digest = sha256Digest(value);
+      const digest = canonicalDigest(value);
       entries.set(digest, value);
       return digest;
     },
@@ -33,7 +33,7 @@ function memoryStore(): JsonArtifactStore {
 }
 
 /** An adapter that lies about what it stored, as an untrusted adapter may. */
-function foreignDigestStore(digest: string): JsonArtifactStore {
+function foreignDigestStore(digest: string): ContentAddressedStore {
   return {
     putJson: async () => digest,
     readJson: async () => {
@@ -43,9 +43,9 @@ function foreignDigestStore(digest: string): JsonArtifactStore {
 }
 
 /** An adapter that returns content other than the artifact addressed. */
-function substitutingStore(value: unknown): JsonArtifactStore {
+function substitutingStore(value: unknown): ContentAddressedStore {
   return {
-    putJson: async () => sha256Digest(value),
+    putJson: async () => canonicalDigest(value),
     readJson: async () => value,
   };
 }
@@ -55,13 +55,13 @@ describe("Verified Artifacts", () => {
     const artifacts = openVerifiedArtifacts(memoryStore());
 
     await expect(artifacts.put("Research Thesis", subject)).resolves.toBe(
-      sha256Digest(subject),
+      canonicalDigest(subject),
     );
   });
 
   it("rejects a store that returns a digest for other content", async () => {
     const artifacts = openVerifiedArtifacts(
-      foreignDigestStore(sha256Digest({ kind: "subject", name: "other" })),
+      foreignDigestStore(canonicalDigest({ kind: "subject", name: "other" })),
     );
 
     await expect(artifacts.put("Research Thesis", subject)).rejects.toThrow(
@@ -73,7 +73,11 @@ describe("Verified Artifacts", () => {
     const artifacts = openVerifiedArtifacts(memoryStore());
 
     await expect(
-      artifacts.put("Research Thesis", subject, sha256Digest({ other: true })),
+      artifacts.put(
+        "Research Thesis",
+        subject,
+        canonicalDigest({ other: true }),
+      ),
     ).rejects.toThrow(ArtifactIntegrityError);
   });
 
@@ -91,7 +95,11 @@ describe("Verified Artifacts", () => {
     const artifacts = openVerifiedArtifacts(substitutingStore(substituted));
 
     await expect(
-      artifacts.read("Research Thesis", subjectSchema, sha256Digest(subject)),
+      artifacts.read(
+        "Research Thesis",
+        subjectSchema,
+        canonicalDigest(subject),
+      ),
     ).rejects.toThrow("Research Thesis CAS mismatch");
   });
 
@@ -102,7 +110,11 @@ describe("Verified Artifacts", () => {
     const artifacts = openVerifiedArtifacts(substitutingStore({ junk: true }));
 
     await expect(
-      artifacts.read("Research Thesis", subjectSchema, sha256Digest(subject)),
+      artifacts.read(
+        "Research Thesis",
+        subjectSchema,
+        canonicalDigest(subject),
+      ),
     ).rejects.toThrow(ArtifactIntegrityError);
   });
 
@@ -118,7 +130,7 @@ describe("Verified Artifacts", () => {
 
   it("names the artifact and digest on the integrity error", async () => {
     const artifacts = openVerifiedArtifacts(substitutingStore({ junk: true }));
-    const digest = sha256Digest(subject);
+    const digest = canonicalDigest(subject);
 
     await expect(
       artifacts.read("Research Thesis", subjectSchema, digest),

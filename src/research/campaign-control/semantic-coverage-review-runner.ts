@@ -22,7 +22,7 @@ import type {
   JsonArtifactStore,
   ResearchRecord,
 } from "../research-record/contracts.js";
-import { openVerifiedArtifacts } from "../research-record/verified-artifacts.js";
+import { openVerifiedArtifacts } from "../../infrastructure/verified-artifacts.js";
 import { sourceEvidenceReceiptValueV2Schema } from "../source-mapping/source-evidence-contracts.js";
 import type {
   CampaignAttemptIntentV2,

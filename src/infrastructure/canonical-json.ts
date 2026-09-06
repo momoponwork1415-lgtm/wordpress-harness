@@ -1,7 +1,13 @@
+import { createHash } from "node:crypto";
+
+import { z } from "zod";
+
 type JsonPrimitive = boolean | null | number | string;
 
 export type JsonValue =
   JsonPrimitive | JsonValue[] | { readonly [key: string]: JsonValue };
+
+const jsonValueSchema = z.json();
 
 /** Encode already-validated JSON without changing persisted byte ordering. */
 export function encodeCanonicalJson(value: JsonValue): string {
@@ -28,4 +34,15 @@ export function encodeCanonicalJson(value: JsonValue): string {
     });
 
   return `{${members.join(",")}}`;
+}
+
+/**
+ * The identity a content-addressed artifact is stored and addressed by.
+ *
+ * Both contexts name an artifact by the SHA-256 of its canonical encoding, so
+ * the digest belongs with the encoding rather than beside either store.
+ */
+export function canonicalDigest(value: unknown): string {
+  const encoded = encodeCanonicalJson(jsonValueSchema.parse(value));
+  return `sha256:${createHash("sha256").update(encoded).digest("hex")}`;
 }

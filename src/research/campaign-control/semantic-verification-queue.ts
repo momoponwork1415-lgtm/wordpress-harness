@@ -7,7 +7,7 @@ import {
   sha256Digest,
 } from "../research-record/canonical-json.js";
 import type { ResearchRecord } from "../research-record/index.js";
-import { openVerifiedArtifacts } from "../research-record/verified-artifacts.js";
+import { openVerifiedArtifacts } from "../../infrastructure/verified-artifacts.js";
 import {
   openVerification,
   type VerificationRecordRef,

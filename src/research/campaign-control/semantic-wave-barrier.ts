@@ -17,7 +17,7 @@ import type {
 } from "../model-execution/contracts.js";
 import type { JsonArtifactStore } from "../research-record/contracts.js";
 import { sha256Digest } from "../research-record/canonical-json.js";
-import { openVerifiedArtifacts } from "../research-record/verified-artifacts.js";
+import { openVerifiedArtifacts } from "../../infrastructure/verified-artifacts.js";
 
 export interface SemanticWaveTerminalAttempt {
   readonly ref: AttemptExecutionResultV2Ref & { readonly role: "finder" };

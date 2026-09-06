@@ -49,6 +49,10 @@ import {
   runtimeVerificationPacketDeliveryRequestSchema,
   type RuntimeVerificationPacketDeliveryRequest,
 } from "../../research/validation/runtime-verification-packet.js";
+import {
+  openVerifiedArtifacts,
+  type VerifiedArtifacts,
+} from "../../infrastructure/verified-artifacts.js";
 import type {
   AIReproductionIntakeRecordView,
   AIReproductionResultRecordView,
@@ -209,12 +213,12 @@ function assertDispositionMatchesRequest(
 
 class SqliteHumanOsRecord implements HumanOsRecord {
   readonly #database: Database.Database;
-  readonly #artifactStore: OpenHumanOsRecordOptions["artifactStore"];
+  readonly #artifacts: VerifiedArtifacts;
   readonly #clock: () => Date;
 
   constructor(options: OpenHumanOsRecordOptions) {
     this.#database = new Database(options.databasePath);
-    this.#artifactStore = options.artifactStore;
+    this.#artifacts = openVerifiedArtifacts(options.artifactStore);
     this.#clock = options.clock ?? (() => new Date());
     this.#database.pragma("journal_mode = WAL");
     this.#database.pragma("busy_timeout = 5000");
@@ -365,14 +369,14 @@ class SqliteHumanOsRecord implements HumanOsRecord {
       throw new Error("AI Reproduction Intake binding mismatch");
     }
 
-    const requestArtifactDigest = await this.#artifactStore.putJson(request);
-    const intakeArtifactDigest = await this.#artifactStore.putJson(intake);
-    if (
-      requestArtifactDigest !== humanOsDigest(request) ||
-      intakeArtifactDigest !== humanOsDigest(intake)
-    ) {
-      throw new Error("Human OS Artifact Store returned a foreign digest");
-    }
+    const requestArtifactDigest = await this.#artifacts.put(
+      "Runtime Verification Packet Delivery Request",
+      request,
+    );
+    const intakeArtifactDigest = await this.#artifacts.put(
+      "AI Reproduction Intake",
+      intake,
+    );
 
     const transact = this.#database.transaction(() => {
       const existing = this.#selectAIIntake(
@@ -441,20 +445,21 @@ class SqliteHumanOsRecord implements HumanOsRecord {
       throw new Error("AI Reproduction Result binding mismatch");
     }
 
-    const attemptArtifactDigest = await this.#artifactStore.putJson(attempt);
-    const resultArtifactDigest = await this.#artifactStore.putJson(result);
+    const attemptArtifactDigest = await this.#artifacts.put(
+      "AI Reproduction Attempt",
+      attempt,
+    );
+    const resultArtifactDigest = await this.#artifacts.put(
+      "AI Reproduction Result",
+      result,
+    );
     const triagePacketArtifactDigest =
       result.triagePacket === null
         ? null
-        : await this.#artifactStore.putJson(result.triagePacket);
-    if (
-      attemptArtifactDigest !== humanOsDigest(attempt) ||
-      resultArtifactDigest !== humanOsDigest(result) ||
-      (result.triagePacket !== null &&
-        triagePacketArtifactDigest !== humanOsDigest(result.triagePacket))
-    ) {
-      throw new Error("Human OS Artifact Store returned a foreign digest");
-    }
+        : await this.#artifacts.put(
+            "Triage Reproduction Packet",
+            result.triagePacket,
+          );
 
     const transact = this.#database.transaction(() => {
       const existing = this.#selectAIResult(attempt.id);
@@ -559,15 +564,13 @@ class SqliteHumanOsRecord implements HumanOsRecord {
       return { status: "in-progress", claim: decoded.claim };
     }
     const [findingArtifactDigest, attemptArtifactDigest] = await Promise.all([
-      this.#artifactStore.putJson(finding),
-      this.#artifactStore.putJson(attempt),
+      this.#artifacts.put("Finding", finding, findingRef.digest),
+      this.#artifacts.put(
+        "Finding AI Reproduction Attempt",
+        attempt,
+        attemptDigest,
+      ),
     ]);
-    if (
-      findingArtifactDigest !== findingRef.digest ||
-      attemptArtifactDigest !== attemptDigest
-    ) {
-      throw new Error("Human OS Artifact Store returned a foreign digest");
-    }
     const transact = this.#database.transaction(() => {
       const completed = this.#selectFindingAIReproduction(
         "attempt_id = ?",
@@ -710,17 +713,10 @@ class SqliteHumanOsRecord implements HumanOsRecord {
     }
     const [findingArtifactDigest, attemptArtifactDigest, recordArtifactDigest] =
       await Promise.all([
-        this.#artifactStore.putJson(finding),
-        this.#artifactStore.putJson(attempt),
-        this.#artifactStore.putJson(record),
+        this.#artifacts.put("Finding", finding, findingRef.digest),
+        this.#artifacts.put("Finding AI Reproduction Attempt", attempt),
+        this.#artifacts.put("AI Verification Record", record),
       ]);
-    if (
-      findingArtifactDigest !== findingRef.digest ||
-      attemptArtifactDigest !== humanOsDigest(attempt) ||
-      recordArtifactDigest !== humanOsDigest(record)
-    ) {
-      throw new Error("Human OS Artifact Store returned a foreign digest");
-    }
     const transact = this.#database.transaction(() => {
       const existing = this.#selectFindingAIReproduction(
         "attempt_id = ?",
@@ -1030,15 +1026,14 @@ class SqliteHumanOsRecord implements HumanOsRecord {
       humanVerificationEnvironmentDispositionSchema.parse(dispositionValue);
     assertDispositionMatchesRequest(request, disposition);
 
-    const requestArtifactDigest = await this.#artifactStore.putJson(request);
-    const dispositionArtifactDigest =
-      await this.#artifactStore.putJson(disposition);
-    if (
-      requestArtifactDigest !== humanOsDigest(request) ||
-      dispositionArtifactDigest !== humanOsDigest(disposition)
-    ) {
-      throw new Error("Human OS Artifact Store returned a foreign digest");
-    }
+    const requestArtifactDigest = await this.#artifacts.put(
+      "Verification Environment Request",
+      request,
+    );
+    const dispositionArtifactDigest = await this.#artifacts.put(
+      "Human Verification Environment Disposition",
+      disposition,
+    );
 
     const transact = this.#database.transaction(() => {
       const existing = this.#selectRow(request.digest);
@@ -1136,15 +1131,14 @@ class SqliteHumanOsRecord implements HumanOsRecord {
       throw new Error("Human Review admission binding mismatch");
     }
 
-    const requestArtifactDigest = await this.#artifactStore.putJson(request);
-    const proposedCaseArtifactDigest =
-      await this.#artifactStore.putJson(reviewCase);
-    if (
-      requestArtifactDigest !== humanOsDigest(request) ||
-      proposedCaseArtifactDigest !== humanOsDigest(reviewCase)
-    ) {
-      throw new Error("Human OS Artifact Store returned a foreign digest");
-    }
+    const requestArtifactDigest = await this.#artifacts.put(
+      "Human Review Packet Delivery Request",
+      request,
+    );
+    const proposedCaseArtifactDigest = await this.#artifacts.put(
+      "Human Review Case",
+      reviewCase,
+    );
 
     const transact = this.#database.transaction(() => {
       const existingAdmission = this.#selectAdmission(
@@ -1265,24 +1259,18 @@ class SqliteHumanOsRecord implements HumanOsRecord {
     ) {
       throw new Error("Human Verification result binding mismatch");
     }
-    const resultArtifactDigest = await this.#artifactStore.putJson(result);
+    const resultArtifactDigest = await this.#artifacts.put(
+      "Human Verification Result",
+      result,
+    );
     const findingArtifactDigest =
       result.finding === null
         ? null
-        : await this.#artifactStore.putJson(result.finding);
+        : await this.#artifacts.put("Finding", result.finding);
     const evidenceRequestArtifactDigest =
       result.evidenceRequest === null
         ? null
-        : await this.#artifactStore.putJson(result.evidenceRequest);
-    if (
-      resultArtifactDigest !== humanOsDigest(result) ||
-      (result.finding !== null &&
-        findingArtifactDigest !== humanOsDigest(result.finding)) ||
-      (result.evidenceRequest !== null &&
-        evidenceRequestArtifactDigest !== humanOsDigest(result.evidenceRequest))
-    ) {
-      throw new Error("Human OS Artifact Store returned a foreign digest");
-    }
+        : await this.#artifacts.put("Evidence Request", result.evidenceRequest);
 
     const transact = this.#database.transaction(() => {
       const existing = this.#selectVerification(result.verification.id);
@@ -1350,10 +1338,10 @@ class SqliteHumanOsRecord implements HumanOsRecord {
     readonly status: "appended" | "occupied";
     readonly row: StoredCurrentHumanReviewEventRow;
   }> {
-    const artifactDigest = await this.#artifactStore.putJson(input.artifact);
-    if (artifactDigest !== humanOsDigest(input.artifact)) {
-      throw new Error("Human OS Artifact Store returned a foreign digest");
-    }
+    const artifactDigest = await this.#artifacts.put(
+      "Current Human Review event",
+      input.artifact,
+    );
     const transact = this.#database.transaction(() => {
       const existing = this.#selectCurrentHumanReviewEvent(
         "event_id = ?",
@@ -1434,11 +1422,13 @@ class SqliteHumanOsRecord implements HumanOsRecord {
   async #decodeCurrentCase(
     row: StoredCurrentHumanReviewEventRow,
   ): Promise<CurrentHumanReviewCaseRecordView> {
-    const value = await this.#artifactStore.readJson(row.artifact_digest);
-    const reviewCase = currentHumanReviewCaseSchema.parse(value);
+    const reviewCase = await this.#artifacts.read(
+      "Current Human Review Case",
+      currentHumanReviewCaseSchema,
+      row.artifact_digest,
+    );
     if (
       row.kind !== "case-admitted" ||
-      humanOsDigest(reviewCase) !== row.artifact_digest ||
       reviewCase.id !== row.event_id ||
       reviewCase.id !== row.case_id ||
       reviewCase.campaignId !== row.campaign_id ||
@@ -1458,11 +1448,13 @@ class SqliteHumanOsRecord implements HumanOsRecord {
   async #decodeCurrentSchedule(
     row: StoredCurrentHumanReviewEventRow,
   ): Promise<CurrentHumanReviewScheduleRecordView> {
-    const value = await this.#artifactStore.readJson(row.artifact_digest);
-    const event = currentHumanReviewScheduleEventSchema.parse(value);
+    const event = await this.#artifacts.read(
+      "Human Review Schedule",
+      currentHumanReviewScheduleEventSchema,
+      row.artifact_digest,
+    );
     if (
       row.kind !== "schedule-recorded" ||
-      humanOsDigest(event) !== row.artifact_digest ||
       event.id !== row.event_id ||
       event.caseId !== row.case_id ||
       event.event !== row.status
@@ -1480,11 +1472,13 @@ class SqliteHumanOsRecord implements HumanOsRecord {
   async #decodeHumanReproductionPreparation(
     row: StoredCurrentHumanReviewEventRow,
   ): Promise<HumanReproductionPreparationRecordView> {
-    const value = await this.#artifactStore.readJson(row.artifact_digest);
-    const preparation = humanReproductionPreparationSchema.parse(value);
+    const preparation = await this.#artifacts.read(
+      "Human Reproduction Preparation",
+      humanReproductionPreparationSchema,
+      row.artifact_digest,
+    );
     if (
       row.kind !== "preparation-recorded" ||
-      humanOsDigest(preparation) !== row.artifact_digest ||
       preparation.id !== row.event_id ||
       preparation.caseId !== row.case_id ||
       preparation.status !== row.status
@@ -1502,11 +1496,13 @@ class SqliteHumanOsRecord implements HumanOsRecord {
   async #decodeCurrentResult(
     row: StoredCurrentHumanReviewEventRow,
   ): Promise<CurrentHumanReviewResultRecordView> {
-    const value = await this.#artifactStore.readJson(row.artifact_digest);
-    const result = currentHumanReviewResultSchema.parse(value);
+    const result = await this.#artifacts.read(
+      "Current Human Review Result",
+      currentHumanReviewResultSchema,
+      row.artifact_digest,
+    );
     if (
       row.kind !== "result-recorded" ||
-      humanOsDigest(result) !== row.artifact_digest ||
       result.verification.id !== row.event_id ||
       result.verification.caseId !== row.case_id ||
       result.verification.attempt.id !== row.attempt_id ||
@@ -1556,18 +1552,17 @@ class SqliteHumanOsRecord implements HumanOsRecord {
   async #decodeAIIntake(
     row: StoredAIReproductionIntakeRow,
   ): Promise<AIReproductionIntakeRecordView> {
-    const requestValue = await this.#artifactStore.readJson(
+    const request = await this.#artifacts.read(
+      "Runtime Verification Packet Delivery Request",
+      runtimeVerificationPacketDeliveryRequestSchema,
       row.request_artifact_digest,
     );
-    const intakeValue = await this.#artifactStore.readJson(
+    const intake = await this.#artifacts.read(
+      "AI Reproduction Intake",
+      aiReproductionIntakeSchema,
       row.intake_artifact_digest,
     );
-    const request =
-      runtimeVerificationPacketDeliveryRequestSchema.parse(requestValue);
-    const intake = aiReproductionIntakeSchema.parse(intakeValue);
     if (
-      humanOsDigest(request) !== row.request_artifact_digest ||
-      humanOsDigest(intake) !== row.intake_artifact_digest ||
       request.digest !== row.delivery_request_digest ||
       humanOsDigest(request.packet) !== row.packet_digest ||
       intake.id !== row.intake_id ||
@@ -1591,34 +1586,33 @@ class SqliteHumanOsRecord implements HumanOsRecord {
   async #decodeAIResult(
     row: StoredAIReproductionResultRow,
   ): Promise<AIReproductionResultRecordView> {
-    const attemptValue = await this.#artifactStore.readJson(
+    const attempt = await this.#artifacts.read(
+      "AI Reproduction Attempt",
+      aiReproductionAttemptSchema,
       row.attempt_artifact_digest,
     );
-    const resultValue = await this.#artifactStore.readJson(
+    const result = await this.#artifacts.read(
+      "AI Reproduction Result",
+      aiReproductionResultSchema,
       row.result_artifact_digest,
     );
-    const attempt = aiReproductionAttemptSchema.parse(attemptValue);
-    const result = aiReproductionResultSchema.parse(resultValue);
     const triagePacket =
       row.triage_packet_artifact_digest === null
         ? null
-        : triageReproductionPacketSchema.parse(
-            await this.#artifactStore.readJson(
-              row.triage_packet_artifact_digest,
-            ),
+        : await this.#artifacts.read(
+            "Triage Reproduction Packet",
+            triageReproductionPacketSchema,
+            row.triage_packet_artifact_digest,
           );
     if (
-      humanOsDigest(attempt) !== row.attempt_artifact_digest ||
-      humanOsDigest(result) !== row.result_artifact_digest ||
       attempt.id !== row.attempt_id ||
       attempt.intakeId !== row.intake_id ||
       result.attempt.id !== row.attempt_id ||
       result.status !== row.status ||
       (triagePacket === null) !== (result.triagePacket === null) ||
       (triagePacket !== null &&
-        (humanOsDigest(triagePacket) !== row.triage_packet_artifact_digest ||
-          humanOsDigest(result.triagePacket) !==
-            row.triage_packet_artifact_digest))
+        humanOsDigest(result.triagePacket) !==
+          row.triage_packet_artifact_digest)
     ) {
       throw new Error("AI Reproduction Result artifact integrity mismatch");
     }
@@ -1684,16 +1678,20 @@ class SqliteHumanOsRecord implements HumanOsRecord {
     readonly finding: ResearchFinding;
     readonly attempt: FindingAIReproductionAttempt;
   }> {
-    const [findingValue, attemptValue] = await Promise.all([
-      this.#artifactStore.readJson(row.finding_artifact_digest),
-      this.#artifactStore.readJson(row.attempt_artifact_digest),
+    const [finding, attempt] = await Promise.all([
+      this.#artifacts.read(
+        "Finding",
+        researchFindingSchema,
+        row.finding_artifact_digest,
+      ),
+      this.#artifacts.read(
+        "Finding AI Reproduction Attempt",
+        findingAIReproductionAttemptSchema,
+        row.attempt_artifact_digest,
+      ),
     ]);
-    const finding = researchFindingSchema.parse(findingValue);
-    const attempt = findingAIReproductionAttemptSchema.parse(attemptValue);
     const findingRef = referenceFinding(finding);
     if (
-      humanOsDigest(finding) !== row.finding_artifact_digest ||
-      humanOsDigest(attempt) !== row.attempt_artifact_digest ||
       finding.id !== row.finding_id ||
       findingRef.digest !== row.finding_digest ||
       attempt.id !== row.attempt_id ||
@@ -1715,18 +1713,24 @@ class SqliteHumanOsRecord implements HumanOsRecord {
   async #decodeFindingAIReproduction(
     row: StoredFindingAIReproductionRow,
   ): Promise<FindingAIReproductionRecordView> {
-    const [findingValue, attemptValue, recordValue] = await Promise.all([
-      this.#artifactStore.readJson(row.finding_artifact_digest),
-      this.#artifactStore.readJson(row.attempt_artifact_digest),
-      this.#artifactStore.readJson(row.record_artifact_digest),
+    const [finding, attempt, record] = await Promise.all([
+      this.#artifacts.read(
+        "Finding",
+        researchFindingSchema,
+        row.finding_artifact_digest,
+      ),
+      this.#artifacts.read(
+        "Finding AI Reproduction Attempt",
+        findingAIReproductionAttemptSchema,
+        row.attempt_artifact_digest,
+      ),
+      this.#artifacts.read(
+        "AI Verification Record",
+        aiVerificationRecordSchema,
+        row.record_artifact_digest,
+      ),
     ]);
-    const finding = researchFindingSchema.parse(findingValue);
-    const attempt = findingAIReproductionAttemptSchema.parse(attemptValue);
-    const record = aiVerificationRecordSchema.parse(recordValue);
     if (
-      humanOsDigest(finding) !== row.finding_artifact_digest ||
-      humanOsDigest(attempt) !== row.attempt_artifact_digest ||
-      humanOsDigest(record) !== row.record_artifact_digest ||
       finding.id !== row.finding_id ||
       row.finding_digest !== row.finding_artifact_digest ||
       attempt.id !== row.attempt_id ||
@@ -1788,17 +1792,17 @@ class SqliteHumanOsRecord implements HumanOsRecord {
   async #decodeAdmission(
     row: StoredHumanReviewAdmissionRow,
   ): Promise<HumanReviewAdmissionRecordView> {
-    const requestValue = await this.#artifactStore.readJson(
+    const request = await this.#artifacts.read(
+      "Human Review Packet Delivery Request",
+      humanReviewPacketDeliveryRequestSchema,
       row.request_artifact_digest,
     );
-    const caseValue = await this.#artifactStore.readJson(
+    const reviewCase = await this.#artifacts.read(
+      "Human Review Case",
+      humanReviewCaseSchema,
       row.case_artifact_digest,
     );
-    const request = humanReviewPacketDeliveryRequestSchema.parse(requestValue);
-    const reviewCase = humanReviewCaseSchema.parse(caseValue);
     if (
-      humanOsDigest(request) !== row.request_artifact_digest ||
-      humanOsDigest(reviewCase) !== row.case_artifact_digest ||
       request.digest !== row.delivery_request_digest ||
       humanOsDigest(request.packet) !== row.packet_digest ||
       reviewCase.id !== row.case_id ||
@@ -1822,12 +1826,12 @@ class SqliteHumanOsRecord implements HumanOsRecord {
   async #decodeVerification(
     row: StoredHumanVerificationRow,
   ): Promise<HumanVerificationResultRecordView> {
-    const resultValue = await this.#artifactStore.readJson(
+    const result = await this.#artifacts.read(
+      "Human Verification Result",
+      humanVerificationResultSchema,
       row.result_artifact_digest,
     );
-    const result = humanVerificationResultSchema.parse(resultValue);
     if (
-      humanOsDigest(result) !== row.result_artifact_digest ||
       result.verification.id !== row.verification_id ||
       result.verification.caseId !== row.case_id ||
       result.verification.disposition.status !== row.disposition
@@ -1835,12 +1839,13 @@ class SqliteHumanOsRecord implements HumanOsRecord {
       throw new Error("Human Verification artifact integrity mismatch");
     }
     if (row.finding_artifact_digest !== null) {
-      const findingValue = await this.#artifactStore.readJson(
+      await this.#artifacts.read(
+        "Finding",
+        z.unknown(),
         row.finding_artifact_digest,
       );
       if (
         result.finding === null ||
-        humanOsDigest(findingValue) !== row.finding_artifact_digest ||
         humanOsDigest(result.finding) !== row.finding_artifact_digest
       ) {
         throw new Error("Finding artifact integrity mismatch");
@@ -1849,13 +1854,13 @@ class SqliteHumanOsRecord implements HumanOsRecord {
       throw new Error("Finding event reference is missing");
     }
     if (row.evidence_request_artifact_digest !== null) {
-      const evidenceRequestValue = await this.#artifactStore.readJson(
+      await this.#artifacts.read(
+        "Evidence Request",
+        z.unknown(),
         row.evidence_request_artifact_digest,
       );
       if (
         result.evidenceRequest === null ||
-        humanOsDigest(evidenceRequestValue) !==
-          row.evidence_request_artifact_digest ||
         humanOsDigest(result.evidenceRequest) !==
           row.evidence_request_artifact_digest
       ) {
@@ -1895,20 +1900,17 @@ class SqliteHumanOsRecord implements HumanOsRecord {
     ) {
       throw new Error("Unsupported Human OS event schema");
     }
-    const requestValue = await this.#artifactStore.readJson(
+    const request = await this.#artifacts.read(
+      "Verification Environment Request",
+      verificationEnvironmentRequestSchema,
       row.request_artifact_digest,
     );
-    const dispositionValue = await this.#artifactStore.readJson(
+    const disposition = await this.#artifacts.read(
+      "Human Verification Environment Disposition",
+      humanVerificationEnvironmentDispositionSchema,
       row.disposition_artifact_digest,
     );
-    const request = verificationEnvironmentRequestSchema.parse(requestValue);
-    const disposition =
-      humanVerificationEnvironmentDispositionSchema.parse(dispositionValue);
-    if (
-      humanOsDigest(request) !== row.request_artifact_digest ||
-      humanOsDigest(disposition) !== row.disposition_artifact_digest ||
-      request.digest !== row.request_digest
-    ) {
+    if (request.digest !== row.request_digest) {
       throw new Error("Human OS event artifact integrity mismatch");
     }
     assertDispositionMatchesRequest(request, disposition);

@@ -12,7 +12,7 @@ import {
 } from "../research-record/canonical-json.js";
 import { isWithinCurrentResearchAttackerScope } from "../current-research-attacker-scope.js";
 import type { JsonArtifactStore } from "../research-record/contracts.js";
-import { openVerifiedArtifacts } from "../research-record/verified-artifacts.js";
+import { openVerifiedArtifacts } from "../../infrastructure/verified-artifacts.js";
 import {
   validationCandidateId,
   validationCandidateSchema,

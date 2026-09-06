@@ -11,7 +11,7 @@ import {
   canonicalJson,
   sha256Digest,
 } from "../research-record/canonical-json.js";
-import { openVerifiedArtifacts } from "../research-record/verified-artifacts.js";
+import { openVerifiedArtifacts } from "../../infrastructure/verified-artifacts.js";
 import {
   currentResearchAttackerScopePrompt,
   isWithinCurrentResearchAttackerScope,

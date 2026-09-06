@@ -5,7 +5,7 @@ import {
 import {
   openVerifiedArtifacts,
   type VerifiedArtifacts,
-} from "../research-record/verified-artifacts.js";
+} from "../../infrastructure/verified-artifacts.js";
 import {
   IndependentVerifierBlockedError,
   LabControlBlockedError,

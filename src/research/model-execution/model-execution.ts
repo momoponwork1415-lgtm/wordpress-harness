@@ -9,7 +9,7 @@ import {
   sha256Digest,
 } from "../research-record/canonical-json.js";
 import { openFileJsonArtifactStore } from "../research-record/file-json-artifact-store.js";
-import { openVerifiedArtifacts } from "../research-record/verified-artifacts.js";
+import { openVerifiedArtifacts } from "../../infrastructure/verified-artifacts.js";
 import {
   sourceEvidenceQueryV1Schema,
   sourceEvidenceQueryV2Schema,

@@ -7,7 +7,7 @@ import { openFileJsonArtifactStore } from "../../research-record/file-json-artif
 import {
   openVerifiedArtifacts,
   type VerifiedArtifacts,
-} from "../../research-record/verified-artifacts.js";
+} from "../../../infrastructure/verified-artifacts.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const identifierSchema = z

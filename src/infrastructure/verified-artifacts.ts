@@ -1,7 +1,19 @@
 import type { z } from "zod";
 
-import { sha256Digest } from "./canonical-json.js";
-import type { JsonArtifactStore } from "./contracts.js";
+import { canonicalDigest } from "./canonical-json.js";
+
+/**
+ * The two methods this module needs from a content-addressed store.
+ *
+ * Both contexts declare their own store contract — `JsonArtifactStore` in the
+ * Research record, `HumanOsArtifactStore` in the Human OS record — and both
+ * satisfy this shape, so neither has to be imported here and callers pass the
+ * store type their own context already names.
+ */
+export interface ContentAddressedStore {
+  putJson(value: unknown): Promise<string>;
+  readJson(digest: string): Promise<unknown>;
+}
 
 /**
  * A content-addressed artifact did not match the digest it was addressed by.
@@ -25,12 +37,11 @@ export class ArtifactIntegrityError extends Error {
 /**
  * Content-addressed artifact access that does not trust its adapter.
  *
- * `JsonArtifactStore` is a seam with several adapters, and the seam promises
- * nothing about integrity: an adapter may report a digest for content it did
- * not store, or serve content other than the artifact addressed. Callers
- * therefore have to verify every read and every write against the canonical
- * digest, and parse what comes back. This module owns that obligation so no
- * caller carries it.
+ * A store seam promises nothing about integrity: an adapter may report a
+ * digest for content it did not store, or serve content other than the
+ * artifact addressed. Callers therefore have to verify every read and every
+ * write against the canonical digest, and parse what comes back. This module
+ * owns that obligation so no caller carries it.
  *
  * Reads verify the stored bytes before applying the schema. The reverse order
  * reports a shape error for content the adapter substituted, hiding the
@@ -62,9 +73,9 @@ export interface VerifiedArtifacts {
 }
 
 class StoreBackedVerifiedArtifacts implements VerifiedArtifacts {
-  readonly #store: JsonArtifactStore;
+  readonly #store: ContentAddressedStore;
 
-  constructor(store: JsonArtifactStore) {
+  constructor(store: ContentAddressedStore) {
     this.#store = store;
   }
 
@@ -73,7 +84,7 @@ class StoreBackedVerifiedArtifacts implements VerifiedArtifacts {
     value: unknown,
     expected?: string,
   ): Promise<string> {
-    const canonical = sha256Digest(value);
+    const canonical = canonicalDigest(value);
     if (expected !== undefined && expected !== canonical) {
       throw new ArtifactIntegrityError(artifact, expected);
     }
@@ -90,7 +101,7 @@ class StoreBackedVerifiedArtifacts implements VerifiedArtifacts {
     digest: string,
   ): Promise<z.output<Schema>> {
     const value = await this.#store.readJson(digest);
-    if (sha256Digest(value) !== digest) {
+    if (canonicalDigest(value) !== digest) {
       throw new ArtifactIntegrityError(artifact, digest);
     }
     return schema.parse(value);
@@ -98,7 +109,7 @@ class StoreBackedVerifiedArtifacts implements VerifiedArtifacts {
 }
 
 export function openVerifiedArtifacts(
-  store: JsonArtifactStore,
+  store: ContentAddressedStore,
 ): VerifiedArtifacts {
   return new StoreBackedVerifiedArtifacts(store);
 }
