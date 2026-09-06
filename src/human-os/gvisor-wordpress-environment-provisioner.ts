@@ -18,9 +18,19 @@ import type {
   ProvisionedEnvironmentHandle,
   ProvisionedSetupStageObservation,
 } from "./human-verification-environment.js";
-import type { VerificationEnvironmentRequest } from "./human-verification-environment-contracts.js";
-import { findingVerificationEnvironmentRequestSchema } from "./human-verification-environment-contracts.js";
-import type { FindingAIReproductionAttempt } from "./ai-reproduction-contracts.js";
+import type {
+  FindingVerificationEnvironmentRequest,
+  HumanVerificationEnvironmentRequest,
+  VerificationEnvironmentRequest,
+} from "./human-verification-environment-contracts.js";
+import {
+  findingVerificationEnvironmentRequestSchema,
+  humanVerificationEnvironmentRequestSchema,
+} from "./human-verification-environment-contracts.js";
+import {
+  findingAIReproductionAttemptSchema,
+  type FindingAIReproductionAttempt,
+} from "./ai-reproduction-contracts.js";
 import type { FindingAIReproductionHarnessExecution } from "./ai-reproduction-contracts.js";
 
 const sourceDirectorySchema = z
@@ -32,6 +42,71 @@ const sourceDirectorySchema = z
 const pluginSlugSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/);
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const dockerRuntimesSchema = z.record(z.string(), z.unknown());
+const boundedWordPressPathSchema = z
+  .string()
+  .min(1)
+  .max(8_192)
+  .refine(
+    (value) =>
+      value.startsWith("/") &&
+      !value.startsWith("//") &&
+      !/[\\\u0000-\u001f\u007f]/u.test(value),
+    "Experiment paths must be relative to the isolated WordPress origin",
+  );
+
+export const gvisorAIReproductionHttpExchangeSchema = z
+  .strictObject({
+    kind: z.literal("gvisor-ai-reproduction-http-exchange"),
+    schemaVersion: z.literal(1),
+    method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]),
+    path: boundedWordPressPathSchema,
+    mediaType: z
+      .enum([
+        "text/plain",
+        "application/json",
+        "application/x-www-form-urlencoded",
+        "multipart/form-data",
+      ])
+      .nullable(),
+    body: z.string().max(64_000).nullable(),
+  })
+  .superRefine((exchange, context) => {
+    if (
+      (exchange.method === "GET" || exchange.method === "HEAD") &&
+      (exchange.mediaType !== null || exchange.body !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "GET and HEAD experiments cannot carry a request body",
+      });
+    }
+  });
+
+export const gvisorAIReproductionHttpObservationSchema = z.strictObject({
+  kind: z.literal("gvisor-ai-reproduction-http-observation"),
+  schemaVersion: z.literal(1),
+  status: z.number().int().min(100).max(599),
+  mediaType: z.string().min(1).max(256).nullable(),
+  body: z.string().max(1_000_000),
+});
+
+export type GvisorAIReproductionHttpExchange = z.infer<
+  typeof gvisorAIReproductionHttpExchangeSchema
+>;
+export type GvisorAIReproductionHttpObservation = z.infer<
+  typeof gvisorAIReproductionHttpObservationSchema
+>;
+
+/**
+ * The only live-Lab capability exposed to an AI Reproduction broker.
+ * It cannot select a host, image, command, environment variable, or mount.
+ */
+export interface GvisorAIReproductionExperiment {
+  readonly environmentId: string;
+  exchange(
+    input: GvisorAIReproductionHttpExchange,
+  ): Promise<GvisorAIReproductionHttpObservation>;
+}
 
 export interface HumanVerificationTargetSourceResolver {
   resolve(input: {
@@ -63,7 +138,7 @@ export interface GvisorWordPressSetupBroker {
 export interface GvisorWordPressAssistantBroker<Result> {
   run(
     session: GvisorWordPressSession,
-    request: VerificationEnvironmentRequest,
+    request: HumanVerificationEnvironmentRequest,
     role: "witness" | "control",
   ): Promise<Result>;
 }
@@ -81,8 +156,8 @@ export type GvisorAIReproductionExperimentResult = WithoutHarnessFields<
 
 export interface GvisorAIReproductionBroker {
   run(
-    session: GvisorWordPressSession,
-    request: z.infer<typeof findingVerificationEnvironmentRequestSchema>,
+    experiment: GvisorAIReproductionExperiment,
+    request: FindingVerificationEnvironmentRequest,
     attempt: FindingAIReproductionAttempt,
   ): Promise<GvisorAIReproductionExperimentResult>;
 }
@@ -171,6 +246,63 @@ async function runDocker(
   timeoutMs = 60_000,
 ) {
   return runner.run({ executable: "docker", args, timeoutMs });
+}
+
+const boundedHttpExchangeWorker = String.raw`
+const exchange = JSON.parse(Buffer.from(process.argv[1], "base64url").toString("utf8"));
+const target = new URL(exchange.path, "http://wordpress");
+if (target.origin !== "http://wordpress") throw new Error("foreign WordPress origin");
+const response = await fetch(target, {
+  method: exchange.method,
+  headers: exchange.mediaType === null ? undefined : { "content-type": exchange.mediaType },
+  body: exchange.body === null ? undefined : exchange.body,
+  redirect: "manual",
+});
+const body = await response.text();
+if (new TextEncoder().encode(body).byteLength > 1000000) {
+  throw new Error("HTTP observation is too large");
+}
+process.stdout.write(JSON.stringify({
+  kind: "gvisor-ai-reproduction-http-observation",
+  schemaVersion: 1,
+  status: response.status,
+  mediaType: response.headers.get("content-type"),
+  body,
+}));
+`;
+
+function boundedAIReproductionExperiment(input: {
+  readonly session: GvisorWordPressSession;
+  readonly browserImage: string;
+}): GvisorAIReproductionExperiment {
+  return Object.freeze({
+    environmentId: input.session.labId,
+    exchange: async (
+      exchangeValue: GvisorAIReproductionHttpExchange,
+    ): Promise<GvisorAIReproductionHttpObservation> => {
+      const exchange =
+        gvisorAIReproductionHttpExchangeSchema.parse(exchangeValue);
+      const encoded = Buffer.from(JSON.stringify(exchange), "utf8").toString(
+        "base64url",
+      );
+      const output = await input.session.runWorker({
+        image: input.browserImage,
+        mounts: [],
+        environment: [],
+        command: [
+          "node",
+          "--input-type=module",
+          "--eval",
+          boundedHttpExchangeWorker,
+          encoded,
+        ],
+        timeoutMs: 30_000,
+      });
+      return gvisorAIReproductionHttpObservationSchema.parse(
+        JSON.parse(output) as unknown,
+      );
+    },
+  });
 }
 
 async function directoryIdentity(
@@ -473,14 +605,13 @@ class DefaultGvisorWordPressEnvironmentProvisioner<
   ): Promise<Result> {
     const retained = this.#sessions.get(environmentId);
     if (retained === undefined) throw new Error("Environment is not active");
+    const request = humanVerificationEnvironmentRequestSchema.parse(
+      retained.request,
+    );
     if (this.#options.assistantBroker === undefined) {
       throw new Error("Human Verification Assistant is unavailable");
     }
-    return this.#options.assistantBroker.run(
-      retained.session,
-      retained.request,
-      role,
-    );
+    return this.#options.assistantBroker.run(retained.session, request, role);
   }
 
   hasActiveEnvironment(environmentId: string): boolean {
@@ -489,17 +620,16 @@ class DefaultGvisorWordPressEnvironmentProvisioner<
 
   async runExperiment(
     environmentId: string,
-    attempt: FindingAIReproductionAttempt,
+    attemptValue: FindingAIReproductionAttempt,
   ): Promise<GvisorAIReproductionExperimentResult> {
     const retained = this.#sessions.get(environmentId);
     if (retained === undefined) throw new Error("Environment is not active");
-    if (this.#options.aiReproductionBroker === undefined) {
-      throw new Error("AI Reproduction broker is unavailable");
-    }
     const request = findingVerificationEnvironmentRequestSchema.parse(
       retained.request,
     );
+    const attempt = findingAIReproductionAttemptSchema.parse(attemptValue);
     if (
+      retained.session.labId !== environmentId ||
       request.finding.id !== attempt.finding.id ||
       humanOsDigest(request.finding) !== attempt.finding.digest ||
       request.target.snapshot.digest !== attempt.target.snapshot.digest ||
@@ -511,8 +641,14 @@ class DefaultGvisorWordPressEnvironmentProvisioner<
     ) {
       throw new Error("AI Reproduction Attempt does not own the live session");
     }
+    if (this.#options.aiReproductionBroker === undefined) {
+      throw new Error("AI Reproduction broker is unavailable");
+    }
     return this.#options.aiReproductionBroker.run(
-      retained.session,
+      boundedAIReproductionExperiment({
+        session: retained.session,
+        browserImage: request.runtimeProfile.images.browser,
+      }),
       request,
       attempt,
     );
