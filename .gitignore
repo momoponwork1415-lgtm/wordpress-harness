@@ -24,4 +24,5 @@ artifacts/
 
 # Local tooling
 .DS_Store
+.claude/
 *.log
