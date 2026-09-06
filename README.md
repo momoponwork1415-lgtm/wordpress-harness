@@ -22,9 +22,11 @@ cd ../..
 pnpm check
 pnpm build
 mkdir -p .private
-node dist/cli.js campaign prepare --database .private/research.sqlite --input campaign.json
-node dist/cli.js campaign inspect --database .private/research.sqlite --campaign <campaign-id>
+node dist/cli.js campaign prepare --database .private/research.sqlite --artifacts .private/artifacts --input campaign.json
+node dist/cli.js campaign inspect --database .private/research.sqlite --artifacts .private/artifacts --campaign <campaign-id>
 ```
+
+`--artifacts`はcontent-addressed storeのdirectoryです。v2以降のcampaign inputはここへTarget File Manifestを書き、v3はさらにinputが名指すIntake PacketとReceiptをここから読み戻すため、両commandで必要です。Target Intake由来のcampaignを渡す場合は、そのIntakeが書いたdirectoryを指してください。
 
 `vendor/`は生成物でありGitへ含めません。source analysisのためにtargetのautoload、Composer script、WordPress bootstrapをhost上で実行しません。private Target source、prompt、provider output、payload、未公開FindingはGit外へ置きます。
 

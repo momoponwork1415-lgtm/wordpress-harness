@@ -4,6 +4,10 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 import { decodeNewCampaignInput, openResearch } from "./research/index.js";
+import { openFileJsonArtifactStore } from "./research/research-record/index.js";
+
+const usage =
+  "Usage: wordpress-harness campaign <prepare|inspect> --database <path> --artifacts <directory> ...";
 
 export interface CliIo {
   stdout(text: string): void;
@@ -41,11 +45,20 @@ export async function runCli(
   try {
     const [context, command] = args;
     if (context !== "campaign") {
-      throw new Error("Usage: wordpress-harness campaign <prepare|inspect>");
+      throw new Error(usage);
     }
 
     const databasePath = readOption(args, "--database");
-    const research = openResearch({ databasePath });
+    // Every generation since the retired v1 input needs the content-addressed
+    // store: v2 to persist the Target File Manifest, v3 to also read back the
+    // Intake Packet and Receipt its input names. Required rather than
+    // optional, so a missing directory is refused by name here instead of
+    // surfacing from the middle of prepare as artifact-store-unavailable.
+    const artifactDirectory = readOption(args, "--artifacts");
+    const research = openResearch({
+      databasePath,
+      artifactStore: openFileJsonArtifactStore(artifactDirectory),
+    });
     close = () => research.close();
 
     if (command === "prepare") {
@@ -68,7 +81,7 @@ export async function runCli(
       return 0;
     }
 
-    throw new Error("Usage: wordpress-harness campaign <prepare|inspect>");
+    throw new Error(usage);
   } catch (error: unknown) {
     io.stderr(`${errorMessage(error)}\n`);
     return 1;
