@@ -204,6 +204,7 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 - **Purpose:** Root-evaluated candidateをfreshなsource reviewで反証し、通過したtechnical claimをimmutable Findingにする。
 - **Current implementation:** exact Candidate identityはTarget、Manifest、premise、property、ordered route、anchor、Causal Identityで作る。一つのfresh Validatorから`source-validated / needs-research / disproven / validation-pending`を決定的に投影し、二つ目・第三AttemptとValidation Synthesisを起動しない。
+- **Security-effect closure:** `causal-route-and-security-effect`は書込み可能なcatalog、capture、discovery、recommendationまたは設定案と、security decisionが実際に消費するenforcement stateを区別する。Permitted Attackerだけで具体的Security Effectまで閉じ、後続の裁量的なprivileged actionを要求しないsource routeだけをpassにする。consumerまたはprivileged follow-upがsourceで未確定なら`needs-research`、必要性または非到達がsourceで確定すれば`disproven`にする。
 - **Attacker invariant:** Validator起動前にCandidateとThreat Contextをcurrent scopeへ照合し、scope外ならmodel tokenを使わない。Finding projectionはCandidateとValidationだけを再照合し、Causal Identityを含むCandidate identityから投影する。
 - **Finding:** `source-validated`だけがTarget Snapshot、Causal Identity、attacker premise、broken security property、source route / evidence、counterevidence、Validation refを固定したFindingをCASへ保存する。Finding identityはexact Candidate duplicateから決定し、Coverage状態を入力にしない。
 - **Boundary:** runtime / human verificationを所有しない。`needs-research`は具体的Gapとして同じFamilyへ戻し、`disproven`はsource contradictionだけ、provider / budget failureは`validation-pending`として残す。

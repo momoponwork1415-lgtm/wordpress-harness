@@ -76,6 +76,11 @@ function validatorAttempt(
       "Use needs-research only for a concrete source-decidable proof gap. Runtime reproduction alone is not a source proof gap.",
       "Include proofGap only for needs-research; omit proofGap for source-validated and disproven.",
       "Use disproven only for a decisive source contradiction supported by a failed rubric criterion.",
+      "For causal-route-and-security-effect, identify the state actually consumed by the security decision and trace its consumer in source.",
+      "A writable catalog, capture, discovery, recommendation, or proposed configuration is not by itself an enforcement state or a concrete Security Effect.",
+      "The permitted attacker must close the causal route to the concrete Security Effect without a later discretionary action by a privileged actor.",
+      "If source proves that the claimed effect requires such a privileged action or never reaches an enforcement consumer, fail causal-route-and-security-effect and return disproven.",
+      "If the source leaves the enforcement consumer or privileged follow-up undecidable, use unknown and needs-research with a source-decidable proofGap.",
       "If no decisive source contradiction or source-decidable proof gap exists and the attacker premise, Security Effect, and causal route remain, return source-validated; runtime unknowns are allowed and must be preserved.",
       "Do not return rejected. Do not execute Target code, use a shell, assign severity, vote, or create a Finding.",
       `Validation input: ${canonicalJson({
