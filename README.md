@@ -8,7 +8,7 @@ WordPressプラグインを対象に、Target選定、LLMの自由なsource reas
 
 通常運転はraw-source-firstの有限`Semantic Research Wave`です。単独で重大なSQLi、Stored XSS、PrivEsc等はRoot Evaluation後のsource-only Validationへ進め、強いread/write/file/auth/state primitive、persistent state、cross-request flow、decode/reparse等の`strong semantic frontier`が残るTargetだけをDepth Admissionからwp2shell / Argus-likeなSynthesis・Critic・missing-link Waveへ昇格します。RCEやsite-wide compromiseは最上位impactですが、長いchainだけを成功とは定義しません。
 
-Target Intelligenceがoracle-freeな事実から候補を自律選定し、人間がBatch承認したTargetを無人Campaign Queueへ渡します。ResearchはRuntime Verification Packetまで、Human OSはAI Reproduction、人間のfresh再実行、Finding、report承認、Submit直前のform stagingまでを所有します。
+Target Intelligenceがoracle-freeな事実から候補を自律選定し、人間がBatch承認したTargetを無人Campaign Queueへ渡します。到達点ではResearchのIndependent ValidationがFindingとCoverageを作り、Human OSがfresh runtime verification、report準備、外部行動の人間承認を扱います。
 
 現段階ではtoken costやwall timeよりhigh-impact recallとroot-cause qualityを優先します。budgetはhard ceilingとして持ち、cost最適化はrecall baseline確立後にablationで行います。
 
@@ -41,4 +41,4 @@ node dist/cli.js campaign inspect --database .private/research.sqlite --campaign
 
 ## Scope
 
-現在のResearch対象はWordPress pluginsです。最初のproduct goalは、手動投入した最新TargetのProspective CampaignからHuman Verification済みFindingまでです。並行してTarget Intelligenceの自律選定、人間のBatch承認、無人Campaign Queueを作り、3 Target pilot後に多数Targetと約5 active Campaignへ広げます。初期Research modelはOpusだけを使い、multi-model化は実測後に判断します。Submissionは自動化せず、人間が承認済みreportを確認して最後のSubmitを行います。能力の拡張順は[Harness Architecture](docs/ARCHITECTURE.md)を参照してください。
+現在のResearch対象はWordPress pluginsです。最初のproduct goalは、手動投入した最新TargetのProspective Campaignからsource-validated Finding、fresh runtime verification、人間の提出判断までを閉じることです。並行してTarget Intelligenceの自律選定、人間のBatch承認、無人Campaign Queueを作り、3 Target pilot後に多数Targetと約5 active Campaignへ広げます。初期Research modelはOpusだけを使い、multi-model化は実測後に判断します。Submissionは自動化せず、人間が承認済みreportを確認して最後のSubmitを行います。能力の拡張順は[Harness Architecture](docs/ARCHITECTURE.md)を参照してください。

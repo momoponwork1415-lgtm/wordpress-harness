@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0124
 supersedes: 0122
 ---
 

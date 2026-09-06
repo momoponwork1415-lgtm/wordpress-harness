@@ -53,7 +53,7 @@ Oracle FactからCVE、脆弱version、CWE構成、affected function、advisory�
 _Avoid_: Selection Fact、Vulnerability profile、Research hint
 
 **Known Record Projection**:
-verified Finding後のKnown Duplicate Dispositionだけに使う、versioned vulnerability intelligence snapshotからのexact record投影。公開authorization providerが、verified FindingをPlugin Identity、verified version、Canonical File Manifest digestへbindした時だけ利用する。同じversion文字列でもManifest digestが異なるsource treeへ流用しない。affected version interval、patched version、CVE、CWE、CVSS、公開時刻、copyright / license attributionを保持するが、Target選定、Research inputまたはTarget Intake Packetへ渡さない。
+Finding後のKnown Duplicate Dispositionだけに使う、versioned vulnerability intelligence snapshotからのexact record投影。公開authorization providerが、FindingをPlugin Identity、verified version、Canonical File Manifest digestとFinding後purposeへbindした時だけ利用する。同じversion文字列でもManifest digestが異なるsource treeへ流用しない。affected version interval、patched version、CVE、CWE、CVSS、公開時刻、copyright / license attributionを保持するが、Target選定、Research inputまたはTarget Intake Packetへ渡さない。
 _Avoid_: Vulnerability History Aggregate、Research prior、Finding validity
 
 **Selection Policy**:

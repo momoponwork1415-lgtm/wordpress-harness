@@ -1,16 +1,16 @@
 # Human OS
 
-Researchから受け取ったsource-validated candidateをAIがfresh環境で再現し、人間がAIの理解支援を使いながら別fresh環境で必ず再実行して、Finding、report、外部行動を判断するcontext。web画面の名称ではなく、runtime evidence、triage queue、decision systemを指す。
+Researchから受け取ったFindingをfresh環境でAIまたは人間が検証し、理解、report、外部行動を判断するcontext。web画面の名称ではなく、runtime evidence、review queue、decision systemを指す。
 
 ## Language
 
-**Runtime Verification Packet**:
-一つのReady-for-runtime candidateについて、固定Target/version、Manifest、attacker premise、Evidence Route、Validation、Risk、runtime uncertainty、reproduction sketchを自己完結に固定したResearchからのhandoff。Human OSはResearch storageを直接参照せずこのPacketだけからAI Reproductionを開始する。人間向けの完成手順ではない。
-_Avoid_: Human Review Packet、Triage Reproduction Packet、Finding
+**Legacy Runtime Verification Packet**:
+ADR 0124より前にResearchから受け取ったReady-for-runtime candidateのread-only handoff。元のReview Caseではreplayできるが、新しいFindingまたはVerification Recordへ暗黙変換しない。
+_Avoid_: Finding、Verification Record、Migrated Finding
 
 **AI Reproduction**:
-Runtime Verification Packetをfreshな使い捨て環境と実Target interfaceで試し、Security Effectを観測できるか判断するHuman OSの実行段階。成功してもFindingまたはHuman Verificationにはならない。
-_Avoid_: Research Validation、Human Verification、Automatic Finding
+Findingをfreshな使い捨て環境と実Target interfaceで試し、Security Effectを観測できるか判断するHuman OSの実行段階。結果はruntime Verification Recordとなり、Findingの存在やResearch evidenceを上書きしない。
+_Avoid_: Research Validation、Human Verification、Finding generation
 
 **Reproduction Recipe**:
 固定Target/version、初期状態、attackerとvictim role、操作面、正確なpayload、手順、期待するSecurity Effect、判定方法を持つ人間再実行用の手順。SQLiやXSS等のclass固有criterionまたはgeneric criterionを持てるが、固定Adapterへの対応を要求しない。
@@ -20,20 +20,20 @@ _Avoid_: Exploration plan、Source route、Free-form note
 AIまたは人間の一回の再現に属するexact payload、HTTP request、screenshot、runtime logを保持するHuman OS内の非公開artifact。credentialを含めず、Research LedgerまたはGitへ渡さない。
 _Avoid_: Sanitized summary、Transcript、Submission Draft
 
-**Triage Reproduction Packet**:
-Runtime Verification Packet、runtime-confirmedなAI Reproduction、Reproduction Recipe、Private Evidence Bundle参照を結び付けた人間向けhandoff。人間が別fresh instanceで同じ主張を再実行するための入力であり、Findingではない。
-_Avoid_: Runtime Verification Packet、Human Review Packet、Finding
+**Legacy Triage Reproduction Packet**:
+ADR 0124より前のruntime-confirmed AI Reproduction、Reproduction Recipe、Private Evidence Bundle参照を結び付けたread-only handoff。新しいHuman VerificationはFindingとVerification Recordを直接参照する。
+_Avoid_: Finding、Verification Record、Migrated Finding
 
 **Vulnerability Understanding Response**:
-Triage Reproduction Packet、Runtime Verification Packet、Private Evidence Bundle、manifest-bound sourceを根拠に、broken security semantics、source route、attacker premise、confirmed Security Effect、plausible abuse scenario、Recipeの意味を人間へ説明するAI応答。確認済み事実、artifactからの推論、仮説を分離し、人間のfresh再実行またはReview Dispositionを代替しない。
+Finding、Verification Record、Private Evidence Bundle、manifest-bound sourceを根拠に、broken security semantics、source route、attacker premise、observed Security Effect、plausible abuse scenario、Recipeの意味を人間へ説明するAI応答。確認済み事実、artifactからの推論、仮説を分離し、人間の判断またはExternal Action Authorizationを代替しない。
 _Avoid_: Model verdict、Finding、Report approval
 
 **Human Review Case**:
-一つのRuntime Verification Packetと、それに対するAI Reproduction、Triage Reproduction Packet、Vulnerability Understanding Response、Human Verification、Evidence Request、Review Dispositionの履歴を結び付けるappend-only review単位。
+一つのFindingと、それに対するAI Reproduction、Verification Record、Vulnerability Understanding Response、Human Verification、Evidence Request、Review Dispositionの履歴を結び付けるappend-only review単位。
 _Avoid_: Ticket、Finding、Research Run
 
 **Human Verification Queue**:
-runtime-confirmedなTriage Reproduction Packetをimpact、attacker premise、novelty、人間のreproduction costで並べるHuman OS所有の待機集合。総件数は制限せず、設定可能なactive concurrencyを越えたCaseは完了後に繰り上げる。
+runtime-confirmedなFindingをimpact、attacker premise、novelty、人間のreproduction costで並べるHuman OS所有の待機集合。総件数は制限せず、設定可能なactive concurrencyを越えたCaseは完了後に繰り上げる。
 _Avoid_: Research Validation Queue、Permanent defer、Dropped candidates
 
 **Escalation Queue**:
@@ -45,7 +45,7 @@ runtime-confirmedだがactive concurrencyまたは人間の容量によりHuman 
 _Avoid_: Rejected、Disproved、Validation Pending
 
 **Human Verification**:
-人間がAI instanceとは異なるfresh環境でTriage Reproduction PacketのRecipeを必ず再実行し、Security Effect、実施者、時刻、操作差分とDispositionを記録するreview行為。AI evidenceの閲覧だけでは成立しない。
+人間がAI instanceとは異なるfresh環境でFindingのReproduction Recipeを再実行し、Security Effect、実施者、時刻、操作差分とDispositionを記録するreview行為。AI evidenceの閲覧だけでは成立しないが、Finding生成条件ではない。
 _Avoid_: Research Validation、Model verdict、External Action Authorization
 
 **Human Verification Environment**:
@@ -61,7 +61,7 @@ pluginをsingle-site WordPressへinstall・activateし、公式手順に沿っ�
 _Avoid_: Default state、Test setup
 
 **Configuration Variant**:
-特定Packetの再現に必要なoptional feature、Multisite、環境依存、install directoryまたはstateを、Canonical Configurationとの差分とPacket根拠付きで固定した設定。
+特定Findingの再現に必要なoptional feature、Multisite、環境依存、install directoryまたはstateを、Canonical Configurationとの差分とFinding根拠付きで固定した設定。
 _Avoid_: Special setup、Hidden premise
 
 **Runtime Profile**:
@@ -89,8 +89,8 @@ _Avoid_: Install error、Rejected Target、Disproved
 _Avoid_: Running Lab、Docker image only
 
 **Runtime-confirmed**:
-AI Reproductionがfresh環境でRecipeのattacker sequenceを実行し、定義済みSecurity Effectを観測した状態。通常のHuman Verification Queueへ進められるが、Findingではない。
-_Avoid_: Human-verified、Finding、Source-confirmed
+AI Reproductionがfresh環境でRecipeのattacker sequenceを実行し、定義済みSecurity Effectを観測したFinding verification level。通常のHuman Verification QueueまたはSubmission preparationへ進められるが、人間の確認または提出承認を意味しない。
+_Avoid_: Human-confirmed、External Action Authorization、Source-validated
 
 **Runtime-inconclusive**:
 AIまたは人間の再現が、環境不一致、unsupported mechanismまたは曖昧な観測によりSecurity Effectの成立も不成立も閉じられない状態。Rejectedまたは脆弱性不在を意味しない。
@@ -117,15 +117,15 @@ _Avoid_: Benign sample、Unrelated negative test、Mandatory Finding field
 _Avoid_: Reverse shell、Persistent payload、Host command
 
 **Review Disposition**:
-Human Review Caseに対する`verified-finding`、`rejected`、`runtime-inconclusive`、`more-evidence-required`、`blocked`のいずれかの理由付き人間判断。`rejected`は前提一致かつRecipe完走後のeffect非観測だけに使う。
+Human Review Caseに対する`human-confirmed`、`disproved`、`runtime-inconclusive`、`more-evidence-required`、`blocked`のいずれかの理由付き人間判断。`disproved`は前提一致かつRecipe完走後のeffect非観測だけに使う。
 _Avoid_: Model verdict、Queue status、External approval
 
-**Finding**:
-固定Target/versionに対し、人間がAIとは別のfresh環境でReproduction Recipeを完走し、broken security propertyとattacker premiseを確認した脆弱性。Research Validation、AI Reproductionまたはmodel verdictだけでは生成しない。
-_Avoid_: Ready-for-runtime、Runtime-confirmed、Legacy Automated Finding
+**Verification Record**:
+一つのFindingについて、固定Target/version、fresh environment identity、actor、Recipe、観測、Private Evidence参照、`runtime-confirmed / human-confirmed / disproved / inconclusive / setup-blocked`をappend-onlyに固定した検証記録。Findingを作り直したり上書きしたりしない。
+_Avoid_: Finding、Review Queue state、External Action Authorization
 
 **Evidence Request**:
-人間がReview Dispositionを決めるために不足しているsourceまたはruntime観測、acceptance criterion、元Packet digestを明示し、既存PacketまたはResearch Ledgerを書き換えずResearchへ返す不変な要求。
+人間がReview Dispositionを決めるために不足しているsourceまたはruntime観測、acceptance criterion、Finding digestを明示し、FindingまたはResearch Ledgerを書き換えずResearchへ返す不変な要求。
 _Avoid_: Comment、Retry、Finding edit
 
 **Programme Disposition**:
@@ -133,8 +133,8 @@ Findingを特定のProgramme Eligibility Snapshotに照らし、`eligible`、`in
 _Avoid_: Human Verification outcome、False positive、Submission receipt
 
 **Programme Assignment**:
-一つのverified Findingを、提出候補となる一つのProgramme Identityへ割り当てた人間判断。複数ProgrammeのProgramme Dispositionを比較できるが、一つのFindingを複数提出先へ同時に割り当てない。人間がSubmission Stagingを開始するまではsupersedeでき、開始後は別Programmeへ自動転送しない。
-_Avoid_: Programme Disposition、Automatic routing、Multi-programme submission
+一つのFindingを、提出候補となる一つのProgramme Identityへ割り当てた準備判断。複数ProgrammeのProgramme Dispositionを比較できるが、一つのFindingを複数提出先へ同時に割り当てない。Submission Staging前まではsupersedeでき、開始後は別Programmeへ自動転送しない。External Action Authorizationを代替しない。
+_Avoid_: Programme Disposition、External Action Authorization、Multi-programme submission
 
 **Current Version Review**:
 固定Target SnapshotのResearch結果について、Human Verification直前に現在の最新安定版を再取得し、同じCausal IdentityとSecurity Effectが残るか確認するreview。更新があれば元Campaignを付け替えず、最新versionでAI Reproductionを更新してから同じversionをHuman Verification対象にする。
@@ -145,11 +145,11 @@ _Avoid_: Campaign upgrade、Patch diff oracle、Mutable Target Snapshot
 _Avoid_: Campaign timeline、Auto-submit timer、Research deadline
 
 **Submission Draft Packet**:
-一つのverified Finding、Triage Reproduction Packet、Human Verification、Vulnerability Understanding Response、Programme Assignment、対象version、root cause、source route、confirmed impact、plausible abuse scenario、exact reproduction、sanitized evidenceをversioned templateへ固定したAI生成draft。Human Verification後に作り、人間の承認、External Action Authorizationまたは送信を意味しない。
+一つのFinding、利用可能なVerification Record、Vulnerability Understanding Response、Programme Assignment、対象version、root cause、source route、observed impact、plausible abuse scenario、exact reproduction、sanitized evidenceをversioned templateへ固定したAI生成draft。Human Verification前でも作れるが、assurance levelを明示し、人間の承認、External Action Authorizationまたは送信を意味しない。
 _Avoid_: Approved Submission Draft、Submitted Report、Form State
 
 **Approved Submission Draft**:
-人間がSubmission Draft PacketのPoC、Description、前提、version、impactを確認し、必要な修正とrevisionを記録して承認した提出準備artifact。承認済みrevisionだけをProgramme固有Form Stagerへ渡し、承認後の変更は再承認を要求する。SubmitまたはProgramme受理を意味しない。
+人間のExternal Action AuthorizationがSubmission Draft PacketのPoC、Description、前提、version、impact、destinationと完全一致するrevisionへbindされた提出準備artifact。変更は新しいAuthorizationを要求する。SubmitまたはProgramme受理を意味しない。
 _Avoid_: Submission Draft Packet、External Action Authorization、Submitted Report
 
 **Known Duplicate Disposition**:

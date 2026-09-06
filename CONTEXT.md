@@ -1,6 +1,6 @@
 # Research
 
-特定versionのWordPressプラグインを対象に、source semanticsからhigh-impactなsecurity-property破壊を探索し、独立したsource-only Validation、記録、学習の反復によって人間が検証すべき未知candidateを作る調査context。
+特定versionのWordPressプラグインを対象に、source semanticsからhigh-impactなsecurity-property破壊を探索し、独立したsource-only Validation、Finding、Coverage、記録を所有する調査context。
 
 ## Language
 
@@ -101,7 +101,7 @@ Boundary PairのCase role、期待条件、評価対象をResearch workerから�
 _Avoid_: Finder hint、Campaign Policy、Known-vulnerability prompt
 
 **Calibration Review**:
-同じCausal Identityのpositive `ready-for-runtime`、patched Disproved、正常機能維持、oracle-free negativeの非昇格が揃ったかを判定するprivate評価。脆弱性の探索、ValidationまたはHuman Verificationではない。
+同じCausal Identityのpositive source-validated Finding、patched Disproved、正常機能維持、oracle-free negativeの非昇格が揃ったかを判定するprivate評価。脆弱性の探索、ValidationまたはHuman Verificationではない。
 _Avoid_: Validation、Human Verification、Finder review、Model judge
 
 **Boundary Pair Evidence**:
@@ -121,7 +121,7 @@ _Avoid_: Production scan、Live exploitation、Benchmark run
 _Avoid_: Low-privilege user、Normal user
 
 **Frontier Discovery Capability**:
-既知脆弱性のoracleなしに、Permitted Attackerからhigh-impactなsecurity-property破壊へ至る未知routeをsource semanticsから発見し、独立Validation、Runtime Verification Packet、AI Reproduction、人間のfresh再実行まで到達できる能力。RCEまたは同等のsite-wide compromiseは最上位impactだが唯一の成功条件ではなく、ATO、PrivEsc、unauthenticated SQLi、強いStored XSS、arbitrary file operation、object injection等を含む。
+既知脆弱性のoracleなしに、Permitted Attackerからhigh-impactなsecurity-property破壊へ至る未知routeをsource semanticsから発見し、Independent ValidationからFindingを生成してfresh runtime verificationへ渡せる能力。RCEまたは同等のsite-wide compromiseは最上位impactだが唯一の成功条件ではなく、ATO、PrivEsc、unauthenticated SQLi、強いStored XSS、arbitrary file operation、object injection等を含む。
 _Avoid_: RCE detector、Sink coverage、CWE recall、Static rule coverage
 
 **Researcher Reference**:
@@ -305,7 +305,7 @@ Hypothesisのsymbol実在、entry到達性、権限・nonce等の防御、securi
 _Avoid_: Heuristic score、Model confidence、Finding
 
 **Validation Candidate**:
-Wave BarrierとRoot Evaluationを通過し、exact duplicateをまとめた一つのSource-bound Hypothesisまたはsource-bound Chain Proposal。Validationの開始単位であり、FindingまたはRuntime Verification Packetではない。
+Wave BarrierとRoot Evaluationを通過し、exact duplicateをまとめた一つのSource-bound Hypothesisまたはsource-bound Chain Proposal。Validationの開始単位であり、Findingではない。
 _Avoid_: Finder checkpoint、Finding、Scanner alert
 
 **Validation Intent**:
@@ -325,24 +325,24 @@ Root Evaluation後のValidation Candidateをstable identityとBudget Envelopeへ
 _Avoid_: Finder checkpoint queue、Finding Queue、FIFO
 
 **Validation Disposition**:
-一つのIndependent Validation Attemptから決定的に投影する`ready-for-runtime`、`needs-research`、`disproven`または`validation-pending`の理由付きterminalまたは保留判断。決定的なsource contradictionだけを`disproven`とし、不確実性をnegativeへ丸めず、severityとRisk Assessmentを含めない。
+一つのIndependent Validation Attemptから決定的に投影する`source-validated`、`needs-research`、`disproven`または`validation-pending`の理由付きterminalまたは保留判断。決定的なsource contradictionだけを`disproven`とし、不確実性をnegativeへ丸めず、severityとRisk Assessmentを含めない。`source-validated`だけがFindingを生成する。
 _Avoid_: Finding、Human decision、Confidence label
 
 **Validation Frontier Gap**:
 `needs-research`のValidation Attemptが示した具体的proof gapを、元のValidation Candidateと全origin Approach Familyへ結び付けた不変artifact。Finder Attempt、Work Lease、Work Waveのprovenanceを持たず、新しいApproach Familyを開始しない。
 _Avoid_: New Family、Finder checkpoint、Free-form research request
 
-**Ready-for-runtime**:
-決定的なsource反証がなく、attacker premise、Security Effect、runtimeで試せるrouteがあるValidation Disposition。全rubric pass、runtime成立またはHuman Verification成功を意味しない。
-_Avoid_: Ready-for-human、Confirmed、Verified Finding
+**Finding**:
+固定Target Snapshotの一つのCausal Identityについて、freshなIndependent Validationがattacker premise、broken security property、source route、counterevidenceを固定して生成したimmutableな技術的脆弱性claim。Findingの存在はruntime confirmation、Human Verification、Coverage Closure、programme eligibilityまたは外部提出承認を意味しない。
+_Avoid_: Validation Candidate、Scanner alert、Human-confirmed Finding
 
 **Risk Assessment**:
 一つのValidation recordと、それにbindされたValidation Candidate / Threat Contextからattacker role、prerequisite、exposed surface、security effect、configuration、blast radiusを追加model callなしで決定的に投影したartifact。Validityを変更せず、programme eligibilityまたは外部行動を判断しない。
 _Avoid_: Validation verdict、CVSS-only ranking、Programme Disposition
 
-**Runtime Verification Packet**:
-一つのReady-for-runtime candidateについてTarget/version、Manifest、attacker premise、source route、調べたcontrol、一つのValidation Attempt、runtime uncertainty、Risk Assessment、reproduction sketchを自己完結にdigest固定したHuman OSへのversioned handoff。Human OSはResearch storageを直接参照せずこのPacketだけからAI Reproductionを開始できる。Findingまたは人間向け再現手順ではない。
-_Avoid_: Triage Reproduction Packet、Finding、Transcript
+**Legacy Runtime Verification Packet**:
+ADR 0124より前のcurrent writerがReady-for-runtime candidateをHuman OSへ渡したread-only handoff。元の意味でreplayするが、Findingへ暗黙変換せず、新Campaignのhandoffには使わない。
+_Avoid_: Finding、Verification Record、Migrated Finding
 
 **Skeptic Review**:
 成立主張を崩す観点から、attacker premise、到達可能性、既存防御、因果関係、scopeを独立に再確認するreview。
@@ -373,7 +373,7 @@ _Avoid_: Blocked、Rejected
 _Avoid_: Timeout、Zero findings、Agent done、Map complete
 
 **Incomplete Campaign**:
-予算、tool、provider、Root Evaluation不成立、または証拠不足により、active research thesis、strong frontier、未解決gap、Validation Candidateのいずれかを残して停止したResearch状態。Runtime Verification Packetが存在していても残workがあればIncompleteになり得る。脆弱性がないという結論ではない。
+予算、tool、provider、Root Evaluation不成立、または証拠不足により、active research thesis、strong frontier、未解決gap、Validation Candidateのいずれかを残して停止したResearch状態。Findingが存在していてもCoverage workが残ればIncompleteになり得る。脆弱性がないという結論ではない。
 _Avoid_: Completed、No vulnerabilities、Failed run
 
 **Closure Record**:
@@ -393,7 +393,7 @@ Campaign evidenceから導いた未昇格のLesson。進行中Campaignを変更�
 _Avoid_: Lesson、Automatic rule
 
 **Rule Proposal**:
-Verified FindingのCausal Identityを近い構文variantへ一般化した、未昇格のversioned static-analysis rule。Boundary Pair、benign corpus、人間reviewを通るまで他Campaignの実行結果へ影響させない。
+human-confirmed FindingのCausal Identityを近い構文variantへ一般化した、未昇格のversioned static-analysis rule。Boundary Pair、benign corpus、人間reviewを通るまで他Campaignの実行結果へ影響させない。
 _Avoid_: Finding、Accepted rule、LLM-generated answer
 
 **Not Codifiable Record**:

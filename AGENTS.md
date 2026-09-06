@@ -4,7 +4,7 @@
 
 ## Mission
 
-- Productの到達点は、oracle-freeなprospective Campaignで**high-impactなbroken security semanticsを高recallで発見し、source Validationで明らかなfalse positiveを抑え、AI Reproductionと人間のfresh再実行まで閉じること**。ResearchはRuntime Verification Packetまでを所有し、Human OSだけがAI runtime evidence、Human Verification、Findingを所有する。
+- Productの到達点は、oracle-freeなprospective Campaignで**high-impactなbroken security semanticsを高recallで発見し、独立ValidationからFindingを作り、fresh runtime verificationと人間の提出判断まで閉じること**。Finding生成を人間専用gateにせず、外部提出だけを人間の明示承認で許可する。
 - RCEやsite-wide compromiseは最上位impactだが唯一の成功条件ではない。
 - 通常運転はraw-source-firstのSemantic Research Wave。strong semantic frontierだけをconditional Depthへ昇格する。
 - **Do not optimize for sinks. Optimize for broken security semantics.**
@@ -42,9 +42,9 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 - Model Executionはprovider/process/tool bindingを所有するが研究判断を所有しない。
 - ExplorationはFinderのfile、CWE、手順を固定しない。最大4個の独立research thesisを保ち、支持数やmodel多数決でcandidateを捨てない。
 - Surface Map、PHP Program Index、AST、Semgrep、CodeQLは補助toolであり探索空間ではない。
-- ResearchのValidationはWave BarrierとRoot Evaluation後に一つのfreshなsource-only Attemptで明白な反証だけを除き、`ready-for-runtime`をRuntime Verification Packetへ渡す。Researchは`rejected`またはFindingを作らない。
-- Human OSのAI Reproductionはfreshな隔離環境で先に再現を試みる。AI成功時のTriage Reproduction Packetを人間が別のfresh環境で必ず再実行し、成功した時だけFindingへ昇格する。
-- AIは脆弱性の理解とSubmission Draft作成を支援できるが、人間のfresh再実行、Draft承認、最後のSubmitを代行しない。
+- ResearchのValidationはWave BarrierとRoot Evaluation後に一つのfreshなsource-only Attemptを行う。Finder自身ではなくIndependent Validationだけがsource-validated Findingを生成できる。
+- Human OSはFindingをfreshな隔離環境でAI Reproductionし、runtime / human Verification Recordをappend-onlyに追加する。runtime失敗や人間の反証はFindingを削除せず、disprovedまたは理由付きincompleteとして残す。
+- AIは脆弱性の理解とSubmission Draft作成を支援できるが、External Action Authorization、Draft承認、最後のSubmitを代行しない。
 - SQLi、XSS等のclassはReproduction Recipeのsuccess criterionを助けるが、固定Adapterへの対応をcandidate admissionの条件にしない。
 
 ## Change discipline
@@ -81,7 +81,7 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 - mockはprovider CLI、clock、filesystem等のsystem seamへ限定する。
 - fixtureへprivate Target、未公開Finding、credentialを入れない。
 - commit前のrepository gateは`pnpm check`。
-- Ledger replay、stable ordering、minority Hypothesis保持、single fresh Validation、AI failureを棄却へ丸めないこと、別fresh instanceでのmandatory Human reproductionは回帰対象とする。multi-Attempt Synthesis、Witness/Causal Control、固定mechanism Adapterはlegacy replayの回帰対象として残す。
+- Ledger replay、stable ordering、minority Hypothesis保持、single fresh Validation、Independent ValidationだけがFindingを生成すること、FindingとCoverageの分離、AI failureを棄却へ丸めないこと、external actionのhuman gateは回帰対象とする。multi-Attempt Synthesis、Witness/Causal Control、固定mechanism Adapterはlegacy replayの回帰対象として残す。
 
 ## TypeScript and PHP
 
@@ -97,7 +97,7 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 - Finderはread-only source toolsと隔離scratchを使い、runtime attackを行わない。
 - Research ValidationはTarget sourceのread-only toolだけを使い、target code、build、testまたはruntime attackを実行しない。
 - AI ReproductionとHuman Verificationは互いに異なるfreshな使い捨て隔離環境と実Target interfaceを使い、host上でtarget codeを実行しない。gVisor利用時にplain Dockerへsilent fallbackしない。
-- static ruleまたはmodel verdictだけでFindingへ昇格させない。Human Verificationの記録を要求する。WitnessとCausal Controlは人間が必要と判断したproof methodまたは任意Assistant evidenceとして使う。
+- Finder、static ruleまたはself-reviewだけでFindingを生成しない。FindingはfreshなIndependent Validationとsource evidenceを要求し、runtime / human verification levelを明示する。外部行動はexact Draft revisionとdestinationへbindしたExternal Action Authorizationを要求する。
 - exact payload、HTTP request、screenshot、runtime logはHuman OSのPrivate Evidence Bundleへ置く。credential、private target、transcript、PoC、未公開FindingをGitへcommitしない。
 - RCEの証明はdisposable Lab内のnonce付きExecution Canaryに限定し、reverse shell、persistence、host access、許可外egressを使わない。
 - external report、vendor連絡、公開artifactの送信は明示的なuser authorizationなしに行わない。
