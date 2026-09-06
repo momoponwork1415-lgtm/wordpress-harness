@@ -314,10 +314,13 @@ function projectItem(
   });
 }
 
+// Keyed by the action's own position in the Decision. A v2 admit-depth action
+// carries no Family reference, so its binding is intrinsically positional, and
+// keying by a derived id let two actions worded alike share one entry.
 function projectActionFamilies(
   decision: IterationDecisionV2,
   registryValue: ApproachFamilyRegistry | undefined,
-): ReadonlyMap<string, readonly ApproachFamilyRef[]> {
+): ReadonlyMap<number, readonly ApproachFamilyRef[]> {
   if (registryValue === undefined) return new Map();
   const registry = approachFamilyRegistrySchema.parse(registryValue);
   if (
@@ -327,8 +330,20 @@ function projectActionFamilies(
     throw new Error("Depth work queue Family Registry binding mismatch");
   }
   const admissions = decision.actions
-    .filter((action) => action.kind === "admit-depth")
-    .sort((left, right) => compareText(left.admission.id, right.admission.id));
+    .map((action, index) => ({ action, index }))
+    .filter(
+      (
+        entry,
+      ): entry is {
+        readonly action: Extract<IterationActionV2, { kind: "admit-depth" }>;
+        readonly index: number;
+      } => entry.action.kind === "admit-depth",
+    )
+    .sort(
+      (left, right) =>
+        compareText(left.action.admission.id, right.action.admission.id) ||
+        left.index - right.index,
+    );
   const opened = registry.families
     .filter(
       (family) => family.openingDecision.digest === sha256Digest(decision),
@@ -337,21 +352,21 @@ function projectActionFamilies(
   if (admissions.length !== opened.length) {
     throw new Error("Depth Admission and Approach Family count mismatch");
   }
-  const result = new Map<string, readonly ApproachFamilyRef[]>();
-  admissions.forEach((action, index) => {
-    const family = opened[index];
+  const result = new Map<number, readonly ApproachFamilyRef[]>();
+  admissions.forEach((entry, ordinal) => {
+    const family = opened[ordinal];
     if (family === undefined) {
       throw new Error("Depth Admission lost its Approach Family");
     }
-    result.set(action.admission.id, [referenceApproachFamily(family)]);
+    result.set(entry.index, [referenceApproachFamily(family)]);
   });
-  for (const action of decision.actions) {
-    if (action.kind !== "schedule-work") continue;
+  decision.actions.forEach((action, index) => {
+    if (action.kind !== "schedule-work") return;
     const subjectDigests = new Set(
       action.subjects.map((subject) => subject.digest),
     );
     result.set(
-      action.work.id,
+      index,
       registry.families
         .filter((family) =>
           family.evidence.some((subject) => subjectDigests.has(subject.digest)),
@@ -359,7 +374,7 @@ function projectActionFamilies(
         .map(referenceApproachFamily)
         .sort((left, right) => compareText(left.id, right.id)),
     );
-  }
+  });
   return result;
 }
 
@@ -374,22 +389,33 @@ export function projectSemanticDepthWorkQueue(
   const actionFamilies = projectActionFamilies(decision, registryValue);
   const predecessorDecisionDigest = sha256Digest(decision);
   const items = decision.actions
+    .map((action, index) => ({ action, index }))
     .filter(
       (
-        action,
-      ): action is Extract<
-        IterationActionV2,
-        { kind: "admit-depth" | "schedule-work" }
-      > => action.kind === "admit-depth" || action.kind === "schedule-work",
+        entry,
+      ): entry is {
+        readonly action: Extract<
+          IterationActionV2,
+          { kind: "admit-depth" | "schedule-work" }
+        >;
+        readonly index: number;
+      } =>
+        entry.action.kind === "admit-depth" ||
+        entry.action.kind === "schedule-work",
     )
-    .map((action) => {
-      const sourceId =
-        action.kind === "admit-depth" ? action.admission.id : action.work.id;
+    .map((entry) => {
+      const families = actionFamilies.get(entry.index);
+      // An empty Family list is the documented shape only when no Registry was
+      // supplied. With one supplied, a missing entry is a disagreement, not an
+      // action that happens to belong to nothing.
+      if (families === undefined && registryValue !== undefined) {
+        throw new Error("Depth work action lost its Approach Family binding");
+      }
       return projectItem(
         decision,
         predecessorDecisionDigest,
-        action,
-        actionFamilies.get(sourceId) ?? [],
+        entry.action,
+        families ?? [],
       );
     })
     .sort((left, right) => compareText(left.id, right.id));
@@ -472,14 +498,14 @@ function validateActionBindingV3(
   }
 }
 
-function projectActionFamiliesV3(
+function validateFamilyRegistryBindingV3(
   campaignId: string,
   runId: string,
   decision: IterationDecisionV3,
+  predecessorDecisionDigest: string,
   registryValue: ApproachFamilyRegistryV3,
-): ReadonlyMap<string, readonly ApproachFamilyRefV3[]> {
+): ApproachFamilyRegistryV3 {
   const registry = approachFamilyRegistryV3Schema.parse(registryValue);
-  const predecessorDecisionDigest = sha256Digest(decision);
   if (
     registry.campaignId !== campaignId ||
     registry.runId !== runId ||
@@ -493,44 +519,59 @@ function projectActionFamiliesV3(
   ) {
     throw new Error("Depth work queue Family Registry v3 binding mismatch");
   }
-  const result = new Map<string, readonly ApproachFamilyRefV3[]>();
-  for (const action of decision.actions) {
-    if (action.kind === "admit-depth") {
-      const family = registry.families.find(
-        (candidate) =>
-          candidate.campaignId === campaignId &&
-          candidate.runId === runId &&
-          candidate.openingDecision.digest === predecessorDecisionDigest &&
-          candidate.openingAdmission.id === action.approachFamily.id &&
-          canonicalJson(candidate.openingAdmission) ===
-            canonicalJson(action.approachFamily),
-      );
-      if (family === undefined) {
-        throw new Error("Depth Admission lost its Approach Family v3");
-      }
-      result.set(action.admission.id, [referenceApproachFamilyV3(family)]);
-      continue;
-    }
-    if (action.kind !== "schedule-work") continue;
-    const subjectDigests = new Set(
-      action.subjects.map((subject) => subject.digest),
+  return registry;
+}
+
+// Resolved from the action itself rather than through a lookup keyed by a
+// derived id. A next-work-request id covers the work text but not the action's
+// subjects, so two requests worded alike shared one key and the later one's
+// Families silently replaced the earlier one's.
+function resolveActionFamiliesV3(
+  campaignId: string,
+  runId: string,
+  predecessorDecisionDigest: string,
+  registry: ApproachFamilyRegistryV3,
+  action: Extract<IterationActionV3, { kind: "admit-depth" | "schedule-work" }>,
+): readonly ApproachFamilyRefV3[] {
+  const subjectDigests = new Set(
+    action.subjects.map((subject) => subject.digest),
+  );
+  const opened = registry.families.filter(
+    (family) =>
+      family.campaignId === campaignId &&
+      family.runId === runId &&
+      family.openingDecision.digest === predecessorDecisionDigest,
+  );
+  if (action.kind === "admit-depth") {
+    const family = opened.find(
+      (candidate) =>
+        candidate.openingAdmission.id === action.approachFamily.id &&
+        canonicalJson(candidate.openingAdmission) ===
+          canonicalJson(action.approachFamily),
     );
-    const families = registry.families
-      .filter(
-        (family) =>
-          family.campaignId === campaignId &&
-          family.runId === runId &&
-          family.openingDecision.digest === predecessorDecisionDigest &&
-          family.evidence.some((subject) => subjectDigests.has(subject.digest)),
-      )
-      .map(referenceApproachFamilyV3)
-      .sort((left, right) => compareText(left.id, right.id));
-    if (families.length === 0) {
-      throw new Error("Scheduled Depth work lost its Approach Family v3");
+    if (family === undefined) {
+      throw new Error("Depth Admission lost its Approach Family v3");
     }
-    result.set(action.work.id, families);
+    // The Admission names a Family and the Family lists its own evidence. When
+    // the two disagree the record states the binding twice and contradicts
+    // itself, so neither copy is preferred.
+    if (
+      !family.evidence.some((subject) => subjectDigests.has(subject.digest))
+    ) {
+      throw new Error("Depth Admission left its Approach Family evidence v3");
+    }
+    return [referenceApproachFamilyV3(family)];
   }
-  return result;
+  const families = opened
+    .filter((family) =>
+      family.evidence.some((subject) => subjectDigests.has(subject.digest)),
+    )
+    .map(referenceApproachFamilyV3)
+    .sort((left, right) => compareText(left.id, right.id));
+  if (families.length === 0) {
+    throw new Error("Scheduled Depth work lost its Approach Family v3");
+  }
+  return families;
 }
 
 function projectItemV2(
@@ -595,13 +636,14 @@ export function projectSemanticDepthWorkQueueV2(input: {
   readonly ref: SemanticDepthWorkQueueRefV2;
 } {
   const decision = iterationDecisionV3Schema.parse(input.decision);
-  const actionFamilies = projectActionFamiliesV3(
+  const predecessorDecisionDigest = sha256Digest(decision);
+  const registry = validateFamilyRegistryBindingV3(
     input.campaignId,
     input.runId,
     decision,
+    predecessorDecisionDigest,
     input.registry,
   );
-  const predecessorDecisionDigest = sha256Digest(decision);
   const items = decision.actions
     .filter(
       (
@@ -611,18 +653,22 @@ export function projectSemanticDepthWorkQueueV2(input: {
         { kind: "admit-depth" | "schedule-work" }
       > => action.kind === "admit-depth" || action.kind === "schedule-work",
     )
-    .map((action) => {
-      const sourceId =
-        action.kind === "admit-depth" ? action.admission.id : action.work.id;
-      return projectItemV2(
+    .map((action) =>
+      projectItemV2(
         input.campaignId,
         input.runId,
         decision,
         predecessorDecisionDigest,
         action,
-        actionFamilies.get(sourceId) ?? [],
-      );
-    })
+        resolveActionFamiliesV3(
+          input.campaignId,
+          input.runId,
+          predecessorDecisionDigest,
+          registry,
+          action,
+        ),
+      ),
+    )
     .sort((left, right) => compareText(left.id, right.id));
   if (new Set(items.map((item) => item.id)).size !== items.length) {
     throw new Error("Depth work queue v2 contains duplicate work items");

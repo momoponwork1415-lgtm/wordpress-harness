@@ -194,6 +194,7 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 - **Checkpoint:** subjectをTarget、Manifest、Attempt、Leaseへbindし、CAS / Ledgerへ保存してからackする。
 - **Depth:** fresh tool-free Synthesis、source-enabled Critic、Root Evaluation、Missing-link Waveを分離する。Familyごと最大3 evidence generation、Campaign全体最大12 Wave。
 - **Action identity:** Iteration DecisionのactionはRoot Evaluatorが返した時点で一意にする。subject順を正規化して同一actionの重複を`invalid-action-binding`として返し、durable Decisionにしない。Depth Work Itemのidentityはaction由来なので、重複を通すとqueue projectionが毎回同じ場所で落ちてrunを恒久的に閉じられなくなる。
+- **Family binding:** Depth Work ItemのApproach Familyはaction自身から解決する。next-work-request idはwork文だけのdigestでsubjectを含まないため、id経由のlookupは同文のwork requestどうしでFamilyを取り違える。admit-depthが名指すFamilyがそのactionのsubjectをevidenceに持たない場合はfail closedにする。
 - **Closure:** 最後のmaterial evidence後に二回連続のcomplete no-material-deltaを要求し、後者はfresh reviewを含む。
 - **Failures:** invalid evaluation、budget exhaustion、active Family、unscheduled Gapを`Incomplete`として残す。
 - **Status:** v7 initial Wave / Decision@3 / conditional Depthを実装。Missing-link / Closureはlegacy pathのみ。

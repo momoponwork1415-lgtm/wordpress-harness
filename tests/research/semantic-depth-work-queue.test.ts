@@ -291,6 +291,175 @@ function currentDecision(): {
   };
 }
 
+function collisionSubject(name: string) {
+  return {
+    kind: "source-bound-hypothesis" as const,
+    schemaVersion: 2 as const,
+    id: sha256Digest(`${name}-hypothesis-id`),
+    digest: sha256Digest(`${name}-hypothesis`),
+    attemptId: "finder-attempt-1",
+    leaseId: sha256Digest("collision-lease"),
+    workWaveDigest: wave.digest,
+    targetSnapshotDigest: target.digest,
+    manifestDigest: manifest.digest,
+  };
+}
+
+const alphaSubject = collisionSubject("alpha");
+const betaSubject = collisionSubject("beta");
+
+function collidingDecision(): {
+  readonly decision: IterationDecisionV3;
+  readonly registry: ReturnType<
+    typeof projectInitialApproachFamilyRegistryV3
+  >["value"];
+} {
+  const familyFor = (
+    key: string,
+    subjects: readonly [ReturnType<typeof collisionSubject>],
+  ) => {
+    const identity = {
+      kind: "approach-family-admission" as const,
+      schemaVersion: 1 as const,
+      key,
+      target,
+      manifest,
+      wave,
+      subjects: [...subjects],
+      thesis: "Attacker-controlled state may cross an actor boundary.",
+      mechanism: "A public writer feeds a privileged consumer.",
+      falsifier: "Every consumer binds state to the originating actor.",
+      nextAction: "Trace each privileged state consumer.",
+    };
+    const family = approachFamilyAdmissionSchema.parse({
+      ...identity,
+      id: sha256Digest(identity),
+    });
+    return {
+      family,
+      ref: approachFamilyAdmissionRefSchema.parse({
+        kind: family.kind,
+        schemaVersion: family.schemaVersion,
+        id: family.id,
+        digest: sha256Digest(family),
+        key: family.key,
+        targetSnapshotDigest: target.digest,
+        manifestDigest: manifest.digest,
+        workWaveDigest: wave.digest,
+      }),
+    };
+  };
+  const alpha = familyFor("alpha-route", [alphaSubject]);
+  const beta = familyFor("beta-route", [betaSubject]);
+  // The identity the evaluator really mints: target, manifest, wave and the
+  // three work texts. The action's subjects are deliberately absent, which is
+  // what lets two work requests for different Families share one id.
+  const collidingWorkIdentity = {
+    kind: "next-work-request" as const,
+    schemaVersion: 1 as const,
+    target,
+    manifest,
+    wave,
+    requiredFact: "Resolve the shared adjacent consumer.",
+    falsifier: "The adjacent consumer is actor-bound.",
+    nextAction: "Inspect the adjacent consumer.",
+  };
+  const collidingWork = {
+    ...collidingWorkIdentity,
+    id: sha256Digest({
+      kind: "next-work-request" as const,
+      target,
+      manifest,
+      wave,
+      requiredFact: collidingWorkIdentity.requiredFact,
+      falsifier: collidingWorkIdentity.falsifier,
+      nextAction: collidingWorkIdentity.nextAction,
+    }),
+  };
+  const depthAdmission = (name: string) => ({
+    kind: "depth-admission" as const,
+    schemaVersion: 2 as const,
+    id: sha256Digest(`${name}-depth-admission`),
+    target,
+    manifest,
+    wave,
+    highImpactPotential: "Adjacent consumers may amplify the impact.",
+    composition: "Connect the writer to every privileged consumer.",
+    falsifier: "No additional consumer crosses an actor boundary.",
+    nextAction: "Trace adjacent source-bound consumers.",
+  });
+  const value: IterationDecisionV3 = {
+    kind: "iteration-decision",
+    schemaVersion: 3,
+    target,
+    manifest,
+    wave,
+    evaluationSubjects: [alphaSubject, betaSubject],
+    context: {
+      kind: "wave-evaluation",
+      terminalDigest: digest("d"),
+      workLeases: [
+        {
+          kind: "work-lease",
+          schemaVersion: 2,
+          id: digest("e"),
+          digest: digest("f"),
+          workWaveDigest: wave.digest,
+          targetSnapshotDigest: target.digest,
+          manifestDigest: manifest.digest,
+        },
+      ],
+      attemptResults: [],
+      toolReceipts: [],
+      rootEvaluatorAttempts: [
+        {
+          kind: "attempt-execution-result",
+          schemaVersion: 2,
+          attemptId: "root-evaluator-1",
+          owner: "exploration",
+          role: "root-evaluator",
+          planDigest: digest("b"),
+          digest: digest("c"),
+        },
+      ],
+    },
+    approachFamilies: [alpha.family, beta.family],
+    actions: [
+      {
+        kind: "admit-depth",
+        approachFamily: alpha.ref,
+        subjects: [alphaSubject],
+        admission: depthAdmission("alpha"),
+      },
+      {
+        kind: "admit-depth",
+        approachFamily: beta.ref,
+        subjects: [betaSubject],
+        admission: depthAdmission("beta"),
+      },
+      {
+        kind: "schedule-work",
+        subjects: [alphaSubject],
+        work: collidingWork,
+      },
+      {
+        kind: "schedule-work",
+        subjects: [betaSubject],
+        work: collidingWork,
+      },
+    ],
+    campaignDisposition: "continue",
+  };
+  return {
+    decision: value,
+    registry: projectInitialApproachFamilyRegistryV3(
+      "campaign-depth-collision",
+      "run-depth-collision",
+      value,
+    ).value,
+  };
+}
+
 describe("projectSemanticDepthWorkQueue", () => {
   it("retains every depth and scheduled-work action in stable batches of at most four", () => {
     const input = decision();
@@ -389,6 +558,42 @@ describe("projectSemanticDepthWorkQueueV2", () => {
       batches: 2,
       familyBindings: 6,
     });
+  });
+
+  it("binds each scheduled work action to the Family that owns its own subjects when two work requests share one id", () => {
+    // The work identity digest covers the three work texts but not the
+    // action's subjects, so two requests worded alike collide. Resolving the
+    // Family through that id lets the later action's Family overwrite the
+    // earlier one's, and the wrong Family is then transitioned by work it does
+    // not own.
+    const input = collidingDecision();
+    const projected = projectSemanticDepthWorkQueueV2({
+      campaignId: "campaign-depth-collision",
+      runId: "run-depth-collision",
+      ...input,
+    });
+    const familyIdByKey = new Map(
+      input.registry.families.map((family) => [
+        family.openingAdmission.key,
+        family.id,
+      ]),
+    );
+    const scheduled = new Map(
+      projected.value.items
+        .filter((item) => item.sourceAction === "schedule-work")
+        .map((item) => [
+          item.subjects[0]?.digest,
+          item.families.map((family) => family.id),
+        ]),
+    );
+
+    expect(scheduled.size).toBe(2);
+    expect(scheduled.get(alphaSubject.digest)).toEqual([
+      familyIdByKey.get("alpha-route"),
+    ]);
+    expect(scheduled.get(betaSubject.digest)).toEqual([
+      familyIdByKey.get("beta-route"),
+    ]);
   });
 
   it("rejects a Registry from another Campaign and Run", () => {
