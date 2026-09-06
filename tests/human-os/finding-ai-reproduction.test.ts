@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,6 +9,7 @@ import {
   defineHumanVerificationEnvironmentPolicy,
   defineHumanVerificationRuntimeProfile,
   defineHumanVerificationSetupPlan,
+  FindingAIReproductionInProgressError,
   openAIReproduction,
   openGvisorAIReproductionHarness,
   openHumanVerificationEnvironmentBuilder,
@@ -429,14 +430,18 @@ describe("AIReproduction.run/read", () => {
       }),
     ).rejects.toThrow("Target identity mismatch");
 
+    const reopenedHarness = { run: vi.fn() };
     const reopened = openAIReproduction({
       record: openSqliteHumanOsRecord({
         databasePath: join(state.directory, "human-os.sqlite"),
         artifactStore: openFileHumanOsArtifactStore(state.publicDirectory),
       }),
       privateArtifactStore: state.privateStore,
-      harness: { run: vi.fn() },
+      harness: reopenedHarness,
     });
+    const reopenedRecord = await reopened.run(request);
+    expect(reopenedRecord.id).toBe(first.id);
+    expect(reopenedHarness.run).not.toHaveBeenCalled();
     const view = await reopened.read(request.finding.id);
     expect(view?.finding).toEqual(request.finding);
     expect(view?.assurance).toEqual({
@@ -489,29 +494,68 @@ describe("AIReproduction.run/read", () => {
         id: humanOsDigest(fabricatedExperiment),
       }).success,
     ).toBe(false);
+    if (blocked.outcome.status !== "setup-blocked") {
+      throw new Error("Expected setup-blocked outcome");
+    }
+    const { reasonCode: _legacyReasonCode, ...legacyCompatibleOutcome } =
+      blocked.outcome;
+    const legacyCompatibleRecord = {
+      ...blockedIdentity,
+      outcome: legacyCompatibleOutcome,
+    };
+    expect(
+      aiVerificationRecordSchema.safeParse({
+        ...legacyCompatibleRecord,
+        id: humanOsDigest(legacyCompatibleRecord),
+      }).success,
+    ).toBe(true);
 
     const providerState = await fixture();
     const providerFailure = await openAIReproduction({
       record: providerState.record,
       privateArtifactStore: providerState.privateStore,
-      harness: { run: async () => Promise.reject(new Error("provider")) },
+      harness: {
+        run: async () => ({
+          kind: "finding-ai-reproduction-harness-execution",
+          schemaVersion: 1,
+          status: "inconclusive",
+          completedAt: fixedNow,
+          reason: "provider-failed",
+          description: "The bounded provider run failed.",
+          cleanup: "completed",
+        }),
+      },
     }).run(request);
     expect(providerFailure.outcome.status).toBe("inconclusive");
-    expect(providerFailure.outcome.reason).toContain("harness failed");
+    expect(providerFailure.outcome).toMatchObject({
+      reasonCode: "provider-failed",
+      reason: "The bounded provider run failed.",
+    });
 
     const cleanupState = await fixture();
+    const cleanupScreenshot = await cleanupState.privateStore.putPrivateBytes(
+      new TextEncoder().encode("cleanup-failed screenshot bytes"),
+    );
     const cleanupFailure = await openAIReproduction({
       record: cleanupState.record,
       privateArtifactStore: cleanupState.privateStore,
       harness: {
         run: async ({ attempt }) => ({
-          ...experiment(attempt, digest("e")),
+          ...experiment(attempt, cleanupScreenshot),
           cleanup: "failed" as const,
         }),
       },
     }).run(request);
     expect(cleanupFailure.outcome.status).toBe("inconclusive");
+    expect(cleanupFailure.outcome).toMatchObject({
+      reasonCode: "cleanup-failed",
+      preconditionsMatched: true,
+      recipeCompleted: true,
+    });
     expect(cleanupFailure.outcome.reason).toContain("could not be cleaned up");
+    expect(cleanupFailure.environment).not.toBeNull();
+    expect(cleanupFailure.recipe).not.toBeNull();
+    expect(cleanupFailure.privateEvidence).not.toBeNull();
 
     const missingState = await fixture();
     const inconclusive = await openAIReproduction({
@@ -543,7 +587,155 @@ describe("AIReproduction.run/read", () => {
       },
     }).run(request);
     expect(mismatch.outcome.status).toBe("inconclusive");
+    expect(mismatch.outcome).toMatchObject({
+      reasonCode: "private-evidence-mismatch",
+    });
     expect(mismatch.outcome.reason).toContain("did not match the Attempt");
+  });
+
+  it("claims before execution and refuses a concurrent duplicate across service instances", async () => {
+    const state = await fixture();
+    const screenshotDigest = await state.privateStore.putPrivateBytes(
+      new TextEncoder().encode("concurrent screenshot bytes"),
+    );
+    let releaseExperiment!: () => void;
+    let signalStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    const pending = new Promise<void>((resolve) => {
+      releaseExperiment = resolve;
+    });
+    const harness = {
+      run: vi.fn(
+        async ({ attempt }: { attempt: FindingAIReproductionAttempt }) => {
+          signalStarted();
+          return pending.then(() => experiment(attempt, screenshotDigest));
+        },
+      ),
+    };
+    const firstOptions = {
+      record: state.record,
+      privateArtifactStore: state.privateStore,
+      harness,
+      clock: () => new Date(fixedNow),
+    };
+    const secondOptions = {
+      ...firstOptions,
+      record: openSqliteHumanOsRecord({
+        databasePath: join(state.directory, "human-os.sqlite"),
+        artifactStore: openFileHumanOsArtifactStore(state.publicDirectory),
+        clock: () => new Date(fixedNow),
+      }),
+    };
+    const first = openAIReproduction(firstOptions).run(runRequest());
+    await started;
+
+    await expect(
+      openAIReproduction(secondOptions).run(runRequest()),
+    ).rejects.toBeInstanceOf(FindingAIReproductionInProgressError);
+    expect(harness.run).toHaveBeenCalledTimes(1);
+
+    releaseExperiment();
+    const completed = await first;
+    const replayed = await openAIReproduction(secondOptions).run(runRequest());
+    expect(replayed.id).toBe(completed.id);
+    expect(harness.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an unknown harness failure as an explicit durable in-progress claim", async () => {
+    const state = await fixture();
+    const request = runRequest();
+    const failed = openAIReproduction({
+      record: state.record,
+      privateArtifactStore: state.privateStore,
+      harness: { run: async () => Promise.reject(new Error("unknown bug")) },
+      clock: () => new Date(fixedNow),
+    });
+    await expect(failed.run(request)).rejects.toThrow("unknown bug");
+
+    const reopenedHarness = { run: vi.fn() };
+    const reopened = openAIReproduction({
+      record: openSqliteHumanOsRecord({
+        databasePath: join(state.directory, "human-os.sqlite"),
+        artifactStore: openFileHumanOsArtifactStore(state.publicDirectory),
+      }),
+      privateArtifactStore: state.privateStore,
+      harness: reopenedHarness,
+    });
+    const retry = reopened.run(request);
+    await expect(retry).rejects.toMatchObject({
+      name: "FindingAIReproductionInProgressError",
+      startedAt: fixedNow,
+    });
+    expect(reopenedHarness.run).not.toHaveBeenCalled();
+  });
+
+  it("propagates CAS admission failures before running the harness", async () => {
+    const state = await fixture();
+    const harness = { run: vi.fn() };
+    const record = {
+      claimFindingAIReproduction: vi.fn(async () => {
+        throw new Error("CAS integrity mismatch");
+      }),
+      readFindingAIReproductionByAttempt:
+        state.record.readFindingAIReproductionByAttempt.bind(state.record),
+      listFindingAIReproduction: state.record.listFindingAIReproduction.bind(
+        state.record,
+      ),
+      recordFindingAIReproduction:
+        state.record.recordFindingAIReproduction.bind(state.record),
+    };
+    await expect(
+      openAIReproduction({
+        record,
+        privateArtifactStore: state.privateStore,
+        harness,
+      }).run(runRequest()),
+    ).rejects.toThrow("CAS integrity mismatch");
+    expect(harness.run).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a completed event points to corrupted CAS content", async () => {
+    const state = await fixture();
+    const screenshotDigest = await state.privateStore.putPrivateBytes(
+      new TextEncoder().encode("integrity screenshot bytes"),
+    );
+    const firstHarness = {
+      run: vi.fn(
+        async ({ attempt }: { attempt: FindingAIReproductionAttempt }) =>
+          experiment(attempt, screenshotDigest),
+      ),
+    };
+    const completed = await openAIReproduction({
+      record: state.record,
+      privateArtifactStore: state.privateStore,
+      harness: firstHarness,
+    }).run(runRequest());
+    const stored = await state.record.readFindingAIReproductionByAttempt(
+      completed.attempt.id,
+    );
+    if (stored === undefined) throw new Error("Expected recorded reproduction");
+    await writeFile(
+      join(
+        state.publicDirectory,
+        `${stored.recordArtifactDigest.slice("sha256:".length)}.json`,
+      ),
+      "{}\n",
+    );
+
+    const replayHarness = { run: vi.fn() };
+    await expect(
+      openAIReproduction({
+        record: openSqliteHumanOsRecord({
+          databasePath: join(state.directory, "human-os.sqlite"),
+          artifactStore: openFileHumanOsArtifactStore(state.publicDirectory),
+        }),
+        privateArtifactStore: state.privateStore,
+        harness: replayHarness,
+      }).run(runRequest()),
+    ).rejects.toThrow();
+    expect(replayHarness.run).not.toHaveBeenCalled();
   });
 
   it("runs a Finding-bound experiment through the ready gVisor Adapter", async () => {
@@ -583,6 +775,72 @@ describe("AIReproduction.run/read", () => {
     expect(record.outcome.status).toBe("runtime-confirmed");
     expect(provisioner.runExperiment).toHaveBeenCalledOnce();
     expect(provisioner.cleanup).toHaveBeenCalledOnce();
+  });
+
+  it("records typed provider failures but propagates unknown Environment Builder errors", async () => {
+    const providerState = await fixture();
+    const provider = readyProvisioner({ active: true });
+    const providerRecord = await openAIReproduction({
+      record: providerState.record,
+      privateArtifactStore: providerState.privateStore,
+      harness: openGvisorAIReproductionHarness({
+        environmentBuilder: openHumanVerificationEnvironmentBuilder({
+          record: providerState.record,
+          provisioner: provider,
+          clock: () => new Date(fixedNow),
+        }),
+        provisioner: provider,
+        clock: () => new Date(fixedNow),
+      }),
+    }).run(runRequest());
+    expect(providerRecord.outcome).toMatchObject({
+      status: "inconclusive",
+      reasonCode: "provider-failed",
+    });
+    expect(provider.cleanup).toHaveBeenCalledOnce();
+
+    const invalidState = await fixture();
+    const invalid = readyProvisioner({
+      active: true,
+      runExperiment: async () => ({ status: "invalid-output" }) as never,
+    });
+    const invalidRecord = await openAIReproduction({
+      record: invalidState.record,
+      privateArtifactStore: invalidState.privateStore,
+      harness: openGvisorAIReproductionHarness({
+        environmentBuilder: openHumanVerificationEnvironmentBuilder({
+          record: invalidState.record,
+          provisioner: invalid,
+          clock: () => new Date(fixedNow),
+        }),
+        provisioner: invalid,
+        clock: () => new Date(fixedNow),
+      }),
+    }).run(runRequest());
+    expect(invalidRecord.outcome).toMatchObject({
+      status: "inconclusive",
+      reasonCode: "harness-failed",
+    });
+
+    const builderState = await fixture();
+    const builderProvisioner = readyProvisioner({ active: false });
+    const builderHarness = openGvisorAIReproductionHarness({
+      environmentBuilder: {
+        establish: async () => {
+          throw new Error("Environment Record integrity mismatch");
+        },
+      },
+      provisioner: builderProvisioner,
+      clock: () => new Date(fixedNow),
+    });
+    await expect(
+      openAIReproduction({
+        record: builderState.record,
+        privateArtifactStore: builderState.privateStore,
+        harness: builderHarness,
+      }).run(runRequest()),
+    ).rejects.toThrow("Environment Record integrity mismatch");
+    expect(builderProvisioner.runExperiment).not.toHaveBeenCalled();
   });
 
   it("treats a durable ready disposition without its live gVisor session as inconclusive", async () => {

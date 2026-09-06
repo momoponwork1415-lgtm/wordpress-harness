@@ -133,7 +133,32 @@ export interface FindingAIReproductionRecordView {
   readonly record: AIVerificationRecord;
 }
 
+export interface FindingAIReproductionClaim {
+  readonly attemptId: string;
+  readonly claimId: string;
+  readonly startedAt: string;
+}
+
+export type ClaimFindingAIReproductionResult =
+  | {
+      readonly status: "claimed";
+      readonly claim: FindingAIReproductionClaim;
+    }
+  | {
+      readonly status: "in-progress";
+      readonly claim: FindingAIReproductionClaim;
+    }
+  | {
+      readonly status: "completed";
+      readonly view: FindingAIReproductionRecordView;
+    };
+
 export interface FindingAIReproductionStore {
+  claimFindingAIReproduction(
+    finding: Finding,
+    attempt: FindingAIReproductionAttempt,
+    claimId: string,
+  ): Promise<ClaimFindingAIReproductionResult>;
   readFindingAIReproductionByAttempt(
     attemptId: string,
   ): Promise<FindingAIReproductionRecordView | undefined>;
@@ -141,6 +166,7 @@ export interface FindingAIReproductionStore {
     findingId: string,
   ): Promise<readonly FindingAIReproductionRecordView[]>;
   recordFindingAIReproduction(
+    claim: FindingAIReproductionClaim,
     finding: Finding,
     attempt: FindingAIReproductionAttempt,
     record: AIVerificationRecord,
