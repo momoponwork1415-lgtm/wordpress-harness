@@ -1,0 +1,212 @@
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+
+import type { ModelProcessResult } from "./contracts.js";
+import type {
+  ModelProcessObservation,
+  ModelProcessObserver,
+} from "./model-process-observability.js";
+
+export type NativeModelProcessResult = Extract<
+  ModelProcessResult,
+  {
+    readonly kind: "exited" | "timed-out" | "output-limit-exceeded";
+  }
+>;
+
+export interface NativeModelProcessRunOptions {
+  readonly executablePath: string;
+  readonly args: readonly string[];
+  readonly workingDirectory: string;
+  readonly environment: NodeJS.ProcessEnv;
+  readonly stdin?: string;
+  readonly timeoutMs: number;
+  readonly maxOutputBytes: number;
+  readonly redact?: (text: string) => string;
+  readonly observer?: ModelProcessObserver;
+  readonly heartbeatIntervalMs: number;
+  readonly observation?: {
+    readonly operationId: string;
+    readonly phase: ModelProcessObservation["phase"];
+    readonly segmentOrdinal: number;
+  };
+}
+
+function signalProcessTree(
+  child: ChildProcessWithoutNullStreams,
+  signal: NodeJS.Signals,
+): void {
+  if (child.pid === undefined) return;
+  try {
+    if (process.platform === "win32") {
+      child.kill(signal);
+    } else {
+      process.kill(-child.pid, signal);
+    }
+  } catch (error: unknown) {
+    if (!(
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "ESRCH"
+    )) {
+      throw error;
+    }
+  }
+}
+
+export function runNativeModelProcess(
+  options: NativeModelProcessRunOptions,
+): Promise<NativeModelProcessResult> {
+  return new Promise((resolve, reject) => {
+    const processStartedAt = performance.now();
+    const observation = options.observation;
+    const observe = (event: ModelProcessObservation): void => {
+      try {
+        options.observer?.observe(event);
+      } catch {
+        // Observability must not change provider execution.
+      }
+    };
+    if (observation !== undefined) {
+      observe({
+        kind: "model-process-started",
+        schemaVersion: 1,
+        ...observation,
+        occurredAt: new Date().toISOString(),
+      });
+    }
+    const child = spawn(options.executablePath, options.args, {
+      cwd: options.workingDirectory,
+      detached: process.platform !== "win32",
+      env: options.environment,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let terminalKind: "timed-out" | "output-limit-exceeded" | undefined;
+    let killTimer: NodeJS.Timeout | undefined;
+    const heartbeat =
+      observation === undefined
+        ? undefined
+        : setInterval(() => {
+            observe({
+              kind: "model-process-heartbeat",
+              schemaVersion: 1,
+              ...observation,
+              occurredAt: new Date().toISOString(),
+              elapsedMs: Math.ceil(performance.now() - processStartedAt),
+            });
+          }, options.heartbeatIntervalMs);
+    heartbeat?.unref();
+
+    const terminate = (kind: "timed-out" | "output-limit-exceeded"): void => {
+      if (terminalKind !== undefined) return;
+      terminalKind = kind;
+      signalProcessTree(child, "SIGTERM");
+      killTimer = setTimeout(() => {
+        signalProcessTree(child, "SIGKILL");
+      }, 2_000);
+      killTimer.unref();
+    };
+    const timeout = setTimeout(() => terminate("timed-out"), options.timeoutMs);
+    timeout.unref();
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdoutBytes += chunk.byteLength;
+      if (stdoutBytes > options.maxOutputBytes) {
+        terminate("output-limit-exceeded");
+        return;
+      }
+      stdout.push(chunk);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      const remaining = 64 * 1024 - stderrBytes;
+      if (remaining <= 0) return;
+      const kept = chunk.subarray(0, remaining);
+      stderr.push(kept);
+      stderrBytes += kept.byteLength;
+    });
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      if (heartbeat !== undefined) clearInterval(heartbeat);
+      if (killTimer !== undefined) clearTimeout(killTimer);
+      if (observation !== undefined) {
+        observe({
+          kind: "model-process-failed",
+          schemaVersion: 1,
+          ...observation,
+          occurredAt: new Date().toISOString(),
+          elapsedMs: Math.ceil(performance.now() - processStartedAt),
+          reason: "spawn-failed",
+        });
+      }
+      reject(error);
+    });
+    child.stdin.once("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "EPIPE") return;
+      clearTimeout(timeout);
+      if (heartbeat !== undefined) clearInterval(heartbeat);
+      if (killTimer !== undefined) clearTimeout(killTimer);
+      signalProcessTree(child, "SIGKILL");
+      if (observation !== undefined) {
+        observe({
+          kind: "model-process-failed",
+          schemaVersion: 1,
+          ...observation,
+          occurredAt: new Date().toISOString(),
+          elapsedMs: Math.ceil(performance.now() - processStartedAt),
+          reason: "stdin-failed",
+        });
+      }
+      reject(error);
+    });
+    child.once("close", (exitCode) => {
+      clearTimeout(timeout);
+      if (heartbeat !== undefined) clearInterval(heartbeat);
+      const redact = options.redact ?? ((text: string) => text);
+      const stderrText = redact(Buffer.concat(stderr).toString("utf8"));
+      if (terminalKind !== undefined) {
+        signalProcessTree(child, "SIGKILL");
+        if (killTimer !== undefined) clearTimeout(killTimer);
+        const result = { kind: terminalKind, stderr: stderrText } as const;
+        if (observation !== undefined) {
+          observe({
+            kind: "model-process-completed",
+            schemaVersion: 1,
+            ...observation,
+            occurredAt: new Date().toISOString(),
+            elapsedMs: Math.ceil(performance.now() - processStartedAt),
+            result,
+          });
+        }
+        resolve(result);
+        return;
+      }
+      if (killTimer !== undefined) clearTimeout(killTimer);
+      const result = {
+        kind: "exited",
+        exitCode: exitCode ?? -1,
+        stdout: redact(Buffer.concat(stdout).toString("utf8")),
+        stderr: stderrText,
+      } as const;
+      if (observation !== undefined) {
+        observe({
+          kind: "model-process-completed",
+          schemaVersion: 1,
+          ...observation,
+          occurredAt: new Date().toISOString(),
+          elapsedMs: Math.ceil(performance.now() - processStartedAt),
+          result,
+        });
+      }
+      resolve(result);
+    });
+
+    if (options.stdin === undefined) {
+      child.stdin.end();
+    } else {
+      child.stdin.end(options.stdin, "utf8");
+    }
+  });
+}

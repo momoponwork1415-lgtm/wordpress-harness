@@ -118,6 +118,7 @@ export interface ClaudeSourceEvidenceBridge {
   readonly mcpConfigPath: string;
   readonly allowedToolNames: readonly string[];
   observedConnection(): boolean;
+  redact(text: string): string;
   close(): Promise<void>;
 }
 
@@ -526,6 +527,7 @@ export async function openClaudeSourceEvidenceBridge(
           : ["mcp__source_evidence__checkpoint_research"]),
       ],
       observedConnection: () => connectionObserved,
+      redact: (text) => text.replaceAll(bearerToken, "[REDACTED]"),
       close: async () => {
         try {
           await closeHttpServer(httpServer);

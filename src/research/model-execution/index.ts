@@ -7,8 +7,11 @@ export {
   openClaudeStructuredModelExecutionFromProcess,
   openClaudeModelExecution,
   openClaudeStructuredProcess,
+  openGlmModelExecution,
+  openGlmStructuredProcess,
 } from "./claude-process.js";
 export { openPrivateModelTranscript } from "./model-process-observability.js";
+export { openGrokModelExecution } from "./grok-process.js";
 export type {
   ModelProcessObservation,
   ModelProcessObserver,
@@ -48,4 +51,7 @@ export type {
   ClaudeStructuredProcessRequest,
   OpenClaudeModelExecutionOptions,
   OpenClaudeStructuredProcessOptions,
+  OpenGlmModelExecutionOptions,
+  OpenGlmStructuredProcessOptions,
 } from "./claude-process.js";
+export type { OpenGrokModelExecutionOptions } from "./grok-process.js";

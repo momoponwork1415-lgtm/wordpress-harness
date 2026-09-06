@@ -1,6 +1,13 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { chmod, copyFile, lstat, mkdtemp, rm } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 
@@ -30,6 +37,10 @@ import type {
   ModelProcessObservation,
   ModelProcessObserver,
 } from "./model-process-observability.js";
+import {
+  runNativeModelProcess,
+  type NativeModelProcessResult,
+} from "./native-model-process.js";
 
 export interface OpenClaudeModelExecutionOptions {
   readonly artifactDirectory: string;
@@ -53,6 +64,26 @@ export interface OpenClaudeStructuredProcessOptions {
   readonly processHeartbeatIntervalMs?: number;
 }
 
+export interface OpenGlmModelExecutionOptions {
+  readonly artifactDirectory: string;
+  readonly executablePath: string;
+  readonly executableVersion: string;
+  readonly workingDirectory: string;
+  readonly tokenFilePath: string;
+  readonly sourceEvidenceGateway?: SourceEvidenceGateway;
+  readonly processObserver?: ModelProcessObserver;
+  readonly processHeartbeatIntervalMs?: number;
+}
+
+export interface OpenGlmStructuredProcessOptions {
+  readonly executablePath: string;
+  readonly executableVersion: string;
+  readonly workingDirectory: string;
+  readonly tokenFilePath: string;
+  readonly processObserver?: ModelProcessObserver;
+  readonly processHeartbeatIntervalMs?: number;
+}
+
 export interface ClaudeStructuredProcessRequest {
   readonly operationId?: string;
   readonly modelProfile: ModelProcessRequest["plan"]["modelProfile"];
@@ -69,13 +100,6 @@ export interface ClaudeStructuredProcessRequest {
 export interface ClaudeStructuredProcess {
   execute(request: ClaudeStructuredProcessRequest): Promise<ModelProcessResult>;
 }
-
-type NativeProcessResult = Extract<
-  ModelProcessResult,
-  {
-    readonly kind: "exited" | "timed-out" | "output-limit-exceeded";
-  }
->;
 
 const inheritedEnvironment = [
   "HOME",
@@ -98,6 +122,13 @@ const inheritedEnvironment = [
 const claudeAuthStatusSchema = z.object({ loggedIn: z.boolean() });
 const maximumCredentialFileBytes = 1024 * 1024;
 const transientApiStatuses = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
+const zaiAnthropicBaseUrl = "https://api.z.ai/api/anthropic";
+const zaiPrimaryModel = "glm-5.1";
+const zaiAuxiliaryModel = "glm-4.5-air";
+
+type ClaudeCompatibleProvider =
+  | { readonly kind: "anthropic" }
+  | { readonly kind: "zai"; readonly tokenFilePath: string };
 
 function isFileSystemError(
   error: unknown,
@@ -124,6 +155,25 @@ async function copyBoundedRegularFile(
   await copyFile(source, destination);
   await chmod(destination, 0o600);
   return true;
+}
+
+async function readBoundedCredentialFile(path: string): Promise<string> {
+  const metadata = await lstat(path);
+  if (
+    !metadata.isFile() ||
+    metadata.size <= 0 ||
+    metadata.size > maximumCredentialFileBytes ||
+    (metadata.mode & 0o777) !== 0o600
+  ) {
+    throw new Error(
+      "Provider credential must be a non-empty 0600 regular file",
+    );
+  }
+  const credential = (await readFile(path, "utf8")).trim();
+  if (credential.length === 0) {
+    throw new Error("Provider credential must not be empty");
+  }
+  return credential;
 }
 
 async function openEphemeralClaudeConfig(
@@ -165,39 +215,56 @@ function minimalEnvironment(
   if (environment.HOME === undefined || environment.PATH === undefined) {
     throw new Error("Claude process requires HOME and PATH");
   }
-  return { ...environment, ...overrides };
+  const configured = { ...environment, ...overrides };
+  for (const [name, value] of Object.entries(configured)) {
+    if (value === undefined) delete configured[name];
+  }
+  return configured;
 }
 
-function redactProviderCredential(text: string): string {
-  const credential = process.env.CLAUDE_CODE_OAUTH_TOKEN;
-  return credential === undefined || credential.length === 0
-    ? text
-    : text.replaceAll(credential, "[REDACTED]");
+function redactProviderCredential(
+  text: string,
+  additionalCredentials: readonly string[] = [],
+): string {
+  const credentials = [
+    process.env.CLAUDE_CODE_OAUTH_TOKEN,
+    ...additionalCredentials,
+  ].filter(
+    (credential): credential is string =>
+      credential !== undefined && credential.length > 0,
+  );
+  return credentials.reduce(
+    (redacted, credential) => redacted.replaceAll(credential, "[REDACTED]"),
+    text,
+  );
 }
 
-function signalProcessTree(
-  child: ChildProcessWithoutNullStreams,
-  signal: NodeJS.Signals,
-): void {
-  if (child.pid === undefined) return;
+function attachGlmStructuredOutput(stdout: string): string | undefined {
   try {
-    if (process.platform === "win32") {
-      child.kill(signal);
-    } else {
-      process.kill(-child.pid, signal);
-    }
-  } catch (error: unknown) {
-    if (!(
-      error instanceof Error &&
-      "code" in error &&
-      error.code === "ESRCH"
-    )) {
-      throw error;
-    }
+    const parsed: unknown = JSON.parse(stdout);
+    const envelope = z
+      .object({
+        type: z.literal("result"),
+        is_error: z.literal(false),
+        terminal_reason: z.literal("completed"),
+        result: z.string(),
+      })
+      .parse(parsed);
+    const structuredOutput: unknown = JSON.parse(envelope.result);
+    return JSON.stringify({
+      ...(parsed as Record<string, unknown>),
+      structured_output: structuredOutput,
+    });
+  } catch {
+    return undefined;
   }
 }
 
-function isUsageReportedTransientError(result: NativeProcessResult):
+function glmTerminalPrompt(prompt: string, outputJsonSchema: object): string {
+  return `${prompt}\n\nReturn exactly one JSON value matching this schema. Do not use Markdown fences or add prose.\n${JSON.stringify(outputJsonSchema)}`;
+}
+
+function isUsageReportedTransientError(result: NativeModelProcessResult):
   | {
       readonly usage: ClaudeProviderUsage & {
         readonly estimatedCostUsd: number;
@@ -365,8 +432,12 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
   readonly #claudeConfigDirectory;
   readonly #processObserver;
   readonly #processHeartbeatIntervalMs;
+  readonly #provider;
 
-  constructor(options: OpenClaudeStructuredProcessOptions) {
+  constructor(
+    options: OpenClaudeStructuredProcessOptions,
+    provider: ClaudeCompatibleProvider = { kind: "anthropic" },
+  ) {
     if (!isAbsolute(options.executablePath)) {
       throw new Error("Claude executable path must be absolute");
     }
@@ -407,13 +478,41 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
     }
     this.#processObserver = options.processObserver;
     this.#processHeartbeatIntervalMs = processHeartbeatIntervalMs;
+    this.#provider = provider;
   }
 
   async execute(
     request: ClaudeStructuredProcessRequest,
   ): Promise<ModelProcessResult> {
+    const expectedProvider =
+      this.#provider.kind === "anthropic" ? "anthropic" : "zai";
+    if (
+      request.modelProfile.provider !== expectedProvider ||
+      request.modelProfile.transport !== "claude-code-process" ||
+      (this.#provider.kind === "zai" &&
+        (request.modelProfile.model !== zaiPrimaryModel ||
+          request.modelProfile.effort !== "max"))
+    ) {
+      return {
+        kind: "policy-denied",
+        reason: "transport-profile-incompatible",
+      };
+    }
     if (request.modelProfile.executableVersion !== this.#executableVersion) {
       throw new Error("Attempt Plan Claude version does not match adapter");
+    }
+    let providerCredential: string | undefined;
+    if (this.#provider.kind === "zai") {
+      try {
+        providerCredential = await readBoundedCredentialFile(
+          this.#provider.tokenFilePath,
+        );
+      } catch {
+        return {
+          kind: "auth-required",
+          reason: "provider-session-unavailable",
+        };
+      }
     }
     const startedAt = performance.now();
     const operationId =
@@ -430,6 +529,7 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
       64 * 1024,
       undefined,
       { operationId, phase: "version-probe", segmentOrdinal: 0 },
+      providerCredential === undefined ? [] : [providerCredential],
     );
     if (
       version.kind !== "exited" ||
@@ -445,36 +545,38 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
     if (remainingTime() === 0) {
       return { kind: "timed-out", stderr: "" };
     }
-    const auth = await this.#run(
-      ["auth", "status"],
-      undefined,
-      Math.min(remainingTime(), 10_000),
-      64 * 1024,
-      undefined,
-      { operationId, phase: "auth-probe", segmentOrdinal: 1 },
-    );
-    if (auth.kind === "timed-out") return auth;
-    if (auth.kind === "output-limit-exceeded") {
-      throw new Error("Claude auth status probe exceeded its output limit");
-    }
-    if (auth.exitCode !== 0) {
-      return {
-        kind: "auth-required",
-        reason: "provider-session-unavailable",
-      };
-    }
-    let authStatus: z.infer<typeof claudeAuthStatusSchema>;
-    try {
-      const parsed: unknown = JSON.parse(auth.stdout);
-      authStatus = claudeAuthStatusSchema.parse(parsed);
-    } catch {
-      throw new Error("Claude auth status probe returned invalid output");
-    }
-    if (!authStatus.loggedIn) {
-      return {
-        kind: "auth-required",
-        reason: "provider-session-unavailable",
-      };
+    if (this.#provider.kind === "anthropic") {
+      const auth = await this.#run(
+        ["auth", "status"],
+        undefined,
+        Math.min(remainingTime(), 10_000),
+        64 * 1024,
+        undefined,
+        { operationId, phase: "auth-probe", segmentOrdinal: 1 },
+      );
+      if (auth.kind === "timed-out") return auth;
+      if (auth.kind === "output-limit-exceeded") {
+        throw new Error("Claude auth status probe exceeded its output limit");
+      }
+      if (auth.exitCode !== 0) {
+        return {
+          kind: "auth-required",
+          reason: "provider-session-unavailable",
+        };
+      }
+      let authStatus: z.infer<typeof claudeAuthStatusSchema>;
+      try {
+        const parsed: unknown = JSON.parse(auth.stdout);
+        authStatus = claudeAuthStatusSchema.parse(parsed);
+      } catch {
+        throw new Error("Claude auth status probe returned invalid output");
+      }
+      if (!authStatus.loggedIn) {
+        return {
+          kind: "auth-required",
+          reason: "provider-session-unavailable",
+        };
+      }
     }
     if (remainingTime() === 0) {
       return { kind: "timed-out", stderr: "" };
@@ -517,6 +619,7 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
         ? undefined
         : join(process.env.HOME, ".claude"));
     const resumeRequested =
+      this.#provider.kind === "anthropic" &&
       this.#maxTransientResumeAttempts > 0 &&
       request.sourceEvidence?.checkpoint !== undefined &&
       request.budget.maxProviderCostUsd !== undefined &&
@@ -525,19 +628,69 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
     const ephemeralConfigDirectory = resumeRequested
       ? await openEphemeralClaudeConfig(sourceConfigDirectory)
       : undefined;
+    const isolatedProviderRoot =
+      this.#provider.kind === "zai"
+        ? await mkdtemp(join(tmpdir(), "wordpress-harness-glm-"))
+        : undefined;
+    const isolatedProviderHome =
+      isolatedProviderRoot === undefined
+        ? undefined
+        : join(isolatedProviderRoot, "home");
+    const isolatedProviderConfigDirectory =
+      isolatedProviderRoot === undefined
+        ? undefined
+        : join(isolatedProviderRoot, "claude");
+    if (
+      isolatedProviderRoot !== undefined &&
+      isolatedProviderHome !== undefined &&
+      isolatedProviderConfigDirectory !== undefined
+    ) {
+      await chmod(isolatedProviderRoot, 0o700);
+      await Promise.all([
+        mkdir(isolatedProviderHome, { mode: 0o700 }),
+        mkdir(isolatedProviderConfigDirectory, { mode: 0o700 }),
+      ]);
+    }
     const sessionId =
       ephemeralConfigDirectory === undefined ? undefined : randomUUID();
-    const processEnvironment =
-      ephemeralConfigDirectory === undefined
-        ? undefined
-        : { CLAUDE_CONFIG_DIR: ephemeralConfigDirectory };
+    const providerEnvironment =
+      this.#provider.kind === "zai" && providerCredential !== undefined
+        ? {
+            ANTHROPIC_BASE_URL: zaiAnthropicBaseUrl,
+            ANTHROPIC_AUTH_TOKEN: providerCredential,
+            ANTHROPIC_DEFAULT_OPUS_MODEL: request.modelProfile.model,
+            ANTHROPIC_DEFAULT_SONNET_MODEL: request.modelProfile.model,
+            ANTHROPIC_DEFAULT_HAIKU_MODEL: zaiAuxiliaryModel,
+            API_TIMEOUT_MS: "3000000",
+            CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+          }
+        : {};
+    const processEnvironment = {
+      ...providerEnvironment,
+      ...(isolatedProviderConfigDirectory === undefined ||
+      isolatedProviderHome === undefined
+        ? ephemeralConfigDirectory === undefined
+          ? {}
+          : { CLAUDE_CONFIG_DIR: ephemeralConfigDirectory }
+        : {
+            CLAUDE_CONFIG_DIR: isolatedProviderConfigDirectory,
+            CLAUDE_CODE_OAUTH_TOKEN: undefined,
+            HOME: isolatedProviderHome,
+            USERPROFILE: isolatedProviderHome,
+            APPDATA: join(isolatedProviderHome, "AppData", "Roaming"),
+            LOCALAPPDATA: join(isolatedProviderHome, "AppData", "Local"),
+            XDG_CONFIG_HOME: join(isolatedProviderHome, ".config"),
+            XDG_CACHE_HOME: join(isolatedProviderHome, ".cache"),
+            XDG_DATA_HOME: join(isolatedProviderHome, ".local", "share"),
+          }),
+    };
     const baseArgs = (maxProviderCostUsd: number | undefined): string[] => [
       "-p",
       "--model",
       request.modelProfile.model,
       "--effort",
       request.modelProfile.effort,
-      ...(maxProviderCostUsd === undefined
+      ...(maxProviderCostUsd === undefined || this.#provider.kind === "zai"
         ? []
         : ["--max-budget-usd", String(maxProviderCostUsd)]),
       "--restricted",
@@ -560,8 +713,9 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
       "false",
       "--output-format",
       "json",
-      "--json-schema",
-      JSON.stringify(request.outputJsonSchema),
+      ...(this.#provider.kind === "anthropic"
+        ? ["--json-schema", JSON.stringify(request.outputJsonSchema)]
+        : []),
     ];
     try {
       let resumeOrdinal = 0;
@@ -578,7 +732,9 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
         const result = await this.#run(
           [...baseArgs(remainingProviderCostUsd), ...sessionArgs],
           resumeOrdinal === 0
-            ? request.prompt
+            ? this.#provider.kind === "zai"
+              ? glmTerminalPrompt(request.prompt, request.outputJsonSchema)
+              : request.prompt
             : "Continue the same Attempt from its durable checkpoints and complete the required terminal JSON.",
           remainingTime(),
           request.budget.maxOutputBytes,
@@ -588,10 +744,46 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
             phase: "inference",
             segmentOrdinal: resumeOrdinal + 2,
           },
+          providerCredential === undefined ? [] : [providerCredential],
+          sourceBridge?.redact,
         );
+        let normalizedResult: NativeModelProcessResult =
+          this.#provider.kind === "zai" &&
+          result.kind === "exited" &&
+          result.exitCode === 0
+            ? {
+                ...result,
+                stdout:
+                  attachGlmStructuredOutput(result.stdout) ?? result.stdout,
+              }
+            : result;
+        if (
+          this.#provider.kind === "zai" &&
+          normalizedResult.kind === "exited"
+        ) {
+          const providerError = decodeClaudeErrorEnvelope(
+            normalizedResult.stdout,
+          );
+          if (
+            providerError !== undefined &&
+            (providerError.apiErrorStatus === 401 ||
+              /(?:not logged in|unauthorized|invalid api key|authentication required)/iu.test(
+                providerError.message,
+              ))
+          ) {
+            return {
+              kind: "auth-required",
+              reason: "provider-session-unavailable",
+            };
+          }
+          if (providerError !== undefined && normalizedResult.exitCode === 0) {
+            normalizedResult = { ...normalizedResult, exitCode: 1 };
+          }
+        }
         if (
           sourceBridge !== undefined &&
-          result.kind === "exited" &&
+          normalizedResult.kind === "exited" &&
+          normalizedResult.exitCode === 0 &&
           !sourceBridge.observedConnection()
         ) {
           return {
@@ -599,13 +791,16 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
             reason: "source-evidence-bridge-not-connected",
           };
         }
-        if (result.kind === "exited" && result.exitCode === 0) {
-          if (priorUsage.length === 0) return result;
+        if (
+          normalizedResult.kind === "exited" &&
+          normalizedResult.exitCode === 0
+        ) {
+          if (priorUsage.length === 0) return normalizedResult;
           const completed = decodeClaudeEnvelope(
-            result.stdout,
+            normalizedResult.stdout,
             request.modelProfile.model,
           );
-          if (completed.kind !== "accepted") return result;
+          if (completed.kind !== "accepted") return normalizedResult;
           const aggregate = aggregateClaudeUsage([
             ...priorUsage,
             completed.usage,
@@ -613,26 +808,28 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
           const stdout =
             aggregate === undefined
               ? undefined
-              : replaceClaudeEnvelopeUsage(result.stdout, aggregate);
-          return stdout === undefined ? result : { ...result, stdout };
+              : replaceClaudeEnvelopeUsage(normalizedResult.stdout, aggregate);
+          return stdout === undefined
+            ? normalizedResult
+            : { ...normalizedResult, stdout };
         }
-        const transient = isUsageReportedTransientError(result);
+        const transient = isUsageReportedTransientError(normalizedResult);
         if (
           transient === undefined ||
           sessionId === undefined ||
           resumeOrdinal >= this.#maxTransientResumeAttempts ||
           remainingProviderCostUsd === undefined
         ) {
-          return result;
+          return normalizedResult;
         }
         remainingProviderCostUsd -= transient.usage.estimatedCostUsd;
         priorUsage.push(transient.usage);
         if (remainingProviderCostUsd <= 0 || remainingTime() <= 0) {
-          return result;
+          return normalizedResult;
         }
         resumeOrdinal += 1;
         if (!(await waitForResumeBackoff(resumeOrdinal, remainingTime()))) {
-          return result;
+          return normalizedResult;
         }
       }
     } finally {
@@ -641,6 +838,12 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
         ephemeralConfigDirectory === undefined
           ? Promise.resolve()
           : rm(ephemeralConfigDirectory, { force: true, recursive: true }),
+        isolatedProviderRoot === undefined
+          ? Promise.resolve()
+          : rm(isolatedProviderRoot, {
+              force: true,
+              recursive: true,
+            }),
       ]);
     }
   }
@@ -656,154 +859,29 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
       readonly phase: ModelProcessObservation["phase"];
       readonly segmentOrdinal: number;
     },
-  ): Promise<NativeProcessResult> {
-    return new Promise((resolve, reject) => {
-      const processStartedAt = performance.now();
-      if (observation !== undefined) {
-        this.#observe({
-          kind: "model-process-started",
-          schemaVersion: 1,
-          ...observation,
-          occurredAt: new Date().toISOString(),
-        });
-      }
-      const child = spawn(this.#executablePath, args, {
-        cwd: this.#workingDirectory,
-        detached: process.platform !== "win32",
-        env: minimalEnvironment(environmentOverrides),
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-      const stdout: Buffer[] = [];
-      const stderr: Buffer[] = [];
-      let stdoutBytes = 0;
-      let stderrBytes = 0;
-      let terminalKind: "timed-out" | "output-limit-exceeded" | undefined;
-      let killTimer: NodeJS.Timeout | undefined;
-      const heartbeat =
-        observation === undefined
-          ? undefined
-          : setInterval(() => {
-              this.#observe({
-                kind: "model-process-heartbeat",
-                schemaVersion: 1,
-                ...observation,
-                occurredAt: new Date().toISOString(),
-                elapsedMs: Math.ceil(performance.now() - processStartedAt),
-              });
-            }, this.#processHeartbeatIntervalMs);
-      heartbeat?.unref();
-
-      const terminate = (kind: "timed-out" | "output-limit-exceeded"): void => {
-        if (terminalKind !== undefined) return;
-        terminalKind = kind;
-        signalProcessTree(child, "SIGTERM");
-        killTimer = setTimeout(() => {
-          signalProcessTree(child, "SIGKILL");
-        }, 2_000);
-        killTimer.unref();
-      };
-      const timeout = setTimeout(() => terminate("timed-out"), timeoutMs);
-      timeout.unref();
-
-      child.stdout.on("data", (chunk: Buffer) => {
-        stdoutBytes += chunk.byteLength;
-        if (stdoutBytes > maxOutputBytes) {
-          terminate("output-limit-exceeded");
-          return;
-        }
-        stdout.push(chunk);
-      });
-      child.stderr.on("data", (chunk: Buffer) => {
-        const remaining = 64 * 1024 - stderrBytes;
-        if (remaining <= 0) return;
-        const kept = chunk.subarray(0, remaining);
-        stderr.push(kept);
-        stderrBytes += kept.byteLength;
-      });
-      child.once("error", (error) => {
-        clearTimeout(timeout);
-        if (heartbeat !== undefined) clearInterval(heartbeat);
-        if (killTimer !== undefined) clearTimeout(killTimer);
-        if (observation !== undefined) {
-          this.#observe({
-            kind: "model-process-failed",
-            schemaVersion: 1,
-            ...observation,
-            occurredAt: new Date().toISOString(),
-            elapsedMs: Math.ceil(performance.now() - processStartedAt),
-            reason: "spawn-failed",
-          });
-        }
-        reject(error);
-      });
-      child.stdin.once("error", (error: NodeJS.ErrnoException) => {
-        if (error.code === "EPIPE") return;
-        clearTimeout(timeout);
-        if (heartbeat !== undefined) clearInterval(heartbeat);
-        if (killTimer !== undefined) clearTimeout(killTimer);
-        signalProcessTree(child, "SIGKILL");
-        if (observation !== undefined) {
-          this.#observe({
-            kind: "model-process-failed",
-            schemaVersion: 1,
-            ...observation,
-            occurredAt: new Date().toISOString(),
-            elapsedMs: Math.ceil(performance.now() - processStartedAt),
-            reason: "stdin-failed",
-          });
-        }
-        reject(error);
-      });
-      child.once("close", (exitCode) => {
-        clearTimeout(timeout);
-        if (heartbeat !== undefined) clearInterval(heartbeat);
-        const stderrText = redactProviderCredential(
-          Buffer.concat(stderr).toString("utf8"),
+    credentialsToRedact: readonly string[] = [],
+    additionalRedact?: (text: string) => string,
+  ): Promise<NativeModelProcessResult> {
+    return runNativeModelProcess({
+      executablePath: this.#executablePath,
+      args,
+      workingDirectory: this.#workingDirectory,
+      environment: minimalEnvironment(environmentOverrides),
+      ...(stdin === undefined ? {} : { stdin }),
+      timeoutMs,
+      maxOutputBytes,
+      redact: (text) => {
+        const credentialRedacted = redactProviderCredential(
+          text,
+          credentialsToRedact,
         );
-        if (terminalKind !== undefined) {
-          signalProcessTree(child, "SIGKILL");
-          if (killTimer !== undefined) clearTimeout(killTimer);
-          const result = { kind: terminalKind, stderr: stderrText } as const;
-          if (observation !== undefined) {
-            this.#observe({
-              kind: "model-process-completed",
-              schemaVersion: 1,
-              ...observation,
-              occurredAt: new Date().toISOString(),
-              elapsedMs: Math.ceil(performance.now() - processStartedAt),
-              result,
-            });
-          }
-          resolve(result);
-          return;
-        }
-        if (killTimer !== undefined) clearTimeout(killTimer);
-        const result = {
-          kind: "exited",
-          exitCode: exitCode ?? -1,
-          stdout: redactProviderCredential(
-            Buffer.concat(stdout).toString("utf8"),
-          ),
-          stderr: stderrText,
-        } as const;
-        if (observation !== undefined) {
-          this.#observe({
-            kind: "model-process-completed",
-            schemaVersion: 1,
-            ...observation,
-            occurredAt: new Date().toISOString(),
-            elapsedMs: Math.ceil(performance.now() - processStartedAt),
-            result,
-          });
-        }
-        resolve(result);
-      });
-
-      if (stdin === undefined) {
-        child.stdin.end();
-      } else {
-        child.stdin.end(stdin, "utf8");
-      }
+        return additionalRedact?.(credentialRedacted) ?? credentialRedacted;
+      },
+      ...(this.#processObserver === undefined
+        ? {}
+        : { observer: this.#processObserver }),
+      heartbeatIntervalMs: this.#processHeartbeatIntervalMs,
+      ...(observation === undefined ? {} : { observation }),
     });
   }
 
@@ -841,10 +919,44 @@ export function openClaudeModelExecution(
   });
 }
 
+export function openGlmModelExecution(
+  options: OpenGlmModelExecutionOptions,
+): ModelExecution {
+  const process = openGlmStructuredProcess(options);
+  return openModelExecution({
+    artifactDirectory: options.artifactDirectory,
+    process: {
+      execute: (request: ModelProcessRequest) =>
+        process.execute({
+          operationId: request.plan.attemptId,
+          modelProfile: request.plan.modelProfile,
+          prompt: request.plan.prompt,
+          budget: request.plan.budget,
+          outputJsonSchema: request.outputJsonSchema,
+          ...(request.sourceEvidence === undefined
+            ? {}
+            : { sourceEvidence: request.sourceEvidence }),
+        }),
+    },
+    ...(options.sourceEvidenceGateway === undefined
+      ? {}
+      : { sourceEvidenceGateway: options.sourceEvidenceGateway }),
+  });
+}
+
 export function openClaudeStructuredProcess(
   options: OpenClaudeStructuredProcessOptions,
 ): ClaudeStructuredProcess {
   return new NativeClaudeStructuredProcess(options);
+}
+
+export function openGlmStructuredProcess(
+  options: OpenGlmStructuredProcessOptions,
+): ClaudeStructuredProcess {
+  return new NativeClaudeStructuredProcess(options, {
+    kind: "zai",
+    tokenFilePath: options.tokenFilePath,
+  });
 }
 
 export function openClaudeStructuredModelExecutionFromProcess(

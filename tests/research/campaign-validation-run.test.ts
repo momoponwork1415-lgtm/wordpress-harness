@@ -29,6 +29,7 @@ import {
   openFileJsonArtifactStore,
   openSqliteResearchRecord,
 } from "../../src/research/research-record/index.js";
+import { currentSemanticCampaignConfigurationMatches } from "../../src/research/campaign-control/current-semantic-campaign-bindings.js";
 import { createCampaignInput } from "../fixtures/campaign.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
@@ -1348,6 +1349,132 @@ async function assertSourceValidatedBaseline(
 }
 
 describe("CampaignRunner.run source-only Validation", () => {
+  it("accepts one approved subscription-model family per current Campaign", async () => {
+    const fixture = await createCampaignValidationFixture();
+    try {
+      const configurations = [
+        {
+          family: "claude",
+          ids: {
+            planner: "claude-opus-5-root-planner-high-v6",
+            finder: "claude-opus-5-finder-high-v6",
+            evaluator: "claude-opus-5-root-evaluator-high-v6",
+            validator: "claude-opus-5-validator-high-v6",
+          },
+          execution: {
+            provider: "anthropic",
+            model: "claude-opus-5",
+            transport: "claude-code-process",
+            executableVersion: "2.1.260",
+            effort: "high",
+          },
+        },
+        {
+          family: "glm",
+          ids: {
+            planner: "glm-5.1-root-planner-max-v1",
+            finder: "glm-5.1-finder-max-v1",
+            evaluator: "glm-5.1-root-evaluator-max-v1",
+            validator: "glm-5.1-validator-max-v1",
+          },
+          execution: {
+            provider: "zai",
+            model: "glm-5.1",
+            transport: "claude-code-process",
+            executableVersion: "2.1.260",
+            effort: "max",
+          },
+        },
+        {
+          family: "grok",
+          ids: {
+            planner: "grok-4.6-root-planner-xhigh-v1",
+            finder: "grok-4.6-finder-xhigh-v1",
+            evaluator: "grok-4.6-root-evaluator-xhigh-v1",
+            validator: "grok-4.6-validator-xhigh-v1",
+          },
+          execution: {
+            provider: "xai",
+            model: "grok-4.6",
+            transport: "grok-build-process",
+            executableVersion: "1.0.13",
+            effort: "xhigh",
+          },
+        },
+      ] as const;
+      const configure = (configuration: (typeof configurations)[number]) => {
+        const plan = fixture.plan;
+        const profile = (
+          source: typeof plan.planner.modelProfile,
+          role: keyof typeof configuration.ids,
+        ) => ({
+          ref: {
+            ...source.ref,
+            id: configuration.ids[role],
+            family: configuration.family,
+          },
+          execution: {
+            ...source.execution,
+            ...configuration.execution,
+          },
+        });
+        const bindingSource = {
+          semanticPolicy: plan.semanticPolicy,
+          planner: {
+            ...plan.planner,
+            modelProfile: profile(plan.planner.modelProfile, "planner"),
+          },
+          finder: {
+            ...plan.finder,
+            modelProfile: profile(plan.finder.modelProfile, "finder"),
+          },
+          evaluator: {
+            ...plan.evaluator,
+            modelProfile: profile(plan.evaluator.modelProfile, "evaluator"),
+          },
+          validation: {
+            ...plan.validation,
+            validatorModelProfile: profile(
+              plan.validation.validatorModelProfile,
+              "validator",
+            ),
+          },
+        };
+        return campaignDefaultSemanticRunPlanV3Schema.parse({
+          ...plan,
+          ...bindingSource,
+          bindings: bindCurrentSemanticCampaignConfiguration(bindingSource),
+        });
+      };
+
+      for (const configuration of configurations) {
+        expect(
+          currentSemanticCampaignConfigurationMatches(configure(configuration)),
+        ).toBe(true);
+      }
+
+      const grokPlan = configure(configurations[2]);
+      const glmPlan = configure(configurations[1]);
+      const mixedBindingSource = {
+        semanticPolicy: grokPlan.semanticPolicy,
+        planner: grokPlan.planner,
+        finder: glmPlan.finder,
+        evaluator: grokPlan.evaluator,
+        validation: grokPlan.validation,
+      };
+      const mixedPlan = campaignDefaultSemanticRunPlanV3Schema.parse({
+        ...grokPlan,
+        ...mixedBindingSource,
+        bindings: bindCurrentSemanticCampaignConfiguration(mixedBindingSource),
+      });
+      expect(currentSemanticCampaignConfigurationMatches(mixedPlan)).toBe(
+        false,
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("rejects mismatched bindings and invalid attempt-reservation replay", async () => {
     const fixture = await createCampaignValidationFixture();
     const {

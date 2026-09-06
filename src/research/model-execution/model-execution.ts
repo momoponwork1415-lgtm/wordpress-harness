@@ -39,6 +39,20 @@ import {
   decodeClaudeErrorEnvelope,
   type ClaudeProviderUsage,
 } from "./claude-envelope.js";
+import { decodeGrokEnvelope } from "./grok-envelope.js";
+import { decodeGlmEnvelope } from "./glm-envelope.js";
+
+function decodeProviderEnvelope(
+  stdout: string,
+  profile: AttemptPlanV2["modelProfile"],
+) {
+  if (profile.transport === "grok-build-process") {
+    return decodeGrokEnvelope(stdout, profile.model);
+  }
+  return profile.provider === "zai"
+    ? decodeGlmEnvelope(stdout, profile.model)
+    : decodeClaudeEnvelope(stdout, profile.model);
+}
 
 export function normalizeClaudeModelAttemptUsage(
   usage: ClaudeProviderUsage,
@@ -453,9 +467,9 @@ class FirstFinderModelExecution implements ModelExecution {
         sourceEvidenceReceipts,
       );
     }
-    const sourceTerminalEnvelope = decodeClaudeEnvelope(
+    const sourceTerminalEnvelope = decodeProviderEnvelope(
       processResult.stdout,
-      plan.modelProfile.model,
+      plan.modelProfile,
     );
     if (
       sourceToolTerminal !== undefined &&
@@ -537,9 +551,9 @@ class FirstFinderModelExecution implements ModelExecution {
       );
     }
 
-    const envelope = decodeClaudeEnvelope(
+    const envelope = decodeProviderEnvelope(
       processResult.stdout,
-      plan.modelProfile.model,
+      plan.modelProfile,
     );
     if (envelope.kind === "invalid-envelope") {
       return this.#terminalV2(

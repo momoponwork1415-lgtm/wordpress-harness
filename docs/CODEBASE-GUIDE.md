@@ -216,11 +216,11 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 **Interface:** `ModelExecution.run(plan, observer?) -> AttemptExecutionResult`
 
 - **Purpose:** immutable Attempt Planをprovider-neutral resultへ変換し、process、tool、credentialを隠す。
-- **Invariants:** official transportだけを使い、model / effortを固定する。role間でsession、conversation、scratchを共有しない。
+- **Invariants:** subscriptionに対応するapproved transportだけを使い、model / effort / executable versionを固定する。current Campaignの全roleはOpus、GLM、Grokのいずれか一つのfamilyへ固定し、model間でsilent fallbackしない。role間でsession、conversation、scratchを共有しない。
 - **Tools:** manifest-bound read-only source toolだけを許可する。Finder checkpointはdurable write後にackする。Synthesis / Riskはtool-free。
 - **Recovery:** transient failureだけを同じAttemptと残budgetでresumeする。Recoveryの正本はLedger、CAS、checkpoint。
 - **Failures:** provider、auth、policy、invalid output、budget、cancelを区別する。observer / private transcript failureはoutcomeを変えない。
-- **Status:** Claude Adapter、usage、Receipt、resume、private transcriptを実装。複数Campaign横断のOpus capacityは未実装（[#114](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/114)）。
+- **Status:** Claude Code subscriptionのOpus Adapter、WSL native Claude Code互換transportとprivate token fileを使うGLM 5.1 Adapter、隔離HOME / OAuth stateでGrok Build CLIを使うGrok 4.6 Adapter、provider別envelope normalization、usage、Receipt、resume、private transcriptを実装。GLM / Grokへはambient MCP、plugin、Claude OAuthを渡さず、HOME、`USERPROFILE`、XDG / provider configを一時directoryへ固定する。複数Campaign横断のmodel capacityは未実装（[#114](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/114)）。
 - **Code / Tests:** [model-execution](../src/research/model-execution) · [execution](../tests/research/model-execution.test.ts), [bridge](../tests/research/claude-source-evidence-bridge.test.ts)
 
 ### Research Record
