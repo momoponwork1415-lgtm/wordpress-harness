@@ -524,6 +524,27 @@ export const currentHumanReviewResultSchema = z
         message: "Human Review Result Finding gate is inconsistent",
       });
     }
+    // The Finding is entitled to exist only by the fresh Human Reproduction it
+    // came from, so it must name this one. Gating presence alone would let a
+    // Finding minted for another Case be recorded as this Case's outcome: both
+    // halves are internally valid, and each identity check passes against the
+    // wrong partner. The digest is compared, not just the id, so a Finding
+    // cannot cite a Human Reproduction whose content has since been rewritten.
+    if (
+      result.finding !== null &&
+      (result.finding.humanVerification.id !== result.verification.id ||
+        result.finding.humanVerification.digest !==
+          humanOsDigest(result.verification) ||
+        result.finding.humanVerification.caseId !==
+          result.verification.caseId ||
+        result.finding.caseId !== result.verification.caseId)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["finding"],
+        message: "Human Review Result Finding cites another Human Reproduction",
+      });
+    }
   });
 
 export type CurrentHumanReviewPolicy = z.infer<

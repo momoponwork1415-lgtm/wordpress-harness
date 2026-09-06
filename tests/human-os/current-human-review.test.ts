@@ -24,6 +24,7 @@ import {
   type AIReproductionResult,
 } from "../../src/human-os/ai-reproduction-contracts.js";
 import { humanOsDigest } from "../../src/human-os/canonical-json.js";
+import { currentHumanReviewResultSchema } from "../../src/human-os/current-human-review-contracts.js";
 import {
   openFileHumanOsArtifactStore,
   openSqliteHumanOsRecord,
@@ -598,6 +599,56 @@ describe("Current Human Review", () => {
     await expect(service.prepare(selected.reviewCase.id)).rejects.toThrow(
       "Only an active Case",
     );
+  });
+
+  it("refuses a Finding minted for another Case's Human Reproduction", async () => {
+    // The Finding is the whole product of this context, and the only thing
+    // that entitles it to exist is the fresh Human Reproduction it came from.
+    // Nothing bound the two: a Result carried a verification and a Finding
+    // that had never met, and both the write and the read accepted it.
+    const reader = new FixtureAIReader("campaign-human-v2");
+    const first = attemptFixture({
+      character: "a",
+      version: "6.0.0",
+      impact: "account-takeover",
+    });
+    const second = attemptFixture({
+      character: "b",
+      version: "6.1.0",
+      impact: "site-wide-compromise",
+    });
+    reader.add(first, confirmedResult(first));
+    reader.add(second, confirmedResult(second));
+    const { service } = await fixture({ reader });
+
+    const admitted = [];
+    for (const attempt of [first, second]) {
+      const admission = await service.admit(attempt.id);
+      if (admission.status === "not-admitted") throw new Error("Expected Case");
+      admitted.push(admission.view.reviewCase.id);
+    }
+
+    const results = [];
+    for (const caseId of admitted) {
+      const preparation = await service.prepare(caseId);
+      results.push(
+        await service.record(verifiedRecord({ preparation, caseId })),
+      );
+    }
+    const [borrowed, host] = results;
+    if (borrowed?.finding == null || host?.finding == null) {
+      throw new Error("Expected both Cases to reach a Finding");
+    }
+    expect(borrowed.finding.id).not.toBe(host.finding.id);
+
+    expect(() =>
+      currentHumanReviewResultSchema.parse({
+        kind: "current-human-review-result",
+        schemaVersion: 2,
+        verification: host.verification,
+        finding: borrowed.finding,
+      }),
+    ).toThrow();
   });
 
   it("refreshes AI reproduction for a new stable version while preserving the Campaign origin", async () => {
