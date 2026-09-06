@@ -13,6 +13,11 @@ export {
 export { openPrivateModelTranscript } from "./model-process-observability.js";
 export { openGrokModelExecution } from "./grok-process.js";
 export {
+  currentSemanticExecutableVersion,
+  openCurrentSemanticModelExecution,
+} from "./current-semantic-model-execution.js";
+export type { CurrentSemanticModelExecutionOptions } from "./current-semantic-model-execution.js";
+export {
   decodeClaudeSubscriptionCapacity,
   defineModelCapacityPolicy,
   evaluateModelCapacity,

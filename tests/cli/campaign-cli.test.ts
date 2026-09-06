@@ -211,4 +211,113 @@ describe("campaign CLI", () => {
       await rm(directory, { force: true, recursive: true });
     }
   });
+
+  it("refuses to run a campaign prepared without a Target Intake", async () => {
+    // The retired v1 input carries no intake binding and no canonical file
+    // manifest, so the Target identity a current plan binds cannot be read
+    // back from it. Refused by name here rather than half-built and rejected
+    // later by plan validation.
+    const directory = await mkdtemp(join(tmpdir(), "wordpress-harness-run-"));
+    const databasePath = join(directory, "research.sqlite");
+    const inputPath = join(directory, "campaign.json");
+    await writeFile(inputPath, JSON.stringify(campaignInput), "utf8");
+    const output: string[] = [];
+    const errors: string[] = [];
+    const io = {
+      stdout: (text: string) => output.push(text),
+      stderr: (text: string) => errors.push(text),
+    };
+
+    try {
+      const artifactDirectory = join(directory, "artifacts");
+      await runCli(
+        [
+          "campaign",
+          "prepare",
+          "--database",
+          databasePath,
+          "--artifacts",
+          artifactDirectory,
+          "--input",
+          inputPath,
+        ],
+        io,
+      );
+      const exit = await runCli(
+        [
+          "campaign",
+          "run",
+          "--database",
+          databasePath,
+          "--artifacts",
+          artifactDirectory,
+          "--campaign",
+          campaignInput.campaignId,
+          "--run",
+          `${campaignInput.campaignId}:wave-1`,
+          "--family",
+          "claude",
+          "--source",
+          join(directory, "source"),
+          "--executable",
+          "/nonexistent/claude",
+          "--work",
+          join(directory, "work"),
+        ],
+        io,
+      );
+
+      expect({ exit, errors }).toMatchObject({
+        exit: 1,
+        errors: [
+          "Current Semantic Research requires a v3 Target Intake preparation\n",
+        ],
+      });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("refuses a model family outside the admitted catalog", async () => {
+    // An unadmitted family has no profile ids, no transport and no eligibility
+    // receipt, so there is no plan to build. Naming the admitted families in
+    // the refusal keeps the operator from guessing.
+    const directory = await mkdtemp(join(tmpdir(), "wordpress-harness-fam-"));
+    const errors: string[] = [];
+    const io = {
+      stdout: () => undefined,
+      stderr: (text: string) => errors.push(text),
+    };
+
+    try {
+      const exit = await runCli(
+        [
+          "campaign",
+          "run",
+          "--database",
+          join(directory, "research.sqlite"),
+          "--artifacts",
+          join(directory, "artifacts"),
+          "--campaign",
+          "campaign-cli-family",
+          "--run",
+          "campaign-cli-family:wave-1",
+          "--family",
+          "gemini",
+          "--source",
+          join(directory, "source"),
+          "--executable",
+          "/nonexistent/claude",
+        ],
+        io,
+      );
+
+      expect({ exit, errors }).toMatchObject({
+        exit: 1,
+        errors: ["Unknown model family: gemini. Admitted: claude, glm, grok\n"],
+      });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
 });

@@ -11,7 +11,7 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Target Acquisition / Intake | local directory、WordPress.org archiveを実装済み | premium acquisition |
 | Target selection / approval | Research History、programme / route観測、自律選定、人間のBatch承認を実装済み | Campaign Coverage Receipt、unattended dispatch |
 | Vulnerability Intelligence | Wordfence Intelligence v3のlocal indexとoracle-separated projectionを実装済み | なし（Wordfence-only方針を#102で確定済み） |
-| Semantic Research | v7 initial Wave、Decision@3、conditional Depth実行まで実装済み | Missing-link / Closure |
+| Semantic Research | v7 initial Wave、Decision@3、conditional Depth実行、`campaign run`入口まで実装済み | Missing-link / Closure |
 | Source-only Validation | v7 single fresh Attempt、4 disposition、source-validated Findingを実装済み | Frontier Gapの次Wave |
 | Runtime handoff | FindingをAI Reproductionへ直接渡すcurrent contract、旧Runtime Verification Packetのread-only replayを実装済み | Human Verification移行（#126 / #129） |
 | AI Reproduction | Finding-bound Attempt、gVisor experiment、private evidence、append-only AI Verification Recordを実装済み | なし |
@@ -165,6 +165,20 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 - **Behavior Test:** [current composition / independent recovery scenarios](../tests/research/campaign-validation-run.test.ts)、[old composition input / dependency-free replay](../tests/research/campaign-composition.test.ts)、[v7 contract](../tests/research/semantic-recall-budget.test.ts)、[legacy replay](../tests/research/ledger-compatibility.test.ts)。
 - **Status:** v7 initial Wave、durable Root Evaluation reservation、single Validation、conditional Depth、Finding / Coverage terminal、terminal replay、progressを実装。v6とlegacy Ledgerは元の意味でread-only replayする。Missing-link / Closureは未接続。
 - **Code:** [campaign-control](../src/research/campaign-control)、[open-research](../src/research/open-research.ts)。
+
+### Campaign Run Entrypoint
+
+**Interface:** `currentSemanticCampaignPreparationConfiguration(family)`、`prepareCurrentSemanticCampaignPlan(artifactStore, input)`、`openCurrentSemanticModelExecution(options)`、CLI `campaign run`
+
+- **Purpose:** current configurationのCampaignをprepareしrunするために必要な設定の正本を一か所に置き、operator scriptがPlanを手組みしなくてよいようにする。
+- **Interface分割:** preparation halfはprompt set、4 role model profile、runtime profile、experiment registry、campaign budgetを返す。run halfはTarget、Manifest、metadata、preparation digestからv3 Planを構築する。両者は同じfamily configurationから導出し、値を二度書かない。
+- **Invariants:** familyはadmitted model profile catalogのclaude / glm / grokに限る。executable versionはcatalogが固定し、callerから受け取らない。Source Tool PolicyはPlan自身のTarget Snapshot digestへbindする。Planは構築後に`currentSemanticCampaignConfigurationMatches`で照合する。Transport Eligibility ReceiptとSource Tool Policyは、Planが名指すdigestでCASへ入るまでrunへ進まない。
+- **CLI:** `campaign run`はTarget identity、Manifest、intake bindingを記録済みCampaign Preparationから読み戻し、command lineでは受け取らない。v3 Target Intake preparation以外はreasonを名指して拒否する。
+- **Failure semantics:** admitted catalog外のfamily、v3でないpreparation、Manifestを欠くpreparationをreason付きで拒否する。CASがPlanの名指すdigestと異なるdigestで格納した場合は`configuration-artifact-digest-mismatch`としてrun前にfail closedにする。provider到達不能はAttempt levelのtyped failureのまま残り、`Coverage incomplete`とFinding 0件になる。no-findingへ丸めない。
+- **Scope:** Target acquisition、freshness再検証、Batch承認、private evidence、transcript、credential解決はoperator側に残す。この入口はprepare済みCampaignの実行だけを所有する。
+- **Behavior Test:** [plan factory](../tests/research/current-semantic-campaign-plan.test.ts)、[CLI wiring / typed provider failure](../tests/cli/campaign-run-wiring.test.ts)、[CLI refusals](../tests/cli/campaign-cli.test.ts)。
+- **Status:** 3 familyのPlan構築、preparation設定、model execution dispatch、`campaign run`を実装。Issue #136の1,669行operator scriptが持っていたPlan構築を置き換える。acquisition / authorization / readiness probeは未移管。
+- **Code:** [plan factory](../src/research/campaign-control/current-semantic-campaign-plan.ts)、[model profile catalog](../src/research/campaign-control/current-semantic-campaign-bindings.ts)、[execution dispatch](../src/research/model-execution/current-semantic-model-execution.ts)、[cli](../src/cli.ts)。
 
 ### Source Understanding
 

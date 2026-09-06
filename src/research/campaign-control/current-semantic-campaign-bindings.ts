@@ -13,7 +13,11 @@ type BindingSource = Pick<
   "semanticPolicy" | "planner" | "finder" | "evaluator" | "validation"
 >;
 
-const currentModelProfileFamilies = [
+// The one catalog of admitted model families. `currentSemanticCampaignConfigurationMatches`
+// reads it to accept a plan; the plan factory reads it to build one. `eligibility`
+// is the transport half of the receipt an Attempt Plan binds -- the receipt digest
+// itself is not compared here, only that all four roles agree on it.
+export const currentModelProfileFamilies = [
   {
     family: "claude",
     execution: {
@@ -22,6 +26,10 @@ const currentModelProfileFamilies = [
       transport: "claude-code-process",
       executableVersion: "2.1.260",
       effort: "high",
+    },
+    eligibility: {
+      transport: "official-claude-code-process",
+      authMethod: "claude.ai-subscription",
     },
     profileIds: {
       planner: "claude-opus-5-root-planner-high-v6",
@@ -39,6 +47,10 @@ const currentModelProfileFamilies = [
       executableVersion: "2.1.260",
       effort: "max",
     },
+    eligibility: {
+      transport: "official-claude-code-process",
+      authMethod: "zai-coding-plan-token-file",
+    },
     profileIds: {
       planner: "glm-5.1-root-planner-max-v1",
       finder: "glm-5.1-finder-max-v1",
@@ -55,6 +67,10 @@ const currentModelProfileFamilies = [
       executableVersion: "1.0.13",
       effort: "xhigh",
     },
+    eligibility: {
+      transport: "official-grok-build-process",
+      authMethod: "grok-build-subscription-oauth",
+    },
     profileIds: {
       planner: "grok-4.6-root-planner-xhigh-v1",
       finder: "grok-4.6-finder-xhigh-v1",
@@ -63,6 +79,26 @@ const currentModelProfileFamilies = [
     },
   },
 ] as const;
+
+export type CurrentSemanticModelFamily =
+  (typeof currentModelProfileFamilies)[number]["family"];
+
+export type CurrentModelProfileFamily =
+  (typeof currentModelProfileFamilies)[number];
+
+export function currentModelProfileFamily(
+  family: CurrentSemanticModelFamily,
+): CurrentModelProfileFamily {
+  const found = currentModelProfileFamilies.find(
+    (candidate) => candidate.family === family,
+  );
+  // Unreachable through the exported type, but a widened string reaching here
+  // must not silently produce a plan bound to the wrong provider.
+  if (found === undefined) {
+    throw new Error(`Unknown current Semantic model family: ${family}`);
+  }
+  return found;
+}
 
 export function bindCurrentSemanticCampaignConfiguration(
   source: BindingSource,

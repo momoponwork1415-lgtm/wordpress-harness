@@ -142,7 +142,28 @@ export {
   iterationDecisionSchema,
 } from "./campaign-control/contracts.js";
 export type { CurrentSemanticRootPlanningPolicyInput } from "./campaign-control/contracts.js";
-export { bindCurrentSemanticCampaignConfiguration } from "./campaign-control/current-semantic-campaign-bindings.js";
+export {
+  bindCurrentSemanticCampaignConfiguration,
+  currentModelProfileFamilies,
+  currentModelProfileFamily,
+  currentSemanticCampaignConfigurationMatches,
+} from "./campaign-control/current-semantic-campaign-bindings.js";
+export type {
+  CurrentModelProfileFamily,
+  CurrentSemanticModelFamily,
+} from "./campaign-control/current-semantic-campaign-bindings.js";
+export {
+  CurrentSemanticCampaignPlanIntegrityError,
+  currentSemanticCampaignPreparationConfiguration,
+  currentSemanticRuntimeProfileRef,
+  prepareCurrentSemanticCampaignPlan,
+} from "./campaign-control/current-semantic-campaign-plan.js";
+export type {
+  CurrentSemanticCampaignPlan,
+  CurrentSemanticCampaignPlanInput,
+  CurrentSemanticCampaignPreparationConfiguration,
+} from "./campaign-control/current-semantic-campaign-plan.js";
+export { projectTargetFileManifest } from "./source-mapping/target-file-manifest.js";
 export {
   approachFamilyRefSchema,
   approachFamilyRegistryRefSchema,
