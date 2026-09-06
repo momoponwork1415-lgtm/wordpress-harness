@@ -810,6 +810,33 @@ const findingHarnessBase = {
   completedAt: z.string().datetime(),
 } as const;
 
+export const findingAIReproductionInconclusiveReasonSchema = z.enum([
+  "unsupported-mechanism",
+  "effect-unclear",
+  "environment-identity-mismatch",
+  "environment-session-unavailable",
+  "provider-failed",
+  "budget-exhausted",
+  "policy-denied",
+  "harness-failed",
+  "private-evidence-unavailable",
+]);
+
+export const findingAIReproductionSetupBlockedReasonSchema = z.enum([
+  "isolation-unavailable",
+  "policy-violation",
+  "setup-failed",
+  "activation-failed",
+  "health-failed",
+]);
+
+const aiVerificationInconclusiveReasonSchema = z.enum([
+  ...findingAIReproductionInconclusiveReasonSchema.options,
+  "cleanup-failed",
+  "private-evidence-mismatch",
+  "private-evidence-store-failed",
+]);
+
 export const findingAIReproductionHarnessExecutionSchema = z.discriminatedUnion(
   "status",
   [
@@ -838,30 +865,14 @@ export const findingAIReproductionHarnessExecutionSchema = z.discriminatedUnion(
     z.strictObject({
       ...findingHarnessBase,
       status: z.literal("inconclusive"),
-      reason: z.enum([
-        "unsupported-mechanism",
-        "effect-unclear",
-        "environment-identity-mismatch",
-        "environment-session-unavailable",
-        "provider-failed",
-        "budget-exhausted",
-        "policy-denied",
-        "harness-failed",
-        "private-evidence-unavailable",
-      ]),
+      reason: findingAIReproductionInconclusiveReasonSchema,
       description: shareableTextSchema,
       cleanup: z.enum(["not-required", "completed", "failed"]),
     }),
     z.strictObject({
       ...findingHarnessBase,
       status: z.literal("setup-blocked"),
-      reason: z.enum([
-        "isolation-unavailable",
-        "policy-violation",
-        "setup-failed",
-        "activation-failed",
-        "health-failed",
-      ]),
+      reason: findingAIReproductionSetupBlockedReasonSchema,
       description: shareableTextSchema,
       cleanup: z.enum(["not-required", "completed", "failed"]),
     }),
@@ -885,6 +896,7 @@ export const aiVerificationOutcomeSchema = z.discriminatedUnion("status", [
   }),
   z.strictObject({
     status: z.literal("inconclusive"),
+    reasonCode: aiVerificationInconclusiveReasonSchema.optional(),
     reason: shareableTextSchema,
     securityEffect: z.literal("uncertain"),
     preconditionsMatched: z.boolean(),
@@ -892,6 +904,7 @@ export const aiVerificationOutcomeSchema = z.discriminatedUnion("status", [
   }),
   z.strictObject({
     status: z.literal("setup-blocked"),
+    reasonCode: findingAIReproductionSetupBlockedReasonSchema.optional(),
     reason: shareableTextSchema,
     securityEffect: z.literal("uncertain"),
     preconditionsMatched: z.literal(false),

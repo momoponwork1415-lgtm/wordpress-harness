@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 import {
   findingSchema,
@@ -74,6 +74,23 @@ export interface OpenAIReproductionOptions {
   readonly clock?: () => Date;
 }
 
+export class FindingAIReproductionInProgressError extends Error {
+  readonly attemptId: string;
+  readonly startedAt: string;
+
+  constructor(input: {
+    readonly attemptId: string;
+    readonly startedAt: string;
+  }) {
+    super(
+      `Finding AI Reproduction Attempt is already in progress: ${input.attemptId} (started ${input.startedAt})`,
+    );
+    this.name = "FindingAIReproductionInProgressError";
+    this.attemptId = input.attemptId;
+    this.startedAt = input.startedAt;
+  }
+}
+
 function privateArtifactRef(input: {
   readonly artifactKind: "reproduction-recipe" | "private-evidence-bundle";
   readonly id: string;
@@ -144,12 +161,18 @@ class DefaultAIReproduction implements AIReproduction {
       environmentPolicy: requestValue.environmentPolicy,
       grants: requestValue.grants,
     });
-    const existing = await this.#record.readFindingAIReproductionByAttempt(
-      attempt.id,
+    const claimed = await this.#record.claimFindingAIReproduction(
+      finding,
+      attempt,
+      `sha256:${randomBytes(32).toString("hex")}`,
     );
-    if (existing !== undefined) return existing.record;
+    if (claimed.status === "completed") return claimed.view.record;
+    if (claimed.status === "in-progress") {
+      throw new FindingAIReproductionInProgressError(claimed.claim);
+    }
     const record = await this.#execute(finding, attempt);
     const appended = await this.#record.recordFindingAIReproduction(
+      claimed.claim,
       finding,
       attempt,
       record,
@@ -188,48 +211,35 @@ class DefaultAIReproduction implements AIReproduction {
   }
 
   async #execute(finding: Finding, attempt: FindingAIReproductionAttempt) {
-    let rawExecution: unknown;
-    try {
-      rawExecution = await this.#harness.run({ finding, attempt });
-    } catch {
-      return this.#withoutExperiment(finding, attempt, {
-        status: "inconclusive",
-        reason: "The AI Reproduction harness failed before a typed outcome.",
-      });
-    }
-    const parsed =
-      findingAIReproductionHarnessExecutionSchema.safeParse(rawExecution);
-    if (!parsed.success) {
-      return this.#withoutExperiment(finding, attempt, {
-        status: "inconclusive",
-        reason: "The AI Reproduction harness returned an invalid outcome.",
-      });
-    }
-    const execution = parsed.data;
-    if (execution.cleanup === "failed") {
-      return this.#withoutExperiment(finding, attempt, {
-        status: "inconclusive",
-        reason: "The disposable AI environment could not be cleaned up.",
-        performedAt: execution.completedAt,
-      });
-    }
+    const execution = findingAIReproductionHarnessExecutionSchema.parse(
+      await this.#harness.run({ finding, attempt }),
+    );
     if (execution.status === "setup-blocked") {
       return this.#withoutExperiment(finding, attempt, {
         status: "setup-blocked",
-        reason: execution.description,
+        reasonCode: execution.reason,
+        reason:
+          execution.cleanup === "failed"
+            ? `${execution.description} Cleanup also failed.`
+            : execution.description,
         performedAt: execution.completedAt,
       });
     }
     if (execution.status === "inconclusive") {
       return this.#withoutExperiment(finding, attempt, {
         status: "inconclusive",
-        reason: execution.description,
+        reasonCode: execution.reason,
+        reason:
+          execution.cleanup === "failed"
+            ? `${execution.description} Cleanup also failed.`
+            : execution.description,
         performedAt: execution.completedAt,
       });
     }
     if (!environmentMatchesAttempt(execution, attempt)) {
       return this.#withoutExperiment(finding, attempt, {
         status: "inconclusive",
+        reasonCode: "environment-identity-mismatch",
         reason: "The runtime identity did not match the Finding-bound Attempt.",
         performedAt: execution.completedAt,
       });
@@ -241,6 +251,7 @@ class DefaultAIReproduction implements AIReproduction {
     ) {
       return this.#withoutExperiment(finding, attempt, {
         status: "inconclusive",
+        reasonCode: "private-evidence-mismatch",
         reason: "The private Recipe or evidence did not match the Attempt.",
         performedAt: execution.completedAt,
       });
@@ -248,6 +259,7 @@ class DefaultAIReproduction implements AIReproduction {
     if (!(await this.#privateBytesExist(execution.privateEvidence))) {
       return this.#withoutExperiment(finding, attempt, {
         status: "inconclusive",
+        reasonCode: "private-evidence-unavailable",
         reason: "Referenced screenshot or runtime log bytes were unavailable.",
         performedAt: execution.completedAt,
       });
@@ -260,28 +272,39 @@ class DefaultAIReproduction implements AIReproduction {
     if (privateArtifacts === undefined) {
       return this.#withoutExperiment(finding, attempt, {
         status: "inconclusive",
+        reasonCode: "private-evidence-store-failed",
         reason: "Private AI Reproduction evidence could not be stored.",
         performedAt: execution.completedAt,
       });
     }
     const outcome =
-      execution.status === "runtime-confirmed"
+      execution.cleanup === "failed"
         ? {
-            status: "runtime-confirmed" as const,
+            status: "inconclusive" as const,
+            reasonCode: "cleanup-failed" as const,
             reason:
-              "AI Reproduction observed the Finding-bound Security Effect.",
-            securityEffect: "observed" as const,
-            preconditionsMatched: true as const,
-            recipeCompleted: true as const,
+              "The Finding-bound experiment completed, but the disposable AI environment could not be cleaned up.",
+            securityEffect: "uncertain" as const,
+            preconditionsMatched: true,
+            recipeCompleted: true,
           }
-        : {
-            status: "disproved" as const,
-            reason:
-              "AI Reproduction completed the Recipe with matching preconditions and did not observe the Security Effect.",
-            securityEffect: "not-observed" as const,
-            preconditionsMatched: true as const,
-            recipeCompleted: true as const,
-          };
+        : execution.status === "runtime-confirmed"
+          ? {
+              status: "runtime-confirmed" as const,
+              reason:
+                "AI Reproduction observed the Finding-bound Security Effect.",
+              securityEffect: "observed" as const,
+              preconditionsMatched: true as const,
+              recipeCompleted: true as const,
+            }
+          : {
+              status: "disproved" as const,
+              reason:
+                "AI Reproduction completed the Recipe with matching preconditions and did not observe the Security Effect.",
+              securityEffect: "not-observed" as const,
+              preconditionsMatched: true as const,
+              recipeCompleted: true as const,
+            };
     return defineAIVerificationRecord({
       kind: "ai-verification-record",
       schemaVersion: 1,
@@ -297,12 +320,48 @@ class DefaultAIReproduction implements AIReproduction {
   #withoutExperiment(
     finding: Finding,
     attempt: FindingAIReproductionAttempt,
-    input: {
-      readonly status: "inconclusive" | "setup-blocked";
-      readonly reason: string;
-      readonly performedAt?: string;
-    },
+    input:
+      | {
+          readonly status: "inconclusive";
+          readonly reasonCode: NonNullable<
+            Extract<
+              AIVerificationRecord["outcome"],
+              { readonly status: "inconclusive" }
+            >["reasonCode"]
+          >;
+          readonly reason: string;
+          readonly performedAt?: string;
+        }
+      | {
+          readonly status: "setup-blocked";
+          readonly reasonCode: NonNullable<
+            Extract<
+              AIVerificationRecord["outcome"],
+              { readonly status: "setup-blocked" }
+            >["reasonCode"]
+          >;
+          readonly reason: string;
+          readonly performedAt?: string;
+        },
   ): AIVerificationRecord {
+    const outcome =
+      input.status === "inconclusive"
+        ? {
+            status: input.status,
+            reasonCode: input.reasonCode,
+            reason: input.reason,
+            securityEffect: "uncertain" as const,
+            preconditionsMatched: false as const,
+            recipeCompleted: false as const,
+          }
+        : {
+            status: input.status,
+            reasonCode: input.reasonCode,
+            reason: input.reason,
+            securityEffect: "uncertain" as const,
+            preconditionsMatched: false as const,
+            recipeCompleted: false as const,
+          };
     return defineAIVerificationRecord({
       kind: "ai-verification-record",
       schemaVersion: 1,
@@ -310,13 +369,7 @@ class DefaultAIReproduction implements AIReproduction {
       attempt: referenceFindingAIReproductionAttempt(attempt),
       performedAt: input.performedAt ?? this.#clock().toISOString(),
       environment: null,
-      outcome: {
-        status: input.status,
-        reason: input.reason,
-        securityEffect: "uncertain",
-        preconditionsMatched: false,
-        recipeCompleted: false,
-      },
+      outcome,
       recipe: null,
       privateEvidence: null,
     });

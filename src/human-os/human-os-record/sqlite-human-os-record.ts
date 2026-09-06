@@ -55,6 +55,8 @@ import type {
   CurrentHumanReviewCaseRecordView,
   CurrentHumanReviewResultRecordView,
   CurrentHumanReviewScheduleRecordView,
+  ClaimFindingAIReproductionResult,
+  FindingAIReproductionClaim,
   FindingAIReproductionRecordView,
   HumanOsRecord,
   HumanReviewAdmissionRecordView,
@@ -138,6 +140,16 @@ interface StoredFindingAIReproductionRow {
   readonly finding_artifact_digest: string;
   readonly attempt_artifact_digest: string;
   readonly record_artifact_digest: string;
+}
+
+interface StoredFindingAIReproductionClaimRow {
+  readonly attempt_id: string;
+  readonly claim_id: string;
+  readonly started_at: string;
+  readonly finding_id: string;
+  readonly finding_digest: string;
+  readonly finding_artifact_digest: string;
+  readonly attempt_artifact_digest: string;
 }
 
 interface StoredCurrentHumanReviewEventRow {
@@ -282,6 +294,17 @@ class SqliteHumanOsRecord implements HumanOsRecord {
       ) STRICT;
       CREATE INDEX IF NOT EXISTS finding_ai_reproduction_finding
         ON finding_ai_reproduction_events (finding_id, global_sequence);
+      CREATE TABLE IF NOT EXISTS finding_ai_reproduction_claims (
+        attempt_id TEXT PRIMARY KEY,
+        claim_id TEXT NOT NULL UNIQUE,
+        started_at TEXT NOT NULL,
+        finding_id TEXT NOT NULL,
+        finding_digest TEXT NOT NULL,
+        finding_artifact_digest TEXT NOT NULL,
+        attempt_artifact_digest TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS finding_ai_reproduction_claims_finding
+        ON finding_ai_reproduction_claims (finding_id, started_at);
       CREATE TABLE IF NOT EXISTS human_review_v2_events (
         global_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
         event_id TEXT NOT NULL UNIQUE,
@@ -482,6 +505,123 @@ class SqliteHumanOsRecord implements HumanOsRecord {
       : this.#decodeFindingAIReproduction(row);
   }
 
+  async claimFindingAIReproduction(
+    findingValue: ResearchFinding,
+    attemptValue: FindingAIReproductionAttempt,
+    claimIdValue: string,
+  ): Promise<ClaimFindingAIReproductionResult> {
+    const finding = researchFindingSchema.parse(findingValue);
+    const attempt = findingAIReproductionAttemptSchema.parse(attemptValue);
+    const claimId = digestSchema.parse(claimIdValue);
+    const findingRef = referenceFinding(finding);
+    if (
+      attempt.finding.id !== finding.id ||
+      attempt.finding.digest !== findingRef.digest ||
+      humanOsDigest(attempt.target.snapshot) !==
+        humanOsDigest(finding.target) ||
+      humanOsDigest(attempt.target.manifest) !== humanOsDigest(finding.manifest)
+    ) {
+      throw new Error("AI Reproduction Claim belongs to another Finding");
+    }
+    const [findingArtifactDigest, attemptArtifactDigest] = await Promise.all([
+      this.#artifactStore.putJson(finding),
+      this.#artifactStore.putJson(attempt),
+    ]);
+    if (
+      findingArtifactDigest !== findingRef.digest ||
+      attemptArtifactDigest !== humanOsDigest(attempt)
+    ) {
+      throw new Error("Human OS Artifact Store returned a foreign digest");
+    }
+    const transact = this.#database.transaction(() => {
+      const completed = this.#selectFindingAIReproduction(
+        "attempt_id = ?",
+        attempt.id,
+      );
+      if (completed !== undefined) {
+        if (
+          completed.finding_artifact_digest !== findingArtifactDigest ||
+          completed.attempt_artifact_digest !== attemptArtifactDigest
+        ) {
+          throw new Error("Finding AI Reproduction Attempt conflict");
+        }
+        return { status: "completed" as const, row: completed };
+      }
+      const existing = this.#selectFindingAIReproductionClaim(
+        "attempt_id = ?",
+        attempt.id,
+      );
+      if (existing !== undefined) {
+        if (
+          existing.finding_id !== finding.id ||
+          existing.finding_digest !== findingRef.digest ||
+          existing.finding_artifact_digest !== findingArtifactDigest ||
+          existing.attempt_artifact_digest !== attemptArtifactDigest
+        ) {
+          throw new Error("Finding AI Reproduction Claim conflict");
+        }
+        return { status: "in-progress" as const, row: existing };
+      }
+      const prior = this.#selectFindingAIReproduction(
+        "finding_id = ?",
+        finding.id,
+      );
+      if (
+        prior !== undefined &&
+        prior.finding_digest !== findingArtifactDigest
+      ) {
+        throw new Error("AI Reproduction cannot overwrite its Finding");
+      }
+      const priorClaim = this.#selectFindingAIReproductionClaim(
+        "finding_id = ?",
+        finding.id,
+      );
+      if (
+        priorClaim !== undefined &&
+        (priorClaim.finding_digest !== findingArtifactDigest ||
+          priorClaim.finding_artifact_digest !== findingArtifactDigest)
+      ) {
+        throw new Error("AI Reproduction cannot rebind its Finding Claim");
+      }
+      const startedAt = this.#clock().toISOString();
+      this.#database
+        .prepare(
+          `INSERT INTO finding_ai_reproduction_claims (
+             attempt_id, claim_id, started_at, finding_id,
+             finding_digest, finding_artifact_digest, attempt_artifact_digest
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          attempt.id,
+          claimId,
+          startedAt,
+          finding.id,
+          findingRef.digest,
+          findingArtifactDigest,
+          attemptArtifactDigest,
+        );
+      const row = this.#selectFindingAIReproductionClaim(
+        "attempt_id = ?",
+        attempt.id,
+      );
+      if (row === undefined) {
+        throw new Error("Finding AI Reproduction Claim append failed");
+      }
+      return { status: "claimed" as const, row };
+    });
+    const result = transact();
+    if (result.status === "completed") {
+      return {
+        status: "completed",
+        view: await this.#decodeFindingAIReproduction(result.row),
+      };
+    }
+    return {
+      status: result.status,
+      claim: this.#projectFindingAIReproductionClaim(result.row),
+    };
+  }
+
   async listFindingAIReproduction(
     findingIdValue: string,
   ): Promise<readonly FindingAIReproductionRecordView[]> {
@@ -502,6 +642,7 @@ class SqliteHumanOsRecord implements HumanOsRecord {
   }
 
   async recordFindingAIReproduction(
+    claimValue: FindingAIReproductionClaim,
     findingValue: ResearchFinding,
     attemptValue: FindingAIReproductionAttempt,
     recordValue: AIVerificationRecord,
@@ -509,6 +650,11 @@ class SqliteHumanOsRecord implements HumanOsRecord {
     readonly status: "appended" | "occupied";
     readonly view: FindingAIReproductionRecordView;
   }> {
+    const claim = {
+      attemptId: digestSchema.parse(claimValue.attemptId),
+      claimId: digestSchema.parse(claimValue.claimId),
+      startedAt: z.string().datetime().parse(claimValue.startedAt),
+    };
     const finding = researchFindingSchema.parse(findingValue);
     const attempt = findingAIReproductionAttemptSchema.parse(attemptValue);
     const record = aiVerificationRecordSchema.parse(recordValue);
@@ -554,6 +700,22 @@ class SqliteHumanOsRecord implements HumanOsRecord {
           throw new Error("Finding AI Reproduction Attempt conflict");
         }
         return { status: "occupied" as const, row: existing };
+      }
+      const reserved = this.#selectFindingAIReproductionClaim(
+        "attempt_id = ?",
+        attempt.id,
+      );
+      if (
+        reserved === undefined ||
+        reserved.attempt_id !== claim.attemptId ||
+        reserved.claim_id !== claim.claimId ||
+        reserved.started_at !== claim.startedAt ||
+        reserved.finding_id !== finding.id ||
+        reserved.finding_digest !== findingArtifactDigest ||
+        reserved.finding_artifact_digest !== findingArtifactDigest ||
+        reserved.attempt_artifact_digest !== attemptArtifactDigest
+      ) {
+        throw new Error("Finding AI Reproduction Claim is not owned");
       }
       const prior = this.#selectFindingAIReproduction(
         "finding_id = ?",
@@ -1452,6 +1614,32 @@ class SqliteHumanOsRecord implements HumanOsRecord {
           LIMIT 1`,
       )
       .get(value) as StoredFindingAIReproductionRow | undefined;
+  }
+
+  #selectFindingAIReproductionClaim(
+    predicate: "attempt_id = ?" | "finding_id = ?",
+    value: string,
+  ): StoredFindingAIReproductionClaimRow | undefined {
+    return this.#database
+      .prepare(
+        `SELECT attempt_id, claim_id, started_at, finding_id,
+                finding_digest, finding_artifact_digest, attempt_artifact_digest
+           FROM finding_ai_reproduction_claims
+          WHERE ${predicate}
+          ORDER BY started_at
+          LIMIT 1`,
+      )
+      .get(value) as StoredFindingAIReproductionClaimRow | undefined;
+  }
+
+  #projectFindingAIReproductionClaim(
+    row: StoredFindingAIReproductionClaimRow,
+  ): FindingAIReproductionClaim {
+    return {
+      attemptId: digestSchema.parse(row.attempt_id),
+      claimId: digestSchema.parse(row.claim_id),
+      startedAt: z.string().datetime().parse(row.started_at),
+    };
   }
 
   async #decodeFindingAIReproduction(

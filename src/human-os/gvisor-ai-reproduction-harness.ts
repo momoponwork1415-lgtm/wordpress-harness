@@ -5,7 +5,10 @@ import {
 import type { AIReproductionHarness } from "./ai-reproduction.js";
 import type { GvisorWordPressEnvironmentProvisioner } from "./gvisor-wordpress-environment-provisioner.js";
 import type { HumanVerificationEnvironmentBuilder } from "./human-verification-environment.js";
-import { defineFindingVerificationEnvironmentRequest } from "./human-verification-environment-contracts.js";
+import {
+  defineFindingVerificationEnvironmentRequest,
+  humanVerificationEnvironmentDispositionSchema,
+} from "./human-verification-environment-contracts.js";
 
 export interface OpenGvisorAIReproductionHarnessOptions {
   readonly environmentBuilder: HumanVerificationEnvironmentBuilder;
@@ -62,16 +65,9 @@ class GvisorAIReproductionHarness implements AIReproductionHarness {
       policy: input.attempt.environmentPolicy,
       grants: input.attempt.grants,
     });
-    let disposition;
-    try {
-      disposition = await this.#options.environmentBuilder.establish(request);
-    } catch {
-      return this.#inconclusive(
-        "harness-failed",
-        "The Environment Builder failed before a typed disposition.",
-        "not-required",
-      );
-    }
+    const disposition = humanVerificationEnvironmentDispositionSchema.parse(
+      await this.#options.environmentBuilder.establish(request),
+    );
     if (disposition.status === "setup-blocked") {
       return findingAIReproductionHarnessExecutionSchema.parse({
         kind: "finding-ai-reproduction-harness-execution",
