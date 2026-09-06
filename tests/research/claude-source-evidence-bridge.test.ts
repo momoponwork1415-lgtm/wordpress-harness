@@ -14,10 +14,11 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
-  openClaudeModelExecution,
+  openClaudeModelExecution as openClaudeModelExecutionWithCapacity,
   type AttemptPlan,
   type AttemptPlanV2,
   type ModelProcessObservation,
+  type OpenClaudeModelExecutionOptions,
 } from "../../src/research/model-execution/index.js";
 import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
 import {
@@ -26,6 +27,15 @@ import {
 } from "../fixtures/source-evidence.js";
 
 const leaseId = `sha256:${"b".repeat(64)}`;
+
+function openClaudeModelExecution(
+  options: Omit<OpenClaudeModelExecutionOptions, "capacityPolicy">,
+) {
+  return openClaudeModelExecutionWithCapacity({
+    ...options,
+    capacityPolicy: "disabled",
+  });
+}
 
 function attemptPlan(fixture: SourceEvidenceFixture): AttemptPlan {
   return {

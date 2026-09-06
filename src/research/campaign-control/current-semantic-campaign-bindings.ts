@@ -13,6 +13,57 @@ type BindingSource = Pick<
   "semanticPolicy" | "planner" | "finder" | "evaluator" | "validation"
 >;
 
+const currentModelProfileFamilies = [
+  {
+    family: "claude",
+    execution: {
+      provider: "anthropic",
+      model: "claude-opus-5",
+      transport: "claude-code-process",
+      executableVersion: "2.1.260",
+      effort: "high",
+    },
+    profileIds: {
+      planner: "claude-opus-5-root-planner-high-v6",
+      finder: "claude-opus-5-finder-high-v6",
+      evaluator: "claude-opus-5-root-evaluator-high-v6",
+      validator: "claude-opus-5-validator-high-v6",
+    },
+  },
+  {
+    family: "glm",
+    execution: {
+      provider: "zai",
+      model: "glm-5.1",
+      transport: "claude-code-process",
+      executableVersion: "2.1.260",
+      effort: "max",
+    },
+    profileIds: {
+      planner: "glm-5.1-root-planner-max-v1",
+      finder: "glm-5.1-finder-max-v1",
+      evaluator: "glm-5.1-root-evaluator-max-v1",
+      validator: "glm-5.1-validator-max-v1",
+    },
+  },
+  {
+    family: "grok",
+    execution: {
+      provider: "xai",
+      model: "grok-4.6",
+      transport: "grok-build-process",
+      executableVersion: "1.0.13",
+      effort: "xhigh",
+    },
+    profileIds: {
+      planner: "grok-4.6-root-planner-xhigh-v1",
+      finder: "grok-4.6-finder-xhigh-v1",
+      evaluator: "grok-4.6-root-evaluator-xhigh-v1",
+      validator: "grok-4.6-validator-xhigh-v1",
+    },
+  },
+] as const;
+
 export function bindCurrentSemanticCampaignConfiguration(
   source: BindingSource,
 ) {
@@ -66,29 +117,34 @@ export function currentSemanticCampaignConfigurationMatches(
     return false;
   }
   const expectedBindings = bindCurrentSemanticCampaignConfiguration(plan);
-  const executions = [
-    plan.planner.modelProfile.execution,
-    plan.finder.modelProfile.execution,
-    plan.evaluator.modelProfile.execution,
-    plan.validation.validatorModelProfile.execution,
-  ];
-  const eligibilityReceiptDigest = executions[0]?.eligibilityReceiptDigest;
-  const currentExecutionMatches = executions.every(
-    (execution) =>
-      execution.provider === "anthropic" &&
-      execution.model === "claude-opus-5" &&
-      execution.transport === "claude-code-process" &&
-      execution.executableVersion === "2.1.260" &&
-      execution.effort === "high" &&
-      execution.eligibilityReceiptDigest === eligibilityReceiptDigest,
+  const modelProfiles = {
+    planner: plan.planner.modelProfile,
+    finder: plan.finder.modelProfile,
+    evaluator: plan.evaluator.modelProfile,
+    validator: plan.validation.validatorModelProfile,
+  };
+  const executions = Object.values(modelProfiles).map(
+    (profile) => profile.execution,
   );
-  const profileIdsMatch =
-    plan.planner.modelProfile.ref.id === "claude-opus-5-root-planner-high-v6" &&
-    plan.finder.modelProfile.ref.id === "claude-opus-5-finder-high-v6" &&
-    plan.evaluator.modelProfile.ref.id ===
-      "claude-opus-5-root-evaluator-high-v6" &&
-    plan.validation.validatorModelProfile.ref.id ===
-      "claude-opus-5-validator-high-v6";
+  const eligibilityReceiptDigest = executions[0]?.eligibilityReceiptDigest;
+  const modelFamilyMatches = currentModelProfileFamilies.some((candidate) =>
+    Object.entries(modelProfiles).every(([role, profile]) => {
+      const expectedProfileId =
+        candidate.profileIds[role as keyof typeof candidate.profileIds];
+      const expectedExecution = candidate.execution;
+      return (
+        profile.ref.family === candidate.family &&
+        profile.ref.id === expectedProfileId &&
+        profile.execution.provider === expectedExecution.provider &&
+        profile.execution.model === expectedExecution.model &&
+        profile.execution.transport === expectedExecution.transport &&
+        profile.execution.executableVersion ===
+          expectedExecution.executableVersion &&
+        profile.execution.effort === expectedExecution.effort &&
+        profile.execution.eligibilityReceiptDigest === eligibilityReceiptDigest
+      );
+    }),
+  );
   const promptMatches = [
     plan.planner.promptSet,
     plan.finder.promptSet,
@@ -117,8 +173,7 @@ export function currentSemanticCampaignConfigurationMatches(
   const validatorBudget = plan.validation.budget.validator;
   return (
     canonicalJson(plan.bindings) === canonicalJson(expectedBindings) &&
-    currentExecutionMatches &&
-    profileIdsMatch &&
+    modelFamilyMatches &&
     promptMatches &&
     sourceToolPolicyMatches &&
     plan.finder.selectedKnowledge.length === 0 &&

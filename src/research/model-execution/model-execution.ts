@@ -41,6 +41,24 @@ import {
   decodeClaudeErrorEnvelope,
   type ClaudeProviderUsage,
 } from "./claude-envelope.js";
+import { decodeGrokEnvelope } from "./grok-envelope.js";
+import { decodeGlmEnvelope } from "./glm-envelope.js";
+import {
+  modelCapacityOutcomeArtifactSchema,
+  type ModelCapacityProcessResult,
+} from "./model-capacity.js";
+
+function decodeProviderEnvelope(
+  stdout: string,
+  profile: AttemptPlanV2["modelProfile"],
+) {
+  if (profile.transport === "grok-build-process") {
+    return decodeGrokEnvelope(stdout, profile.model);
+  }
+  return profile.provider === "zai"
+    ? decodeGlmEnvelope(stdout, profile.model)
+    : decodeClaudeEnvelope(stdout, profile.model);
+}
 
 export function normalizeClaudeModelAttemptUsage(
   usage: ClaudeProviderUsage,
@@ -82,6 +100,38 @@ class FirstFinderModelExecution implements ModelExecution {
     );
     this.#process = options.process;
     this.#sourceEvidenceGateway = options.sourceEvidenceGateway;
+  }
+
+  async #storeCapacityOutcome(
+    attemptId: string,
+    result: ModelCapacityProcessResult,
+  ): Promise<string> {
+    return this.#artifacts.put(
+      "Model Capacity outcome",
+      modelCapacityOutcomeArtifactSchema.parse(
+        result.kind === "capacity-deferred"
+          ? {
+              kind: "model-capacity-outcome",
+              schemaVersion: 1,
+              attemptId,
+              policy: result.policy,
+              priority: result.decision.priority,
+              outcome: "deferred",
+              exceededWindows: result.decision.exceededWindows,
+              retryAt: result.decision.retryAt,
+              snapshot: result.snapshot,
+            }
+          : {
+              kind: "model-capacity-outcome",
+              schemaVersion: 1,
+              attemptId,
+              policy: result.policy,
+              priority: result.priority,
+              outcome: "telemetry-unavailable",
+              reason: result.reason,
+            },
+      ),
+    );
   }
 
   async run(
@@ -184,6 +234,26 @@ class FirstFinderModelExecution implements ModelExecution {
     }
     if (processResult.kind === "policy-denied") {
       return this.#terminal(plan, "policy-denied", processResult.reason);
+    }
+    if (
+      processResult.kind === "capacity-deferred" ||
+      processResult.kind === "capacity-telemetry-unavailable"
+    ) {
+      const digest = await this.#storeCapacityOutcome(
+        plan.attemptId,
+        processResult,
+      );
+      return this.#terminal(
+        plan,
+        processResult.kind === "capacity-deferred"
+          ? "budget-exhausted"
+          : "provider-failed",
+        `${
+          processResult.kind === "capacity-deferred"
+            ? "model-capacity-deferred"
+            : "model-capacity-telemetry-unavailable"
+        }:${digest}`,
+      );
     }
     if (processResult.kind === "timed-out") {
       return this.#terminal(plan, "budget-exhausted", "wall-time-exceeded");
@@ -423,6 +493,28 @@ class FirstFinderModelExecution implements ModelExecution {
         sourceEvidenceReceipts,
       );
     }
+    if (
+      processResult.kind === "capacity-deferred" ||
+      processResult.kind === "capacity-telemetry-unavailable"
+    ) {
+      const digest = await this.#storeCapacityOutcome(
+        plan.attemptId,
+        processResult,
+      );
+      return this.#terminalV2(
+        plan,
+        planDigest,
+        processResult.kind === "capacity-deferred"
+          ? "budget-exhausted"
+          : "provider-failed",
+        `${
+          processResult.kind === "capacity-deferred"
+            ? "model-capacity-deferred"
+            : "model-capacity-telemetry-unavailable"
+        }:${digest}`,
+        sourceEvidenceReceipts,
+      );
+    }
     if (processResult.kind === "timed-out") {
       return this.#terminalV2(
         plan,
@@ -441,9 +533,9 @@ class FirstFinderModelExecution implements ModelExecution {
         sourceEvidenceReceipts,
       );
     }
-    const sourceTerminalEnvelope = decodeClaudeEnvelope(
+    const sourceTerminalEnvelope = decodeProviderEnvelope(
       processResult.stdout,
-      plan.modelProfile.model,
+      plan.modelProfile,
     );
     if (
       sourceToolTerminal !== undefined &&
@@ -525,9 +617,9 @@ class FirstFinderModelExecution implements ModelExecution {
       );
     }
 
-    const envelope = decodeClaudeEnvelope(
+    const envelope = decodeProviderEnvelope(
       processResult.stdout,
-      plan.modelProfile.model,
+      plan.modelProfile,
     );
     if (envelope.kind === "invalid-envelope") {
       return this.#terminalV2(

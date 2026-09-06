@@ -1,4 +1,12 @@
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,17 +14,35 @@ import { describe, expect, it } from "vitest";
 
 import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
 import {
-  openClaudeModelExecution,
+  openClaudeModelExecution as openClaudeModelExecutionWithCapacity,
+  openGlmModelExecution,
+  openGrokModelExecution,
+  initialOpusSubscriptionCapacityPolicy,
   openModelExecution,
   openPrivateModelTranscript,
   type AttemptPlan,
   type AttemptPlanV2,
+  type ModelCapacityPolicy,
   type ModelProcess,
+  type OpenClaudeModelExecutionOptions,
 } from "../../src/research/model-execution/index.js";
+import { decodeGlmEnvelope } from "../../src/research/model-execution/glm-envelope.js";
 import { openSourceEvidenceFixture } from "../fixtures/source-evidence.js";
 
 const leaseId = sha256Digest("finder-lease");
 const anchorFileDigest = sha256Digest("entry-file");
+
+function openClaudeModelExecution(
+  options: Omit<OpenClaudeModelExecutionOptions, "capacityPolicy"> & {
+    readonly capacityPolicy?: ModelCapacityPolicy;
+  },
+) {
+  const { capacityPolicy, ...executionOptions } = options;
+  return openClaudeModelExecutionWithCapacity({
+    ...executionOptions,
+    capacityPolicy: capacityPolicy ?? "disabled",
+  });
+}
 
 function candidateHypothesis() {
   return {
@@ -352,6 +378,30 @@ describe("ModelExecution.run", () => {
       value: {
         status: "auth-required",
         reason: "provider-session-expired",
+      },
+    });
+  });
+
+  it("does not infer subscription capacity when provider telemetry is unavailable", async () => {
+    await expect(
+      runWithProcess({
+        execute: async () => ({
+          kind: "capacity-telemetry-unavailable",
+          policy: {
+            id: initialOpusSubscriptionCapacityPolicy.id,
+            digest: initialOpusSubscriptionCapacityPolicy.digest,
+          },
+          priority: "new-research",
+          reason: "capacity-output-invalid",
+        }),
+      }),
+    ).resolves.toMatchObject({
+      status: "provider-failed",
+      value: {
+        status: "provider-failed",
+        reason: expect.stringMatching(
+          /^model-capacity-telemetry-unavailable:sha256:[a-f0-9]{64}$/u,
+        ),
       },
     });
   });
@@ -1464,6 +1514,817 @@ fi
       });
     } finally {
       await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("defers a Finder before inference when the observed subscription window is reserved", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "claude-capacity-"));
+    const artifactDirectory = join(directory, "artifacts");
+    const executablePath = join(directory, "fake-claude");
+    const inferencePath = join(directory, "inference-started");
+    const usageText = [
+      "You are currently using your subscription to power your Claude Code usage",
+      "",
+      "Current session: 81% used · resets Sep 6, 2:50pm (UTC)",
+      "Current week (all models): 40% used · resets Sep 9, 3pm (UTC)",
+      "Current week (Fable): 0% used",
+    ].join("\n");
+    await writeFile(
+      executablePath,
+      `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf '%s\\n' '2.1.260 (Claude Code)'
+elif [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  printf '%s' '{"loggedIn":true}'
+else
+  last=''
+  for argument do last="$argument"; done
+  if [ "$last" = "/usage" ]; then
+    : > package.json
+    printf '%s' '${JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      duration_api_ms: 0,
+      num_turns: 0,
+      total_cost_usd: 0,
+      result: usageText,
+    })}'
+  else
+    touch '${inferencePath}'
+    exit 99
+  fi
+fi
+`,
+      "utf8",
+    );
+    await chmod(executablePath, 0o700);
+    const original = attemptPlan();
+    const execution = openClaudeModelExecution({
+      artifactDirectory,
+      executablePath,
+      executableVersion: "2.1.260",
+      workingDirectory: directory,
+      capacityPolicy: initialOpusSubscriptionCapacityPolicy,
+      clock: () => new Date("2026-09-06T12:30:00.000Z"),
+    });
+
+    try {
+      const result = await execution.run({
+        ...original,
+        modelProfile: {
+          ...original.modelProfile,
+          executableVersion: "2.1.260",
+        },
+      });
+      expect(result).toMatchObject({
+        status: "budget-exhausted",
+        value: {
+          status: "budget-exhausted",
+          reason: expect.stringMatching(
+            /^model-capacity-deferred:sha256:[a-f0-9]{64}$/u,
+          ),
+        },
+      });
+      await expect(lstat(inferencePath)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(
+        lstat(join(directory, "package.json")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      if (result.value.status === "completed") {
+        throw new Error("Expected a deferred capacity result");
+      }
+      const digest = result.value.reason.split(":").slice(-2).join(":");
+      const stored = JSON.parse(
+        await readFile(
+          join(artifactDirectory, `${digest.replace("sha256:", "")}.json`),
+          "utf8",
+        ),
+      );
+      expect(stored).toMatchObject({
+        kind: "model-capacity-outcome",
+        schemaVersion: 1,
+        outcome: "deferred",
+        attemptId: original.attemptId,
+        priority: "new-research",
+        exceededWindows: ["five-hour"],
+        retryAt: "2026-09-06T14:50:00.000Z",
+        snapshot: {
+          windows: {
+            fiveHour: { usedPercent: 81 },
+            sevenDay: { usedPercent: 40 },
+          },
+        },
+      });
+      expect(JSON.stringify(stored)).not.toContain("What's contributing");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("runs pinned GLM through the Claude-compatible transport without using Claude OAuth", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "glm-process-"));
+    const executablePath = join(directory, "fake-claude");
+    const tokenFilePath = join(directory, "zai-token");
+    const argumentsPath = join(directory, "arguments");
+    const promptPath = join(directory, "prompt");
+    const output = {
+      kind: "root-evaluator-output",
+      schemaVersion: 1,
+      dispositions: [],
+    };
+    const envelope = {
+      ...providerEnvelope(output),
+      result: `All checkpoints are durable.\n${JSON.stringify(output)}`,
+      structured_output: undefined,
+      modelUsage: {
+        "glm-5.1": {
+          canonicalModel: "glm-5.1",
+          inputTokens: 10,
+          outputTokens: 7,
+          cacheReadInputTokens: 30,
+          cacheCreationInputTokens: 20,
+        },
+        "glm-4.5-air": {
+          canonicalModel: "glm-4.5-air",
+          inputTokens: 1,
+          outputTokens: 1,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+        },
+      },
+    };
+    await writeFile(tokenFilePath, "synthetic-zai-token\n", {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    await writeFile(
+      executablePath,
+      `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf '%s\n' '2.1.260 (Claude Code)'
+elif [ "$1" = "auth" ]; then
+  printf '%s\n' 'Claude OAuth must not be queried for GLM' >&2
+  exit 91
+else
+  [ "$ANTHROPIC_BASE_URL" = "https://api.z.ai/api/anthropic" ] || exit 92
+  [ "$ANTHROPIC_AUTH_TOKEN" = "synthetic-zai-token" ] || exit 93
+  [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ] || exit 94
+  [ -n "$CLAUDE_CONFIG_DIR" ] || exit 95
+  [ "$CLAUDE_CONFIG_DIR" != "${process.env.CLAUDE_CONFIG_DIR ?? ""}" ] || exit 96
+  [ "$HOME" != "${process.env.HOME ?? ""}" ] || exit 97
+  [ "$USERPROFILE" = "$HOME" ] || exit 98
+  printf '%s\n' "$@" > '${argumentsPath}'
+  cat > '${promptPath}'
+  printf '%s' '${JSON.stringify(envelope)}'
+fi
+`,
+      "utf8",
+    );
+    await chmod(executablePath, 0o700);
+    const original = rootEvaluatorAttemptPlan();
+    const plan = {
+      ...original,
+      modelProfile: {
+        provider: "zai",
+        model: "glm-5.1",
+        transport: "claude-code-process",
+        executableVersion: "2.1.260",
+        effort: "max",
+        eligibilityReceiptDigest:
+          original.modelProfile.eligibilityReceiptDigest,
+      },
+    } as Extract<AttemptPlanV2, { role: "root-evaluator" }>;
+    const execution = openGlmModelExecution({
+      artifactDirectory: join(directory, "artifacts"),
+      executablePath,
+      executableVersion: "2.1.260",
+      workingDirectory: directory,
+      tokenFilePath,
+    });
+    const priorClaudeOauthToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "ambient-claude-token-must-not-leak";
+
+    try {
+      const result = await execution.run(plan);
+      if (result.status !== "completed") {
+        throw new Error(JSON.stringify(result.value));
+      }
+      expect(result).toMatchObject({
+        status: "completed",
+        value: { status: "completed", output },
+      });
+      const args = (await readFile(argumentsPath, "utf8")).split("\n");
+      expect(args).toEqual(
+        expect.arrayContaining(["--model", "glm-5.1", "--effort", "max"]),
+      );
+      expect(args).not.toContain("--json-schema");
+      expect(await readFile(promptPath, "utf8")).toContain(
+        "Return exactly one JSON value matching this schema.",
+      );
+      await writeFile(
+        executablePath,
+        `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf '%s\n' '2.1.260 (Claude Code)'
+else
+  printf '%s' '${JSON.stringify({
+    type: "result",
+    subtype: "success",
+    is_error: true,
+    terminal_reason: "api_error",
+    api_error_status: 404,
+    result: "The pinned provider model is unavailable.",
+    modelUsage: {},
+  })}'
+fi
+`,
+        "utf8",
+      );
+      await expect(
+        execution.run({ ...plan, attemptId: "glm-provider-error-attempt" }),
+      ).resolves.toMatchObject({
+        status: "provider-failed",
+        value: { status: "provider-failed" },
+      });
+    } finally {
+      if (priorClaudeOauthToken === undefined) {
+        delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+      } else {
+        process.env.CLAUDE_CODE_OAUTH_TOKEN = priorClaudeOauthToken;
+      }
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects a GLM envelope that reports an ambient Anthropic model", () => {
+    const output = {
+      kind: "root-evaluator-output",
+      schemaVersion: 1,
+      dispositions: [],
+    };
+    expect(
+      decodeGlmEnvelope(
+        JSON.stringify({
+          ...providerEnvelope(output),
+          modelUsage: {
+            "glm-5.1": {
+              canonicalModel: "glm-5.1",
+              inputTokens: 10,
+              outputTokens: 7,
+              cacheReadInputTokens: 30,
+              cacheCreationInputTokens: 20,
+            },
+            "claude-haiku-4-5-20251001": {
+              canonicalModel: "claude-haiku-4-5",
+              inputTokens: 1,
+              outputTokens: 1,
+              cacheReadInputTokens: 0,
+              cacheCreationInputTokens: 0,
+            },
+          },
+        }),
+        "glm-5.1",
+      ),
+    ).toEqual({ kind: "policy-denied", reason: "model-substitution" });
+  });
+
+  it("rejects a GLM result containing more than one terminal JSON value", () => {
+    const output = {
+      kind: "root-evaluator-output",
+      schemaVersion: 1,
+      dispositions: [],
+    };
+    expect(
+      decodeGlmEnvelope(
+        JSON.stringify({
+          ...providerEnvelope(output),
+          structured_output: undefined,
+          result: `${JSON.stringify(output)}\n${JSON.stringify(output)}`,
+          modelUsage: {
+            "glm-5.1": {
+              canonicalModel: "glm-5.1",
+              inputTokens: 10,
+              outputTokens: 7,
+              cacheReadInputTokens: 30,
+              cacheCreationInputTokens: 20,
+            },
+          },
+        }),
+        "glm-5.1",
+      ),
+    ).toEqual({ kind: "invalid-envelope" });
+  });
+
+  it("stops GLM as auth-required when its bounded token file is unavailable", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "glm-auth-"));
+    const executablePath = join(directory, "fake-claude");
+    const launchedPath = join(directory, "launched");
+    await writeFile(
+      executablePath,
+      `#!/bin/sh
+printf '%s' launched > '${launchedPath}'
+exit 99
+`,
+      "utf8",
+    );
+    await chmod(executablePath, 0o700);
+    const original = rootEvaluatorAttemptPlan();
+    const plan = {
+      ...original,
+      modelProfile: {
+        provider: "zai",
+        model: "glm-5.1",
+        transport: "claude-code-process",
+        executableVersion: "2.1.260",
+        effort: "max",
+        eligibilityReceiptDigest:
+          original.modelProfile.eligibilityReceiptDigest,
+      },
+    } as Extract<AttemptPlanV2, { role: "root-evaluator" }>;
+    const execution = openGlmModelExecution({
+      artifactDirectory: join(directory, "artifacts"),
+      executablePath,
+      executableVersion: "2.1.260",
+      workingDirectory: directory,
+      tokenFilePath: join(directory, "missing-token"),
+    });
+
+    try {
+      await expect(execution.run(plan)).resolves.toMatchObject({
+        status: "auth-required",
+        value: {
+          status: "auth-required",
+          reason: "provider-session-unavailable",
+        },
+      });
+      await expect(readFile(launchedPath, "utf8")).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      const unsafeTokenPath = join(directory, "unsafe-token");
+      await writeFile(unsafeTokenPath, "synthetic-zai-token", "utf8");
+      await chmod(unsafeTokenPath, 0o644);
+      const unsafeExecution = openGlmModelExecution({
+        artifactDirectory: join(directory, "unsafe-artifacts"),
+        executablePath,
+        executableVersion: "2.1.260",
+        workingDirectory: directory,
+        tokenFilePath: unsafeTokenPath,
+      });
+      await expect(unsafeExecution.run(plan)).resolves.toMatchObject({
+        status: "auth-required",
+        value: {
+          status: "auth-required",
+          reason: "provider-session-unavailable",
+        },
+      });
+      await expect(readFile(launchedPath, "utf8")).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("runs pinned Grok in isolated homes and normalizes its structured envelope", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "grok-process-"));
+    const executablePath = join(directory, "fake-grok");
+    const sourceHome = join(directory, "source-grok-home");
+    const argumentsPath = join(directory, "arguments");
+    await mkdir(sourceHome, { recursive: true, mode: 0o700 });
+    await writeFile(join(sourceHome, "auth.json"), "synthetic-grok-auth", {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    await writeFile(join(sourceHome, "agent_id"), "synthetic-agent-id", {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    await writeFile(
+      join(sourceHome, "config.toml"),
+      "[mcp_servers.ambient_must_not_load]\ncommand = 'false'\n",
+      "utf8",
+    );
+    const output = {
+      kind: "root-evaluator-output",
+      schemaVersion: 1,
+      dispositions: [],
+    };
+    const envelope = {
+      text: JSON.stringify(output),
+      stopReason: "end_turn",
+      sessionId: "synthetic-session",
+      requestId: "synthetic-request",
+      usage: {
+        input_tokens: 100,
+        cache_read_input_tokens: 20,
+        cache_creation_input_tokens: 0,
+        output_tokens: 30,
+        reasoning_tokens: 10,
+        total_tokens: 150,
+      },
+      num_turns: 2,
+      total_cost_usd: 0.01,
+      modelUsage: {
+        "grok-4.6-build": {
+          inputTokens: 100,
+          outputTokens: 30,
+          cacheReadInputTokens: 20,
+          cacheCreationInputTokens: 0,
+          modelCalls: 1,
+          costUSD: 0.01,
+        },
+      },
+      structuredOutput: output,
+    };
+    await writeFile(
+      executablePath,
+      `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf '%s\n' 'grok 1.0.13 (synthetic)'
+else
+  [ "$GROK_HOME" != '${sourceHome}' ] || exit 91
+  [ "$HOME" != '${process.env.HOME}' ] || exit 92
+  [ -f "$GROK_HOME/auth.json" ] || exit 93
+  [ ! -f "$GROK_HOME/config.toml" ] || exit 94
+  printf '%s\n' "$@" > '${argumentsPath}'
+  printf '%s' '${JSON.stringify(envelope)}'
+fi
+`,
+      "utf8",
+    );
+    await chmod(executablePath, 0o700);
+    const original = rootEvaluatorAttemptPlan();
+    const plan = {
+      ...original,
+      modelProfile: {
+        provider: "xai",
+        model: "grok-4.6",
+        transport: "grok-build-process",
+        executableVersion: "1.0.13",
+        effort: "xhigh",
+        eligibilityReceiptDigest:
+          original.modelProfile.eligibilityReceiptDigest,
+      },
+    } as Extract<AttemptPlanV2, { role: "root-evaluator" }>;
+    const execution = openGrokModelExecution({
+      artifactDirectory: join(directory, "artifacts"),
+      executablePath,
+      executableVersion: "1.0.13",
+      grokHomeDirectory: sourceHome,
+    });
+
+    try {
+      await expect(execution.run(plan)).resolves.toMatchObject({
+        status: "completed",
+        value: {
+          status: "completed",
+          output,
+          usage: {
+            measurement: "reported",
+            modelTurns: 2,
+            modelTokens: {
+              input: 100,
+              cacheRead: 20,
+              output: 30,
+              total: 150,
+            },
+          },
+        },
+      });
+      const args = (await readFile(argumentsPath, "utf8")).split("\n");
+      expect(args).toEqual(
+        expect.arrayContaining([
+          "--model",
+          "grok-4.6",
+          "--reasoning-effort",
+          "xhigh",
+          "--no-subagents",
+          "--disable-web-search",
+          "--tools",
+          "",
+        ]),
+      );
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("passes a large Grok evaluation prompt through a file instead of argv", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "grok-large-prompt-"));
+    const executablePath = join(directory, "fake-grok");
+    const sourceHome = join(directory, "source-grok-home");
+    await mkdir(sourceHome, { recursive: true, mode: 0o700 });
+    await writeFile(join(sourceHome, "auth.json"), "synthetic-grok-auth", {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    const output = {
+      kind: "root-evaluator-output",
+      schemaVersion: 1,
+      dispositions: [],
+    };
+    const envelope = {
+      text: JSON.stringify(output),
+      stopReason: "end_turn",
+      sessionId: "synthetic-session",
+      requestId: "synthetic-request",
+      usage: {
+        input_tokens: 100,
+        cache_read_input_tokens: 20,
+        cache_creation_input_tokens: 0,
+        output_tokens: 30,
+        reasoning_tokens: 10,
+        total_tokens: 150,
+      },
+      num_turns: 2,
+      total_cost_usd: 0.01,
+      modelUsage: {
+        "grok-4.6-build": {
+          inputTokens: 100,
+          outputTokens: 30,
+          cacheReadInputTokens: 20,
+          cacheCreationInputTokens: 0,
+          modelCalls: 1,
+          costUSD: 0.01,
+        },
+      },
+      structuredOutput: output,
+    };
+    await writeFile(
+      executablePath,
+      `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf '%s\n' 'grok 1.0.13 (synthetic)'
+  exit 0
+fi
+prompt_file=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--prompt-file" ]; then
+    shift
+    prompt_file="$1"
+  fi
+  shift
+done
+[ -n "$prompt_file" ] || exit 91
+[ "$(wc -c < "$prompt_file")" -eq 204800 ] || exit 92
+[ "$(stat -c '%a' "$prompt_file")" = 600 ] || exit 93
+printf '%s' '${JSON.stringify(envelope)}'
+`,
+      "utf8",
+    );
+    await chmod(executablePath, 0o700);
+    const original = rootEvaluatorAttemptPlan();
+    const plan = {
+      ...original,
+      prompt: "x".repeat(200 * 1_024),
+      modelProfile: {
+        provider: "xai",
+        model: "grok-4.6",
+        transport: "grok-build-process",
+        executableVersion: "1.0.13",
+        effort: "xhigh",
+        eligibilityReceiptDigest:
+          original.modelProfile.eligibilityReceiptDigest,
+      },
+    } as Extract<AttemptPlanV2, { role: "root-evaluator" }>;
+    const execution = openGrokModelExecution({
+      artifactDirectory: join(directory, "artifacts"),
+      executablePath,
+      executableVersion: "1.0.13",
+      grokHomeDirectory: sourceHome,
+    });
+
+    try {
+      await expect(execution.run(plan)).resolves.toMatchObject({
+        status: "completed",
+        value: { status: "completed", output },
+      });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("stops Grok before launch when its OAuth document is unavailable", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "grok-auth-"));
+    const executablePath = join(directory, "fake-grok");
+    const sourceHome = join(directory, "source-grok-home");
+    const launchedPath = join(directory, "launched");
+    await mkdir(sourceHome, { recursive: true, mode: 0o700 });
+    await writeFile(
+      executablePath,
+      `#!/bin/sh
+printf '%s' launched > '${launchedPath}'
+exit 99
+`,
+      "utf8",
+    );
+    await chmod(executablePath, 0o700);
+    const original = rootEvaluatorAttemptPlan();
+    const plan = {
+      ...original,
+      modelProfile: {
+        provider: "xai",
+        model: "grok-4.6",
+        transport: "grok-build-process",
+        executableVersion: "1.0.13",
+        effort: "xhigh",
+        eligibilityReceiptDigest:
+          original.modelProfile.eligibilityReceiptDigest,
+      },
+    } as Extract<AttemptPlanV2, { role: "root-evaluator" }>;
+    const execution = openGrokModelExecution({
+      artifactDirectory: join(directory, "artifacts"),
+      executablePath,
+      executableVersion: "1.0.13",
+      grokHomeDirectory: sourceHome,
+    });
+
+    try {
+      await expect(execution.run(plan)).resolves.toMatchObject({
+        status: "auth-required",
+        value: {
+          status: "auth-required",
+          reason: "provider-session-unavailable",
+        },
+      });
+      await expect(readFile(launchedPath, "utf8")).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("gives Grok only the ephemeral Manifest-bound Source Evidence MCP", async () => {
+    const fixture = await openSourceEvidenceFixture({
+      files: { "synthetic-plugin.php": "<?php\nregister_rest_route();\n" },
+      maxReadBytes: 4096,
+    });
+    const directory = await mkdtemp(join(tmpdir(), "grok-source-bridge-"));
+    const executablePath = join(directory, "fake-grok.mjs");
+    const sourceHome = join(directory, "source-grok-home");
+    await mkdir(sourceHome, { recursive: true, mode: 0o700 });
+    await writeFile(join(sourceHome, "auth.json"), "synthetic-grok-auth", {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    const output = {
+      kind: "root-planner-output",
+      schemaVersion: 1,
+      theses: [],
+    };
+    const envelope = {
+      text: JSON.stringify(output),
+      stopReason: "end_turn",
+      sessionId: "synthetic-session",
+      requestId: "synthetic-request",
+      usage: {
+        input_tokens: 100,
+        cache_read_input_tokens: 20,
+        cache_creation_input_tokens: 0,
+        output_tokens: 30,
+        reasoning_tokens: 10,
+        total_tokens: 150,
+      },
+      num_turns: 2,
+      total_cost_usd: 0.01,
+      modelUsage: {
+        "grok-4.6-build": {
+          inputTokens: 100,
+          outputTokens: 30,
+          cacheReadInputTokens: 20,
+          cacheCreationInputTokens: 0,
+          modelCalls: 1,
+          costUSD: 0.01,
+        },
+      },
+      structuredOutput: output,
+    };
+    await writeFile(
+      executablePath,
+      `#!/usr/bin/env node
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
+const args = process.argv.slice(2);
+if (args[0] === "--version") {
+  process.stdout.write("grok 1.0.13 (synthetic)\\n");
+  process.exit(0);
+}
+const cwd = args[args.indexOf("--cwd") + 1];
+const config = JSON.parse(await readFile(join(cwd, ".mcp.json"), "utf8"));
+if (JSON.stringify(Object.keys(config.mcpServers)) !== '["source_evidence"]') {
+  process.exit(91);
+}
+const server = config.mcpServers.source_evidence;
+const baseHeaders = {
+  ...server.headers,
+  accept: "application/json, text/event-stream",
+  "content-type": "application/json",
+};
+const initialized = await fetch(server.url, {
+  method: "POST",
+  headers: baseHeaders,
+  body: JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "synthetic-grok", version: "1" },
+    },
+  }),
+});
+await initialized.text();
+if (!initialized.ok) process.exit(92);
+const called = await fetch(server.url, {
+  method: "POST",
+  headers: baseHeaders,
+  body: JSON.stringify({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/call",
+    params: {
+      name: "source_read",
+      arguments: {
+        selector: {
+          path: "synthetic-plugin.php",
+          fileDigest: "${fixture.fileDigest("synthetic-plugin.php")}",
+          startLine: 1,
+          endLine: 2
+        },
+        reason: "Bind the synthetic entry point before planning."
+      }
+    }
+  }),
+});
+await called.text();
+if (!called.ok) process.exit(93);
+process.stdout.write(${JSON.stringify(JSON.stringify(envelope))});
+`,
+      "utf8",
+    );
+    await chmod(executablePath, 0o700);
+    const original = rootPlannerAttemptPlan();
+    const plan = {
+      ...original,
+      target: {
+        ...fixture.manifest.targetSnapshot,
+        pluginSlug: "synthetic-plugin",
+        version: "1.0.0",
+      },
+      manifest: {
+        kind: "target-file-manifest" as const,
+        schemaVersion: 1 as const,
+        targetSnapshotId: fixture.manifest.targetSnapshot.id,
+        targetSnapshotDigest: fixture.manifest.targetSnapshot.digest,
+        digest: sha256Digest(fixture.manifest),
+      },
+      sourceToolPolicy: fixture.gateway.policy,
+      modelProfile: {
+        provider: "xai",
+        model: "grok-4.6",
+        transport: "grok-build-process",
+        executableVersion: "1.0.13",
+        effort: "xhigh",
+        eligibilityReceiptDigest:
+          original.modelProfile.eligibilityReceiptDigest,
+      },
+    } as Extract<AttemptPlanV2, { role: "root-planner" }>;
+    const execution = openGrokModelExecution({
+      artifactDirectory: fixture.attemptArtifactDirectory,
+      executablePath,
+      executableVersion: "1.0.13",
+      grokHomeDirectory: sourceHome,
+      sourceEvidenceGateway: fixture.gateway,
+    });
+
+    try {
+      const result = await execution.run(plan);
+      if (result.status !== "completed") {
+        throw new Error(JSON.stringify(result.value));
+      }
+      expect(result).toMatchObject({
+        status: "completed",
+        value: {
+          status: "completed",
+          output,
+          sourceEvidenceReceipts: [
+            expect.objectContaining({
+              kind: "source-evidence-receipt",
+              schemaVersion: 2,
+            }),
+          ],
+        },
+      });
+    } finally {
+      await Promise.all([
+        fixture.close(),
+        rm(directory, { force: true, recursive: true }),
+      ]);
     }
   });
 

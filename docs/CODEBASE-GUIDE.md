@@ -206,6 +206,7 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 - **Purpose:** Root-evaluated candidateをfreshなsource reviewで反証し、通過したtechnical claimをimmutable Findingにする。
 - **Current implementation:** exact Candidate identityはTarget、Manifest、premise、property、ordered route、anchor、Causal Identityで作る。一つのfresh Validatorから`source-validated / needs-research / disproven / validation-pending`を決定的に投影し、二つ目・第三AttemptとValidation Synthesisを起動しない。
+- **Security-effect closure:** `causal-route-and-security-effect`は書込み可能なcatalog、capture、discovery、recommendationまたは設定案と、security decisionが実際に消費するenforcement stateを区別する。Permitted Attackerだけで具体的Security Effectまで閉じ、後続の裁量的なprivileged actionを要求しないsource routeだけをpassにする。consumerまたはprivileged follow-upがsourceで未確定なら`needs-research`、必要性または非到達がsourceで確定すれば`disproven`にする。
 - **Attacker invariant:** Validator起動前にCandidateとThreat Contextをcurrent scopeへ照合し、scope外ならmodel tokenを使わない。Finding projectionはCandidateとValidationだけを再照合し、Causal Identityを含むCandidate identityから投影する。
 - **Finding:** `source-validated`だけがTarget Snapshot、Causal Identity、attacker premise、broken security property、source route / evidence、counterevidence、Validation refを固定したFindingをCASへ保存する。Finding identityはexact Candidate duplicateから決定し、Coverage状態を入力にしない。
 - **Boundary:** runtime / human verificationを所有しない。`needs-research`は具体的Gapとして同じFamilyへ戻し、`disproven`はsource contradictionだけ、provider / budget failureは`validation-pending`として残す。
@@ -218,12 +219,13 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 **Interface:** `ModelExecution.run(plan, observer?) -> AttemptExecutionResult`
 
 - **Purpose:** immutable Attempt Planをprovider-neutral resultへ変換し、process、tool、credentialを隠す。
-- **Invariants:** official transportだけを使い、model / effortを固定する。role間でsession、conversation、scratchを共有しない。
+- **Invariants:** subscriptionに対応するapproved transportだけを使い、model / effort / executable versionを固定する。current Campaignの全roleはOpus、GLM、Grokのいずれか一つのfamilyへ固定し、model間でsilent fallbackしない。role間でsession、conversation、scratchを共有しない。
 - **Tools:** manifest-bound read-only source toolだけを許可する。Finder checkpointはdurable write後にackする。Synthesis / Riskはtool-free。
 - **Recovery:** transient failureだけを同じAttemptと残budgetでresumeする。Recoveryの正本はLedger、CAS、checkpoint。
 - **Failures:** provider、auth、policy、invalid output、budget、cancelを区別する。observer / private transcript failureはoutcomeを変えない。
-- **Status:** Claude Adapter、usage、Receipt、resume、private transcriptを実装。複数Campaign横断のOpus capacityは未実装（[#114](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/114)）。
-- **Code / Tests:** [model-execution](../src/research/model-execution) · [execution](../tests/research/model-execution.test.ts), [bridge](../tests/research/claude-source-evidence-bridge.test.ts)
+- **Subscription capacity:** Opus Adapterのpublic openerは版付きcapacity policyまたは明示的な`disabled`選択を必須にする。policy有効時は推論前にClaude Codeのzero-inference `/usage`を英語・UTCで読み、5時間と7日の`usedPercent / resetsAt`だけを版付きsnapshotへ正規化する。初期policyは新規Planner / Finderを80%、評価・Synthesis・Critic・Validationを95%でdeferし、どちらかのwindowが閾値以上ならprovider inferenceを開始しない。telemetry欠落や形式不正から残量を推測せず、typed `telemetry-unavailable`としてfail closedにする。capacity判断はUSD換算を使わず、既存`maxProviderCostUsd`はAttemptの別のhard guardとして維持する。
+- **Status:** Claude Code subscriptionのOpus Adapter、WSL native Claude Code互換transportとprivate token fileを使うGLM 5.1 Adapter、隔離HOME / OAuth stateでGrok Build CLIを使うGrok 4.6 Adapter、provider別envelope normalization、usage、Receipt、resume、private transcript、Opus subscription percentage admissionを実装。GLM / Grokへはambient MCP、plugin、Claude OAuthを渡さず、HOME、`USERPROFILE`、XDG / provider configを一時directoryへ固定する。複数Campaign横断のactive concurrency、lease、fair queue / backoffは未実装（[#114](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/114)）。
+- **Code / Tests:** [model-execution](../src/research/model-execution), [capacity](../src/research/model-execution/model-capacity.ts) · [execution](../tests/research/model-execution.test.ts), [capacity](../tests/research/model-capacity.test.ts), [bridge](../tests/research/claude-source-evidence-bridge.test.ts)
 
 ### Research Record
 

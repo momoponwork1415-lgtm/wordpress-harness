@@ -3,11 +3,18 @@ import { dirname, isAbsolute } from "node:path";
 
 import { canonicalJson } from "../research-record/canonical-json.js";
 import type { ModelProcessResult } from "./contracts.js";
+import type {
+  ModelCapacityDecision,
+  ModelCapacityPolicyRef,
+  ModelCapacityPriority,
+  ModelProviderCapacitySnapshot,
+} from "./model-capacity.js";
 
 interface ModelProcessObservationBase {
   readonly schemaVersion: 1;
   readonly operationId: string;
-  readonly phase: "version-probe" | "auth-probe" | "inference";
+  readonly phase:
+    "version-probe" | "auth-probe" | "capacity-probe" | "inference";
   readonly segmentOrdinal: number;
   readonly occurredAt: string;
 }
@@ -29,6 +36,18 @@ export type ModelProcessObservation =
       readonly kind: "model-process-failed";
       readonly elapsedMs: number;
       readonly reason: "spawn-failed" | "stdin-failed";
+    })
+  | (ModelProcessObservationBase & {
+      readonly kind: "model-capacity-observed";
+      readonly policy: ModelCapacityPolicyRef;
+      readonly snapshot: ModelProviderCapacitySnapshot;
+      readonly decision: ModelCapacityDecision;
+    })
+  | (ModelProcessObservationBase & {
+      readonly kind: "model-capacity-telemetry-unavailable";
+      readonly policy: ModelCapacityPolicyRef;
+      readonly priority: ModelCapacityPriority;
+      readonly reason: string;
     })
   | (ModelProcessObservationBase & {
       readonly kind: "model-tool-started";

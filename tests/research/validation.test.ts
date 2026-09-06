@@ -317,6 +317,28 @@ describe("source-only Validation", () => {
     });
   });
 
+  it("requires an attacker-closed enforcement effect instead of a writable catalog", async () => {
+    const store = new MemoryArtifactStore();
+    const model = modelExecution((attempt) => attemptOutput(attempt.attemptId));
+    const validation = openValidation({
+      artifactStore: store,
+      modelExecution: model.execution,
+    });
+
+    await validation.validate(plan);
+
+    const prompt = model.calls[0]?.prompt;
+    expect(prompt).toContain(
+      "A writable catalog, capture, discovery, recommendation, or proposed configuration is not by itself an enforcement state or a concrete Security Effect.",
+    );
+    expect(prompt).toContain(
+      "The permitted attacker must close the causal route to the concrete Security Effect without a later discretionary action by a privileged actor.",
+    );
+    expect(prompt).toContain(
+      "If the source leaves the enforcement consumer or privileged follow-up undecidable, use unknown and needs-research with a source-decidable proofGap.",
+    );
+  });
+
   it("persists the Attempt result before the single Validation Record", async () => {
     const store = new MemoryArtifactStore();
     let attemptResultDigest: string | undefined;

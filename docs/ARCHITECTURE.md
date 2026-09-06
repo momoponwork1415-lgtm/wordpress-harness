@@ -78,7 +78,7 @@ Surface Map、AST、PHP Program Index、Semgrep、CodeQLは補助toolであり�
 | Artifact | Producer -> Consumer | Meaning |
 | --- | --- | --- |
 | Selection Receipt | Target Selection -> Human Batch Approval | oracle-freeな候補、理由、不確実性 |
-| Approved Target Batch | Human -> Target Campaign Dispatch | Target順、policy、Opus profile、budget、execution window |
+| Approved Target Batch | Human -> Target Campaign Dispatch | Target順、policy、単一model family profile、budget、execution window |
 | Target Intake Packet | Target Intelligence -> Research | oracle-free identityとsource manifest |
 | Immutable Target Snapshot | Target Intelligence -> Research tools | 実行しないmanifest-bound source |
 | Campaign Coverage Receipt | Research -> Target Intelligence | candidate detailsを除いたlifecycle、resume、terminal state |
@@ -108,11 +108,11 @@ Surface Map、AST、PHP Program Index、Semgrep、CodeQLは補助toolであり�
 
 ## Scheduling and model policy
 
-- 初期baselineはOpus単一modelとする。Finder間はmodelが同じでもsession、conversation、scratch、thesisを共有しない。
+- Opusをrecall比較のreference baselineとする。Opus、GLM、Grokは同じTargetでも別Campaignとして実行し、一つのCampaign内では全roleを一つのmodel familyへ固定する。Finder間はmodelが同じでもsession、conversation、scratch、thesisを共有しない。
 - Target Campaignのactive目安は5件とする。待機Target数、active Campaign数、active Model Attempt数を別policyで制御する。
 - Validation、Synthesis、terminal処理を新規Finderより優先し、探索だけでcapacityを使い切らない。
-- rate limit、provider unavailable、capacity timeoutをno-findingへ丸めず、Opus以外へsilent fallbackしない。
-- GLM、Grok、Daybreak等のmulti-model化はOpus baselineとのrecall、unique candidate、runtime成立率、cost比較後に判断する。
+- rate limit、provider unavailable、capacity timeoutをno-findingへ丸めず、別modelまたは別transportへsilent fallbackしない。
+- GLMとGrokはOpus baselineに対する比較Campaignとして使い、recall、unique candidate、runtime成立率、costをmodel family別に記録する。model間の多数決でcandidateを棄却しない。
 
 ## Trust rules
 
