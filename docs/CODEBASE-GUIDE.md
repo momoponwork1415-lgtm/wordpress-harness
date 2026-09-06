@@ -18,6 +18,7 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Human Verification | mandatory fresh再実行、二車線Queue、Current Version Review、human-only Finding gateを実装済み | Finding gateをsubmission gateへ移す（#126） |
 | Finding | fresh Independent Validationからimmutable source-validated Findingを生成し、runtime Verification Recordを追記 | human Verification Record（#126） |
 | Understanding / report | 設計とIssue分割まで完了 | grounded explanation、template draft、人間承認、form staging |
+| Record integrity / recovery | artifact digest検証、append-only記録、公開Readerからのreplayを実装済み | backup / restoreと耐久性の保証範囲（#141） |
 
 現在のResearch production sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / single source Validation -> source-validated Finding + Coverage`である。Findingの存在とCoverage状態は別々にterminal viewへ返す。Researchの旧Packetはread-only replayに限定する。Human OSには移行前のHuman Review writerとdirect legacy AI writerが残り、物理的な退役は#126 / #129で扱う。v7 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Missing-link / Closureはlegacy v5に実装済みだがcurrent v7へ未接続。
 
@@ -323,7 +324,9 @@ ADR 0122以前のHuman Review Packet v1、Human Verification、Findingを元の�
 - **Invariants:** 保存呼出し時の入力を保持し、完了待ちの間にcallerが元のJSONやbyte bufferを更新しても、保存内容とdigestを変えない。同一digestが既に存在する場合は、既存内容のschema / digestを検査してから再利用する。正常な並行再保存は同じdigestへ収束し、JSON byte形式とprivate bytesを保持する。
 - **Failure semantics:** 既存内容の破損はerrorとして返し、正しい入力の再保存で黙って修復しない。cleanup failureは先行する保存・検証failureを置き換えない。
 - **Behavior Test:** [public artifact store integrity](../tests/infrastructure/file-artifact-integrity.test.ts)は4つの読書きInterfaceで並行再保存、reopen、破損後の再保存拒否と既存bytes保持を確認する。保存中のJSON更新と、Uint8Array / Bufferの部分view再利用も回帰対象にする。
-- **Guarantee limit:** CAS file / directoryのsyncによる電源断耐久性と、稼働中のSQLite / CAS一括backupからの復元は未検証。正常なreopenや合成fixtureの成功を、その保証として扱わない。
+- **Stopped backup scope:** 復元検証は全writerとDB connectionの正常停止後を対象とする。各ownerのSQLite本体と存在するWAL / SHM、参照public CAS、Private Evidenceを同じ世代の集合として取得し、空directoryへ復元する。公開Readerのprojectionだけでは未読CASの欠損を検出しないため、参照先のdigest確認も必要になる。
+- **Restore behavior:** [合成記録のbackup / restore Test](../tests/infrastructure/artifact-backup-restore.test.ts)は旧Researchのrun / progress、Packet-bound Human Reviewのqueue、独立したcurrent private JSON / bytesの意味・digestを復元先で確認し、public / private artifactの欠損・破損を拒否する。確認のためにproviderや対象runtimeを起動しない。
+- **Guarantee limit:** 現行Research Finding + CoverageとAI Verification Record、Private Evidenceを一つの参照集合として復元するAcceptanceは未達。世代混在・参照集合の完全性、稼働中snapshot、異常停止・電源断耐久性も未保証である。file / directoryのsyncは未実装であり、正常なreopenと停止済みfixtureの復元成功を電源断の保証へ読み替えない。残条件は[#141](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/141)で追跡する。
 - **Code:** [Research JSON](../src/research/research-record/file-json-artifact-store.ts)、[Human OS JSON](../src/human-os/human-os-record/file-json-artifact-store.ts)、[private JSON / bytes](../src/human-os/human-os-record/file-private-artifact-store.ts)。
 
 ### Shared encoding and execution policy
