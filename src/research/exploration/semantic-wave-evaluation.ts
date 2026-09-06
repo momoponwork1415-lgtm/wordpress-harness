@@ -532,6 +532,14 @@ function referenceApproachFamilyAdmission(
   });
 }
 
+// The Depth Work Queue derives an Item identity from the action's kind,
+// families, sorted subjects and directive, so two actions that differ only in
+// subject order still collide there. Normalizing subject order here compares
+// actions the way the projection will.
+function iterationActionIdentity(action: IterationActionV3): string {
+  return canonicalJson({ ...action, subjects: sortSubjects(action.subjects) });
+}
+
 function resolveCurrentEvaluatorOutput(
   input: SemanticWaveEvaluationInput & { readonly schemaVersion: 3 },
   context: ValidatedEvaluationContext,
@@ -826,9 +834,15 @@ function resolveCurrentEvaluatorOutput(
     );
   }
 
+  // Checked once over the built actions rather than inside the loop, which has
+  // six continue branches, and before the Decision is parsed — a duplicate
+  // must never become a durable Decision, because the queue projection it
+  // wedges is recomputed identically on every resume.
+  const actionIdentities = new Set(actions.map(iterationActionIdentity));
   if (
     covered.size !== context.subjects.length ||
-    referencedFamilies.size !== approachFamilies.length
+    referencedFamilies.size !== approachFamilies.length ||
+    actionIdentities.size !== actions.length
   ) {
     return {
       kind: "failed",
