@@ -1490,7 +1490,7 @@ fi
     };
     const envelope = {
       ...providerEnvelope(output),
-      result: JSON.stringify(output),
+      result: `All checkpoints are durable.\n${JSON.stringify(output)}`,
       structured_output: undefined,
       modelUsage: {
         "glm-5.1": {
@@ -1642,6 +1642,33 @@ fi
         "glm-5.1",
       ),
     ).toEqual({ kind: "policy-denied", reason: "model-substitution" });
+  });
+
+  it("rejects a GLM result containing more than one terminal JSON value", () => {
+    const output = {
+      kind: "root-evaluator-output",
+      schemaVersion: 1,
+      dispositions: [],
+    };
+    expect(
+      decodeGlmEnvelope(
+        JSON.stringify({
+          ...providerEnvelope(output),
+          structured_output: undefined,
+          result: `${JSON.stringify(output)}\n${JSON.stringify(output)}`,
+          modelUsage: {
+            "glm-5.1": {
+              canonicalModel: "glm-5.1",
+              inputTokens: 10,
+              outputTokens: 7,
+              cacheReadInputTokens: 30,
+              cacheCreationInputTokens: 20,
+            },
+          },
+        }),
+        "glm-5.1",
+      ),
+    ).toEqual({ kind: "invalid-envelope" });
   });
 
   it("stops GLM as auth-required when its bounded token file is unavailable", async () => {
