@@ -98,7 +98,7 @@ Surface Map、AST、PHP Program Index、Semgrep、CodeQLは補助toolであり�
 | Batch dispatch | 全Targetがterminal、paused、staleまたは理由付きfailure |
 | Research work | decision、typed failure、または次workがdurable |
 | Research Campaign | ExplorationとIndependent Validationが閉じ、Finding、Coverage、未解決事項、再開条件がdurable |
-| AI Reproduction | runtime-confirmedまたは理由付きruntime-inconclusiveがdurable |
+| AI Reproduction | `runtime-confirmed / disproved / inconclusive / setup-blocked`のVerification Recordがdurable。claimだけでは完了ではない |
 | Human Verification | 人間が別fresh instanceでRecipeを実行し、FindingへVerification Recordを追加 |
 | Report preparation | immutableなSubmission Draftと根拠がdurable |
 | Research product goal | Independent Validation済みFindingとhonest Coverageまで閉じる |

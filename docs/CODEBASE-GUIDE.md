@@ -15,10 +15,12 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Source-only Validation | v7 single fresh Attempt、4 disposition、source-validated Findingを実装済み | Frontier Gapの次Wave |
 | Runtime handoff | FindingをAI Reproductionへ直接渡すcurrent contract、旧Runtime Verification Packetのread-only replayを実装済み | Human Verification移行（#126 / #129） |
 | AI Reproduction | Finding-bound Attempt、gVisor experiment、private evidence、append-only AI Verification Record、未完了claimの公開読取を実装済み | Human確認への接続（#126） |
-| Human Verification | mandatory fresh再実行、二車線Queue、Current Version Review、human-only Finding gateを実装済み | Finding gateをsubmission gateへ移す（#126） |
+| Human Verification | 旧Packet入力のfresh再実行、Queue、Current Version Review、human-only Finding writerを保持 | 新Findingへのhuman Verification Record追記と独立環境の証拠照合（#126） |
 | Finding | fresh Independent Validationからimmutable source-validated Findingを生成し、runtime Verification Recordを追記 | human Verification Record（#126） |
 | Understanding / report | 設計とIssue分割まで完了 | grounded explanation、template draft、人間承認、form staging |
 | Record integrity / recovery | artifact digest検証、append-only記録、公開Readerからのreplayを実装済み | backup / restoreと耐久性の保証範囲（#141） |
+
+到達点は**主要機能が部分接続された開発版**である。表の「実装済み」は対応するInterfaceとBehavior Testがあることを示し、実対象での一連の運用や検出品質を保証しない。新Findingへの人間確認の追記と提出準備は未接続であり、旧Packetでの完了実績を現行lifecycleの完了へ読み替えない。
 
 現在のResearch production sliceは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / single source Validation -> source-validated Finding + Coverage`である。Findingの存在とCoverage状態は別々にterminal viewへ返す。Researchの旧Packetはread-only replayに限定する。Human OSには移行前のHuman Review writerとdirect legacy AI writerが残り、物理的な退役は#126 / #129で扱う。v7 Depthはtool-free Synthesis、Manifest-bound Critic、fresh Root EvaluationをCAS / Ledger境界で分離する。Missing-link / Closureはlegacy v5に実装済みだがcurrent v7へ未接続。
 
@@ -263,6 +265,14 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 
 ### Human Verification
 
+**Current contract:** 以下のRunnerは旧Packet-bound v2である。新Findingへのhuman Verification Record追記は未実装である。Findingの公開名は三つの契約を区別する必要がある。
+
+| Schema / export | 意味 |
+| --- | --- |
+| Researchの[findingSchema v1](../src/research/validation/finding.ts) | Independent Validationから生成する現行のimmutable Finding |
+| [currentFindingSchema v2](../src/human-os/current-human-review-contracts.ts) | Packet-bound Current Human Reviewが人間確認後に生成する旧Finding |
+| Human OS rootの[findingSchema / Finding](../src/human-os/index.ts) | さらに旧いHuman Review Packet v1のFinding。Researchの同名契約とは異なる |
+
 **Interface:** `CurrentHumanReviewRunner.admit`、`prepare`、`record`、`readQueue`
 
 **Read-only Interface:** `openCurrentHumanReviewReader({ store, policy }) -> CurrentHumanReviewReader.readCase / readQueue`。Packet-bound v2の保存済みCase、Queue、Preparation、Resultを元の意味で読む。必要な依存は読取Storeと固定Queue Policyだけで、AI reader、version lookup、環境生成、clockは要求しない。書込Runnerも同じReaderを使う。policy不一致はerrorにし、未登録Caseは`undefined`、未登録Campaignは空Queueを返す。[reader](../src/human-os/current-human-review-reader.ts) · [immutable fixtureの公開読取Test](../tests/human-os/current-human-review-reader.test.ts)
@@ -272,6 +282,7 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 - **Preparation:** 人間の直前にCurrent Version Reviewを実行する。新stableは同じCampaign、plugin、Causal Identity、Security Effect、attacker premiseにbindされた新しいruntime-confirmed Attemptだけを選べる。Human environmentは選択Target、Runtime Profile、Setup Planと一致し、AI environmentとは異なるfresh IDを要求する。
 - **Failure semantics:** 前提一致かつRecipe完走後のeffect非観測だけを`rejected`にする。環境不一致は`blocked`、曖昧な観測は`runtime-inconclusive`、不足証拠は`more-evidence-required`。
 - **Finding gate:** 全Recipe stepとexact payloadの人間によるfresh再実行を記録した`verified-finding`だけがFindingを生成する。Findingは元Campaign Target、検証Target、Triage Packet、Recipe / Private Evidence refs、人間のRecordへbindする。external actionは`not-authorized`であり、report、vendor contact、公開は別承認を必要とする。
+- **Evidence boundary:** 旧v2 Recordが保持する環境identity、effect、cleanupは入力された値の整合性を検査する。永続化済みEnvironment Builder DispositionやPrivate Evidenceとの照合を伴う、Harnessが観測した事実の証明ではない。新契約では人間の申告とHarness由来の証拠参照を区別する必要がある。
 - **Status / Tests:** v2 append-only Case stream、二車線Queue、promotion、version refresh、fresh environment gate、Disposition、Finding、reopen replayを実装 · [runner](../src/human-os/current-human-review.ts), [contracts](../src/human-os/current-human-review-contracts.ts), [behavior](../tests/human-os/current-human-review.test.ts) · [#110](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/110)
 - **Accepted next:** Human VerificationはFinding生成gateではなく`human-confirmed / disproved / inconclusive / blocked` Verification Recordを追加する。exact Draft revisionとdestinationに対するExternal Action Authorizationだけがform staging / submitを許可する（[#126](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/126)）。
 - **Migration constraint:** Finding Environment Request v1は同一contentへ同じrequest digestを使い、保存済みDispositionを再利用する。AI / humanの用途や独立試行を識別する項目はない。同じ要求をもう一度渡すことを別fresh環境の証拠にはできない。人間の申告だけで`human-confirmed`へ移行せず、別環境の永続化済み証拠との対応を#126の受入条件として確認する。

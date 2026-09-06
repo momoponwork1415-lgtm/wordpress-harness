@@ -41,6 +41,15 @@ Create a GitHub issue.
 
 Run `gh issue view <number> --comments`.
 
+## Reconcile implementation and issue state
+
+- Read the acceptance criteria and recent comments before editing or closing an issue. Match them to the current public Interface and Behavior Tests.
+- Distinguish a working-tree change, a local commit, and a commit reachable from the GitHub default branch. Do not describe local-only work as published or merged on GitHub.
+- Close an implementation issue only when its acceptance is met and its integration evidence is available. Link the supporting commit and state exactly which revision was tested. A local test run does not test a different remote revision.
+- Keep partially completed issues open and state the remaining acceptance in the body. A completed child does not complete its parent; a source-only result does not establish runtime or human verification.
+- Keep implementation status in Codebase Guide and finite work in issues. Update the existing map and native relationships instead of creating a duplicate roadmap or a dated status document.
+- Preserve historical comments. Correct a stale claim such as "uncommitted" with current evidence rather than rewriting the comment's history.
+
 ## Wayfinding operations
 
 Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
