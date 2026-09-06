@@ -1231,6 +1231,14 @@ class SqliteResearchRecord
       options.artifactStore === undefined
         ? undefined
         : openVerifiedArtifacts(options.artifactStore);
+    // WAL and a busy timeout only matter with more than one connection on the
+    // database, and every ledger append reads the campaign's rows before
+    // inserting. Those appends are therefore begun with `transact.immediate()`
+    // rather than the default deferred mode: a deferred transaction takes its
+    // read snapshot first and must promote to a writer at the insert, which
+    // fails with SQLITE_BUSY_SNAPSHOT if another connection committed in
+    // between — and that is the one busy condition this timeout cannot wait
+    // out, because the snapshot cannot be refreshed mid-transaction.
     this.#database.pragma("journal_mode = WAL");
     this.#database.pragma("busy_timeout = 5000");
     this.#database.exec(`
@@ -1295,7 +1303,7 @@ class SqliteResearchRecord
       };
     });
 
-    return transact();
+    return transact.immediate();
   }
 
   async readPreparation(
@@ -1387,7 +1395,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async recordCampaignRunCompletion(
@@ -1460,7 +1468,7 @@ class SqliteResearchRecord
         value: record,
       };
     });
-    return transact();
+    return transact.immediate();
   }
 
   async recordSemanticCampaignRunStart(
@@ -1624,7 +1632,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async recordSemanticCampaignRunCompletion(
@@ -1727,7 +1735,7 @@ class SqliteResearchRecord
         value: record,
       };
     });
-    return transact();
+    return transact.immediate();
   }
 
   async #readValidatedCampaignFinding(input: {
@@ -2052,7 +2060,7 @@ class SqliteResearchRecord
         value: runRecord,
       };
     });
-    return transact();
+    return transact.immediate();
   }
 
   async readCampaignFinding(
@@ -2147,7 +2155,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async recordCampaignAttemptCompletion(
@@ -2203,7 +2211,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async listCampaignAttempts(
@@ -2434,7 +2442,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async recordSemanticCampaignAttemptStart(
@@ -2515,7 +2523,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async recordSemanticCampaignAttemptResult(
@@ -2564,7 +2572,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async recordSemanticCampaignAttemptCompletion(
@@ -2629,7 +2637,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async completeSemanticCampaignAttemptWithBudget(
@@ -2799,7 +2807,7 @@ class SqliteResearchRecord
         return { attempt: completedAttempt, budget };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async readSemanticCampaignBudget(
@@ -2896,7 +2904,7 @@ class SqliteResearchRecord
         return { ledgerHead, occurredAt, checkpoint };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async listSemanticFinderCheckpoints(
@@ -3016,7 +3024,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async recordSemanticIterationDecisionV3(
@@ -3109,7 +3117,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async recordSemanticDepthWorkQueueV2(
@@ -3199,7 +3207,7 @@ class SqliteResearchRecord
         return { ledgerHead, occurredAt, queue: queueRef };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async readSemanticDepthWorkQueueV2(
@@ -3306,7 +3314,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async recordSemanticAdversarialCritiqueV2(
@@ -3410,7 +3418,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async recordSemanticDepthEvaluationIncompleteV2(
@@ -3493,7 +3501,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async readApproachFamilyRegistry(
@@ -3709,7 +3717,7 @@ class SqliteResearchRecord
         }));
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async listValidationIntents(
@@ -3872,7 +3880,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async listValidationCompletions(
@@ -4055,7 +4063,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async readHumanReviewPacket(
@@ -4127,7 +4135,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async recordRuntimeVerificationPacket(
@@ -4262,7 +4270,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async readRuntimeVerificationPacket(
@@ -4337,7 +4345,7 @@ class SqliteResearchRecord
         };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async recordSemanticDepthIteration(
@@ -4415,7 +4423,7 @@ class SqliteResearchRecord
         return { ref: advanced.ref, value: advanced.value };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async recordSemanticDepthIterationV3(
@@ -4520,7 +4528,7 @@ class SqliteResearchRecord
         return { ref: advanced.ref, value: advanced.value };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async recordSemanticMissingLinkEvidence(
@@ -4581,7 +4589,7 @@ class SqliteResearchRecord
         return { ref: attached.ref, value: attached.value };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async recordSemanticFamilyVerificationOutcomes(
@@ -4653,7 +4661,7 @@ class SqliteResearchRecord
         return { ref: resolved.ref, value: resolved.value };
       },
     );
-    return transact();
+    return transact.immediate();
   }
 
   async recordVerificationStart(
@@ -4719,7 +4727,7 @@ class SqliteResearchRecord
       },
     );
 
-    return transact();
+    return transact.immediate();
   }
 
   async recordVerificationCompletion(
@@ -4780,7 +4788,7 @@ class SqliteResearchRecord
       };
     });
 
-    return transact();
+    return transact.immediate();
   }
 
   async readVerification(
