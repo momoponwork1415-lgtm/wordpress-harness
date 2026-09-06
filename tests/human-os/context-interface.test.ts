@@ -11,8 +11,12 @@ describe("Human OS context Interface", () => {
       "humanVerificationEnvironmentRequestSchema",
     );
     expect(humanOsContext).toHaveProperty("openAIReproduction");
-    expect(humanOsContext).toHaveProperty("aiReproductionAttemptSchema");
-    expect(humanOsContext).toHaveProperty("triageReproductionPacketSchema");
+    expect(humanOsContext).toHaveProperty("findingAIReproductionAttemptSchema");
+    expect(humanOsContext).toHaveProperty("aiVerificationRecordSchema");
+    expect(humanOsContext).toHaveProperty("openGvisorAIReproductionHarness");
+    expect(humanOsContext).not.toHaveProperty("aiReproductionAttemptSchema");
+    expect(humanOsContext).not.toHaveProperty("triageReproductionPacketSchema");
+    expect(humanOsContext).not.toHaveProperty("openLegacyPacketAIReproduction");
     expect(humanOsContext).toHaveProperty("openCurrentHumanReview");
     expect(humanOsContext).toHaveProperty("openLegacyHumanVerificationReplay");
     expect(humanOsContext).toHaveProperty("humanReviewCaseSchema");

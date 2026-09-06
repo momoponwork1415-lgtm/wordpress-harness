@@ -18,7 +18,10 @@ import type {
   ProvisionedEnvironmentHandle,
   ProvisionedSetupStageObservation,
 } from "./human-verification-environment.js";
-import type { HumanVerificationEnvironmentRequest } from "./human-verification-environment-contracts.js";
+import type { VerificationEnvironmentRequest } from "./human-verification-environment-contracts.js";
+import { findingVerificationEnvironmentRequestSchema } from "./human-verification-environment-contracts.js";
+import type { FindingAIReproductionAttempt } from "./ai-reproduction-contracts.js";
+import type { FindingAIReproductionHarnessExecution } from "./ai-reproduction-contracts.js";
 
 const sourceDirectorySchema = z
   .string()
@@ -44,15 +47,15 @@ export interface HumanVerificationSetupDependency {
 }
 
 export interface GvisorWordPressSetupBroker {
-  resolve(request: HumanVerificationEnvironmentRequest): Promise<{
+  resolve(request: VerificationEnvironmentRequest): Promise<{
     readonly dependencies: readonly HumanVerificationSetupDependency[];
     configure(
       session: GvisorWordPressSession,
-      request: HumanVerificationEnvironmentRequest,
+      request: VerificationEnvironmentRequest,
     ): Promise<string>;
     functionalSmoke(
       session: GvisorWordPressSession,
-      request: HumanVerificationEnvironmentRequest,
+      request: VerificationEnvironmentRequest,
     ): Promise<string>;
   }>;
 }
@@ -60,9 +63,28 @@ export interface GvisorWordPressSetupBroker {
 export interface GvisorWordPressAssistantBroker<Result> {
   run(
     session: GvisorWordPressSession,
-    request: HumanVerificationEnvironmentRequest,
+    request: VerificationEnvironmentRequest,
     role: "witness" | "control",
   ): Promise<Result>;
+}
+
+type WithoutHarnessFields<T> = T extends unknown
+  ? Omit<T, "kind" | "schemaVersion" | "completedAt" | "cleanup">
+  : never;
+
+export type GvisorAIReproductionExperimentResult = WithoutHarnessFields<
+  Exclude<
+    FindingAIReproductionHarnessExecution,
+    { readonly status: "setup-blocked" }
+  >
+>;
+
+export interface GvisorAIReproductionBroker {
+  run(
+    session: GvisorWordPressSession,
+    request: z.infer<typeof findingVerificationEnvironmentRequestSchema>,
+    attempt: FindingAIReproductionAttempt,
+  ): Promise<GvisorAIReproductionExperimentResult>;
 }
 
 export interface OpenGvisorWordPressEnvironmentProvisionerOptions<Result> {
@@ -71,11 +93,17 @@ export interface OpenGvisorWordPressEnvironmentProvisionerOptions<Result> {
   readonly targetSourceResolver: HumanVerificationTargetSourceResolver;
   readonly setupBroker: GvisorWordPressSetupBroker;
   readonly assistantBroker?: GvisorWordPressAssistantBroker<Result>;
+  readonly aiReproductionBroker?: GvisorAIReproductionBroker;
 }
 
 export interface GvisorWordPressEnvironmentProvisioner<
   Result,
 > extends HumanVerificationEnvironmentProvisioner {
+  hasActiveEnvironment(environmentId: string): boolean;
+  runExperiment(
+    environmentId: string,
+    attempt: FindingAIReproductionAttempt,
+  ): Promise<GvisorAIReproductionExperimentResult>;
   runAssistant(
     environmentId: string,
     role: "witness" | "control",
@@ -174,7 +202,7 @@ class DefaultGvisorWordPressEnvironmentProvisioner<
     string,
     {
       readonly session: GvisorWordPressSession;
-      readonly request: HumanVerificationEnvironmentRequest;
+      readonly request: VerificationEnvironmentRequest;
     }
   >();
 
@@ -185,7 +213,7 @@ class DefaultGvisorWordPressEnvironmentProvisioner<
   }
 
   async inspectIsolation(
-    request: HumanVerificationEnvironmentRequest,
+    request: VerificationEnvironmentRequest,
   ): Promise<IsolationCapabilityInspection> {
     const [runtimes, runscVersion, ...images] = await Promise.all([
       runDocker(
@@ -229,7 +257,7 @@ class DefaultGvisorWordPressEnvironmentProvisioner<
   }
 
   async setup(
-    request: HumanVerificationEnvironmentRequest,
+    request: VerificationEnvironmentRequest,
   ): Promise<EnvironmentSetupAttempt> {
     const emptyStages: ProvisionedSetupStageObservation[] =
       request.setupPlan.stages.map((stage) => ({
@@ -452,6 +480,41 @@ class DefaultGvisorWordPressEnvironmentProvisioner<
       retained.session,
       retained.request,
       role,
+    );
+  }
+
+  hasActiveEnvironment(environmentId: string): boolean {
+    return this.#sessions.has(environmentId);
+  }
+
+  async runExperiment(
+    environmentId: string,
+    attempt: FindingAIReproductionAttempt,
+  ): Promise<GvisorAIReproductionExperimentResult> {
+    const retained = this.#sessions.get(environmentId);
+    if (retained === undefined) throw new Error("Environment is not active");
+    if (this.#options.aiReproductionBroker === undefined) {
+      throw new Error("AI Reproduction broker is unavailable");
+    }
+    const request = findingVerificationEnvironmentRequestSchema.parse(
+      retained.request,
+    );
+    if (
+      request.finding.id !== attempt.finding.id ||
+      humanOsDigest(request.finding) !== attempt.finding.digest ||
+      request.target.snapshot.digest !== attempt.target.snapshot.digest ||
+      request.target.manifest.digest !== attempt.target.manifest.digest ||
+      request.runtimeProfile.digest !== attempt.runtimeProfile.digest ||
+      request.setupPlan.digest !== attempt.setupPlan.digest ||
+      request.policy.digest !== attempt.environmentPolicy.digest ||
+      humanOsDigest(request.grants) !== humanOsDigest(attempt.grants)
+    ) {
+      throw new Error("AI Reproduction Attempt does not own the live session");
+    }
+    return this.#options.aiReproductionBroker.run(
+      retained.session,
+      request,
+      attempt,
     );
   }
 }

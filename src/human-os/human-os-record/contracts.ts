@@ -1,6 +1,6 @@
 import type {
   HumanVerificationEnvironmentDisposition,
-  HumanVerificationEnvironmentRequest,
+  VerificationEnvironmentRequest,
 } from "../human-verification-environment-contracts.js";
 import type {
   AIReproductionAttempt,
@@ -8,6 +8,11 @@ import type {
   AIReproductionResult,
   TriageReproductionPacket,
 } from "../ai-reproduction-contracts.js";
+import type {
+  AIVerificationRecord,
+  FindingAIReproductionAttempt,
+} from "../ai-reproduction-contracts.js";
+import type { Finding } from "../../research/validation/finding.js";
 import type {
   CurrentHumanReviewCase,
   CurrentHumanReviewResult,
@@ -31,7 +36,7 @@ export interface HumanVerificationEnvironmentRecordView {
   readonly occurredAt: string;
   readonly requestArtifactDigest: string;
   readonly dispositionArtifactDigest: string;
-  readonly request: HumanVerificationEnvironmentRequest;
+  readonly request: VerificationEnvironmentRequest;
   readonly disposition: HumanVerificationEnvironmentDisposition;
 }
 
@@ -117,6 +122,34 @@ export interface AIReproductionRecord {
   ): Promise<RecordAIReproductionResultResult>;
 }
 
+export interface FindingAIReproductionRecordView {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly findingArtifactDigest: string;
+  readonly attemptArtifactDigest: string;
+  readonly recordArtifactDigest: string;
+  readonly finding: Finding;
+  readonly attempt: FindingAIReproductionAttempt;
+  readonly record: AIVerificationRecord;
+}
+
+export interface FindingAIReproductionStore {
+  readFindingAIReproductionByAttempt(
+    attemptId: string,
+  ): Promise<FindingAIReproductionRecordView | undefined>;
+  listFindingAIReproduction(
+    findingId: string,
+  ): Promise<readonly FindingAIReproductionRecordView[]>;
+  recordFindingAIReproduction(
+    finding: Finding,
+    attempt: FindingAIReproductionAttempt,
+    record: AIVerificationRecord,
+  ): Promise<{
+    readonly status: "appended" | "occupied";
+    readonly view: FindingAIReproductionRecordView;
+  }>;
+}
+
 export interface CurrentHumanReviewCaseRecordView {
   readonly ledgerHead: number;
   readonly occurredAt: string;
@@ -192,12 +225,15 @@ export interface CurrentHumanReviewStore {
 }
 
 export interface HumanOsRecord
-  extends AIReproductionRecord, CurrentHumanReviewStore {
+  extends
+    AIReproductionRecord,
+    FindingAIReproductionStore,
+    CurrentHumanReviewStore {
   readEnvironmentDisposition(
     requestDigest: string,
   ): Promise<HumanVerificationEnvironmentRecordView | undefined>;
   recordEnvironmentDisposition(
-    request: HumanVerificationEnvironmentRequest,
+    request: VerificationEnvironmentRequest,
     disposition: HumanVerificationEnvironmentDisposition,
   ): Promise<RecordEnvironmentDispositionResult>;
   readHumanReviewAdmission(

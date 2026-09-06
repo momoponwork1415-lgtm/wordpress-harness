@@ -1,32 +1,25 @@
+import { createHash } from "node:crypto";
+
 import {
-  runtimeVerificationPacketDeliveryReceiptSchema,
-  runtimeVerificationPacketDeliveryRequestSchema,
-  type RuntimeVerificationPacket,
-  type RuntimeVerificationPacketDelivery,
-  type RuntimeVerificationPacketDeliveryReceipt,
-  type RuntimeVerificationPacketDeliveryRequest,
-} from "../research/validation/runtime-verification-packet.js";
+  findingSchema,
+  referenceFinding,
+  type Finding,
+} from "../research/validation/finding.js";
 import { canonicalHumanOsJson, humanOsDigest } from "./canonical-json.js";
-import type { AIReproductionRecord } from "./human-os-record/contracts.js";
 import {
-  aiReproductionHarnessExecutionSchema,
-  aiReproductionPrivateSchemas,
-  aiReproductionResultSchema,
-  aiReproductionRuntimeIdentitySchema,
-  defineAIReproductionAttempt,
-  defineAIReproductionIntake,
-  defineRuntimePacketDeliveryReceipt,
+  defineAIVerificationRecord,
+  defineFindingAIReproductionAttempt,
+  findingAIReproductionHarnessExecutionSchema,
+  findingAIReproductionPrivateSchemas,
   humanOsPrivateArtifactRefSchema,
-  privateEvidenceBundleSchema,
-  referenceAIReproductionAttempt,
-  reproductionRecipeSchema,
-  triageReproductionPacketSchema,
-  type AIReproductionAttempt,
-  type AIReproductionHarnessExecution,
-  type AIReproductionIntake,
-  type AIReproductionResult,
+  referenceFindingAIReproductionAttempt,
+  type AIVerificationRecord,
+  type FindingAIReproductionAttempt,
+  type FindingAIReproductionHarnessExecution,
+  type FindingAIReproductionPrivateEvidenceDraft,
   type HumanOsPrivateArtifactRef,
 } from "./ai-reproduction-contracts.js";
+import type { FindingAIReproductionStore } from "./human-os-record/contracts.js";
 import type {
   ExternalDependencyGrant,
   HumanVerificationEnvironmentPolicy,
@@ -38,17 +31,19 @@ import type {
 export interface HumanOsPrivateArtifactStore {
   putPrivateJson(value: unknown): Promise<string>;
   readPrivateJson(digest: string): Promise<unknown>;
+  putPrivateBytes(value: Uint8Array): Promise<string>;
+  readPrivateBytes(digest: string): Promise<Uint8Array>;
 }
 
 export interface AIReproductionHarness {
   run(input: {
-    readonly attempt: AIReproductionAttempt;
-    readonly packet: RuntimeVerificationPacket;
+    readonly attempt: FindingAIReproductionAttempt;
+    readonly finding: Finding;
   }): Promise<unknown>;
 }
 
-export interface AIReproductionRunRequest {
-  readonly deliveryRequest: RuntimeVerificationPacketDeliveryRequest;
+export interface FindingAIReproductionRequest {
+  readonly finding: Finding;
   readonly target: HumanVerificationTarget;
   readonly runtimeProfile: HumanVerificationRuntimeProfile;
   readonly setupPlan: HumanVerificationSetupPlan;
@@ -56,13 +51,24 @@ export interface AIReproductionRunRequest {
   readonly grants: readonly ExternalDependencyGrant[];
 }
 
-export interface AIReproduction extends RuntimeVerificationPacketDelivery {
-  run(request: AIReproductionRunRequest): Promise<AIReproductionResult>;
-  read(attemptId: string): Promise<AIReproductionResult | undefined>;
+export interface AIReproductionView {
+  readonly finding: Finding;
+  readonly assurance: {
+    readonly source: "source-validated";
+    readonly runtime: readonly (
+      "runtime-confirmed" | "disproved" | "inconclusive" | "setup-blocked"
+    )[];
+  };
+  readonly records: readonly AIVerificationRecord[];
+}
+
+export interface AIReproduction {
+  run(request: FindingAIReproductionRequest): Promise<AIVerificationRecord>;
+  read(findingId: string): Promise<AIReproductionView | undefined>;
 }
 
 export interface OpenAIReproductionOptions {
-  readonly record: AIReproductionRecord;
+  readonly record: FindingAIReproductionStore;
   readonly privateArtifactStore: HumanOsPrivateArtifactStore;
   readonly harness: AIReproductionHarness;
   readonly clock?: () => Date;
@@ -83,12 +89,16 @@ function privateArtifactRef(input: {
   });
 }
 
+function rawBytesDigest(value: Uint8Array): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
 function environmentMatchesAttempt(
   execution: Extract<
-    AIReproductionHarnessExecution,
-    { readonly status: "runtime-confirmed" }
+    FindingAIReproductionHarnessExecution,
+    { readonly status: "runtime-confirmed" | "disproved" }
   >,
-  attempt: AIReproductionAttempt,
+  attempt: FindingAIReproductionAttempt,
 ): boolean {
   const identity = execution.runtimeIdentity;
   return (
@@ -111,133 +121,8 @@ function environmentMatchesAttempt(
   );
 }
 
-function publicCriterion(
-  attempt: AIReproductionAttempt,
-  execution: Extract<
-    AIReproductionHarnessExecution,
-    { readonly status: "runtime-confirmed" }
-  >,
-) {
-  switch (execution.recipe.class) {
-    case "sql-injection":
-      return {
-        class: execution.recipe.class,
-        proof: "database-security-effect" as const,
-        expectedDatabaseEffect:
-          "Observe the Packet-bound Security Effect in the database-facing outcome.",
-      };
-    case "cross-site-scripting":
-      return {
-        class: execution.recipe.class,
-        proof: "browser-execution-canary" as const,
-        expectedBrowserEffect:
-          "Observe a bounded browser canary for the Packet-bound Security Effect.",
-      };
-    case "authorization":
-      return {
-        class: execution.recipe.class,
-        proof: "cross-role-security-effect" as const,
-        expectedOwnershipEffect:
-          "Observe the Packet-bound Security Effect across the declared actor boundary.",
-      };
-    case "file-operation":
-      return {
-        class: execution.recipe.class,
-        proof: "filesystem-security-effect" as const,
-        expectedFilesystemEffect:
-          "Observe the Packet-bound Security Effect in isolated filesystem state.",
-      };
-    case "code-execution":
-      return {
-        class: execution.recipe.class,
-        proof: "execution-canary" as const,
-        canaryDigest:
-          execution.recipe.criterion.class === "code-execution"
-            ? execution.recipe.criterion.canaryDigest
-            : humanOsDigest(attempt.securityEffect),
-        expectedCanaryEffect:
-          "Observe a nonce execution canary only inside the disposable runtime.",
-      };
-    case "generic":
-      return {
-        class: execution.recipe.class,
-        proof: "security-effect-observation" as const,
-        expectedSecurityEffect: `Observe the Packet-bound ${attempt.securityEffect.claimedPropertyChange} Security Effect.`,
-      };
-  }
-}
-
-function publicObservation(attempt: AIReproductionAttempt) {
-  return {
-    securityEffect: "observed" as const,
-    description: `The harness observed the Packet-bound ${attempt.securityEffect.claimedPropertyChange} Security Effect.`,
-  };
-}
-
-function publicProof(
-  execution: Extract<
-    AIReproductionHarnessExecution,
-    { readonly status: "runtime-confirmed" }
-  >,
-) {
-  return {
-    witness:
-      execution.proof.witness === null
-        ? null
-        : {
-            observationDigest: execution.proof.witness.observationDigest,
-            description:
-              "A bounded witness observation is retained in Human OS evidence.",
-          },
-    causalControl:
-      execution.proof.causalControl === null
-        ? null
-        : {
-            observationDigest: execution.proof.causalControl.observationDigest,
-            description:
-              "An optional causal-control observation is retained in Human OS evidence.",
-          },
-  };
-}
-
-function publicOutcomeDescription(
-  status: "runtime-inconclusive" | "setup-blocked" | "execution-failed",
-  reason: string,
-): string {
-  return `The AI Reproduction harness recorded ${status} with reason ${reason}.`;
-}
-
-function failedResult(input: {
-  readonly attempt: AIReproductionAttempt;
-  readonly packet: RuntimeVerificationPacket;
-  readonly completedAt: string;
-  readonly reason:
-    | "provider-failed"
-    | "budget-exhausted"
-    | "policy-denied"
-    | "harness-failed"
-    | "invalid-harness-output"
-    | "private-evidence-store-failed"
-    | "cleanup-failed";
-  readonly description: string;
-  readonly cleanup?: "not-required" | "completed" | "failed";
-}): AIReproductionResult {
-  return aiReproductionResultSchema.parse({
-    kind: "ai-reproduction-result",
-    schemaVersion: 2,
-    attempt: referenceAIReproductionAttempt(input.attempt),
-    runtimePacket: input.attempt.packet,
-    completedAt: input.completedAt,
-    cleanup: input.cleanup ?? "not-required",
-    status: "execution-failed",
-    reason: input.reason,
-    description: input.description,
-    triagePacket: null,
-  });
-}
-
 class DefaultAIReproduction implements AIReproduction {
-  readonly #record: AIReproductionRecord;
+  readonly #record: FindingAIReproductionStore;
   readonly #privateArtifactStore: HumanOsPrivateArtifactStore;
   readonly #harness: AIReproductionHarness;
   readonly #clock: () => Date;
@@ -249,311 +134,282 @@ class DefaultAIReproduction implements AIReproduction {
     this.#clock = options.clock ?? (() => new Date());
   }
 
-  async deliver(
-    requestValue: RuntimeVerificationPacketDeliveryRequest,
-  ): Promise<RuntimeVerificationPacketDeliveryReceipt> {
-    const request =
-      runtimeVerificationPacketDeliveryRequestSchema.parse(requestValue);
-    const existing = await this.#record.readAIReproductionIntake(
-      request.digest,
-    );
-    const intake =
-      existing?.intake ??
-      defineAIReproductionIntake({
-        request,
-        admittedAt: this.#clock().toISOString(),
-      });
-    const persisted =
-      existing?.intake ??
-      (await this.#record.recordAIReproductionIntake(request, intake)).view
-        .intake;
-    return runtimeVerificationPacketDeliveryReceiptSchema.parse(
-      defineRuntimePacketDeliveryReceipt({ request, intake: persisted }),
-    );
-  }
-
-  async run(
-    requestValue: AIReproductionRunRequest,
-  ): Promise<AIReproductionResult> {
-    const deliveryRequest =
-      runtimeVerificationPacketDeliveryRequestSchema.parse(
-        requestValue.deliveryRequest,
-      );
-    await this.deliver(deliveryRequest);
-    const intakeView = await this.#record.readAIReproductionIntake(
-      deliveryRequest.digest,
-    );
-    if (intakeView === undefined) {
-      throw new Error("AI Reproduction Intake was not persisted");
-    }
-    const intake = intakeView.intake;
-    const attempt = defineAIReproductionAttempt({
-      intake,
-      packet: deliveryRequest.packet,
+  async run(requestValue: FindingAIReproductionRequest) {
+    const finding = findingSchema.parse(requestValue.finding);
+    const attempt = defineFindingAIReproductionAttempt({
+      finding,
       target: requestValue.target,
       runtimeProfile: requestValue.runtimeProfile,
       setupPlan: requestValue.setupPlan,
       environmentPolicy: requestValue.environmentPolicy,
       grants: requestValue.grants,
     });
-    const existing = await this.#record.readAIReproductionResult(attempt.id);
-    if (existing !== undefined) return existing.result;
-
-    const result = await this.#execute(intake, attempt, deliveryRequest.packet);
-    const recorded = await this.#record.recordAIReproductionResult(
-      intake,
-      attempt,
-      result,
+    const existing = await this.#record.readFindingAIReproductionByAttempt(
+      attempt.id,
     );
-    return recorded.view.result;
+    if (existing !== undefined) return existing.record;
+    const record = await this.#execute(finding, attempt);
+    const appended = await this.#record.recordFindingAIReproduction(
+      finding,
+      attempt,
+      record,
+    );
+    if (
+      appended.status === "occupied" &&
+      canonicalHumanOsJson(appended.view.record) !==
+        canonicalHumanOsJson(record)
+    ) {
+      throw new Error("Finding AI Reproduction Attempt conflict");
+    }
+    return appended.view.record;
   }
 
-  async read(attemptId: string): Promise<AIReproductionResult | undefined> {
-    return (await this.#record.readAIReproductionResult(attemptId))?.result;
+  async read(findingId: string): Promise<AIReproductionView | undefined> {
+    const events = await this.#record.listFindingAIReproduction(findingId);
+    const first = events[0];
+    if (first === undefined) return undefined;
+    if (
+      events.some(
+        (event) =>
+          event.finding.id !== first.finding.id ||
+          humanOsDigest(event.finding) !== humanOsDigest(first.finding),
+      )
+    ) {
+      throw new Error("Finding AI Reproduction replay binding mismatch");
+    }
+    return {
+      finding: first.finding,
+      assurance: {
+        source: "source-validated",
+        runtime: events.map((event) => event.record.outcome.status),
+      },
+      records: events.map((event) => event.record),
+    };
   }
 
-  async #execute(
-    intake: AIReproductionIntake,
-    attempt: AIReproductionAttempt,
-    packet: RuntimeVerificationPacket,
-  ): Promise<AIReproductionResult> {
+  async #execute(finding: Finding, attempt: FindingAIReproductionAttempt) {
     let rawExecution: unknown;
     try {
-      rawExecution = await this.#harness.run({ attempt, packet });
+      rawExecution = await this.#harness.run({ finding, attempt });
     } catch {
-      return failedResult({
-        attempt,
-        packet,
-        completedAt: this.#clock().toISOString(),
-        reason: "harness-failed",
-        description:
-          "The harness failed before it produced a typed runtime outcome.",
-        cleanup: "not-required",
+      return this.#withoutExperiment(finding, attempt, {
+        status: "inconclusive",
+        reason: "The AI Reproduction harness failed before a typed outcome.",
       });
     }
-    const parsedExecution =
-      aiReproductionHarnessExecutionSchema.safeParse(rawExecution);
-    if (!parsedExecution.success) {
-      return failedResult({
-        attempt,
-        packet,
-        completedAt: this.#clock().toISOString(),
-        reason: "invalid-harness-output",
-        description:
-          "The harness output did not satisfy the AI Reproduction contract.",
-        cleanup: "not-required",
+    const parsed =
+      findingAIReproductionHarnessExecutionSchema.safeParse(rawExecution);
+    if (!parsed.success) {
+      return this.#withoutExperiment(finding, attempt, {
+        status: "inconclusive",
+        reason: "The AI Reproduction harness returned an invalid outcome.",
       });
     }
-    const execution = parsedExecution.data;
+    const execution = parsed.data;
     if (execution.cleanup === "failed") {
-      return failedResult({
-        attempt,
-        packet,
-        completedAt: execution.completedAt,
-        reason: "cleanup-failed",
-        description: "The disposable runtime could not be fully cleaned up.",
-        cleanup: "failed",
-      });
-    }
-    if (execution.status === "runtime-confirmed") {
-      return this.#confirmedResult(attempt, packet, execution);
-    }
-    const attemptRef = referenceAIReproductionAttempt(attempt);
-    if (execution.status === "runtime-inconclusive") {
-      return aiReproductionResultSchema.parse({
-        kind: "ai-reproduction-result",
-        schemaVersion: 2,
-        attempt: attemptRef,
-        runtimePacket: attempt.packet,
-        completedAt: execution.completedAt,
-        cleanup: execution.cleanup,
-        status: execution.status,
-        reason: execution.reason,
-        description: publicOutcomeDescription(
-          execution.status,
-          execution.reason,
-        ),
-        triagePacket: null,
+      return this.#withoutExperiment(finding, attempt, {
+        status: "inconclusive",
+        reason: "The disposable AI environment could not be cleaned up.",
+        performedAt: execution.completedAt,
       });
     }
     if (execution.status === "setup-blocked") {
-      return aiReproductionResultSchema.parse({
-        kind: "ai-reproduction-result",
-        schemaVersion: 2,
-        attempt: attemptRef,
-        runtimePacket: attempt.packet,
-        completedAt: execution.completedAt,
-        cleanup: execution.cleanup,
-        status: execution.status,
-        reason: execution.reason,
-        description: publicOutcomeDescription(
-          execution.status,
-          execution.reason,
-        ),
-        triagePacket: null,
+      return this.#withoutExperiment(finding, attempt, {
+        status: "setup-blocked",
+        reason: execution.description,
+        performedAt: execution.completedAt,
       });
     }
-    return failedResult({
-      attempt,
-      packet,
-      completedAt: execution.completedAt,
-      reason: execution.reason,
-      description: publicOutcomeDescription(execution.status, execution.reason),
-      cleanup: execution.cleanup,
-    });
-  }
-
-  async #confirmedResult(
-    attempt: AIReproductionAttempt,
-    packet: RuntimeVerificationPacket,
-    execution: Extract<
-      AIReproductionHarnessExecution,
-      { readonly status: "runtime-confirmed" }
-    >,
-  ): Promise<AIReproductionResult> {
+    if (execution.status === "inconclusive") {
+      return this.#withoutExperiment(finding, attempt, {
+        status: "inconclusive",
+        reason: execution.description,
+        performedAt: execution.completedAt,
+      });
+    }
+    if (!environmentMatchesAttempt(execution, attempt)) {
+      return this.#withoutExperiment(finding, attempt, {
+        status: "inconclusive",
+        reason: "The runtime identity did not match the Finding-bound Attempt.",
+        performedAt: execution.completedAt,
+      });
+    }
     if (
-      !environmentMatchesAttempt(execution, attempt) ||
       execution.recipe.actors.attackerRole !== attempt.attackerPremise ||
       canonicalHumanOsJson(execution.recipe.payloads) !==
         canonicalHumanOsJson(execution.privateEvidence.exactPayloads)
     ) {
-      return aiReproductionResultSchema.parse({
-        kind: "ai-reproduction-result",
-        schemaVersion: 2,
-        attempt: referenceAIReproductionAttempt(attempt),
-        runtimePacket: attempt.packet,
-        completedAt: execution.completedAt,
-        cleanup: execution.cleanup,
-        status: "runtime-inconclusive",
-        reason: "environment-identity-mismatch",
-        description:
-          "The observed runtime or private evidence did not match the Packet-bound attempt.",
-        triagePacket: null,
+      return this.#withoutExperiment(finding, attempt, {
+        status: "inconclusive",
+        reason: "The private Recipe or evidence did not match the Attempt.",
+        performedAt: execution.completedAt,
       });
     }
+    if (!(await this.#privateBytesExist(execution.privateEvidence))) {
+      return this.#withoutExperiment(finding, attempt, {
+        status: "inconclusive",
+        reason: "Referenced screenshot or runtime log bytes were unavailable.",
+        performedAt: execution.completedAt,
+      });
+    }
+    const privateArtifacts = await this.#persistExperiment(
+      finding,
+      attempt,
+      execution,
+    );
+    if (privateArtifacts === undefined) {
+      return this.#withoutExperiment(finding, attempt, {
+        status: "inconclusive",
+        reason: "Private AI Reproduction evidence could not be stored.",
+        performedAt: execution.completedAt,
+      });
+    }
+    const outcome =
+      execution.status === "runtime-confirmed"
+        ? {
+            status: "runtime-confirmed" as const,
+            reason:
+              "AI Reproduction observed the Finding-bound Security Effect.",
+            securityEffect: "observed" as const,
+            preconditionsMatched: true as const,
+            recipeCompleted: true as const,
+          }
+        : {
+            status: "disproved" as const,
+            reason:
+              "AI Reproduction completed the Recipe with matching preconditions and did not observe the Security Effect.",
+            securityEffect: "not-observed" as const,
+            preconditionsMatched: true as const,
+            recipeCompleted: true as const,
+          };
+    return defineAIVerificationRecord({
+      kind: "ai-verification-record",
+      schemaVersion: 1,
+      finding: referenceFinding(finding),
+      attempt: referenceFindingAIReproductionAttempt(attempt),
+      performedAt: execution.completedAt,
+      environment: execution.runtimeIdentity,
+      outcome,
+      ...privateArtifacts,
+    });
+  }
 
-    const recipeIdentity = aiReproductionPrivateSchemas.recipeIdentity.parse({
-      kind: "reproduction-recipe",
-      schemaVersion: 2,
+  #withoutExperiment(
+    finding: Finding,
+    attempt: FindingAIReproductionAttempt,
+    input: {
+      readonly status: "inconclusive" | "setup-blocked";
+      readonly reason: string;
+      readonly performedAt?: string;
+    },
+  ): AIVerificationRecord {
+    return defineAIVerificationRecord({
+      kind: "ai-verification-record",
+      schemaVersion: 1,
+      finding: referenceFinding(finding),
+      attempt: referenceFindingAIReproductionAttempt(attempt),
+      performedAt: input.performedAt ?? this.#clock().toISOString(),
+      environment: null,
+      outcome: {
+        status: input.status,
+        reason: input.reason,
+        securityEffect: "uncertain",
+        preconditionsMatched: false,
+        recipeCompleted: false,
+      },
+      recipe: null,
+      privateEvidence: null,
+    });
+  }
+
+  async #privateBytesExist(
+    evidence: FindingAIReproductionPrivateEvidenceDraft,
+  ): Promise<boolean> {
+    try {
+      for (const pointer of [
+        ...evidence.screenshots,
+        ...evidence.runtimeLogs,
+      ]) {
+        const bytes = await this.#privateArtifactStore.readPrivateBytes(
+          pointer.digest,
+        );
+        if (rawBytesDigest(bytes) !== pointer.digest) return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async #persistExperiment(
+    finding: Finding,
+    attempt: FindingAIReproductionAttempt,
+    execution: Extract<
+      FindingAIReproductionHarnessExecution,
+      { readonly status: "runtime-confirmed" | "disproved" }
+    >,
+  ): Promise<
+    | {
+        readonly recipe: HumanOsPrivateArtifactRef;
+        readonly privateEvidence: HumanOsPrivateArtifactRef;
+      }
+    | undefined
+  > {
+    const recipeIdentity = {
+      kind: "reproduction-recipe" as const,
+      schemaVersion: 2 as const,
       attemptId: attempt.id,
       targetSnapshotDigest: attempt.target.snapshot.digest,
-      runtimeIdentity: aiReproductionRuntimeIdentitySchema.parse(
-        execution.runtimeIdentity,
-      ),
+      runtimeIdentity: execution.runtimeIdentity,
       recordedAt: execution.completedAt,
       recipe: execution.recipe,
-    });
-    const recipe = reproductionRecipeSchema.parse({
+    };
+    const evidenceIdentity = {
+      kind: "private-evidence-bundle" as const,
+      schemaVersion: 2 as const,
+      attemptId: attempt.id,
+      targetSnapshotDigest: attempt.target.snapshot.digest,
+      collectedAt: execution.completedAt,
+      evidence: execution.privateEvidence,
+    };
+    const recipe = findingAIReproductionPrivateSchemas.recipe.parse({
       ...recipeIdentity,
       id: humanOsDigest(recipeIdentity),
     });
-    const evidenceIdentity =
-      aiReproductionPrivateSchemas.evidenceIdentity.parse({
-        kind: "private-evidence-bundle",
-        schemaVersion: 2,
-        attemptId: attempt.id,
-        targetSnapshotDigest: attempt.target.snapshot.digest,
-        collectedAt: execution.completedAt,
-        evidence: execution.privateEvidence,
-      });
-    const evidence = privateEvidenceBundleSchema.parse({
+    const evidence = findingAIReproductionPrivateSchemas.evidence.parse({
       ...evidenceIdentity,
       id: humanOsDigest(evidenceIdentity),
     });
-
-    let recipeDigest: string;
-    let evidenceDigest: string;
     try {
-      [recipeDigest, evidenceDigest] = await Promise.all([
+      const [recipeDigest, evidenceDigest] = await Promise.all([
         this.#privateArtifactStore.putPrivateJson(recipe),
         this.#privateArtifactStore.putPrivateJson(evidence),
       ]);
+      if (
+        recipeDigest !== humanOsDigest(recipe) ||
+        evidenceDigest !== humanOsDigest(evidence)
+      ) {
+        return undefined;
+      }
+      return {
+        recipe: privateArtifactRef({
+          artifactKind: "reproduction-recipe",
+          id: recipe.id,
+          digest: recipeDigest,
+          attemptId: attempt.id,
+          targetSnapshotDigest: finding.target.digest,
+        }),
+        privateEvidence: privateArtifactRef({
+          artifactKind: "private-evidence-bundle",
+          id: evidence.id,
+          digest: evidenceDigest,
+          attemptId: attempt.id,
+          targetSnapshotDigest: finding.target.digest,
+        }),
+      };
     } catch {
-      return failedResult({
-        attempt,
-        packet,
-        completedAt: execution.completedAt,
-        reason: "private-evidence-store-failed",
-        description:
-          "The private Recipe or evidence could not be stored durably.",
-        cleanup: "completed",
-      });
+      return undefined;
     }
-    if (
-      recipeDigest !== humanOsDigest(recipe) ||
-      evidenceDigest !== humanOsDigest(evidence)
-    ) {
-      return failedResult({
-        attempt,
-        packet,
-        completedAt: execution.completedAt,
-        reason: "private-evidence-store-failed",
-        description:
-          "The private store returned a digest for foreign artifact content.",
-        cleanup: "completed",
-      });
-    }
-
-    const recipeRef = privateArtifactRef({
-      artifactKind: "reproduction-recipe",
-      id: recipe.id,
-      digest: recipeDigest,
-      attemptId: attempt.id,
-      targetSnapshotDigest: attempt.target.snapshot.digest,
-    });
-    const evidenceRef = privateArtifactRef({
-      artifactKind: "private-evidence-bundle",
-      id: evidence.id,
-      digest: evidenceDigest,
-      attemptId: attempt.id,
-      targetSnapshotDigest: attempt.target.snapshot.digest,
-    });
-    const attemptRef = referenceAIReproductionAttempt(attempt);
-    const observation = publicObservation(attempt);
-    const proof = publicProof(execution);
-    const triageIdentity = aiReproductionPrivateSchemas.triageIdentity.parse({
-      kind: "triage-reproduction-packet",
-      schemaVersion: 2,
-      runtimePacket: attempt.packet,
-      attempt: attemptRef,
-      runtimeIdentity: execution.runtimeIdentity,
-      recipe: recipeRef,
-      privateEvidence: evidenceRef,
-      recipeMetadata: {
-        class: execution.recipe.class,
-        criterion: publicCriterion(attempt, execution),
-        stepCount: execution.recipe.steps.length,
-        expectedSecurityEffect: attempt.securityEffect.claimedPropertyChange,
-      },
-      observation,
-      proof,
-      confirmedAt: execution.completedAt,
-      boundary: {
-        runtimeConfirmed: true,
-        humanVerified: false,
-        findingEligible: false,
-        humanDisposition: false,
-        programmeEligibility: false,
-      },
-    });
-    const triagePacket = triageReproductionPacketSchema.parse({
-      ...triageIdentity,
-      id: humanOsDigest(triageIdentity),
-    });
-    return aiReproductionResultSchema.parse({
-      kind: "ai-reproduction-result",
-      schemaVersion: 2,
-      attempt: attemptRef,
-      runtimePacket: attempt.packet,
-      completedAt: execution.completedAt,
-      cleanup: "completed",
-      status: "runtime-confirmed",
-      runtimeIdentity: execution.runtimeIdentity,
-      observation,
-      recipe: recipeRef,
-      privateEvidence: evidenceRef,
-      triagePacket,
-    });
   }
 }
 

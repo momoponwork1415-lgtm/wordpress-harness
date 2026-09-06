@@ -5,8 +5,6 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  aiReproductionAttemptSchema,
-  aiReproductionResultSchema,
   defineCurrentHumanReviewPolicy,
   defineHumanReproductionRecord,
   defineHumanVerificationEnvironmentPolicy,
@@ -14,12 +12,16 @@ import {
   defineHumanVerificationSetupPlan,
   openCurrentHumanReview,
   setupStageNames,
-  triageReproductionPacketSchema,
-  type AIReproductionAttempt,
-  type AIReproductionResult,
   type HumanReproductionPreparation,
   type HumanReviewAIReproductionReader,
 } from "../../src/human-os/index.js";
+import {
+  aiReproductionAttemptSchema,
+  aiReproductionResultSchema,
+  triageReproductionPacketSchema,
+  type AIReproductionAttempt,
+  type AIReproductionResult,
+} from "../../src/human-os/ai-reproduction-contracts.js";
 import { humanOsDigest } from "../../src/human-os/canonical-json.js";
 import {
   openFileHumanOsArtifactStore,

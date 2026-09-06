@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
@@ -51,9 +51,37 @@ class FileHumanOsPrivateArtifactStore implements HumanOsPrivateArtifactStore {
     return artifact;
   }
 
+  async putPrivateBytes(value: Uint8Array): Promise<string> {
+    const digest = `sha256:${createHash("sha256").update(value).digest("hex")}`;
+    await mkdir(this.#directory, { mode: 0o700, recursive: true });
+    const destination = this.#blobPath(digest);
+    const temporary = join(
+      this.#directory,
+      `.${digest.slice("sha256:".length)}.${process.pid}.${randomUUID()}.tmp`,
+    );
+    await writeFile(temporary, value, { mode: 0o600 });
+    await rename(temporary, destination);
+    return digest;
+  }
+
+  async readPrivateBytes(digestValue: string): Promise<Uint8Array> {
+    const digest = digestSchema.parse(digestValue);
+    const value = await readFile(this.#blobPath(digest));
+    const actual = `sha256:${createHash("sha256").update(value).digest("hex")}`;
+    if (actual !== digest) {
+      throw new Error(`Human OS private blob digest mismatch: ${digest}`);
+    }
+    return value;
+  }
+
   #artifactPath(digestValue: string): string {
     const digest = digestSchema.parse(digestValue);
     return join(this.#directory, `${digest.slice("sha256:".length)}.json`);
+  }
+
+  #blobPath(digestValue: string): string {
+    const digest = digestSchema.parse(digestValue);
+    return join(this.#directory, `${digest.slice("sha256:".length)}.blob`);
   }
 }
 

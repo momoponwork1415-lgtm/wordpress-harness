@@ -1,40 +1,24 @@
 export {
-  aiReproductionAttemptRefSchema,
-  aiReproductionAttemptSchema,
-  aiReproductionClassSchema,
-  aiReproductionHarnessExecutionSchema,
-  aiReproductionIntakeSchema,
-  aiReproductionResultSchema,
-  aiReproductionRuntimeIdentitySchema,
-  aiReproductionToolPolicySchema,
-  humanOsPrivateArtifactRefSchema,
-  privateEvidenceBundleSchema,
-  reproductionRecipeSchema,
-  triageReproductionPacketSchema,
+  aiVerificationOutcomeSchema,
+  aiVerificationRecordSchema,
+  findingAIReproductionAttemptRefSchema,
+  findingAIReproductionAttemptSchema,
 } from "./ai-reproduction-contracts.js";
 export type {
-  AIReproductionAttempt,
-  AIReproductionAttemptRef,
-  AIReproductionClass,
-  AIReproductionHarnessExecution,
-  AIReproductionIntake,
-  AIReproductionResult,
-  AIReproductionRuntimeIdentity,
-  HumanOsPrivateArtifactRef,
-  PrivateEvidenceBundle,
-  PrivateEvidenceDraft,
-  ReproductionRecipe,
-  ReproductionRecipeDraft,
-  TriageReproductionPacket,
+  AIVerificationOutcome,
+  AIVerificationRecord,
+  FindingAIReproductionAttempt,
+  FindingAIReproductionAttemptRef,
 } from "./ai-reproduction-contracts.js";
 export { openAIReproduction } from "./ai-reproduction.js";
 export type {
   AIReproduction,
-  AIReproductionHarness,
-  AIReproductionRunRequest,
-  HumanOsPrivateArtifactStore,
+  AIReproductionView,
+  FindingAIReproductionRequest,
   OpenAIReproductionOptions,
 } from "./ai-reproduction.js";
+export { openGvisorAIReproductionHarness } from "./gvisor-ai-reproduction-harness.js";
+export type { OpenGvisorAIReproductionHarnessOptions } from "./gvisor-ai-reproduction-harness.js";
 export {
   currentFindingSchema,
   currentHumanReviewCaseSchema,
@@ -87,11 +71,13 @@ export type {
 } from "./legacy-human-verification-replay.js";
 export {
   defineExternalDependencyGrant,
+  defineFindingVerificationEnvironmentRequest,
   defineHumanVerificationEnvironmentPolicy,
   defineHumanVerificationEnvironmentRequest,
   defineHumanVerificationRuntimeProfile,
   defineHumanVerificationSetupPlan,
   externalDependencyGrantSchema,
+  findingVerificationEnvironmentRequestSchema,
   humanVerificationEnvironmentDispositionSchema,
   humanVerificationEnvironmentRefSchema,
   humanVerificationEnvironmentPolicySchema,
@@ -114,10 +100,12 @@ export type {
   HumanVerificationRuntimeProfile,
   HumanVerificationSetupPlan,
   HumanVerificationTarget,
+  FindingVerificationEnvironmentRequest,
   IsolationGateObservation,
   SetupReceipt,
   SetupStageObservation,
   TargetRuntimeIdentity,
+  VerificationEnvironmentRequest,
 } from "./human-verification-environment-contracts.js";
 export { openHumanVerificationEnvironmentBuilder } from "./human-verification-environment.js";
 export type {
