@@ -221,6 +221,7 @@ async function createCampaignValidationFixture() {
     validationDisposition: "source-validated" as
       "source-validated" | "needs-research" | "disproven",
     depthFailure: "none" as "none" | "budget-exhausted",
+    waveEvaluationFailure: "none" as "none" | "invalid-output",
     candidateIdentitySuffix: "",
     validationCandidateCount: 1,
     validatorReportedTokens: undefined as number | undefined,
@@ -390,6 +391,19 @@ async function createCampaignValidationFixture() {
         });
       }
       if (plan.role === "root-evaluator") {
+        if (
+          controls.waveEvaluationFailure === "invalid-output" &&
+          plan.assignment.kind === "wave-evaluation"
+        ) {
+          // A completed Attempt whose output the current Root Evaluator
+          // contract refuses. `output` is unknown at the Attempt layer, so the
+          // Attempt itself is well formed and the failure belongs to the
+          // evaluation, which is what drives the second ordinal.
+          return completedResult(plan, {
+            kind: "root-evaluator-output",
+            schemaVersion: 1,
+          });
+        }
         const prefix = "Wave evaluation context: ";
         const line = plan.prompt
           .split("\n")
@@ -2685,6 +2699,82 @@ describe("CampaignRunner.run source-only Validation", () => {
     } finally {
       research.close();
       await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("records evaluation-incomplete when the retried Root Evaluator output stays invalid", async () => {
+    const fixture = await createCampaignValidationFixture();
+    const { controls, input, observedPlans, plan, research } = fixture;
+    try {
+      const retryInput = {
+        ...input,
+        campaignId: "campaign-validation-root-evaluator-retry",
+      };
+      const retryPreparation = await research.runner.prepare(retryInput);
+      if (retryPreparation.targetFileManifest === undefined) {
+        throw new Error("Expected a retried Campaign manifest");
+      }
+      controls.activeCampaignId = retryInput.campaignId;
+      controls.waveEvaluationFailure = "invalid-output";
+      const retryPlan = campaignDefaultSemanticRunPlanV3Schema.parse({
+        ...plan,
+        campaignId: retryInput.campaignId,
+        runId: "source-validation-root-evaluator-retry",
+        preparationDigest: retryPreparation.inputDigest,
+        manifest: retryPreparation.targetFileManifest,
+      });
+      controls.expectedValidationRunId = retryPlan.runId;
+      const callOffset = observedPlans.length;
+
+      await expect(research.runner.run(retryPlan)).resolves.toMatchObject({
+        schemaVersion: 4,
+        decision: "incomplete",
+      });
+
+      // The Root Evaluation reserve guarantees one evaluation, not two. The
+      // second wave Attempt is admitted from ordinary Exploration budget, so a
+      // rejected evaluator output stays a typed outcome instead of throwing a
+      // run conflict out of the admission transaction.
+      expect(
+        observedPlans
+          .slice(callOffset)
+          .filter(
+            (attempt) =>
+              attempt.role === "root-evaluator" &&
+              attempt.assignment.kind === "wave-evaluation",
+          ),
+      ).toHaveLength(2);
+      await expect(
+        research.reader.inspect(retryInput.campaignId, {
+          kind: "run",
+          runId: retryPlan.runId,
+        }),
+      ).resolves.toMatchObject({
+        kind: "run",
+        value: {
+          stage: {
+            kind: "evaluation-incomplete",
+            reason: "invalid-root-evaluator-output",
+            attempts: [{ role: "root-evaluator" }, { role: "root-evaluator" }],
+          },
+          decision: { kind: "incomplete", reason: "evaluation-incomplete" },
+        },
+      });
+      // The reserve is consumed exactly once: claimed by the first Attempt,
+      // never re-shielding the retry and never left active.
+      await expect(
+        research.reader.inspect(retryInput.campaignId, {
+          kind: "budget",
+          runId: retryPlan.runId,
+        }),
+      ).resolves.toMatchObject({
+        kind: "budget",
+        schemaVersion: 2,
+        protectedReservations: [],
+        activeReservations: [],
+      });
+    } finally {
+      await fixture.close();
     }
   });
 });

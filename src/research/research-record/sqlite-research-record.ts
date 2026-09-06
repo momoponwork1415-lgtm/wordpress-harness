@@ -2325,22 +2325,32 @@ class SqliteResearchRecord
         )
           ? reserveCampaignRootEvaluationBudget(run.plan)
           : undefined;
-        const claimsRootReservation =
+        // Identity and economics are separate questions about the same
+        // reserve. Every wave-evaluation Root Attempt is bound to it — Ledger
+        // decode requires the stamp, so a retry carries the same id — but only
+        // the first admitted Attempt claims it. Charging a retry against an
+        // already-claimed reserve would spend the credit twice; refusing it as
+        // a run conflict turned a typed evaluation-incomplete into an untyped
+        // throw out of the admission transaction.
+        const bindsRootReservation =
           intent.role === "root-evaluator" &&
           intent.workWaveDigest !== undefined &&
           rootReservation !== undefined;
+        const claimsRootReservation =
+          bindsRootReservation &&
+          rootReservation !== undefined &&
+          !ledger.semanticRootEvaluationBudgetClaims.has(
+            rootReservation.reservationId,
+          );
         if (
           (rootReservation !== undefined &&
             !ledger.semanticRootEvaluationBudgetReservations.has(
               rootReservation.reservationId,
             )) ||
-          (claimsRootReservation &&
-            (intent.rootEvaluationReservationId !==
-              rootReservation.reservationId ||
-              ledger.semanticRootEvaluationBudgetClaims.has(
-                rootReservation.reservationId,
-              ))) ||
-          (!claimsRootReservation &&
+          (bindsRootReservation &&
+            intent.rootEvaluationReservationId !==
+              rootReservation.reservationId) ||
+          (!bindsRootReservation &&
             intent.role === "root-evaluator" &&
             intent.rootEvaluationReservationId !== undefined)
         ) {
