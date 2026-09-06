@@ -140,6 +140,14 @@ describe("Legacy Research immutable replay", () => {
           kind: "progress",
         });
         expect(progress).toEqual(fixture.publicViews.progress);
+        // No recorded Attempt in any fixture carried a cost, so every summed
+        // figure here is a floor under the spend rather than the spend. Stated
+        // separately from `measurement`, which semantic-evaluated shows can be
+        // "reported" over the same Attempts — its own campaign usage record
+        // calls that cost partial, and the progress view must agree.
+        expect(progress).toMatchObject({
+          usage: { estimatedCostMeasurement: "partial" },
+        });
         expect(progress).toMatchObject({
           schemaVersion: 1,
           status: decision === null ? "running" : "completed",

@@ -15,6 +15,7 @@ export interface CampaignProgressCount {
 }
 
 export interface CampaignProgressUsage {
+  /** Whether the token and turn counts below are complete. Says nothing about cost. */
   readonly measurement: "reported" | "partial";
   readonly modelAttempts: number;
   readonly reportedModelAttempts: number;
@@ -27,6 +28,15 @@ export interface CampaignProgressUsage {
     readonly total: number;
   };
   readonly estimatedCostUsd: number;
+  /**
+   * Whether `estimatedCostUsd` is the whole cost or a floor under it.
+   *
+   * An Attempt can report its usage and still not report a cost — the provider
+   * envelope decides `measurement` without consulting the cost field — and an
+   * unreported cost is summed as zero. Answered separately from `measurement`
+   * so a partial cost cannot hide behind complete token counts.
+   */
+  readonly estimatedCostMeasurement: "reported" | "partial";
   readonly source: {
     readonly queries: number;
     readonly scanBytes: number;
@@ -177,6 +187,7 @@ export const campaignProgressViewV2Schema = z
         total: count,
       }),
       estimatedCostUsd: z.number().nonnegative(),
+      estimatedCostMeasurement: z.enum(["reported", "partial"]),
       source: z.strictObject({
         queries: count,
         scanBytes: count,

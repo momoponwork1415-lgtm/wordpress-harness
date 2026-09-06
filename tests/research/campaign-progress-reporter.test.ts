@@ -57,6 +57,7 @@ function progress(ledgerHead: number): CampaignProgressViewV1 {
         total: 0,
       },
       estimatedCostUsd: 0,
+      estimatedCostMeasurement: "partial",
       source: { queries: 0, scanBytes: 0, responseBytes: 0 },
     },
     lastDurableEvent: {
@@ -122,14 +123,47 @@ function readerFor(readProgress: () => CampaignProgressView): CampaignReader {
 describe("Campaign progress reporting", () => {
   it("preserves the exact V1 progress line", () => {
     expect(formatCampaignProgress(progress(3))).toBe(
-      "[research] status=running head=3 last=campaign.attempt-started attempts=0/1 active=finder:1 checkpoints=0 hypotheses=0 verifications=0/0 findings=0 blocked=0 depth=0 tokens=0 cost-usd=0.000000",
+      "[research] status=running head=3 last=campaign.attempt-started attempts=0/1 active=finder:1 checkpoints=0 hypotheses=0 verifications=0/0 findings=0 blocked=0 depth=0 tokens=0 cost-usd=0.000000 cost-usd-measurement=partial",
     );
   });
 
   it("separates current V2 findings and dispositions from legacy counters", () => {
     expect(formatCampaignProgress(currentProgress(3))).toBe(
-      "[research] status=running head=3 last=campaign.attempt-started attempts=1/1 active=none checkpoints=2 hypotheses=1 validations=4/5 validation-active=1 findings=1 source-validated=1 needs-research=1 disproven=0 pending=2 legacy-verifications=4/4 legacy-findings=3 legacy-blocked=0 depth=1 tokens=0 cost-usd=0.000000",
+      "[research] status=running head=3 last=campaign.attempt-started attempts=1/1 active=none checkpoints=2 hypotheses=1 validations=4/5 validation-active=1 findings=1 source-validated=1 needs-research=1 disproven=0 pending=2 legacy-verifications=4/4 legacy-findings=3 legacy-blocked=0 depth=1 tokens=0 cost-usd=0.000000 cost-usd-measurement=partial",
     );
+  });
+
+  it("prints a bare cost only when every Attempt reported one", () => {
+    // The printed figure is a sum that charges an unreported cost as zero, so
+    // a partial line has to say so — otherwise a floor reads as the spend.
+    // A fully reported line keeps the shape operators already parse.
+    const reported = currentProgress(3);
+    expect(
+      formatCampaignProgress({
+        ...reported,
+        usage: {
+          ...reported.usage,
+          measurement: "reported",
+          modelAttempts: 1,
+          reportedModelAttempts: 1,
+          estimatedCostUsd: 1.5,
+          estimatedCostMeasurement: "reported",
+        },
+      }),
+    ).toMatch(/ tokens=0 cost-usd=1\.500000$/);
+    expect(
+      formatCampaignProgress({
+        ...reported,
+        usage: {
+          ...reported.usage,
+          measurement: "reported",
+          modelAttempts: 2,
+          reportedModelAttempts: 2,
+          estimatedCostUsd: 1.5,
+          estimatedCostMeasurement: "partial",
+        },
+      }),
+    ).toMatch(/ tokens=0 cost-usd=1\.500000 cost-usd-measurement=partial$/);
   });
 
   it("emits changed Ledger state and heartbeats without changing work outcome", async () => {

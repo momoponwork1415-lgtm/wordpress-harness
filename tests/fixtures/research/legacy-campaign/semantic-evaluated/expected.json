@@ -158,6 +158,7 @@
           "total": 750
         },
         "estimatedCostUsd": 0.75,
+        "estimatedCostMeasurement": "partial",
         "source": {
           "queries": 7,
           "scanBytes": 200,

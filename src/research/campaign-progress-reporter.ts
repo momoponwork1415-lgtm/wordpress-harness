@@ -33,6 +33,15 @@ export function formatCampaignProgress(progress: CampaignProgressView): string {
   const attempts = progress.counts.attempts;
   const checkpoints = progress.counts.checkpoints;
   const verifications = progress.counts.verifications;
+  // An unreported cost is summed as zero, so the printed figure is a floor
+  // rather than the spend. Said only when it is true, so a fully reported line
+  // reads exactly as it always has.
+  const costFields = [
+    `cost-usd=${progress.usage.estimatedCostUsd.toFixed(6)}`,
+    ...(progress.usage.estimatedCostMeasurement === "reported"
+      ? []
+      : ["cost-usd-measurement=partial"]),
+  ];
   if (progress.schemaVersion === 2) {
     const validations = progress.counts.validations;
     return [
@@ -56,7 +65,7 @@ export function formatCampaignProgress(progress: CampaignProgressView): string {
       `legacy-blocked=${verifications.blocked}`,
       `depth=${progress.counts.depthIterations}`,
       `tokens=${progress.usage.modelTokens.total}`,
-      `cost-usd=${progress.usage.estimatedCostUsd.toFixed(6)}`,
+      ...costFields,
     ].join(" ");
   }
   return [
@@ -73,7 +82,7 @@ export function formatCampaignProgress(progress: CampaignProgressView): string {
     `blocked=${verifications.blocked}`,
     `depth=${progress.counts.depthIterations}`,
     `tokens=${progress.usage.modelTokens.total}`,
-    `cost-usd=${progress.usage.estimatedCostUsd.toFixed(6)}`,
+    ...costFields,
   ].join(" ");
 }
 

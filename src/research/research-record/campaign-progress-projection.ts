@@ -54,21 +54,24 @@ function aggregateProgressUsage(
   incomplete: boolean,
 ): CampaignProgressUsage {
   const rolled = rollUpModelAttemptUsage(usages);
+  // A run still in flight cannot have complete usage however many of its
+  // Attempts reported, so this projection refuses "reported" while the run is
+  // incomplete. The campaign's own usage record has no such term.
+  const covered = !incomplete && rolled.attempts === modelAttempts;
   return {
-    // A run still in flight cannot have complete usage however many of its
-    // Attempts reported, so this projection refuses "reported" while the run
-    // is incomplete. The campaign's own usage record has no such term.
     measurement:
-      !incomplete &&
-      rolled.attempts === modelAttempts &&
-      rolled.everyAttemptReported
-        ? "reported"
-        : "partial",
+      covered && rolled.everyAttemptReported ? "reported" : "partial",
     modelAttempts,
     reportedModelAttempts: rolled.reportedAttempts,
     modelTurns: rolled.modelTurns,
     modelTokens: rolled.modelTokens,
     estimatedCostUsd: rolled.estimatedCostUsd,
+    // Answered from cost coverage rather than from `measurement`: an Attempt
+    // can report its usage and still carry no cost, and that cost is summed as
+    // zero. Reusing `measurement` here would call the total complete on the
+    // strength of the token counts.
+    estimatedCostMeasurement:
+      covered && rolled.everyCostReported ? "reported" : "partial",
     source: rolled.source,
   };
 }

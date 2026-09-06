@@ -130,6 +130,7 @@
           "total": 0
         },
         "estimatedCostUsd": 0,
+        "estimatedCostMeasurement": "partial",
         "source": {
           "queries": 0,
           "scanBytes": 0,
