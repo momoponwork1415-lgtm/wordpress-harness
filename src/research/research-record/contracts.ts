@@ -75,6 +75,7 @@ import type {
   ValidationFrontierGapRef,
   ValidationRecordRef as SourceValidationRecordRef,
 } from "../validation/contracts.js";
+import type { Finding } from "../validation/finding.js";
 import type {
   HumanReviewPacket,
   HumanReviewPacketHandoff,
@@ -128,6 +129,11 @@ export interface ResearchRecord {
     campaignId: string,
     runId: string,
   ): Promise<AnyCampaignRunRecordView | undefined>;
+  readCampaignFinding(
+    campaignId: string,
+    runId: string,
+    findingId: string,
+  ): Promise<Finding | undefined>;
   recordCampaignAttemptStart(
     intent: CampaignAttemptIntent,
   ): Promise<RecordCampaignAttemptStartResult>;

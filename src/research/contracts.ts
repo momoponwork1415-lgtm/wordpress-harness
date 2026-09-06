@@ -16,6 +16,7 @@ import {
 import type { TargetFileManifestRef } from "./source-mapping/contracts.js";
 import type { JsonArtifactStore } from "./research-record/contracts.js";
 import type { FindingMechanismGroups } from "./verification/contracts.js";
+import type { Finding } from "./validation/finding.js";
 import type {
   CampaignProgressSubjectRef,
   CampaignProgressView,
@@ -150,6 +151,12 @@ export interface CampaignRunSubjectRef {
   readonly runId: string;
 }
 
+export interface FindingSubjectRef {
+  readonly kind: "finding";
+  readonly runId: string;
+  readonly findingId: string;
+}
+
 export interface FindingMechanismGroupsSubjectRef {
   readonly kind: "finding-mechanism-groups";
   readonly runId: string;
@@ -163,6 +170,7 @@ export interface CampaignBudgetSubjectRef {
 export type SubjectRef =
   | PreparationSubjectRef
   | CampaignRunSubjectRef
+  | FindingSubjectRef
   | FindingMechanismGroupsSubjectRef
   | CampaignBudgetSubjectRef
   | CampaignProgressSubjectRef;
@@ -184,11 +192,20 @@ export interface CampaignRunSubjectView {
   readonly value: AnyCampaignRunRecord;
 }
 
+export interface FindingSubjectView {
+  readonly kind: "finding";
+  readonly schemaVersion: 1;
+  readonly campaignId: string;
+  readonly runId: string;
+  readonly finding: Finding;
+}
+
 export type FindingMechanismGroupsSubjectView = FindingMechanismGroups;
 
 export type SubjectView =
   | PreparationSubjectView
   | CampaignRunSubjectView
+  | FindingSubjectView
   | FindingMechanismGroupsSubjectView
   | CampaignBudgetView
   | CampaignProgressView;
@@ -212,6 +229,52 @@ export class CampaignPreparationIntegrityError extends Error {
   constructor(reason: "artifact-store-unavailable") {
     super(`Campaign preparation integrity check failed: ${reason}`);
     this.name = "CampaignPreparationIntegrityError";
+    this.reason = reason;
+  }
+}
+
+export class CampaignFindingNotFoundError extends Error {
+  readonly campaignId: string;
+  readonly runId: string;
+  readonly findingId: string;
+
+  constructor(campaignId: string, runId: string, findingId: string) {
+    super(`Campaign Finding not found: ${campaignId}/${runId}/${findingId}`);
+    this.name = "CampaignFindingNotFoundError";
+    this.campaignId = campaignId;
+    this.runId = runId;
+    this.findingId = findingId;
+  }
+}
+
+export type CampaignFindingIntegrityReason =
+  | "artifact-store-unavailable"
+  | "finding-artifact-missing"
+  | "finding-cas-mismatch"
+  | "source-validation-missing"
+  | "candidate-artifact-missing"
+  | "candidate-cas-mismatch"
+  | "independent-validation-projection-mismatch";
+
+export class CampaignFindingIntegrityError extends Error {
+  readonly campaignId: string;
+  readonly runId: string;
+  readonly findingId: string;
+  readonly reason: CampaignFindingIntegrityReason;
+
+  constructor(
+    campaignId: string,
+    runId: string,
+    findingId: string,
+    reason: CampaignFindingIntegrityReason,
+  ) {
+    super(
+      `Campaign Finding integrity check failed: ${campaignId}/${runId}/${findingId} (${reason})`,
+    );
+    this.name = "CampaignFindingIntegrityError";
+    this.campaignId = campaignId;
+    this.runId = runId;
+    this.findingId = findingId;
     this.reason = reason;
   }
 }

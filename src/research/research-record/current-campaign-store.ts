@@ -26,6 +26,7 @@ import type {
   ValidationCandidate,
   CurrentValidationRecordRef,
 } from "../validation/contracts.js";
+import type { Finding } from "../validation/finding.js";
 import type {
   ApproachFamilyRegistryRecordViewV3,
   CompleteSemanticCampaignAttemptWithBudgetInput,
@@ -47,7 +48,7 @@ import type {
 } from "./contracts.js";
 
 /**
- * Private persistence seam for the current Campaign write path.
+ * Private persistence seam for current Campaign state and handoffs.
  *
  * It deliberately excludes archived run writers, automated Verification writes,
  * and the broad legacy ResearchRecord contract. Contract schema versions remain
@@ -65,6 +66,11 @@ export interface CurrentCampaignStore {
   recordSemanticCampaignRunCompletionV4(
     input: CampaignRunCompletionInputV4,
   ): Promise<CampaignRunRecordViewV4>;
+  readCampaignFinding(
+    campaignId: string,
+    runId: string,
+    findingId: string,
+  ): Promise<Finding | undefined>;
   recordSemanticCampaignAttemptStart(
     intent: CampaignAttemptIntentV2,
   ): Promise<RecordSemanticCampaignAttemptStartResult>;

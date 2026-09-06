@@ -1,4 +1,5 @@
 import {
+  CampaignFindingNotFoundError,
   CampaignPreparationIntegrityError,
   CampaignPreparationConflictError,
   newCampaignInputSchema,
@@ -3884,6 +3885,27 @@ function createCampaignControl(
         return projectCampaign(preparation);
       },
       inspect: async (campaignId, subject): Promise<SubjectView> => {
+        if (subject.kind === "finding") {
+          const finding = await currentStore.readCampaignFinding(
+            campaignId,
+            subject.runId,
+            subject.findingId,
+          );
+          if (finding === undefined) {
+            throw new CampaignFindingNotFoundError(
+              campaignId,
+              subject.runId,
+              subject.findingId,
+            );
+          }
+          return {
+            kind: "finding",
+            schemaVersion: 1,
+            campaignId,
+            runId: subject.runId,
+            finding,
+          };
+        }
         if (subject.kind === "budget") {
           if (!supportsCurrentCampaignBudget(currentStore)) {
             throw new Error("Current Campaign budget store is unavailable");
