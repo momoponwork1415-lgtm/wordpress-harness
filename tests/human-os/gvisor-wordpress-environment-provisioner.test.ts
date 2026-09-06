@@ -11,6 +11,7 @@ import type {
   ContainerProcessRunner,
 } from "../../src/infrastructure/gvisor-wordpress-session.js";
 import {
+  defineFindingVerificationEnvironmentRequest,
   defineHumanVerificationEnvironmentPolicy,
   defineHumanVerificationEnvironmentRequest,
   defineHumanVerificationRuntimeProfile,
@@ -20,11 +21,20 @@ import {
   openHumanVerificationEnvironmentBuilder,
   setupStageNames,
 } from "../../src/human-os/index.js";
+import { defineFindingAIReproductionAttempt } from "../../src/human-os/ai-reproduction-contracts.js";
+import type {
+  GvisorAIReproductionBroker,
+  GvisorWordPressAssistantBroker,
+} from "../../src/human-os/gvisor-wordpress-environment-provisioner.js";
 import {
   openFileHumanOsArtifactStore,
   openSqliteHumanOsRecord,
 } from "../../src/human-os/human-os-record/index.js";
 import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
+import {
+  findingId,
+  findingSchema,
+} from "../../src/research/validation/finding.js";
 import { humanReviewPacketSchema } from "../../src/research/validation/human-review-packet.js";
 
 const fixedNow = "2026-09-05T05:00:00.000Z";
@@ -127,6 +137,63 @@ function packet(input: {
   });
 }
 
+function finding(input: {
+  readonly target: ReturnType<typeof packet>["target"];
+  readonly manifest: ReturnType<typeof packet>["manifest"];
+  readonly candidateSeed: string;
+}) {
+  const candidateId = digest(input.candidateSeed);
+  const anchor = {
+    path: "plugin.php",
+    fileDigest: digest(`file-${input.candidateSeed}`),
+    startLine: 1,
+    endLine: 1,
+  };
+  return findingSchema.parse({
+    kind: "finding",
+    schemaVersion: 1,
+    id: findingId(candidateId),
+    target: input.target,
+    manifest: input.manifest,
+    candidate: {
+      kind: "validation-candidate",
+      schemaVersion: 2,
+      id: candidateId,
+      digest: digest(`candidate-${input.candidateSeed}`),
+      targetSnapshotDigest: input.target.digest,
+      manifestDigest: input.manifest.digest,
+      origins: 1,
+    },
+    validation: {
+      kind: "validation-record",
+      schemaVersion: 3,
+      validationId: candidateId,
+      candidateId,
+      digest: digest(`validation-${input.candidateSeed}`),
+    },
+    causalIdentity: {
+      rootCause: "public-input-enters-query",
+      attackerControlledPrimitive: "public-request-value",
+      brokenSecurityProperty: "query-data-boundary",
+    },
+    attackerPremise: "unauthenticated",
+    brokenSecurityProperty: "query-data-boundary",
+    sourceRoute: [
+      {
+        ordinal: 1,
+        claim: "Public request data reaches a query structure.",
+        evidence: [anchor],
+      },
+    ],
+    sourceEvidence: [anchor],
+    counterevidence: {
+      status: "pass",
+      reason: "Independent source review found no effective boundary.",
+      evidence: [anchor],
+    },
+  });
+}
+
 class FakeDockerRunner implements ContainerProcessRunner {
   readonly requests: ContainerProcessRequest[] = [];
 
@@ -155,6 +222,17 @@ class FakeDockerRunner implements ContainerProcessRunner {
     }
     if (args.includes("core") && args.includes("version")) {
       return this.#result("6.8.2\n");
+    }
+    if (args[0] === "run" && args.includes("--eval")) {
+      return this.#result(
+        JSON.stringify({
+          kind: "gvisor-ai-reproduction-http-observation",
+          schemaVersion: 1,
+          status: 200,
+          mediaType: "application/json",
+          body: '{"bounded":true}',
+        }),
+      );
     }
     return this.#result("");
   }
@@ -271,6 +349,12 @@ describe("gVisor WordPress Environment provisioner", () => {
       grants: [],
     });
     const runner = new FakeDockerRunner();
+    const assistantBroker = {
+      run: vi.fn<GvisorWordPressAssistantBroker<string>["run"]>(
+        async (_session, observedRequest, role) =>
+          `${observedRequest.kind}:${role}`,
+      ),
+    };
     const provisioner = openGvisorWordPressEnvironmentProvisioner({
       processRunner: runner,
       readRunscVersion: async () => "release-20260817.0",
@@ -291,6 +375,7 @@ describe("gVisor WordPress Environment provisioner", () => {
           },
         }),
       },
+      assistantBroker,
     });
     const record = openSqliteHumanOsRecord({
       databasePath: join(directory, "human-os.sqlite"),
@@ -332,6 +417,11 @@ describe("gVisor WordPress Environment provisioner", () => {
       ).toBe(false);
 
       await expect(
+        provisioner.runAssistant(disposition.environment.id, "witness"),
+      ).resolves.toBe("human-verification-environment-request:witness");
+      expect(assistantBroker.run).toHaveBeenCalledOnce();
+
+      await expect(
         provisioner.cleanup({ environmentId: disposition.environment.id }),
       ).resolves.toBe("completed");
       expect(
@@ -339,6 +429,263 @@ describe("gVisor WordPress Environment provisioner", () => {
           (item) => item.args[0] === "rm" && item.args.includes("--force"),
         ),
       ).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("binds a Finding Attempt to a bounded HTTP experiment and excludes current sessions from the legacy Assistant", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "gvisor-finding-os-"));
+    const sourceDirectory = join(directory, "target");
+    const source = Buffer.from("<?php /* fixed public fixture */\n", "utf8");
+    await mkdir(sourceDirectory);
+    await writeFile(join(sourceDirectory, "plugin.php"), source);
+    const targetDigest = digest("finding-target-tree");
+    const entries = [
+      {
+        path: "plugin.php",
+        digest: rawDigest(source),
+        size: source.byteLength,
+      },
+    ];
+    const targetManifest = {
+      kind: "target-file-manifest" as const,
+      schemaVersion: 1 as const,
+      targetSnapshot: { id: "concrete-plugin-1.2.3", digest: targetDigest },
+      entries,
+    };
+    const manifestDigest = sha256Digest(targetManifest);
+    const reviewPacket = packet({ targetDigest, manifestDigest });
+    const sourceTreeDigest = humanVerificationSourceTreeDigest({
+      targetSnapshotDigest: targetDigest,
+      manifestDigest,
+      entries,
+    });
+    const currentFinding = finding({
+      target: reviewPacket.target,
+      manifest: reviewPacket.manifest,
+      candidateSeed: "current-candidate",
+    });
+    const foreignFinding = finding({
+      target: reviewPacket.target,
+      manifest: reviewPacket.manifest,
+      candidateSeed: "foreign-candidate",
+    });
+    const runtimeProfile = defineHumanVerificationRuntimeProfile({
+      kind: "human-verification-runtime-profile",
+      schemaVersion: 1,
+      wordpressVersion: "6.8.2",
+      phpVersion: "8.3.24",
+      databaseVersion: "11.8.3",
+      webServerVersion: "2.4.65",
+      isolation: {
+        backend: "gvisor",
+        runtimeName: "runsc",
+        runtimeVersion: "release-20260817.0",
+      },
+      images: {
+        wordpress: `registry.invalid/wordpress@${digest("wordpress")}`,
+        wordpressCli: `registry.invalid/wordpress-cli@${digest("cli")}`,
+        database: `registry.invalid/database@${digest("database")}`,
+        browser: `registry.invalid/browser@${digest("browser")}`,
+      },
+    });
+    const criteria = [
+      "wordpress-installed",
+      "target-files-match-manifest",
+      "target-reports-active",
+      "canonical-configuration-observed",
+      "normal-target-function-observed",
+    ] as const;
+    const setupPlan = defineHumanVerificationSetupPlan({
+      kind: "human-verification-setup-plan",
+      schemaVersion: 1,
+      pluginSlug: currentFinding.target.pluginSlug,
+      mainPluginFile: "plugin.php",
+      configuration: {
+        siteMode: "single-site",
+        locale: "en_US",
+        timezone: "UTC",
+        variantDigest: null,
+      },
+      stages: setupStageNames.map((stage, index) => ({
+        ordinal: index + 1,
+        stage,
+        successCriterion: criteria[index]!,
+      })),
+    });
+    const policy = defineHumanVerificationEnvironmentPolicy({
+      kind: "human-verification-environment-policy",
+      schemaVersion: 1,
+      isolation: { requiredBackend: "gvisor", silentFallback: false },
+      lifecycle: { fresh: true, disposable: true },
+      container: {
+        privileged: false,
+        hostNetwork: false,
+        engineSocketMounted: false,
+      },
+      credentials: {
+        ambientCredentials: false,
+        credentialBearingHostPaths: false,
+        brokeredSecretRefsOnly: true,
+      },
+      egress: { mode: "deny-all" },
+    });
+    const target = {
+      kind: "human-verification-target" as const,
+      schemaVersion: 1 as const,
+      snapshot: currentFinding.target,
+      manifest: currentFinding.manifest,
+      sourceArtifact: {
+        kind: "content-addressed-target-source" as const,
+        mediaType: "application/vnd.wordpress.source-tree+json" as const,
+        digest: sourceTreeDigest,
+      },
+    };
+    const request = defineFindingVerificationEnvironmentRequest({
+      finding: currentFinding,
+      target,
+      runtimeProfile,
+      setupPlan,
+      policy,
+      grants: [],
+    });
+    const attempt = defineFindingAIReproductionAttempt({
+      finding: currentFinding,
+      target,
+      runtimeProfile,
+      setupPlan,
+      environmentPolicy: policy,
+      grants: [],
+    });
+    const foreignAttempt = defineFindingAIReproductionAttempt({
+      finding: foreignFinding,
+      target,
+      runtimeProfile,
+      setupPlan,
+      environmentPolicy: policy,
+      grants: [],
+    });
+    const runner = new FakeDockerRunner();
+    const aiReproductionBroker = {
+      run: vi.fn<GvisorAIReproductionBroker["run"]>(
+        async (experiment, observedRequest, observedAttempt) => {
+          expect(Object.keys(experiment).sort()).toEqual([
+            "environmentId",
+            "exchange",
+          ]);
+          expect("runWorker" in experiment).toBe(false);
+          expect("runWordPressCli" in experiment).toBe(false);
+          expect("dispose" in experiment).toBe(false);
+          expect(observedRequest.digest).toBe(request.digest);
+          expect(observedAttempt.id).toBe(attempt.id);
+          Reflect.set(
+            observedRequest.runtimeProfile.images,
+            "browser",
+            `registry.invalid/foreign@${digest("foreign-browser")}`,
+          );
+          await expect(
+            experiment.exchange({
+              kind: "gvisor-ai-reproduction-http-exchange",
+              schemaVersion: 1,
+              method: "GET",
+              path: "//outside.example.invalid/",
+              mediaType: null,
+              body: null,
+            }),
+          ).rejects.toThrow("relative to the isolated WordPress origin");
+          const observation = await experiment.exchange({
+            kind: "gvisor-ai-reproduction-http-exchange",
+            schemaVersion: 1,
+            method: "POST",
+            path: "/wp-json/concrete-plugin/v1/check",
+            mediaType: "application/json",
+            body: '{"probe":"bounded"}',
+          });
+          expect(observation).toMatchObject({
+            status: 200,
+            body: '{"bounded":true}',
+          });
+          return {
+            status: "inconclusive" as const,
+            reason: "effect-unclear" as const,
+            description: "The bounded HTTP observation was not decisive.",
+          };
+        },
+      ),
+    } satisfies GvisorAIReproductionBroker;
+    const assistantBroker = {
+      run: vi.fn(async () => "legacy-only"),
+    } satisfies GvisorWordPressAssistantBroker<string>;
+    const provisioner = openGvisorWordPressEnvironmentProvisioner({
+      processRunner: runner,
+      readRunscVersion: async () => "release-20260817.0",
+      targetSourceResolver: {
+        resolve: async () => ({ sourceDirectory }),
+      },
+      setupBroker: {
+        resolve: async () => ({
+          dependencies: [],
+          configure: async () => digest("canonical-configuration"),
+          functionalSmoke: async (session) => {
+            await session.runWordPressCli([
+              "plugin",
+              "is-active",
+              currentFinding.target.pluginSlug,
+            ]);
+            return digest("functional-smoke");
+          },
+        }),
+      },
+      aiReproductionBroker,
+      assistantBroker,
+    });
+
+    try {
+      const setup = await provisioner.setup(request);
+      expect(setup.status).toBe("ready");
+      if (setup.status !== "ready") return;
+
+      await expect(
+        provisioner.runExperiment(setup.handle.environmentId, attempt),
+      ).resolves.toMatchObject({
+        status: "inconclusive",
+        reason: "effect-unclear",
+      });
+      expect(aiReproductionBroker.run).toHaveBeenCalledOnce();
+
+      const workerRequest = runner.requests.find(
+        ({ args }) => args[0] === "run" && args.includes("--eval"),
+      );
+      expect(workerRequest).toBeDefined();
+      expect(workerRequest?.args).toContain(runtimeProfile.images.browser);
+      expect(workerRequest?.args).not.toContain(
+        `registry.invalid/foreign@${digest("foreign-browser")}`,
+      );
+      expect(workerRequest?.args).toContain("--runtime=runsc");
+      expect(workerRequest?.args).toContain("wordpress:10.0.0.3");
+      expect(workerRequest?.args).not.toContain("--volume");
+      const browserImageIndex =
+        workerRequest?.args.indexOf(runtimeProfile.images.browser) ?? -1;
+      expect(
+        workerRequest?.args.slice(browserImageIndex + 1, browserImageIndex + 5),
+      ).toEqual(["node", "--input-type=module", "--eval", expect.any(String)]);
+
+      await expect(
+        provisioner.runExperiment(setup.handle.environmentId, foreignAttempt),
+      ).rejects.toThrow("does not own the live session");
+      await expect(
+        provisioner.runExperiment("foreign-session", attempt),
+      ).rejects.toThrow("Environment is not active");
+      await expect(
+        provisioner.runAssistant(setup.handle.environmentId, "witness"),
+      ).rejects.toThrow();
+      expect(aiReproductionBroker.run).toHaveBeenCalledOnce();
+      expect(assistantBroker.run).not.toHaveBeenCalled();
+
+      await expect(provisioner.cleanup(setup.handle)).resolves.toBe(
+        "completed",
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
