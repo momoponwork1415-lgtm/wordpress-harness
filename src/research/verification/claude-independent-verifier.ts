@@ -185,6 +185,7 @@ class FirstClaudeIndependentVerifier implements IndependentVerifier {
     try {
       processResult = await this.#process.execute({
         operationId: plan.verificationId,
+        role: "validator",
         modelProfile: this.#verifierModelProfile.execution,
         prompt: this.#renderPrompt(plan, sources),
         budget: {
@@ -212,6 +213,12 @@ class FirstClaudeIndependentVerifier implements IndependentVerifier {
       processResult.kind === "auth-required" ||
       processResult.kind === "policy-denied"
     ) {
+      throw new IndependentVerifierBlockedError("verifier-unavailable");
+    }
+    if (processResult.kind === "capacity-deferred") {
+      throw new IndependentVerifierBlockedError("budget-exhausted");
+    }
+    if (processResult.kind === "capacity-telemetry-unavailable") {
       throw new IndependentVerifierBlockedError("verifier-unavailable");
     }
     if (processResult.exitCode !== 0) {

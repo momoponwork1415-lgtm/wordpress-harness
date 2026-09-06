@@ -18,6 +18,7 @@ import {
 import { targetSnapshotRefSchema } from "../contracts.js";
 import { modelAttemptUsageV2Schema } from "../model-attempt-usage-contracts.js";
 import { targetFileManifestRefSchema } from "../source-mapping/contracts.js";
+import type { ModelCapacityProcessResult } from "./model-capacity.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const identifierSchema = z
@@ -432,7 +433,8 @@ export type ModelProcessResult =
   | {
       readonly kind: "output-limit-exceeded";
       readonly stderr: string;
-    };
+    }
+  | ModelCapacityProcessResult;
 
 export interface ModelProcess {
   execute(request: ModelProcessRequest): Promise<ModelProcessResult>;

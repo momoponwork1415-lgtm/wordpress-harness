@@ -33,6 +33,16 @@ import {
   decodeClaudeErrorEnvelope,
   type ClaudeProviderUsage,
 } from "./claude-envelope.js";
+import {
+  decodeClaudeSubscriptionCapacity,
+  evaluateModelCapacity,
+  modelCapacityPriorityForRole,
+  modelProviderCapacitySnapshotSchema,
+  parseModelCapacityPolicy,
+  type ModelCapacityPolicy,
+  type ModelProviderCapacitySnapshot,
+  type ModelCapacityRole,
+} from "./model-capacity.js";
 import type {
   ModelProcessObservation,
   ModelProcessObserver,
@@ -52,6 +62,8 @@ export interface OpenClaudeModelExecutionOptions {
   readonly claudeConfigDirectory?: string;
   readonly processObserver?: ModelProcessObserver;
   readonly processHeartbeatIntervalMs?: number;
+  readonly capacityPolicy: ModelCapacityPolicy | "disabled";
+  readonly clock?: () => Date;
 }
 
 export interface OpenClaudeStructuredProcessOptions {
@@ -62,6 +74,8 @@ export interface OpenClaudeStructuredProcessOptions {
   readonly claudeConfigDirectory?: string;
   readonly processObserver?: ModelProcessObserver;
   readonly processHeartbeatIntervalMs?: number;
+  readonly capacityPolicy?: ModelCapacityPolicy;
+  readonly clock?: () => Date;
 }
 
 export interface OpenGlmModelExecutionOptions {
@@ -95,6 +109,7 @@ export interface ClaudeStructuredProcessRequest {
   };
   readonly outputJsonSchema: object;
   readonly sourceEvidence?: AttemptSourceEvidence;
+  readonly role?: ModelCapacityRole;
 }
 
 export interface ClaudeStructuredProcess {
@@ -433,6 +448,8 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
   readonly #processObserver;
   readonly #processHeartbeatIntervalMs;
   readonly #provider;
+  readonly #capacityPolicy;
+  readonly #clock;
 
   constructor(
     options: OpenClaudeStructuredProcessOptions,
@@ -479,6 +496,11 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
     this.#processObserver = options.processObserver;
     this.#processHeartbeatIntervalMs = processHeartbeatIntervalMs;
     this.#provider = provider;
+    this.#capacityPolicy =
+      options.capacityPolicy === undefined
+        ? undefined
+        : parseModelCapacityPolicy(options.capacityPolicy);
+    this.#clock = options.clock ?? (() => new Date());
   }
 
   async execute(
@@ -582,7 +604,133 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
       return { kind: "timed-out", stderr: "" };
     }
 
-    let inferenceSegmentOrdinal = 2;
+    if (
+      this.#provider.kind === "anthropic" &&
+      this.#capacityPolicy !== undefined
+    ) {
+      const priority =
+        request.role === undefined
+          ? undefined
+          : modelCapacityPriorityForRole(request.role);
+      const policy = {
+        id: this.#capacityPolicy.id,
+        digest: this.#capacityPolicy.digest,
+      };
+      if (request.role === undefined || priority === undefined) {
+        return {
+          kind: "capacity-telemetry-unavailable",
+          policy,
+          priority: "completion",
+          reason: "capacity-role-unavailable",
+        };
+      }
+      const observedAt = this.#clock();
+      const normalizeCapacityOutput = (text: string): string => {
+        const snapshot = decodeClaudeSubscriptionCapacity(text, observedAt);
+        return snapshot === undefined
+          ? "[INVALID CAPACITY OUTPUT]"
+          : JSON.stringify(snapshot);
+      };
+      const capacityProbeDirectory = await mkdtemp(
+        join(tmpdir(), "wordpress-harness-capacity-"),
+      );
+      await chmod(capacityProbeDirectory, 0o700);
+      let capacity: NativeModelProcessResult;
+      try {
+        capacity = await this.#run(
+          [
+            "-p",
+            "--restricted",
+            "--strict-mcp-config",
+            "--tools",
+            "",
+            "--safe-mode",
+            "--no-chrome",
+            "--prompt-suggestions",
+            "false",
+            "--no-session-persistence",
+            "--output-format",
+            "json",
+            "/usage",
+          ],
+          undefined,
+          Math.min(remainingTime(), 10_000),
+          64 * 1024,
+          { LANG: "C", LC_ALL: "C", TZ: "UTC" },
+          { operationId, phase: "capacity-probe", segmentOrdinal: 2 },
+          [],
+          normalizeCapacityOutput,
+          capacityProbeDirectory,
+        );
+      } finally {
+        await rm(capacityProbeDirectory, { force: true, recursive: true });
+      }
+      let snapshot: ModelProviderCapacitySnapshot | undefined;
+      if (capacity.kind === "exited" && capacity.exitCode === 0) {
+        try {
+          const parsed: unknown = JSON.parse(capacity.stdout);
+          snapshot = modelProviderCapacitySnapshotSchema.parse(parsed);
+        } catch {
+          snapshot = undefined;
+        }
+      }
+      if (snapshot === undefined) {
+        const reason =
+          capacity.kind === "exited"
+            ? capacity.exitCode === 0
+              ? "capacity-output-invalid"
+              : `capacity-probe-exit-${capacity.exitCode}`
+            : capacity.kind === "timed-out"
+              ? "capacity-probe-timed-out"
+              : "capacity-probe-output-limit-exceeded";
+        this.#observe({
+          kind: "model-capacity-telemetry-unavailable",
+          schemaVersion: 1,
+          operationId,
+          phase: "capacity-probe",
+          segmentOrdinal: 2,
+          occurredAt: new Date().toISOString(),
+          policy,
+          priority,
+          reason,
+        });
+        return {
+          kind: "capacity-telemetry-unavailable",
+          policy,
+          priority,
+          reason,
+        };
+      }
+      const decision = evaluateModelCapacity(
+        this.#capacityPolicy,
+        request.role,
+        snapshot,
+      );
+      this.#observe({
+        kind: "model-capacity-observed",
+        schemaVersion: 1,
+        operationId,
+        phase: "capacity-probe",
+        segmentOrdinal: 2,
+        occurredAt: snapshot.observedAt,
+        policy,
+        snapshot,
+        decision,
+      });
+      if (decision.status === "deferred") {
+        return {
+          kind: "capacity-deferred",
+          policy,
+          decision,
+          snapshot,
+        };
+      }
+    }
+    if (remainingTime() === 0) {
+      return { kind: "timed-out", stderr: "" };
+    }
+
+    let inferenceSegmentOrdinal = this.#capacityPolicy === undefined ? 2 : 3;
     let sourceBridge: ClaudeSourceEvidenceBridge | undefined;
     if (request.sourceEvidence !== undefined) {
       try {
@@ -722,7 +870,8 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
       let remainingProviderCostUsd = request.budget.maxProviderCostUsd;
       const priorUsage: ClaudeProviderUsage[] = [];
       while (true) {
-        inferenceSegmentOrdinal = resumeOrdinal + 2;
+        inferenceSegmentOrdinal =
+          resumeOrdinal + (this.#capacityPolicy === undefined ? 2 : 3);
         const sessionArgs =
           sessionId === undefined
             ? ["--no-session-persistence"]
@@ -742,7 +891,8 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
           {
             operationId,
             phase: "inference",
-            segmentOrdinal: resumeOrdinal + 2,
+            segmentOrdinal:
+              resumeOrdinal + (this.#capacityPolicy === undefined ? 2 : 3),
           },
           providerCredential === undefined ? [] : [providerCredential],
           sourceBridge?.redact,
@@ -861,11 +1011,12 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
     },
     credentialsToRedact: readonly string[] = [],
     additionalRedact?: (text: string) => string,
+    workingDirectory = this.#workingDirectory,
   ): Promise<NativeModelProcessResult> {
     return runNativeModelProcess({
       executablePath: this.#executablePath,
       args,
-      workingDirectory: this.#workingDirectory,
+      workingDirectory,
       environment: minimalEnvironment(environmentOverrides),
       ...(stdin === undefined ? {} : { stdin }),
       timeoutMs,
@@ -897,13 +1048,22 @@ class NativeClaudeStructuredProcess implements ClaudeStructuredProcess {
 export function openClaudeModelExecution(
   options: OpenClaudeModelExecutionOptions,
 ): ModelExecution {
-  const process = openClaudeStructuredProcess(options);
+  const { capacityPolicy, ...processOptions } = options;
+  if (capacityPolicy === undefined) {
+    throw new Error("Claude Model Execution requires a capacity policy");
+  }
+  const process = openClaudeStructuredProcess(
+    capacityPolicy === "disabled"
+      ? processOptions
+      : { ...processOptions, capacityPolicy },
+  );
   return openModelExecution({
     artifactDirectory: options.artifactDirectory,
     process: {
       execute: (request: ModelProcessRequest) =>
         process.execute({
           operationId: request.plan.attemptId,
+          role: request.plan.role,
           modelProfile: request.plan.modelProfile,
           prompt: request.plan.prompt,
           budget: request.plan.budget,
@@ -929,6 +1089,7 @@ export function openGlmModelExecution(
       execute: (request: ModelProcessRequest) =>
         process.execute({
           operationId: request.plan.attemptId,
+          role: request.plan.role,
           modelProfile: request.plan.modelProfile,
           prompt: request.plan.prompt,
           budget: request.plan.budget,
@@ -977,6 +1138,7 @@ export function openClaudeStructuredModelExecutionFromProcess(
       try {
         result = await process.execute({
           ...request,
+          role: "root-synthesizer",
           modelProfile: modelProfile.data,
         });
       } catch (error: unknown) {
@@ -997,6 +1159,18 @@ export function openClaudeStructuredModelExecutionFromProcess(
       }
       if (result.kind === "output-limit-exceeded") {
         return { status: "budget-exhausted", reason: "output-limit-exceeded" };
+      }
+      if (result.kind === "capacity-deferred") {
+        return {
+          status: "budget-exhausted",
+          reason: "model-capacity-deferred",
+        };
+      }
+      if (result.kind === "capacity-telemetry-unavailable") {
+        return {
+          status: "provider-failed",
+          reason: "model-capacity-telemetry-unavailable",
+        };
       }
       if (result.exitCode !== 0) {
         return {

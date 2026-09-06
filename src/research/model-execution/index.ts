@@ -12,6 +12,18 @@ export {
 } from "./claude-process.js";
 export { openPrivateModelTranscript } from "./model-process-observability.js";
 export { openGrokModelExecution } from "./grok-process.js";
+export {
+  decodeClaudeSubscriptionCapacity,
+  defineModelCapacityPolicy,
+  evaluateModelCapacity,
+  initialOpusSubscriptionCapacityPolicy,
+  modelCapacityOutcomeArtifactSchema,
+  modelCapacityPolicyRefSchema,
+  modelCapacityPolicySchema,
+  modelCapacityPriorityForRole,
+  modelProviderCapacitySnapshotSchema,
+  parseModelCapacityPolicy,
+} from "./model-capacity.js";
 export type {
   ModelProcessObservation,
   ModelProcessObserver,
@@ -55,3 +67,13 @@ export type {
   OpenGlmStructuredProcessOptions,
 } from "./claude-process.js";
 export type { OpenGrokModelExecutionOptions } from "./grok-process.js";
+export type {
+  ModelCapacityDecision,
+  ModelCapacityOutcomeArtifact,
+  ModelCapacityPolicy,
+  ModelCapacityPolicyRef,
+  ModelCapacityPriority,
+  ModelCapacityProcessResult,
+  ModelCapacityRole,
+  ModelProviderCapacitySnapshot,
+} from "./model-capacity.js";

@@ -1,5 +1,6 @@
 import {
   chmod,
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
@@ -13,20 +14,35 @@ import { describe, expect, it } from "vitest";
 
 import { sha256Digest } from "../../src/research/research-record/canonical-json.js";
 import {
-  openClaudeModelExecution,
+  openClaudeModelExecution as openClaudeModelExecutionWithCapacity,
   openGlmModelExecution,
   openGrokModelExecution,
+  initialOpusSubscriptionCapacityPolicy,
   openModelExecution,
   openPrivateModelTranscript,
   type AttemptPlan,
   type AttemptPlanV2,
+  type ModelCapacityPolicy,
   type ModelProcess,
+  type OpenClaudeModelExecutionOptions,
 } from "../../src/research/model-execution/index.js";
 import { decodeGlmEnvelope } from "../../src/research/model-execution/glm-envelope.js";
 import { openSourceEvidenceFixture } from "../fixtures/source-evidence.js";
 
 const leaseId = sha256Digest("finder-lease");
 const anchorFileDigest = sha256Digest("entry-file");
+
+function openClaudeModelExecution(
+  options: Omit<OpenClaudeModelExecutionOptions, "capacityPolicy"> & {
+    readonly capacityPolicy?: ModelCapacityPolicy;
+  },
+) {
+  const { capacityPolicy, ...executionOptions } = options;
+  return openClaudeModelExecutionWithCapacity({
+    ...executionOptions,
+    capacityPolicy: capacityPolicy ?? "disabled",
+  });
+}
 
 function candidateHypothesis() {
   return {
@@ -362,6 +378,30 @@ describe("ModelExecution.run", () => {
       value: {
         status: "auth-required",
         reason: "provider-session-expired",
+      },
+    });
+  });
+
+  it("does not infer subscription capacity when provider telemetry is unavailable", async () => {
+    await expect(
+      runWithProcess({
+        execute: async () => ({
+          kind: "capacity-telemetry-unavailable",
+          policy: {
+            id: initialOpusSubscriptionCapacityPolicy.id,
+            digest: initialOpusSubscriptionCapacityPolicy.digest,
+          },
+          priority: "new-research",
+          reason: "capacity-output-invalid",
+        }),
+      }),
+    ).resolves.toMatchObject({
+      status: "provider-failed",
+      value: {
+        status: "provider-failed",
+        reason: expect.stringMatching(
+          /^model-capacity-telemetry-unavailable:sha256:[a-f0-9]{64}$/u,
+        ),
       },
     });
   });
@@ -1472,6 +1512,112 @@ fi
         status: "completed",
         value: { status: "completed", output },
       });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("defers a Finder before inference when the observed subscription window is reserved", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "claude-capacity-"));
+    const artifactDirectory = join(directory, "artifacts");
+    const executablePath = join(directory, "fake-claude");
+    const inferencePath = join(directory, "inference-started");
+    const usageText = [
+      "You are currently using your subscription to power your Claude Code usage",
+      "",
+      "Current session: 81% used · resets Sep 6, 2:50pm (UTC)",
+      "Current week (all models): 40% used · resets Sep 9, 3pm (UTC)",
+      "Current week (Fable): 0% used",
+    ].join("\n");
+    await writeFile(
+      executablePath,
+      `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf '%s\\n' '2.1.260 (Claude Code)'
+elif [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  printf '%s' '{"loggedIn":true}'
+else
+  last=''
+  for argument do last="$argument"; done
+  if [ "$last" = "/usage" ]; then
+    : > package.json
+    printf '%s' '${JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      duration_api_ms: 0,
+      num_turns: 0,
+      total_cost_usd: 0,
+      result: usageText,
+    })}'
+  else
+    touch '${inferencePath}'
+    exit 99
+  fi
+fi
+`,
+      "utf8",
+    );
+    await chmod(executablePath, 0o700);
+    const original = attemptPlan();
+    const execution = openClaudeModelExecution({
+      artifactDirectory,
+      executablePath,
+      executableVersion: "2.1.260",
+      workingDirectory: directory,
+      capacityPolicy: initialOpusSubscriptionCapacityPolicy,
+      clock: () => new Date("2026-09-06T12:30:00.000Z"),
+    });
+
+    try {
+      const result = await execution.run({
+        ...original,
+        modelProfile: {
+          ...original.modelProfile,
+          executableVersion: "2.1.260",
+        },
+      });
+      expect(result).toMatchObject({
+        status: "budget-exhausted",
+        value: {
+          status: "budget-exhausted",
+          reason: expect.stringMatching(
+            /^model-capacity-deferred:sha256:[a-f0-9]{64}$/u,
+          ),
+        },
+      });
+      await expect(lstat(inferencePath)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(
+        lstat(join(directory, "package.json")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      if (result.value.status === "completed") {
+        throw new Error("Expected a deferred capacity result");
+      }
+      const digest = result.value.reason.split(":").slice(-2).join(":");
+      const stored = JSON.parse(
+        await readFile(
+          join(artifactDirectory, `${digest.replace("sha256:", "")}.json`),
+          "utf8",
+        ),
+      );
+      expect(stored).toMatchObject({
+        kind: "model-capacity-outcome",
+        schemaVersion: 1,
+        outcome: "deferred",
+        attemptId: original.attemptId,
+        priority: "new-research",
+        exceededWindows: ["five-hour"],
+        retryAt: "2026-09-06T14:50:00.000Z",
+        snapshot: {
+          windows: {
+            fiveHour: { usedPercent: 81 },
+            sevenDay: { usedPercent: 40 },
+          },
+        },
+      });
+      expect(JSON.stringify(stored)).not.toContain("What's contributing");
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
