@@ -48,13 +48,14 @@ import type {
   CampaignBudgetView,
   CampaignRunCompletionInput,
   CampaignRunCompletionInputV2,
-  CampaignRunCompletionInputV3,
+  CampaignRunCompletionInputV4,
   CampaignRunPlan,
   CampaignRunPlanV2,
   CampaignRunPlanV3,
   CampaignRunRecordView,
   CampaignRunRecordViewV2,
   CampaignRunRecordViewV3,
+  CampaignRunRecordViewV4,
   AnyCampaignRunRecordView,
 } from "../campaign-control/contracts.js";
 import type { ModelAttemptUsageV2 } from "../model-attempt-usage-contracts.js";
@@ -68,6 +69,7 @@ import type { CampaignProgressView } from "../campaign-progress-contracts.js";
 import type {
   ValidationCandidate,
   ValidationCandidateRef,
+  LegacyValidationCandidateRef,
   ValidationFrontierGapRef,
   ValidationRecordRef as SourceValidationRecordRef,
 } from "../validation/contracts.js";
@@ -117,9 +119,9 @@ export interface ResearchRecord {
   recordSemanticCampaignRunCompletion(
     input: CampaignRunCompletionInputV2,
   ): Promise<CampaignRunRecordViewV2>;
-  recordSemanticCampaignRunCompletionV3(
-    input: CampaignRunCompletionInputV3,
-  ): Promise<CampaignRunRecordViewV3>;
+  recordSemanticCampaignRunCompletionV4(
+    input: CampaignRunCompletionInputV4,
+  ): Promise<CampaignRunRecordViewV4>;
   readCampaignRun(
     campaignId: string,
     runId: string,
@@ -370,7 +372,10 @@ export type RecordSemanticCampaignRunStartResult =
   | {
       readonly disposition: "completed";
       readonly planDigest: string;
-      readonly run: CampaignRunRecordViewV2 | CampaignRunRecordViewV3;
+      readonly run:
+        | CampaignRunRecordViewV2
+        | CampaignRunRecordViewV3
+        | CampaignRunRecordViewV4;
     };
 
 export type RecordVerificationStartResult =
@@ -458,7 +463,7 @@ export interface ValidationIntent {
   readonly campaignId: string;
   readonly runId: string;
   readonly validationId: string;
-  readonly candidate: ValidationCandidateRef;
+  readonly candidate: ValidationCandidateRef | LegacyValidationCandidateRef;
   readonly approachFamilyIds: readonly string[];
   readonly rootEvaluationDigests: readonly string[];
 }

@@ -867,11 +867,11 @@ describe("CampaignRunner.run source-only Validation", () => {
         runId: plan.runId,
       });
       expect({ ref, inspected }).toMatchObject({
-        ref: { schemaVersion: 3, decision: "incomplete" },
+        ref: { schemaVersion: 4, decision: "incomplete" },
         inspected: {
           kind: "run",
           value: {
-            schemaVersion: 3,
+            schemaVersion: 4,
             iterationDecision: {
               schemaVersion: 3,
               actions: [
@@ -1125,7 +1125,7 @@ describe("CampaignRunner.run source-only Validation", () => {
         });
         if (
           inspected.kind !== "run" ||
-          inspected.value.schemaVersion !== 3 ||
+          inspected.value.schemaVersion !== 4 ||
           !("findings" in inspected.value)
         ) {
           throw new Error("Expected a source-validated Finding");
@@ -1193,7 +1193,7 @@ describe("CampaignRunner.run source-only Validation", () => {
         { kind: "run", runId: needsResearchPlan.runId },
       );
       expect({ needsResearchRef, needsResearchInspected }).toMatchObject({
-        needsResearchRef: { schemaVersion: 3, decision: "incomplete" },
+        needsResearchRef: { schemaVersion: 4, decision: "incomplete" },
         needsResearchInspected: {
           value: {
             validations: [{ status: "needs-research" }],
@@ -1287,7 +1287,7 @@ describe("CampaignRunner.run source-only Validation", () => {
         runId: failurePlan.runId,
       });
       expect({ failureRef, failureInspected }).toMatchObject({
-        failureRef: { schemaVersion: 3, decision: "incomplete" },
+        failureRef: { schemaVersion: 4, decision: "incomplete" },
         failureInspected: {
           value: {
             depthResearch: {
@@ -1415,7 +1415,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       try {
         await expect(
           recoveringResearch.runner.run(crashRecoveryPlan),
-        ).resolves.toMatchObject({ schemaVersion: 3 });
+        ).resolves.toMatchObject({ schemaVersion: 4 });
         await expect(
           recoveringResearch.reader.inspect(input.campaignId, {
             kind: "run",
@@ -1465,7 +1465,7 @@ describe("CampaignRunner.run source-only Validation", () => {
         const recoveredBudgetSnapshot = budgetAfterRecovery;
         await expect(
           recoveringResearch.runner.run(crashRecoveryPlan),
-        ).resolves.toMatchObject({ schemaVersion: 3 });
+        ).resolves.toMatchObject({ schemaVersion: 4 });
         await expect(
           recoveringResearch.reader.inspect(input.campaignId, {
             kind: "budget",
@@ -1540,7 +1540,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       try {
         await expect(
           unknownRecoveryResearch.runner.run(unknownResultPlan),
-        ).resolves.toMatchObject({ schemaVersion: 3, decision: "incomplete" });
+        ).resolves.toMatchObject({ schemaVersion: 4, decision: "incomplete" });
         await expect(
           unknownRecoveryResearch.reader.inspect(input.campaignId, {
             kind: "run",
@@ -1604,7 +1604,7 @@ describe("CampaignRunner.run source-only Validation", () => {
         const unknownBudgetSnapshot = budgetAfterUnknownRecovery;
         await expect(
           unknownRecoveryResearch.runner.run(unknownResultPlan),
-        ).resolves.toMatchObject({ schemaVersion: 3, decision: "incomplete" });
+        ).resolves.toMatchObject({ schemaVersion: 4, decision: "incomplete" });
         await expect(
           unknownRecoveryResearch.reader.inspect(input.campaignId, {
             kind: "budget",
@@ -1707,7 +1707,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       try {
         await expect(
           validResultRecoveryResearch.runner.run(invalidStoredResultPlan),
-        ).resolves.toMatchObject({ schemaVersion: 3 });
+        ).resolves.toMatchObject({ schemaVersion: 4 });
       } finally {
         validResultRecoveryResearch.close();
       }
@@ -1729,7 +1729,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       const crossCandidateCallOffset = observedPlans.length;
       await expect(
         research.runner.run(crossCandidateBudgetPlan),
-      ).resolves.toMatchObject({ schemaVersion: 3, decision: "incomplete" });
+      ).resolves.toMatchObject({ schemaVersion: 4, decision: "incomplete" });
       await expect(
         research.reader.inspect(input.campaignId, {
           kind: "run",
@@ -1768,7 +1768,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       const crossCandidateCallsAfterCompletion = observedPlans.length;
       await expect(
         research.runner.run(crossCandidateBudgetPlan),
-      ).resolves.toMatchObject({ schemaVersion: 3, decision: "incomplete" });
+      ).resolves.toMatchObject({ schemaVersion: 4, decision: "incomplete" });
       expect(observedPlans).toHaveLength(crossCandidateCallsAfterCompletion);
     } finally {
       research.close();

@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 import { targetSnapshotRefSchema } from "../contracts.js";
-import { sourceBoundHypothesisArtifactSchema } from "../exploration/semantic-contracts.js";
 import {
   canonicalJson,
   sha256Digest,
@@ -51,8 +50,7 @@ export const findingSchema = z
     manifest: targetFileManifestRefSchema,
     candidate: validationCandidateRefSchema,
     validation: sourceValidationRecordRefSchema,
-    causalIdentity:
-      sourceBoundHypothesisArtifactSchema.shape.value.shape.causalIdentity,
+    causalIdentity: validationCandidateSchema.shape.causalIdentity,
     attackerPremise: validationCandidateSchema.shape.attackerPremise,
     brokenSecurityProperty:
       validationCandidateSchema.shape.brokenSecurityProperty,
@@ -117,36 +115,13 @@ export function referenceFinding(input: Finding): FindingRef {
 export function projectFinding(input: {
   readonly candidate: ValidationCandidate;
   readonly validation: z.infer<typeof sourceValidationRecordSchema>;
-  readonly hypothesis: z.infer<typeof sourceBoundHypothesisArtifactSchema>;
 }): Finding {
   const candidate = validationCandidateSchema.parse(input.candidate);
   const validation = sourceValidationRecordSchema.parse(input.validation);
-  const hypothesis = sourceBoundHypothesisArtifactSchema.parse(
-    input.hypothesis,
-  );
-  const hypothesisDigest = sha256Digest(hypothesis);
-  const hypothesisEvidence = new Set(
-    hypothesis.value.route.anchors.map((anchor) => canonicalJson(anchor)),
-  );
-  const routeEvidence = new Set(
-    candidate.causalRoute
-      .flatMap((step) => step.evidence)
-      .map((anchor) => canonicalJson(anchor)),
-  );
   if (
     validation.status !== "source-validated" ||
     validation.validationId !== candidate.id ||
-    validation.candidateId !== candidate.id ||
-    !candidate.origins.some(
-      (origin) => origin.subjectDigest === hypothesisDigest,
-    ) ||
-    hypothesis.target.digest !== candidate.target.digest ||
-    hypothesis.manifest.digest !== candidate.manifest.digest ||
-    hypothesis.value.attackerPremise !== candidate.attackerPremise ||
-    hypothesis.value.causalIdentity.brokenSecurityProperty !==
-      candidate.brokenSecurityProperty ||
-    routeEvidence.size !== hypothesisEvidence.size ||
-    [...routeEvidence].some((anchor) => !hypothesisEvidence.has(anchor))
+    validation.candidateId !== candidate.id
   ) {
     throw new Error("Source-validated Finding binding mismatch");
   }
@@ -181,7 +156,7 @@ export function projectFinding(input: {
     manifest: candidate.manifest,
     candidate: referenceValidationCandidate(candidate),
     validation: validationRef,
-    causalIdentity: hypothesis.value.causalIdentity,
+    causalIdentity: candidate.causalIdentity,
     attackerPremise: candidate.attackerPremise,
     brokenSecurityProperty: candidate.brokenSecurityProperty,
     sourceRoute: candidate.causalRoute,

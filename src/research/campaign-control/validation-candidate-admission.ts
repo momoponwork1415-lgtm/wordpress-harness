@@ -147,6 +147,7 @@ export async function materializeValidationCandidates(
       manifest: input.decision.manifest,
       attackerPremise: hypothesis.value.attackerPremise,
       brokenSecurityProperty: action.admission.brokenSecurityProperty,
+      causalIdentity: hypothesis.value.causalIdentity,
       causalRoute: action.admission.causalRoute.map((step) => ({
         ...step,
         evidence: [...step.evidence].sort(
@@ -188,7 +189,7 @@ export async function materializeValidationCandidates(
       candidateId,
       validationCandidateSchema.parse({
         kind: "validation-candidate",
-        schemaVersion: 1,
+        schemaVersion: 2,
         id: candidateId,
         ...candidateInput,
         origins,

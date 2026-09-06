@@ -22,17 +22,18 @@ import {
   campaignAttemptResultStoredV2Schema,
   campaignRunCompletionInputSchema,
   campaignRunCompletionInputV2Schema,
-  campaignRunCompletionInputV3Schema,
+  campaignRunCompletionInputV4Schema,
   campaignRunPlanSchema,
   campaignRunPlanV2Schema,
   campaignRunPlanV3Schema,
   campaignRunRecordSchema,
   campaignRunRecordV2Schema,
   campaignRunRecordV3Schema,
+  campaignRunRecordV4Schema,
   type AnyCampaignRunRecordView,
   type CampaignRunCompletionInput,
   type CampaignRunCompletionInputV2,
-  type CampaignRunCompletionInputV3,
+  type CampaignRunCompletionInputV4,
   type CampaignRunPlan,
   type CampaignRunPlanV2,
   type CampaignRunPlanV3,
@@ -41,9 +42,11 @@ import {
   type CampaignRunRecordRef,
   type CampaignRunRecordRefV2,
   type CampaignRunRecordRefV3,
+  type CampaignRunRecordRefV4,
   type CampaignRunRecordView,
   type CampaignRunRecordViewV2,
   type CampaignRunRecordViewV3,
+  type CampaignRunRecordViewV4,
   type CampaignAttemptCompletion,
   type CampaignAttemptCompletionV2,
   type CampaignAttemptBudgetReservation,
@@ -159,6 +162,8 @@ import { modelAttemptResultV2Schema } from "../model-execution/contracts.js";
 import { modelAttemptUsageV2Schema } from "../model-attempt-usage-contracts.js";
 import {
   referenceValidationCandidate,
+  legacyValidationCandidateRefSchema,
+  legacyValidationCandidateSchema,
   validationCandidateRefSchema,
   validationCandidateSchema,
   validationRecordRefSchema as sourceValidationRecordRefSchema,
@@ -462,6 +467,12 @@ const semanticCampaignRunCompletedPayloadV3Schema = z.strictObject({
   recordDigest: digestSchema,
 });
 
+const semanticCampaignRunCompletedPayloadV4Schema = z.strictObject({
+  completionInputDigest: digestSchema,
+  record: campaignRunRecordV4Schema,
+  recordDigest: digestSchema,
+});
+
 const semanticCampaignAttemptStartedPayloadSchema = z.strictObject({
   intent: campaignAttemptIntentV2Schema,
 });
@@ -581,7 +592,10 @@ const validationIntentSchema = z.strictObject({
   campaignId: z.string().min(1).max(128),
   runId: z.string().min(1).max(128),
   validationId: digestSchema,
-  candidate: validationCandidateRefSchema,
+  candidate: z.union([
+    validationCandidateRefSchema,
+    legacyValidationCandidateRefSchema,
+  ]),
   approachFamilyIds: z.array(digestSchema).min(1).max(64),
   rootEvaluationDigests: z.array(digestSchema).min(1).max(64),
 });
@@ -712,7 +726,8 @@ interface StoredSemanticCampaignRun {
   readonly startedAt: string;
   readonly startedLedgerHead: number;
   readonly completionInputDigest?: string;
-  readonly completed?: CampaignRunRecordViewV2 | CampaignRunRecordViewV3;
+  readonly completed?:
+    CampaignRunRecordViewV2 | CampaignRunRecordViewV3 | CampaignRunRecordViewV4;
 }
 
 interface LedgerProjection {
@@ -1169,7 +1184,7 @@ function semanticCampaignRunRef(
   };
 }
 
-function currentSemanticCampaignRunRef(
+function semanticCampaignRunRefV3(
   runId: string,
   recordDigest: string,
   decision: CampaignRunRecordRefV3["decision"],
@@ -1183,16 +1198,32 @@ function currentSemanticCampaignRunRef(
   };
 }
 
+function currentSemanticCampaignRunRef(
+  runId: string,
+  recordDigest: string,
+  decision: CampaignRunRecordRefV4["decision"],
+): CampaignRunRecordRefV4 {
+  return {
+    kind: "campaign-run-record",
+    schemaVersion: 4,
+    runId,
+    digest: recordDigest,
+    decision,
+  };
+}
+
 function isSemanticCampaignRunViewV2(
-  value: CampaignRunRecordViewV2 | CampaignRunRecordViewV3,
+  value:
+    CampaignRunRecordViewV2 | CampaignRunRecordViewV3 | CampaignRunRecordViewV4,
 ): value is CampaignRunRecordViewV2 {
   return value.ref.schemaVersion === 2;
 }
 
-function isSemanticCampaignRunViewV3(
-  value: CampaignRunRecordViewV2 | CampaignRunRecordViewV3,
-): value is CampaignRunRecordViewV3 {
-  return value.ref.schemaVersion === 3;
+function isSemanticCampaignRunViewV4(
+  value:
+    CampaignRunRecordViewV2 | CampaignRunRecordViewV3 | CampaignRunRecordViewV4,
+): value is CampaignRunRecordViewV4 {
+  return value.ref.schemaVersion === 4;
 }
 
 function semanticAttemptIdentityMatches(
@@ -1855,10 +1886,10 @@ class SqliteResearchRecord
     return transact();
   }
 
-  async recordSemanticCampaignRunCompletionV3(
-    value: CampaignRunCompletionInputV3,
-  ): Promise<CampaignRunRecordViewV3> {
-    const input = campaignRunCompletionInputV3Schema.parse(value);
+  async recordSemanticCampaignRunCompletionV4(
+    value: CampaignRunCompletionInputV4,
+  ): Promise<CampaignRunRecordViewV4> {
+    const input = campaignRunCompletionInputV4Schema.parse(value);
     if ("validations" in input) {
       if (input.findings.length > 0 && this.#artifactStore === undefined) {
         throw new Error("Finding persistence requires an Artifact Store");
@@ -1902,35 +1933,9 @@ class SqliteResearchRecord
         ) {
           throw new Error("Finding Candidate CAS mismatch");
         }
-        let hypothesis:
-          | ReturnType<typeof sourceBoundHypothesisArtifactSchema.parse>
-          | undefined;
-        for (const origin of [...candidate.origins].sort((left, right) =>
-          compareText(left.subjectDigest, right.subjectDigest),
-        )) {
-          const rawOrigin = await this.#artifactStore?.readJson(
-            origin.subjectDigest,
-          );
-          if (
-            rawOrigin === undefined ||
-            sha256Digest(rawOrigin) !== origin.subjectDigest
-          ) {
-            throw new Error("Finding Hypothesis CAS mismatch");
-          }
-          const parsed =
-            sourceBoundHypothesisArtifactSchema.safeParse(rawOrigin);
-          if (parsed.success) {
-            hypothesis = parsed.data;
-            break;
-          }
-        }
-        if (hypothesis === undefined) {
-          throw new Error("Finding lost its source-bound Hypothesis");
-        }
         const projected = projectFinding({
           candidate,
           validation: validation.data,
-          hypothesis,
         });
         if (canonicalJson(projected) !== canonicalJson(finding)) {
           throw new Error(
@@ -1940,7 +1945,7 @@ class SqliteResearchRecord
       }
     }
     const completionInputDigest = sha256Digest(input);
-    const transact = this.#database.transaction((): CampaignRunRecordViewV3 => {
+    const transact = this.#database.transaction((): CampaignRunRecordViewV4 => {
       const rows = this.#readRows(input.campaignId);
       if (rows.length === 0) {
         throw new Error(`Campaign not found: ${input.campaignId}`);
@@ -1960,7 +1965,7 @@ class SqliteResearchRecord
       const completed = existing.completed;
       if (completed !== undefined) {
         if (
-          !isSemanticCampaignRunViewV3(completed) ||
+          !isSemanticCampaignRunViewV4(completed) ||
           existing.completionInputDigest !== completionInputDigest
         ) {
           throw new CampaignRunConflictError(input.campaignId, input.runId);
@@ -2119,7 +2124,7 @@ class SqliteResearchRecord
       }
 
       const completedAt = this.#clock().toISOString();
-      const runRecord = campaignRunRecordV3Schema.parse({
+      const runRecord = campaignRunRecordV4Schema.parse({
         ...input,
         kind: "campaign-run-record",
         completedAt,
@@ -2132,7 +2137,7 @@ class SqliteResearchRecord
         "campaign.run-completed",
         completedAt,
         { completionInputDigest, record: runRecord, recordDigest },
-        3,
+        4,
       );
       return {
         ledgerHead,
@@ -3776,6 +3781,7 @@ class SqliteResearchRecord
       run.completed !== undefined ||
       registry === undefined ||
       intent === undefined ||
+      intent.intent.candidate.schemaVersion !== 2 ||
       intent.intent.candidate.id !== validation.candidateId
     ) {
       throw new CampaignRunConflictError(campaignId, runId);
@@ -3957,7 +3963,7 @@ class SqliteResearchRecord
     const candidateInput = await this.#artifactStore.readJson(
       packet.candidate.digest,
     );
-    const candidate = validationCandidateSchema.parse(candidateInput);
+    const candidate = legacyValidationCandidateSchema.parse(candidateInput);
     if (
       sha256Digest(candidate) !== packet.candidate.digest ||
       candidate.id !== packet.candidate.id ||
@@ -4158,7 +4164,7 @@ class SqliteResearchRecord
     const candidateInput = await this.#artifactStore.readJson(
       packet.candidate.digest,
     );
-    const candidate = validationCandidateSchema.parse(candidateInput);
+    const candidate = legacyValidationCandidateSchema.parse(candidateInput);
     if (
       sha256Digest(candidate) !== packet.candidate.digest ||
       candidate.id !== packet.candidate.id ||
@@ -6294,10 +6300,12 @@ class SqliteResearchRecord
         continue;
       }
       if (event.kind === "campaign.run-completed") {
-        if (event.schema_version === 3) {
-          const payload = semanticCampaignRunCompletedPayloadV3Schema.parse(
-            this.#parsePayload(event),
-          );
+        if (event.schema_version === 3 || event.schema_version === 4) {
+          const rawPayload = this.#parsePayload(event);
+          const payload =
+            event.schema_version === 4
+              ? semanticCampaignRunCompletedPayloadV4Schema.parse(rawPayload)
+              : semanticCampaignRunCompletedPayloadV3Schema.parse(rawPayload);
           const existing = semanticRuns.get(payload.record.runId);
           if (
             existing === undefined ||
@@ -6597,19 +6605,32 @@ class SqliteResearchRecord
               }
             }
           }
+          const completed: CampaignRunRecordViewV3 | CampaignRunRecordViewV4 =
+            event.schema_version === 4
+              ? {
+                  ledgerHead: event.campaign_sequence,
+                  occurredAt: event.occurred_at,
+                  ref: currentSemanticCampaignRunRef(
+                    payload.record.runId,
+                    payload.recordDigest,
+                    payload.record.decision.kind,
+                  ),
+                  value: campaignRunRecordV4Schema.parse(payload.record),
+                }
+              : {
+                  ledgerHead: event.campaign_sequence,
+                  occurredAt: event.occurred_at,
+                  ref: semanticCampaignRunRefV3(
+                    payload.record.runId,
+                    payload.recordDigest,
+                    payload.record.decision.kind,
+                  ),
+                  value: campaignRunRecordV3Schema.parse(payload.record),
+                };
           semanticRuns.set(payload.record.runId, {
             ...existing,
             completionInputDigest: payload.completionInputDigest,
-            completed: {
-              ledgerHead: event.campaign_sequence,
-              occurredAt: event.occurred_at,
-              ref: currentSemanticCampaignRunRef(
-                payload.record.runId,
-                payload.recordDigest,
-                payload.record.decision.kind,
-              ),
-              value: payload.record,
-            },
+            completed,
           });
           continue;
         }
@@ -6870,8 +6891,8 @@ export function openSqliteResearchStores(
     readPreparation: record.readPreparation.bind(record),
     recordSemanticCampaignRunStart:
       record.recordSemanticCampaignRunStart.bind(record),
-    recordSemanticCampaignRunCompletionV3:
-      record.recordSemanticCampaignRunCompletionV3.bind(record),
+    recordSemanticCampaignRunCompletionV4:
+      record.recordSemanticCampaignRunCompletionV4.bind(record),
     recordSemanticCampaignAttemptStart:
       record.recordSemanticCampaignAttemptStart.bind(record),
     recordSemanticCampaignAttemptAdmission:

@@ -11,14 +11,14 @@ import { targetFileManifestRefSchema } from "../source-mapping/contracts.js";
 import {
   currentValidationRecordRefSchema,
   currentValidationRecordSchema,
-  referenceValidationCandidate,
-  validationCandidateRefSchema,
-  validationCandidateSchema,
+  referenceLegacyValidationCandidate,
+  legacyValidationCandidateRefSchema,
+  legacyValidationCandidateSchema,
   validationCriteria,
   validationCriterionSchema,
   validationSourceAnchorSchema,
   validationThreatContextSchema,
-  type ValidationCandidate,
+  type LegacyValidationCandidate,
 } from "./contracts.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
@@ -100,7 +100,7 @@ const runtimeReproductionStepSchema = z.strictObject({
 
 export const runtimeReproductionSketchSchema = z
   .strictObject({
-    attackerRole: validationCandidateSchema.shape.attackerPremise,
+    attackerRole: legacyValidationCandidateSchema.shape.attackerPremise,
     preconditions: z.array(shareableResearchTextSchema).min(1).max(16),
     steps: z.array(runtimeReproductionStepSchema).min(1).max(32),
     expectedSecurityEffect: shareableResearchTextSchema,
@@ -122,10 +122,10 @@ export const runtimeReproductionSketchSchema = z
 const runtimeRiskAssessmentIdentitySchema = z.strictObject({
   kind: z.literal("risk-assessment"),
   schemaVersion: z.literal(2),
-  candidate: validationCandidateRefSchema,
+  candidate: legacyValidationCandidateRefSchema,
   validation: currentValidationRecordRefSchema,
   validationDisposition: z.literal("ready-for-runtime"),
-  attackerRole: validationCandidateSchema.shape.attackerPremise,
+  attackerRole: legacyValidationCandidateSchema.shape.attackerPremise,
   prerequisites: z.array(shareableResearchTextSchema).min(1).max(16),
   exposedSurface: shareableResearchTextSchema,
   securityEffect: runtimeSecurityEffectSchema,
@@ -162,15 +162,15 @@ const runtimeVerificationPacketIdentitySchema = z.strictObject({
   schemaVersion: z.literal(2),
   target: targetSnapshotRefSchema,
   manifest: targetFileManifestRefSchema,
-  candidate: validationCandidateRefSchema,
+  candidate: legacyValidationCandidateRefSchema,
   validation: currentValidationRecordRefSchema,
   threatContext: validationThreatContextSchema,
   riskAssessment: runtimeRiskAssessmentSchema,
   causalIdentity:
     sourceBoundHypothesisArtifactSchema.shape.value.shape.causalIdentity,
-  attackerPremise: validationCandidateSchema.shape.attackerPremise,
+  attackerPremise: legacyValidationCandidateSchema.shape.attackerPremise,
   securityEffect: runtimeSecurityEffectSchema,
-  sourceRoute: validationCandidateSchema.shape.causalRoute,
+  sourceRoute: legacyValidationCandidateSchema.shape.causalRoute,
   sourceEvidence: z.array(validationSourceAnchorSchema).min(1).max(128),
   sourceScreen: runtimeSourceScreenSchema,
   closestControl: closestControlSchema,
@@ -283,7 +283,7 @@ export const runtimeVerificationPacketPreparationFailureSchema = z.strictObject(
   {
     kind: z.literal("runtime-verification-packet-preparation-failure"),
     schemaVersion: z.literal(2),
-    candidate: validationCandidateRefSchema,
+    candidate: legacyValidationCandidateRefSchema,
     validation: currentValidationRecordRefSchema,
     reason: z.enum([
       "invalid-binding",
@@ -382,12 +382,14 @@ export function defineRuntimeVerificationPacketDeliveryRequest(input: {
 }
 
 export function prepareRuntimeVerificationPacket(input: {
-  readonly candidate: ValidationCandidate;
+  readonly candidate: LegacyValidationCandidate;
   readonly validation: z.infer<typeof currentValidationRecordSchema>;
   readonly hypothesis: z.infer<typeof sourceBoundHypothesisArtifactSchema>;
   readonly threatContext: z.infer<typeof validationThreatContextSchema>;
 }): RuntimeVerificationPacketPreparationResult {
-  const candidateResult = validationCandidateSchema.safeParse(input.candidate);
+  const candidateResult = legacyValidationCandidateSchema.safeParse(
+    input.candidate,
+  );
   const validationResult = currentValidationRecordSchema.safeParse(
     input.validation,
   );
@@ -470,7 +472,7 @@ export function prepareRuntimeVerificationPacket(input: {
         .map((anchor) => [canonicalJson(anchor), anchor] as const),
     ).values(),
   ];
-  const candidateRef = referenceValidationCandidate(candidate);
+  const candidateRef = referenceLegacyValidationCandidate(candidate);
   const validationRef = currentValidationRecordRefSchema.parse({
     kind: validation.kind,
     schemaVersion: validation.schemaVersion,

@@ -6,8 +6,8 @@ import {
   referenceRiskAssessment,
 } from "../../src/research/validation/human-review-packet.js";
 import {
-  validationCandidateId,
-  validationCandidateSchema,
+  legacyValidationCandidateId,
+  legacyValidationCandidateSchema,
   validationCriteria,
   validationRecordSchema,
 } from "../../src/research/validation/index.js";
@@ -89,10 +89,10 @@ function fixture(
     brokenSecurityProperty: "state-ownership",
     causalRoute: [{ ordinal: 1, claim: routeClaim, evidence: [anchor] }],
   };
-  const candidate = validationCandidateSchema.parse({
+  const candidate = legacyValidationCandidateSchema.parse({
     kind: "validation-candidate",
     schemaVersion: 1,
-    id: validationCandidateId(candidateIdentity),
+    id: legacyValidationCandidateId(candidateIdentity),
     ...candidateIdentity,
     origins: [
       {

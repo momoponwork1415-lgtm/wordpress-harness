@@ -29,8 +29,8 @@ import {
 } from "../../src/research/validation/runtime-verification-packet.js";
 import {
   currentValidationRecordSchema,
-  validationCandidateId,
-  validationCandidateSchema,
+  legacyValidationCandidateId,
+  legacyValidationCandidateSchema,
   validationCriteria,
 } from "../../src/research/validation/contracts.js";
 
@@ -123,10 +123,10 @@ function runtimePacket(): RuntimeVerificationPacket {
       },
     ],
   };
-  const candidate = validationCandidateSchema.parse({
+  const candidate = legacyValidationCandidateSchema.parse({
     kind: "validation-candidate",
     schemaVersion: 1,
-    id: validationCandidateId(candidateIdentity),
+    id: legacyValidationCandidateId(candidateIdentity),
     ...candidateIdentity,
     origins: [
       {

@@ -314,6 +314,11 @@ describe("Research Record Iteration Decision v3", () => {
         manifest,
         attackerPremise: "unauthenticated" as const,
         brokenSecurityProperty: "state-ownership",
+        causalIdentity: {
+          rootCause: "missing-ownership-check",
+          attackerControlledPrimitive: "public-state-write",
+          brokenSecurityProperty: "state-ownership",
+        },
         causalRoute: [
           {
             ordinal: 1,
@@ -331,7 +336,7 @@ describe("Research Record Iteration Decision v3", () => {
       };
       const candidate = validationCandidateSchema.parse({
         kind: "validation-candidate",
-        schemaVersion: 1,
+        schemaVersion: 2,
         id: validationCandidateId(candidateIdentity),
         ...candidateIdentity,
         origins: [
@@ -347,6 +352,11 @@ describe("Research Record Iteration Decision v3", () => {
         manifest,
         attackerPremise: "unresolved" as const,
         brokenSecurityProperty: "identity-integrity",
+        causalIdentity: {
+          rootCause: "unresolved-registration-guard",
+          attackerControlledPrimitive: "public-registration-input",
+          brokenSecurityProperty: "identity-integrity",
+        },
         causalRoute: [
           {
             ordinal: 1,
@@ -364,7 +374,7 @@ describe("Research Record Iteration Decision v3", () => {
       };
       const needsResearchCandidate = validationCandidateSchema.parse({
         kind: "validation-candidate",
-        schemaVersion: 1,
+        schemaVersion: 2,
         id: validationCandidateId(needsResearchCandidateIdentity),
         ...needsResearchCandidateIdentity,
         origins: [

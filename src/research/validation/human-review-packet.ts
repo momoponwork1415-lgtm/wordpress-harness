@@ -8,14 +8,14 @@ import {
 import { targetFileManifestRefSchema } from "../source-mapping/contracts.js";
 import { sourceBoundHypothesisArtifactSchema } from "../exploration/semantic-contracts.js";
 import {
-  referenceValidationCandidate,
-  validationCandidateRefSchema,
-  validationCandidateSchema,
+  referenceLegacyValidationCandidate,
+  legacyValidationCandidateRefSchema,
+  legacyValidationCandidateSchema,
   validationCriterionSchema,
   validationRecordRefSchema,
   validationRecordSchema,
   validationSourceAnchorSchema,
-  type ValidationCandidate,
+  type LegacyValidationCandidate,
   type ValidationRecord,
 } from "./contracts.js";
 
@@ -80,7 +80,7 @@ export const humanReproductionSketchSchema = z
 const riskAssessmentIdentitySchema = z.strictObject({
   kind: z.literal("risk-assessment"),
   schemaVersion: z.literal(1),
-  candidate: validationCandidateRefSchema,
+  candidate: legacyValidationCandidateRefSchema,
   validation: validationRecordRefSchema,
   validityDisposition: z.literal("ready-for-human"),
   impact: safeReviewTextSchema,
@@ -117,11 +117,11 @@ const humanReviewPacketIdentitySchema = z.strictObject({
   schemaVersion: z.literal(1),
   target: targetSnapshotRefSchema,
   manifest: targetFileManifestRefSchema,
-  candidate: validationCandidateRefSchema,
+  candidate: legacyValidationCandidateRefSchema,
   riskAssessment: riskAssessmentRefSchema,
   causalIdentity: causalIdentitySchema,
-  attackerPremise: validationCandidateSchema.shape.attackerPremise,
-  orderedRoute: validationCandidateSchema.shape.causalRoute,
+  attackerPremise: legacyValidationCandidateSchema.shape.attackerPremise,
+  orderedRoute: legacyValidationCandidateSchema.shape.causalRoute,
   sourceEvidence: z.array(validationSourceAnchorSchema).min(1).max(128),
   counterevidence: z.array(reviewCounterevidenceSchema).min(1).max(16),
   runtimeUncertainties: z.array(safeReviewTextSchema).min(1).max(16),
@@ -230,7 +230,7 @@ export const humanReviewPacketHandoffSchema = z.strictObject({
 export const humanReviewPacketPreparationFailureSchema = z.strictObject({
   kind: z.literal("human-review-packet-preparation-failure"),
   schemaVersion: z.literal(1),
-  candidate: validationCandidateRefSchema,
+  candidate: legacyValidationCandidateRefSchema,
   validation: validationRecordRefSchema,
   reason: z.enum(["invalid-binding", "unsafe-review-content"]),
 });
@@ -325,11 +325,13 @@ export function defineHumanReviewPacketDeliveryRequest(input: {
 }
 
 export function prepareHumanReviewPacket(input: {
-  readonly candidate: ValidationCandidate;
+  readonly candidate: LegacyValidationCandidate;
   readonly validation: ValidationRecord;
   readonly hypothesis: z.infer<typeof sourceBoundHypothesisArtifactSchema>;
 }): HumanReviewPacketPreparationResult {
-  const candidateResult = validationCandidateSchema.safeParse(input.candidate);
+  const candidateResult = legacyValidationCandidateSchema.safeParse(
+    input.candidate,
+  );
   const validationResult = validationRecordSchema.safeParse(input.validation);
   const hypothesisResult = sourceBoundHypothesisArtifactSchema.safeParse(
     input.hypothesis,
@@ -408,7 +410,7 @@ export function prepareHumanReviewPacket(input: {
     "Source-only Validation does not establish runtime exploitability or the observable Security Effect.",
     ...hypothesis.value.unknowns.map((unknown) => unknown.requiredEvidence),
   ];
-  const candidateRef = referenceValidationCandidate(candidate);
+  const candidateRef = referenceLegacyValidationCandidate(candidate);
   const validationRef = referenceValidationRecord(validation);
   const riskIdentity = {
     kind: "risk-assessment",

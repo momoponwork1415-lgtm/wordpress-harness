@@ -1495,9 +1495,9 @@ const legacyCampaignDefaultSemanticEarlyRecordV3Schema =
     completedAt: z.string().datetime(),
   });
 
-const campaignDefaultSemanticCompletionInputV3Schema = z.strictObject({
+const campaignDefaultSemanticCompletionInputV4Schema = z.strictObject({
   kind: z.literal("campaign-run-completion"),
-  schemaVersion: z.literal(3),
+  schemaVersion: z.literal(4),
   ...semanticCampaignRunIdentityFields,
   target: targetSnapshotRefSchema,
   manifest: targetFileManifestRefSchema,
@@ -1516,15 +1516,15 @@ const campaignDefaultSemanticCompletionInputV3Schema = z.strictObject({
   decision: currentSemanticTerminalDecisionSchema,
 });
 
-const campaignDefaultSemanticRecordV3Schema =
-  campaignDefaultSemanticCompletionInputV3Schema.extend({
+const campaignDefaultSemanticRecordV4Schema =
+  campaignDefaultSemanticCompletionInputV4Schema.extend({
     kind: z.literal("campaign-run-record"),
     completedAt: z.string().datetime(),
   });
 
-const campaignDefaultSemanticEarlyCompletionInputV3Schema = z.strictObject({
+const campaignDefaultSemanticEarlyCompletionInputV4Schema = z.strictObject({
   kind: z.literal("campaign-run-completion"),
-  schemaVersion: z.literal(3),
+  schemaVersion: z.literal(4),
   ...semanticCampaignRunIdentityFields,
   target: targetSnapshotRefSchema,
   manifest: targetFileManifestRefSchema,
@@ -1541,27 +1541,38 @@ const campaignDefaultSemanticEarlyCompletionInputV3Schema = z.strictObject({
   }),
 });
 
-const campaignDefaultSemanticEarlyRecordV3Schema =
-  campaignDefaultSemanticEarlyCompletionInputV3Schema.extend({
+const campaignDefaultSemanticEarlyRecordV4Schema =
+  campaignDefaultSemanticEarlyCompletionInputV4Schema.extend({
     kind: z.literal("campaign-run-record"),
     completedAt: z.string().datetime(),
   });
 
-export const campaignRunCompletionInputV3Schema = z.union([
-  campaignDefaultSemanticCompletionInputV3Schema,
-  campaignDefaultSemanticEarlyCompletionInputV3Schema,
+export const campaignRunCompletionInputV4Schema = z.union([
+  campaignDefaultSemanticCompletionInputV4Schema,
+  campaignDefaultSemanticEarlyCompletionInputV4Schema,
 ]);
 
 export const campaignRunRecordV3Schema = z.union([
-  campaignDefaultSemanticRecordV3Schema,
-  campaignDefaultSemanticEarlyRecordV3Schema,
   legacyCampaignDefaultSemanticRecordV3Schema,
   legacyCampaignDefaultSemanticEarlyRecordV3Schema,
+]);
+
+export const campaignRunRecordV4Schema = z.union([
+  campaignDefaultSemanticRecordV4Schema,
+  campaignDefaultSemanticEarlyRecordV4Schema,
 ]);
 
 export const campaignRunRecordRefV3Schema = z.strictObject({
   kind: z.literal("campaign-run-record"),
   schemaVersion: z.literal(3),
+  runId: identifierSchema,
+  digest: digestSchema,
+  decision: z.enum(["complete", "incomplete"]),
+});
+
+export const campaignRunRecordRefV4Schema = z.strictObject({
+  kind: z.literal("campaign-run-record"),
+  schemaVersion: z.literal(4),
   runId: identifierSchema,
   digest: digestSchema,
   decision: z.enum(["complete", "incomplete"]),
@@ -1590,10 +1601,11 @@ export type CampaignRunCompletionInputV2 = z.infer<
   typeof campaignRunCompletionInputV2Schema
 >;
 export type CampaignRunRecordV2 = z.infer<typeof campaignRunRecordV2Schema>;
-export type CampaignRunCompletionInputV3 = z.infer<
-  typeof campaignRunCompletionInputV3Schema
+export type CampaignRunCompletionInputV4 = z.infer<
+  typeof campaignRunCompletionInputV4Schema
 >;
 export type CampaignRunRecordV3 = z.infer<typeof campaignRunRecordV3Schema>;
+export type CampaignRunRecordV4 = z.infer<typeof campaignRunRecordV4Schema>;
 export type CampaignCoverage = z.infer<typeof campaignCoverageSchema>;
 export type SemanticCampaignUsage = z.infer<typeof semanticCampaignUsageSchema>;
 export type SemanticDepthResearch = z.infer<typeof semanticDepthResearchSchema>;
@@ -1609,10 +1621,19 @@ export type CampaignRunRecordRefV2 = z.infer<
 export type CampaignRunRecordRefV3 = z.infer<
   typeof campaignRunRecordRefV3Schema
 >;
+export type CampaignRunRecordRefV4 = z.infer<
+  typeof campaignRunRecordRefV4Schema
+>;
 export type AnyCampaignRunRecord =
-  CampaignRunRecord | CampaignRunRecordV2 | CampaignRunRecordV3;
+  | CampaignRunRecord
+  | CampaignRunRecordV2
+  | CampaignRunRecordV3
+  | CampaignRunRecordV4;
 export type AnyCampaignRunRecordRef =
-  CampaignRunRecordRef | CampaignRunRecordRefV2 | CampaignRunRecordRefV3;
+  | CampaignRunRecordRef
+  | CampaignRunRecordRefV2
+  | CampaignRunRecordRefV3
+  | CampaignRunRecordRefV4;
 export type IterationDecision = z.infer<typeof iterationDecisionSchema>;
 export type BoundaryPairEvidenceRef = z.infer<
   typeof boundaryPairEvidenceRefSchema
@@ -1695,8 +1716,18 @@ export interface CampaignRunRecordViewV3 {
   readonly value: CampaignRunRecordV3;
 }
 
+export interface CampaignRunRecordViewV4 {
+  readonly ledgerHead: number;
+  readonly occurredAt: string;
+  readonly ref: CampaignRunRecordRefV4;
+  readonly value: CampaignRunRecordV4;
+}
+
 export type AnyCampaignRunRecordView =
-  CampaignRunRecordView | CampaignRunRecordViewV2 | CampaignRunRecordViewV3;
+  | CampaignRunRecordView
+  | CampaignRunRecordViewV2
+  | CampaignRunRecordViewV3
+  | CampaignRunRecordViewV4;
 
 export interface AttemptPlanMaterializationInput {
   readonly run: {

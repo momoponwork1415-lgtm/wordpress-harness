@@ -201,8 +201,8 @@ Context外の入口は`openResearch`。Researchは六Moduleで構成する。
 **Interface:** `Validation.validate(plan) -> ValidationRecordRef`
 
 - **Purpose:** Root-evaluated candidateをfreshなsource reviewで反証し、通過したtechnical claimをimmutable Findingにする。
-- **Current implementation:** exact Candidate identityはTarget、Manifest、premise、property、ordered route、anchorで作る。一つのfresh Validatorから`source-validated / needs-research / disproven / validation-pending`を決定的に投影し、二つ目・第三AttemptとValidation Synthesisを起動しない。
-- **Attacker invariant:** Validator起動前にCandidateとThreat Contextをcurrent scopeへ照合し、scope外ならmodel tokenを使わない。Finding projectionでもCandidate、Hypothesis、Validation、Target、Manifest、premise、routeを再照合する。
+- **Current implementation:** exact Candidate identityはTarget、Manifest、premise、property、ordered route、anchor、Causal Identityで作る。一つのfresh Validatorから`source-validated / needs-research / disproven / validation-pending`を決定的に投影し、二つ目・第三AttemptとValidation Synthesisを起動しない。
+- **Attacker invariant:** Validator起動前にCandidateとThreat Contextをcurrent scopeへ照合し、scope外ならmodel tokenを使わない。Finding projectionはCandidateとValidationだけを再照合し、Causal Identityを含むCandidate identityから投影する。
 - **Finding:** `source-validated`だけがTarget Snapshot、Causal Identity、attacker premise、broken security property、source route / evidence、counterevidence、Validation refを固定したFindingをCASへ保存する。Finding identityはexact Candidate duplicateから決定し、Coverage状態を入力にしない。
 - **Boundary:** runtime / human verificationを所有しない。`needs-research`は具体的Gapとして同じFamilyへ戻し、`disproven`はsource contradictionだけ、provider / budget failureは`validation-pending`として残す。
 - **Legacy Packet:** Runtime Verification Packet v2、Risk Assessment、Human Review Packet v1は元のartifactとLedger eventをread-only replayし、新Findingへ自動変換しない。
@@ -227,10 +227,10 @@ Internal Module。immutable CAS artifact、append-only Ledger event、checkpoint
 
 - **Interface:** current writeはprivate `CurrentCampaignStore`、全世代のread-only replayは`LegacyResearchReplay`。SQLiteとpublic `CampaignRunner / CampaignReader`は維持する。
 - artifactを保存してから参照eventをappendする。
-- current v3のAttempt reservation / intentとcompletion / settlementはそれぞれ一つのtransactionでappendし、Campaign budget projectionはrun / stage / candidateをまたいで同じCampaignのLedgerから再構築する。
+- current Attempt reservation / intentとcompletion / settlementはそれぞれ一つのtransactionでappendし、Campaign budget projectionはrun / stage / candidateをまたいで同じCampaignのLedgerから再構築する。
 - cacheを削除しても同じLedgerから同じview digestを再構築できる。
 - semantic identity、priority、Family groupingはowner Moduleが決める。
-- **Status / Tests:** current v3 writeをlegacy `ResearchRecord`から分離し、v1 / v2と旧Runtime Packet eventは既存Ledgerのread-only replayだけをproductionで許可する。Decision@3、Family、single Validation、Frontier Gap、Depth Queue / Synthesis / Critique / Evaluation、Finding / Coverage terminal、Campaign budget、progress replayを実装 · [current store](../src/research/research-record/current-campaign-store.ts), [legacy replay](../src/research/research-record/legacy-research-replay.ts), [v3 behavior](../tests/research/campaign-validation-run.test.ts), [compatibility](../tests/research/ledger-compatibility.test.ts)
+- **Status / Tests:** current writeをlegacy `ResearchRecord`から分離し、Finding / Coverageを持つCampaign Run Record v4だけを新規作成する。v1 / v2、Packetを持つv3、旧Runtime Packet eventは既存Ledgerのread-only replayだけをproductionで許可する。Decision@3、Family、single Validation、Frontier Gap、Depth Queue / Synthesis / Critique / Evaluation、Finding / Coverage terminal、Campaign budget、progress replayを実装 · [current store](../src/research/research-record/current-campaign-store.ts), [legacy replay](../src/research/research-record/legacy-research-replay.ts), [current behavior](../tests/research/campaign-validation-run.test.ts), [compatibility](../tests/research/ledger-compatibility.test.ts)
 
 ## Human OS
 

@@ -55,7 +55,12 @@ const candidateIdentity = {
   target,
   manifest: manifestRef,
   attackerPremise: "unauthenticated" as const,
-  brokenSecurityProperty: "Only an administrator may change the target option.",
+  brokenSecurityProperty: "admin-only-option-update",
+  causalIdentity: {
+    rootCause: "missing-authorization",
+    attackerControlledPrimitive: "public-option-write",
+    brokenSecurityProperty: "admin-only-option-update",
+  },
   causalRoute: [
     {
       ordinal: 1,
@@ -67,7 +72,7 @@ const candidateIdentity = {
 };
 const candidate = {
   kind: "validation-candidate" as const,
-  schemaVersion: 1 as const,
+  schemaVersion: 2 as const,
   id: validationCandidateId(candidateIdentity),
   ...candidateIdentity,
   origins: [
@@ -264,6 +269,26 @@ async function readRecord(store: MemoryArtifactStore, ref: { digest: string }) {
 }
 
 describe("source-only Validation", () => {
+  it("keeps distinct Causal Identities as distinct Validation Candidates", () => {
+    const first = {
+      ...candidateIdentity,
+      causalIdentity: {
+        ...candidateIdentity.causalIdentity,
+      },
+    };
+    const second = {
+      ...candidateIdentity,
+      causalIdentity: {
+        ...first.causalIdentity,
+        rootCause: "cross-actor-state-reuse",
+      },
+    };
+
+    expect(validationCandidateId(first)).not.toBe(
+      validationCandidateId(second),
+    );
+  });
+
   it("runs one fresh manifest-bound Validator and no Synthesis", async () => {
     const store = new MemoryArtifactStore();
     const model = modelExecution((attempt) => attemptOutput(attempt.attemptId));

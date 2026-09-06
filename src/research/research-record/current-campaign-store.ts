@@ -17,9 +17,9 @@ import type {
   CampaignAttemptIntentV2,
   CampaignAttemptResultStoredV2,
   CampaignAttemptRecordViewV2,
-  CampaignRunCompletionInputV3,
+  CampaignRunCompletionInputV4,
   CampaignRunPlanV3,
-  CampaignRunRecordViewV3,
+  CampaignRunRecordViewV4,
   CampaignBudgetView,
 } from "../campaign-control/contracts.js";
 import type {
@@ -62,9 +62,9 @@ export interface CurrentCampaignStore {
   recordSemanticCampaignRunStart(
     plan: CampaignRunPlanV3,
   ): Promise<RecordSemanticCampaignRunStartResult>;
-  recordSemanticCampaignRunCompletionV3(
-    input: CampaignRunCompletionInputV3,
-  ): Promise<CampaignRunRecordViewV3>;
+  recordSemanticCampaignRunCompletionV4(
+    input: CampaignRunCompletionInputV4,
+  ): Promise<CampaignRunRecordViewV4>;
   recordSemanticCampaignAttemptStart(
     intent: CampaignAttemptIntentV2,
   ): Promise<RecordSemanticCampaignAttemptStartResult>;

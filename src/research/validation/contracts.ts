@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { targetSnapshotRefSchema } from "../contracts.js";
+import { sourceBoundHypothesisSchema } from "../exploration/contracts.js";
 import {
   attemptExecutionResultV2RefSchema,
   structuredModelProfileSchema,
@@ -51,7 +52,7 @@ const validationCandidateOriginSchema = z.strictObject({
   approachFamilyId: digestSchema,
 });
 
-const validationCandidateIdentityFields = {
+const legacyValidationCandidateIdentityFields = {
   target: targetSnapshotRefSchema,
   manifest: targetFileManifestRefSchema,
   attackerPremise: z.enum([
@@ -65,9 +66,39 @@ const validationCandidateIdentityFields = {
   causalRoute: z.array(validationRouteStepSchema).min(1).max(32),
 } as const;
 
+const validationCandidateIdentityFields = {
+  ...legacyValidationCandidateIdentityFields,
+  causalIdentity: sourceBoundHypothesisSchema.shape.causalIdentity,
+} as const;
+
 const validationCandidateIdentitySchema = z.strictObject(
   validationCandidateIdentityFields,
 );
+
+const legacyValidationCandidateIdentitySchema = z.strictObject(
+  legacyValidationCandidateIdentityFields,
+);
+
+export type LegacyValidationCandidateIdentityInput = z.input<
+  typeof legacyValidationCandidateIdentitySchema
+> & { readonly origins?: unknown };
+
+export function legacyValidationCandidateId(
+  input: LegacyValidationCandidateIdentityInput,
+): string {
+  const identity = legacyValidationCandidateIdentitySchema.parse({
+    target: input.target,
+    manifest: input.manifest,
+    attackerPremise: input.attackerPremise,
+    brokenSecurityProperty: input.brokenSecurityProperty,
+    causalRoute: input.causalRoute,
+  });
+  return sha256Digest({
+    kind: "validation-candidate-identity",
+    schemaVersion: 1,
+    ...identity,
+  });
+}
 
 export type ValidationCandidateIdentityInput = z.input<
   typeof validationCandidateIdentitySchema
@@ -82,10 +113,11 @@ export function validationCandidateId(
     attackerPremise: input.attackerPremise,
     brokenSecurityProperty: input.brokenSecurityProperty,
     causalRoute: input.causalRoute,
+    causalIdentity: input.causalIdentity,
   });
   return sha256Digest({
     kind: "validation-candidate-identity",
-    schemaVersion: 1,
+    schemaVersion: 2,
     ...identity,
   });
 }
@@ -93,17 +125,22 @@ export function validationCandidateId(
 export const validationCandidateSchema = z
   .strictObject({
     kind: z.literal("validation-candidate"),
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     id: digestSchema,
     ...validationCandidateIdentityFields,
     origins: z.array(validationCandidateOriginSchema).min(1).max(64),
   })
   .superRefine((candidate, context) => {
-    if (candidate.id !== validationCandidateId(candidate)) {
+    if (
+      candidate.id !== validationCandidateId(candidate) ||
+      candidate.brokenSecurityProperty !==
+        candidate.causalIdentity.brokenSecurityProperty
+    ) {
       context.addIssue({
         code: "custom",
         path: ["id"],
-        message: "Validation Candidate ID does not match its exact identity",
+        message:
+          "Validation Candidate ID or Causal Identity does not match its exact identity",
       });
     }
     candidate.causalRoute.forEach((step, index) => {
@@ -125,9 +162,27 @@ export const validationCandidateSchema = z
     }
   });
 
+export const legacyValidationCandidateSchema = z
+  .strictObject({
+    kind: z.literal("validation-candidate"),
+    schemaVersion: z.literal(1),
+    id: digestSchema,
+    ...legacyValidationCandidateIdentityFields,
+    origins: z.array(validationCandidateOriginSchema).min(1).max(64),
+  })
+  .superRefine((candidate, context) => {
+    if (candidate.id !== legacyValidationCandidateId(candidate)) {
+      context.addIssue({
+        code: "custom",
+        path: ["id"],
+        message: "Legacy Validation Candidate ID does not match its identity",
+      });
+    }
+  });
+
 export const validationCandidateRefSchema = z.strictObject({
   kind: z.literal("validation-candidate"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   id: digestSchema,
   digest: digestSchema,
   targetSnapshotDigest: digestSchema,
@@ -135,11 +190,29 @@ export const validationCandidateRefSchema = z.strictObject({
   origins: z.number().int().positive().max(64),
 });
 
+export const legacyValidationCandidateRefSchema =
+  validationCandidateRefSchema.extend({ schemaVersion: z.literal(1) });
+
 export function referenceValidationCandidate(
   input: ValidationCandidate,
 ): ValidationCandidateRef {
   const candidate = validationCandidateSchema.parse(input);
   return validationCandidateRefSchema.parse({
+    kind: candidate.kind,
+    schemaVersion: candidate.schemaVersion,
+    id: candidate.id,
+    digest: sha256Digest(candidate),
+    targetSnapshotDigest: candidate.target.digest,
+    manifestDigest: candidate.manifest.digest,
+    origins: candidate.origins.length,
+  });
+}
+
+export function referenceLegacyValidationCandidate(
+  input: LegacyValidationCandidate,
+): LegacyValidationCandidateRef {
+  const candidate = legacyValidationCandidateSchema.parse(input);
+  return legacyValidationCandidateRefSchema.parse({
     kind: candidate.kind,
     schemaVersion: candidate.schemaVersion,
     id: candidate.id,
@@ -454,11 +527,10 @@ const validatorBudgetSchema = modelBudgetSchema.extend({
   sourceLimitTerminalOutput: z.literal("preserve").optional(),
 });
 
-const validationPlanIdentitySchema = z.strictObject({
+const validationPlanIdentityFields = {
   kind: z.literal("validation-plan"),
   validationId: digestSchema,
   campaignId: identifierSchema,
-  candidate: validationCandidateSchema,
   threatContext: validationThreatContextSchema,
   manifest: z.strictObject({
     ref: targetFileManifestRefSchema,
@@ -468,10 +540,22 @@ const validationPlanIdentitySchema = z.strictObject({
   promptSet: immutableRefSchema,
   validatorModelProfile: structuredModelProfileSchema,
   sourceToolPolicy: sourceToolPolicyRefSchema,
+} as const;
+
+const validationPlanIdentitySchema = z.strictObject({
+  ...validationPlanIdentityFields,
+  candidate: validationCandidateSchema,
+});
+
+const legacyValidationPlanIdentitySchema = z.strictObject({
+  ...validationPlanIdentityFields,
+  candidate: legacyValidationCandidateSchema,
 });
 
 function validatePlanBindings(
-  plan: z.infer<typeof validationPlanIdentitySchema>,
+  plan:
+    | z.infer<typeof validationPlanIdentitySchema>
+    | z.infer<typeof legacyValidationPlanIdentitySchema>,
   context: z.RefinementCtx,
 ): void {
   const manifestDigest = sha256Digest(plan.manifest.value);
@@ -514,7 +598,7 @@ function validatePlanBindings(
   }
 }
 
-export const legacyValidationPlanSchema = validationPlanIdentitySchema
+export const legacyValidationPlanSchema = legacyValidationPlanIdentitySchema
   .extend({
     schemaVersion: z.literal(1),
     synthesisModelProfile: structuredModelProfileSchema,
@@ -829,8 +913,14 @@ export const validationFrontierGapRefSchema = z.strictObject({
 });
 
 export type ValidationCandidate = z.infer<typeof validationCandidateSchema>;
+export type LegacyValidationCandidate = z.infer<
+  typeof legacyValidationCandidateSchema
+>;
 export type ValidationCandidateRef = z.infer<
   typeof validationCandidateRefSchema
+>;
+export type LegacyValidationCandidateRef = z.infer<
+  typeof legacyValidationCandidateRefSchema
 >;
 export type ValidationThreatContext = z.infer<
   typeof validationThreatContextSchema

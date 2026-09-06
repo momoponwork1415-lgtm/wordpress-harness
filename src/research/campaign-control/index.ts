@@ -1556,30 +1556,9 @@ async function prepareSourceValidatedFindings(
     if (candidate === undefined) {
       throw new Error("Source-validated Validation lost its Candidate");
     }
-    let hypothesis:
-      ReturnType<typeof sourceBoundHypothesisArtifactSchema.parse> | undefined;
-    for (const origin of [...candidate.origins].sort((left, right) =>
-      compareText(left.subjectDigest, right.subjectDigest),
-    )) {
-      const raw = await dependencies.artifactStore.readJson(
-        origin.subjectDigest,
-      );
-      if (sha256Digest(raw) !== origin.subjectDigest) {
-        throw new Error("Finding origin CAS mismatch");
-      }
-      const parsed = sourceBoundHypothesisArtifactSchema.safeParse(raw);
-      if (parsed.success) {
-        hypothesis = parsed.data;
-        break;
-      }
-    }
-    if (hypothesis === undefined) {
-      throw new Error("Source-validated Finding lost its Hypothesis");
-    }
     const finding = projectFinding({
       candidate,
       validation: current.data,
-      hypothesis,
     });
     const ref = referenceFinding(finding);
     const digest = await dependencies.artifactStore.putJson(finding);
@@ -1805,9 +1784,9 @@ async function completeCurrentSemanticIteration(
     registry.ref.states.active > 0 ||
     registry.ref.states.blocked > 0 ||
     registry.ref.pendingValidations > 0;
-  return record.recordSemanticCampaignRunCompletionV3({
+  return record.recordSemanticCampaignRunCompletionV4({
     kind: "campaign-run-completion",
-    schemaVersion: 3,
+    schemaVersion: 4,
     runId: plan.runId,
     campaignId: plan.campaignId,
     planDigest,
@@ -2001,9 +1980,9 @@ async function executeDefaultSemanticCampaign(
       plan.runId,
     );
     if (plan.schemaVersion === 3) {
-      return record.recordSemanticCampaignRunCompletionV3({
+      return record.recordSemanticCampaignRunCompletionV4({
         kind: "campaign-run-completion",
-        schemaVersion: 3,
+        schemaVersion: 4,
         runId: plan.runId,
         campaignId: plan.campaignId,
         planDigest: start.planDigest,
@@ -2270,9 +2249,9 @@ async function executeDefaultSemanticCampaign(
     );
     if (plan.schemaVersion === 3) {
       if (evaluated.schemaVersion !== 3) semanticRunConflict(plan);
-      return record.recordSemanticCampaignRunCompletionV3({
+      return record.recordSemanticCampaignRunCompletionV4({
         kind: "campaign-run-completion",
-        schemaVersion: 3,
+        schemaVersion: 4,
         runId: plan.runId,
         campaignId: plan.campaignId,
         planDigest: start.planDigest,
