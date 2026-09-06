@@ -157,11 +157,21 @@ describe("CampaignRunner.run source-only Validation", () => {
     const input = {
       ...createCampaignInput("campaign-validation-run"),
       schemaVersion: 2 as const,
+      promptSet: {
+        id: "semantic-research-source-screen-v6r3",
+        digest: digest("4"),
+      },
       modelProfiles: [
-        { id: "opus-planner-v6", digest: digest("5") },
-        { id: "opus-finder-v6", digest: digest("6") },
-        { id: "opus-evaluator-v6", digest: digest("7") },
-        { id: "opus-validator-v6", digest: digest("8") },
+        {
+          id: "claude-opus-5-root-planner-high-v6",
+          digest: digest("5"),
+        },
+        { id: "claude-opus-5-finder-high-v6", digest: digest("6") },
+        {
+          id: "claude-opus-5-root-evaluator-high-v6",
+          digest: digest("7"),
+        },
+        { id: "claude-opus-5-validator-high-v6", digest: digest("8") },
       ],
       canonicalFileManifest: {
         kind: "canonical-file-manifest" as const,
@@ -720,7 +730,7 @@ describe("CampaignRunner.run source-only Validation", () => {
           provider: "anthropic" as const,
           model: "claude-opus-5",
           transport: "claude-code-process" as const,
-          executableVersion: "2.1.258",
+          executableVersion: "2.1.260",
           effort: "high" as const,
           eligibilityReceiptDigest: digest("b"),
         },
@@ -734,7 +744,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       const sourceToolPolicy = {
         kind: "source-tool-policy" as const,
         schemaVersion: 1 as const,
-        id: "semantic-source-tools-v3",
+        id: "prospective-source-only-v1",
         digest: digest("c"),
       };
       const bindingSource = {
@@ -766,18 +776,24 @@ describe("CampaignRunner.run source-only Validation", () => {
           },
         }),
         planner: {
-          modelProfile: profile("opus-planner-v6", digest("5")),
+          modelProfile: profile(
+            "claude-opus-5-root-planner-high-v6",
+            digest("5"),
+          ),
           promptSet,
           sourceToolPolicy,
         },
         finder: {
-          modelProfile: profile("opus-finder-v6", digest("6")),
+          modelProfile: profile("claude-opus-5-finder-high-v6", digest("6")),
           promptSet,
           selectedKnowledge: [],
           sourceToolPolicy,
         },
         evaluator: {
-          modelProfile: profile("opus-evaluator-v6", digest("7")),
+          modelProfile: profile(
+            "claude-opus-5-root-evaluator-high-v6",
+            digest("7"),
+          ),
           promptSet,
           budget: {
             maxWallTimeMs: 3_600_000,
@@ -794,11 +810,14 @@ describe("CampaignRunner.run source-only Validation", () => {
             digest: digest("d"),
           },
           validationPolicy: {
-            id: "source-validation-v2",
+            id: "single-source-validation-v2",
             digest: digest("e"),
           },
           promptSet,
-          validatorModelProfile: profile("opus-validator-v6", digest("8")),
+          validatorModelProfile: profile(
+            "claude-opus-5-validator-high-v6",
+            digest("8"),
+          ),
           sourceToolPolicy,
           publicSurface: ["Public WordPress request handlers"],
           technicalExclusions: [],

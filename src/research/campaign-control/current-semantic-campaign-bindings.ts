@@ -78,15 +78,17 @@ export function currentSemanticCampaignConfigurationMatches(
       execution.provider === "anthropic" &&
       execution.model === "claude-opus-5" &&
       execution.transport === "claude-code-process" &&
-      execution.executableVersion === "2.1.258" &&
+      execution.executableVersion === "2.1.260" &&
       execution.effort === "high" &&
       execution.eligibilityReceiptDigest === eligibilityReceiptDigest,
   );
   const profileIdsMatch =
-    plan.planner.modelProfile.ref.id === "opus-planner-v6" &&
-    plan.finder.modelProfile.ref.id === "opus-finder-v6" &&
-    plan.evaluator.modelProfile.ref.id === "opus-evaluator-v6" &&
-    plan.validation.validatorModelProfile.ref.id === "opus-validator-v6";
+    plan.planner.modelProfile.ref.id === "claude-opus-5-root-planner-high-v6" &&
+    plan.finder.modelProfile.ref.id === "claude-opus-5-finder-high-v6" &&
+    plan.evaluator.modelProfile.ref.id ===
+      "claude-opus-5-root-evaluator-high-v6" &&
+    plan.validation.validatorModelProfile.ref.id ===
+      "claude-opus-5-validator-high-v6";
   const promptMatches = [
     plan.planner.promptSet,
     plan.finder.promptSet,
@@ -94,6 +96,7 @@ export function currentSemanticCampaignConfigurationMatches(
     plan.validation.promptSet,
   ].every(
     (prompt) =>
+      prompt.id === "semantic-research-source-screen-v6r3" &&
       prompt.id === plan.bindings.promptSet.id &&
       prompt.digest === plan.bindings.promptSet.digest,
   );
@@ -103,7 +106,7 @@ export function currentSemanticCampaignConfigurationMatches(
     plan.validation.sourceToolPolicy,
   ].every(
     (policy) =>
-      policy.id === "semantic-source-tools-v3" &&
+      policy.id === "prospective-source-only-v1" &&
       policy.id === plan.bindings.sourceToolPolicy.id &&
       policy.digest === plan.bindings.sourceToolPolicy.digest,
   );
@@ -119,7 +122,7 @@ export function currentSemanticCampaignConfigurationMatches(
     promptMatches &&
     sourceToolPolicyMatches &&
     plan.finder.selectedKnowledge.length === 0 &&
-    plan.validation.validationPolicy.id === "source-validation-v2" &&
+    plan.validation.validationPolicy.id === "single-source-validation-v2" &&
     plan.validation.validationPolicy.id === plan.bindings.validationPolicy.id &&
     plan.validation.validationPolicy.digest ===
       plan.bindings.validationPolicy.digest &&
