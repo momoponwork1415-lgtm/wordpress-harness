@@ -14,6 +14,10 @@ import {
   openResearch,
   type CampaignExecutionDependencies,
 } from "../../src/research/index.js";
+import {
+  chainSynthesisIncompleteSchema,
+  semanticDepthWorkQueueV2Schema,
+} from "../../src/research/exploration/index.js";
 import type {
   AttemptExecutionResultV2,
   ModelAttemptPlan,
@@ -2182,12 +2186,14 @@ describe("CampaignRunner.run source-only Validation", () => {
         schemaVersion: 4,
         decision: "incomplete",
       });
-      await expect(
-        research.reader.inspect(measuredCampaignInput.campaignId, {
+      const measuredInspected = await research.reader.inspect(
+        measuredCampaignInput.campaignId,
+        {
           kind: "run",
           runId: measuredPlan.runId,
-        }),
-      ).resolves.toMatchObject({
+        },
+      );
+      expect(measuredInspected).toMatchObject({
         value: {
           validations: [{ status: "source-validated" }],
           findings: [{ kind: "finding", schemaVersion: 1 }],
@@ -2195,6 +2201,25 @@ describe("CampaignRunner.run source-only Validation", () => {
           decision: { kind: "incomplete", reason: "research-work-remains" },
         },
       });
+      const incompleteDepth = z
+        .object({
+          value: z.object({
+            depthResearch: z.object({
+              rounds: z.array(
+                z.object({
+                  batches: z.array(
+                    z.object({
+                      kind: z.literal("semantic-depth-batch-incomplete"),
+                      stage: z.literal("root-synthesis"),
+                      artifactDigest: z.string(),
+                    }),
+                  ),
+                }),
+              ),
+            }),
+          }),
+        })
+        .parse(measuredInspected);
       const measuredCalls = observedPlans.slice(measuredCallOffset);
       const initialRootIndex = measuredCalls.findIndex(
         (attempt) =>
@@ -2249,6 +2274,46 @@ describe("CampaignRunner.run source-only Validation", () => {
         throw new Error("Expected measured Campaign budget");
       }
       expect(measuredBudget.overshoot.modelTokens).toBe(1_176_741);
+      const idempotencyRecord = openSqliteResearchRecord({
+        databasePath,
+        artifactStore: artifacts,
+      });
+      try {
+        const queueRecord =
+          await idempotencyRecord.readSemanticDepthWorkQueueV2(
+            measuredCampaignInput.campaignId,
+            measuredPlan.runId,
+          );
+        const incompleteBatch = incompleteDepth.value.depthResearch.rounds
+          .flatMap((round) => round.batches)
+          .at(0);
+        if (queueRecord === undefined || incompleteBatch === undefined) {
+          throw new Error("Expected durable incomplete Depth artifacts");
+        }
+        const queue = semanticDepthWorkQueueV2Schema.parse(
+          await artifacts.readJson(queueRecord.queue.digest),
+        );
+        const incomplete = chainSynthesisIncompleteSchema.parse(
+          await artifacts.readJson(incompleteBatch.artifactDigest),
+        );
+        const firstReplay =
+          await idempotencyRecord.recordSemanticChainSynthesisV2(
+            measuredCampaignInput.campaignId,
+            measuredPlan.runId,
+            queue,
+            incomplete,
+          );
+        await expect(
+          idempotencyRecord.recordSemanticChainSynthesisV2(
+            measuredCampaignInput.campaignId,
+            measuredPlan.runId,
+            queue,
+            incomplete,
+          ),
+        ).resolves.toEqual(firstReplay);
+      } finally {
+        idempotencyRecord.close();
+      }
       const replayAfterRootCompletion = openResearch({
         databasePath,
         campaignExecution,

@@ -3363,10 +3363,9 @@ class SqliteResearchRecord
             existing.batchId !== synthesis.batchId ||
             existing.artifactDigest !== artifactDigest ||
             existing.outcome !== payload.outcome ||
-            canonicalJson(existing.synthesis) !==
-              canonicalJson(
-                payload.outcome === "completed" ? payload.synthesis : undefined,
-              )
+            (payload.outcome === "completed" &&
+              canonicalJson(existing.synthesis) !==
+                canonicalJson(payload.synthesis))
           ) {
             throw new CampaignRunConflictError(campaignId, runId);
           }
