@@ -61,6 +61,7 @@ function openNativeRuntime(
     image: readOption(args, "--image"),
     sourceDirectory: resolve(readOption(args, "--source")),
     targetSnapshotDigest: input.targetSnapshot.digest,
+    sourceTree: input.targetSnapshot.sourceTree,
     providerConfigDirectory: resolve(readOption(args, "--provider-config")),
     scratchRootDirectory: resolve(readOption(args, "--scratch")),
     promptSet: {

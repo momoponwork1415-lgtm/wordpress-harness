@@ -27,6 +27,7 @@ const finding: SourceValidatedFinding = {
     pluginSlug: "example",
     version: "1.0.0",
     digest: digest("a"),
+    sourceTree: { digest: digest("9"), entries: 1, bytes: 6 },
   },
   attackerPremise: "An unauthenticated visitor can submit a public value.",
   brokenSecurityProperty: "Persisted public values must be inert in admin UI.",

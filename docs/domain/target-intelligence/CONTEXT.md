@@ -1,149 +1,54 @@
-# Target Intelligence
+# Target Intelligence Context
 
-WordPress ecosystemを観測し、oracle-freeなTargetを自律選定して人間のBatch承認後にResearchへdispatchするcontext。
+Target IntelligenceはWordPress ecosystemを観測し、oracle-freeなCandidate PoolからAI Target Proposalを作り、人間のBatch承認後にfresh sourceをResearchへ渡すBounded Contextである。
 
-## Language
+## Boundary
 
-**Intelligence Source**:
-plugin directory、vulnerability intelligence、利用統計等、Target Observationの出所となる情報源。
-_Avoid_: Feed、API
+Target IntelligenceはResearch仮説、candidate、Finding、runtime verificationまたはsubmissionを所有しない。CVE、known route、patch narrativeをTarget Intake Packetへ含めない。
 
-**Disclosure Route Observation**:
-Targetの脆弱性報告先を、取得時刻と確認source付きで`first-party-bounty`、`first-party-vdp`、`delegated-vdp`、`security-contact-only`、`none-found`、`conflicting`のいずれかへ固定した不変な観測。vendor公式security / bountyページ、official repositoryの`SECURITY.md`、WordPress.orgのmaintainer記載、programme directory、検索結果の順に根拠を優先する。`none-found`は確認したsourceで公開routeを発見しなかった意味であり、存在しないことの保証ではない。Programme Assignmentのroute freshnessは、公開resolverが検証したversioned bindingとのdigest比較だけをprojectionし、Human OSの内部storageを参照しない。
-_Avoid_: Programme Assignment、Submission destination、Search result
+## Ubiquitous language
 
-**Target Observation**:
-取得時刻とIntelligence Sourceに結び付いた、plugin、version、利用状況、更新状況等についての不変な観測。
-_Avoid_: Current fact、Target metadata
+**Target Observation**
+: plugin identity、version、acquisition、provenance、freshnessを持つ時点付きfact。
 
-**Selection Fact**:
-調査優先度または取得可否の判断に利用でき、prospective Researchへ渡しても既知脆弱性を示さない観測事実。利用規模、現行安定版、更新状況、取得可能性、外部公開面やintegrationの観測を含む。
-_Avoid_: Signal、Score input
+**Programme Observation**
+: bounty / VDP programmeのidentity、eligibility、opportunity band、freshnessを持つfact。
 
-**Programme Opportunity Band**:
-Finding前のTarget Candidateについて、現在の外部programmeで狙える対象範囲を`broad`、`high-impact-only`、`research-only`等へ粗く分類した選定補助。脆弱性class、成立条件、報奨額を予測せず、具体的なReward Estimateとして扱わない。
-_Avoid_: Expected payout、Reward Estimate、Finding severity
+**Disclosure Route**
+: first-party、delegated、security contact等の観測済み提出経路。技術的Researchの可否そのものではない。
 
-**Programme Identity**:
-scope、eligibility、reward policy、competition ruleを一つのProgramme Eligibility Snapshotへ結び付ける外部programmeの安定identity。programme名の表示文字列、個別Findingの提出先またはProgramme Assignmentではない。
-_Avoid_: Programme name、Submission destination、Programme Assignment
+**Candidate Pool**
+: 一つのSelection Runへ渡すoracle-free Target Candidateのdigest-bound集合。Candidateはsource identity、selection facts、Programme、Disclosure Route、公開脆弱性のaggregate、Research History Factを持ち得る。
 
-**Programme Eligibility Snapshot**:
-一つのProgramme Identityについてrequired sourceのURL、取得時刻、content digest、parser versionと、asset、vulnerability class、attacker role、active-install threshold、researcher tier、除外条件、必要なdirectory membershipとそのeligibility効果を固定したversionedなpolicy観測。Target選定batch開始時とSubmission Staging前にfreshnessを検査し、古い観測をcurrent扱いしない。programme ruleはFindingのtechnical validityを変更せず、CVE、advisory、Findingまたはknown routeを含めない。
-_Avoid_: Current policy、Finding verdict、Target Intake Packet
+**Research History Fact**
+: Targetがnew、active、coverage-closed、incompleteのどれかを示す入力fact。再投入を決定的に拒否せず、AIの判断材料にする。
 
-**Finding-only Reward Estimate Input**:
-Programme Eligibility Snapshotのうち、成立済みFindingについて外部行動を検討する時だけreward estimateへ使えるcurrencyとpolicy factor。Finding前のProgramme Opportunity BandまたはSelection Factとして使わない。
-_Avoid_: Programme Opportunity Band、Expected Finding value、Selection score
+**Selection Run**
+: Candidate Pool、guidance、Agent Runtime、Permission、BudgetをsealしてAI proposalを得る一回のversioned run。
 
-**Programme Reward Route**:
-一つのProgramme Eligibility Snapshot内でMonthly Competition、Zeroday、base payout、期間限定promotion等を区別する、source-boundなFinding-only policy経路。currency、factor、下限・上限・pool等のpolicy termを保持するが、具体的Findingの報奨額またはTarget選定scoreを予測しない。
-_Avoid_: Programme Opportunity Band、Guaranteed payout、Selection incentive
+**Target Proposal**
+: AIが選んだCandidate ID、理由、不確実性とinput / receipt bindingを持つdurable artifact。全候補rankingではない。
 
-**Programme Monthly Aggregate**:
-外部programmeの月次報告を、期間、CWE category、authentication level、active-install帯、submission disposition、reward集計だけへ縮約したsource-boundな観測。named plugin、CVE、affected version、known route、researcher identity等の個票を保持せず、Research inputまたはTarget Intake Packetへ渡さない。
-_Avoid_: Vulnerability record、Research prior、Researcher leaderboard
+**Approved Target Batch**
+: 人間がProposalから選んだResearch対象範囲、順序、Budget、execution window。
 
-**Oracle Fact**:
-既知の脆弱version、patch、CVE、advisory narrative等、prospective Researchへ渡すと発見能力の評価を汚染する情報。
-_Avoid_: Selection Fact、Sensitive metadata
+**Dispatch Admission**
+: Batchと現在のTarget Observationを照合し、実行直前のidentity、version、manifest digest、freshnessが一致するかを返す判断。
 
-**Vulnerability History Aggregate**:
-Oracle FactからCVE、脆弱version、CWE構成、affected function、advisory、patch、既知routeを除き、plugin単位の件数、密度、最終公開時期等へ粗く集約した履歴値。Target Intelligence内の補助的な選定にだけ使い、主要な選定根拠、Research inputまたはTarget Intake Packetにしない。
-_Avoid_: Selection Fact、Vulnerability profile、Research hint
+**Target Intake Packet**
+: Researchへ渡すversioned handoff。Target identity、source manifest、provenanceを持ち、selection reasoningやknown vulnerabilityをResearch inputにしない。
 
-**Known Record Projection**:
-Finding後のKnown Duplicate Dispositionだけに使う、versioned vulnerability intelligence snapshotからのexact record投影。公開authorization providerが、FindingをPlugin Identity、verified version、Canonical File Manifest digestとFinding後purposeへbindした時だけ利用する。同じversion文字列でもManifest digestが異なるsource treeへ流用しない。affected version interval、patched version、CVE、CWE、CVSS、公開時刻、copyright / license attributionを保持するが、Target選定、Research inputまたはTarget Intake Packetへ渡さない。
-_Avoid_: Vulnerability History Aggregate、Research prior、Finding validity
+**Campaign Coverage Receipt**
+: Researchから戻るTarget-level lifecycle handoff。Finding内容とは別に、closed、incomplete、resume条件をTarget Intelligenceへ伝える。
 
-**Selection Guidance**:
-AIがoracle-freeなSelection FactからTarget Proposalを作る時の、high-impact recall、prospective価値、source取得可能性、更新鮮度、不確実性と重複回避に関するversionedな目的と禁止事項。固定rank、Research Value Band、diversity cap、reason codeまたはstable tie-breakerを判断手順として要求しない。疑わしいsymbol、CWE、sink、既知route、推定報奨額を入力にしない。
-_Avoid_: Ranking algorithm、Vulnerability scan、Research procedure
+## Invariants
 
-**Target Candidate**:
-Candidate Poolへ観測され、AIのTarget Proposalまたは人間reviewの対象になり得るpluginとversionの組。
-_Avoid_: Target Snapshot、Finding candidate
+- Candidate PoolとProposalのinputをdigest bindする。
+- AIはpool外またはhard gate不合格のTargetをProposalへ入れられない。
+- fixed rank、Research Value Band、reason code、diversity facetをAI判断の代用にしない。
+- 人間のApproved Target BatchなしにResearchへdispatchしない。
+- dispatch直前にsourceとversionのfreshnessを再確認する。
+- Programme対象外、Disclosure Route不明、既探索だけを技術的Researchの決定的拒否条件にしない。
+- Target package script、autoload、WordPress bootstrapをhost上で実行しない。
 
-**Plugin Identity**:
-配布経路を名前空間に含めたpluginの安定identity。WordPress.org版は`wporg:<slug>`、premium版はoperatorがprovenanceと共に固定する`premium:<vendor>/<product>`を使う。
-_Avoid_: Directory name、Plugin title、Bare slug
-
-**Research-only Candidate**:
-技術的な調査価値はあるが、現在の外部programme規則またはDisclosure Route Observationでは提出対象外、適格性不明、もしくはrouteが`conflicting`なTarget Candidate。programme対象外またはscope不明であることを、技術的なResearch対象外と同一視しない。scope不明のCandidateはbounty候補から外し、人間の確認までこの状態に保つ。
-_Avoid_: Out-of-scope Target、False positive、Rejected Candidate
-
-**Target Proposal**:
-AIがCandidate Poolから選んだTarget Candidateを、使用したSelection Fact、Selection Guidance、理由、不確実性、Target Selection Runへ結び付けた記録。未選択Candidateすべての順位や拒否理由を要求しない。提案はCampaign開始命令ではなく、人間がResearch対象範囲を判断する入力である。
-_Avoid_: Score、Complete ranking、Approval
-
-**Target Selection Run**:
-一つのCandidate Pool、Selection Guidance、Agent Runtime Profile、Permission Profile、Budget Envelope、revision、Target Proposalまたは`selection-pending`をdigest固定した実行記録。同じ入力のreplayでagentを再起動せず、明示的な再選定だけを新revisionにする。
-_Avoid_: Candidate Batch、Model transcript、Campaign run
-
-**Research Value Band**:
-旧Target Selectionがprospectiveな調査価値を`high / medium / low`へ固定分類したhistorical term。Target Proposalでは理由と不確実性を自由に説明し、このBandを現在の判断またはrecordへ持ち込まない。
-_Avoid_: Current Target Proposal、Vulnerability likelihood、Expected payout
-
-**Candidate Pool**:
-Programmeごとに分割せず、少なくとも一つのProgrammeで提出可能性があるTarget CandidateとResearch-only Candidateをまとめた選定母集団。同じTargetを提出先ごとに重複Researchせず、Programme AssignmentはFinding後にHuman OSが決める。
-_Avoid_: Programme queue、Campaign list、Duplicate Target set
-
-**Candidate Batch**:
-旧Selection PolicyがCandidate Poolから一度に人間へ提示した有限なTarget Candidate集合。新しい設計ではTarget Proposalを使い、固定batch size、全候補rankまたはdiversity capを選定判断へ課さない。Research同時実行数は別のcapacity制約である。
-_Avoid_: Current Target Proposal、Campaign Wave、Submission batch
-
-**Approved Target Batch**:
-一つのTarget Proposalについて、人間が理由、不確実性、source identityとfreshnessを確認し、承認、除外、順序変更またはoracle-freeなoperator nominationを記録したversionedなResearch対象範囲の許可。Target Selection Run、Target Proposal、Budgetとexecution windowへbindする。programme eligibility、Disclosure RouteまたはAI rankingを再評価するtechnical gateではなく、Batchの承認だけでは外部行動を許可しない。
-_Avoid_: Target Proposal、Campaign Queue、Submission approval
-
-**Target Campaign Dispatch**:
-Approved Target Batchをdurable queueへ入れ、Targetごとの実行直前freshness、取得、Target Intakeを確認してResearchへ渡すTarget Intelligenceの運行。待機件数とactive Campaign数を分けるが、具体的な同時実行数はversioned capacity policyへ置く。versionやsourceをsilentに差し替えず、systemic failureでは新規開始を止める。
-_Avoid_: Research Campaign Control、Model capacity、Automatic selection
-
-**Campaign Coverage Receipt**:
-ResearchのCampaign identity、Target binding、開始・進行・terminal時刻、`active / coverage-closed / incomplete / failed`を、Finding、Hypothesis、candidate、transcriptから切り離してTarget Intelligenceへ返すversioned handoff。Research Historyのresume、already-covered、follow-upにだけ使う。
-_Avoid_: Research Ledger、Finding outcome、Coverage proof
-
-**Target Acquisition**:
-選ばれたplugin sourceと配布metadataを、provenanceを失わずResearchへ受け渡せる状態にする行為。
-_Avoid_: Download、Human Verification setup
-
-**Target Research History**:
-Plugin Identity、verified version、Canonical File Manifest digestで固定したTargetについて、Campaign kind、policy/profile identity、purpose、run ordinal、選定・進行・terminal時刻をTarget Intelligenceがappend-onlyに所有する重複管理記録。activeのresume、Coverage Closedの既探索、Incompleteの理由付きfollow-up、新version、同versionで異なるbytesのprovenance conflictを区別する。CVE、advisory、Finding、Hypothesis、known vulnerable rangeまたはknown routeを持たず、Research Ledgerを参照しない。
-_Avoid_: Research Ledger、Finding history、Vulnerability History Aggregate
-
-**Acquisition Original**:
-archiveまたはdirectoryとして受け取ったsourceを、展開・正規化前の原文bytesのcontent identity、source URL、取得時刻へ結び付けて不変化した原本。同じbytesのidentityは取得時刻が変わっても変えず、取得観測だけを追加する。
-_Avoid_: Working copy、Extracted plugin、Target Snapshot
-
-**Canonical File Manifest**:
-取得原本から安全に読める通常fileを、単一プラグインルートからの正規化相対path、原文bytesのcontent identity、sizeへ結び付けた、source treeの主identityとなる安定順の不変表現。
-_Avoid_: Directory listing、Archive index、Surface Map
-
-**Single Plugin Root**:
-一つのWordPress pluginとしてinstall対象になるsource treeの一意な起点。複数候補からの選択または外側bundle内のarchive展開を必要としない。
-_Avoid_: Archive root、Bundle、Repository root
-
-**Main Plugin File**:
-単一プラグインルート内でWordPressが対象pluginとして認識・activateする、検証済みplugin headerを持つ相対path。一意に自動確定できない場合は明示を必要とする。
-_Avoid_: Entrypoint、First PHP file、Filename identity
-
-**Canonical Install Directory**:
-通常配布時にplugin source treeを配置する`wp-content/plugins`直下のdirectory名。WordPress.org版はofficial slug、premium版はvendor provenanceまたは手動対象投入で明示した値に固定する。
-_Avoid_: Plugin Identity、Temporary directory、Generated vendor/product slug
-
-**Plugin Basename**:
-正規インストールディレクトリと主プラグインファイルを結んだ、WordPressがactivationやplugin hookで扱う相対identity。
-_Avoid_: Plugin Identity、Source tree identity、Host path
-
-**Manual Target Intake**:
-operatorが選んだ一つのpluginについて、source、version、入手経路、必要な構成と環境依存だけを提示する受入経路。既知脆弱性、疑わしいsymbol、期待class等の探索hintを含まない。
-_Avoid_: Manual Campaign、Guided Research、Target recommendation
-
-**Intake Disposition**:
-対象をResearchへ渡せる`ready`、単一プラグインルートの特定または他の解消可能な前提が不足する`deferred`、scope・provenance・integrity等のpolicy違反がある`rejected`のいずれかへ、理由付きで固定した判断。
-_Avoid_: Skip、Import error、Finding status
-
-**Target Intake Packet**:
-プラグイン識別子、主プラグインファイル、正規インストールディレクトリ、プラグイン配置識別子、照合済みversion、取得原本、正規化ファイル一覧、provenance、Target Proposal、Approved Target Batch参照を結び、Oracle Factを除外したResearch向けの不変handoff。
-_Avoid_: Target Snapshot、Raw intelligence
+現在の実装と未接続箇所は[Codebase Guide](../../CODEBASE-GUIDE.md)、Context間の関係は[Context Map](../../../CONTEXT-MAP.md)を参照する。

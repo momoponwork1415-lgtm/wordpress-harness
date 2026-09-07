@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -5,6 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { runCli } from "../../src/cli.js";
+import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import {
   promptTextDigest,
   type CampaignInput,
@@ -24,8 +26,20 @@ describe("agent-led campaign CLI", () => {
       mkdir(scratchRootDirectory),
     ]);
     await writeFile(join(sourceDirectory, "plugin.php"), "<?php\n", "utf8");
+    const sourceTreeDigest = canonicalDigest({
+      kind: "canonical-file-manifest",
+      schemaVersion: 1,
+      entries: [
+        {
+          path: "plugin.php",
+          digest: `sha256:${createHash("sha256").update("<?php\n").digest("hex")}`,
+          size: 6,
+        },
+      ],
+    });
     const researchPrompt = "Research broken security semantics from source.";
-    const validationPrompt = "Independently validate the candidate from source.";
+    const validationPrompt =
+      "Independently validate the candidate from source.";
     const researchPromptPath = join(directory, "research-prompt.txt");
     const validationPromptPath = join(directory, "validation-prompt.txt");
     await Promise.all([
@@ -41,6 +55,7 @@ describe("agent-led campaign CLI", () => {
         pluginSlug: "example",
         version: "1.0.0",
         digest: digest("a"),
+        sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
       },
       promptSet: {
         id: "agent-led-research-v1",

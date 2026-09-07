@@ -1,33 +1,38 @@
 # System Walkthrough
 
-同じsystemを六つの問いで順に見る。図を選んで拡大できる。実装状況の正本は[Codebase Guide](CODEBASE-GUIDE.md)、設計の正本は[Harness Architecture](ARCHITECTURE.md)とversioned contractである。
+一件のTargetが通る経路を、現在のpublic seamに沿って示す。実装済みと未接続の境界は[Codebase Guide](CODEBASE-GUIDE.md)を正本とする。
 
-図は採用した設計のViewであり、全接続の実装完了を表さない。Target選定、ResearchとValidationの判断はAIが行い、人間はResearch対象範囲と外部行動を承認する。
+## 1. Select and approve
 
-現在地を知る場合は先に[Current capability](CODEBASE-GUIDE.md#current-capability)を読む。以下の図は役割と処理を理解するために使い、実装済み・移行中・未接続の判定はCodebase Guide、次の有限workは[Issue #86](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/86)へ戻る。
+Target Intelligenceが取得可能性、identity、provenance、freshnessを検査したCandidate Poolを作る。AIは固定rankやreason codeなしにTarget Proposalを返す。人間はProposalの一部または全部をApproved Target Batchとして承認する。
 
-## 1. 誰が何を所有するか
+この段階ではCVE、known file、known routeまたはpatch narrativeをResearchへ渡さない。
 
-[![Target Intelligence、Research、Human OSと外部actorの所有境界](architecture.svg)](architecture.svg)
+## 2. Seal and conduct
 
-## 2. 一件のTargetがどう処理されるか
+ResearchはTarget Snapshot、Research Prompt、Validation Prompt、Agent Runtime Profile、Permission Profile、Budget Envelopeをdigest bindする。CLIの`campaign conduct`はprofileが指定するGrok BuildまたはClaude Code Adapterだけを使う。
 
-[![Target選定からResearch、人間の再実行、提出準備までの処理フロー](diagrams/operating-flow.svg)](diagrams/operating-flow.svg)
+native agentはrunsc container内でread-only sourceとwriteable scratchを使う。AIが具体的な次手を返せば、そのhistoryとValidation feedbackを次のrunへ渡す。固定WaveやDepthはない。
 
-## 3. 各処理が何を読み、何を残すか
+## 3. Validate independently
 
-[![Target ProposalからApproved Submission Draftまでのartifact lineage](diagrams/artifact-lineage.svg)](diagrams/artifact-lineage.svg)
+Research reportにcandidateがあれば、別provider home、別scratch、fresh sessionのIndependent Validationを一度行う。Validatorはcandidateの主張をsourceから再導出する。
 
-## 4. 実際の一件では何が起きたか
+- `source-validated`: immutable Findingを作る。
+- `needs-research`: concrete next actionをResearchへ返す。
+- `disproven`: source evidenceによる反証を残す。
+- `validation-pending`: providerやBudget等で判断不能として残す。
 
-[![Brizy 2.8.11の実測と現行Human Verification設計への対応](diagrams/brizy-worked-sequence.svg)](diagrams/brizy-worked-sequence.svg)
+FindingとCoverageは別artifactである。Findingがあっても探索が続けばCoverageはopenであり、FindingがなくてもAIにnext actionがなければ固定条件内でclosedになり得る。
 
-Brizyはknown-caseの探索経路を実証したが、未知Targetのprospective recallはまだ実証していない。
+## 4. Verify and prepare submission
 
-## 5. どこで止まり、何が次の遷移を許すか
+Human OSはFindingを受け取り、fresh gVisor environmentでのAI reproduction recordを追記する。人間のverificationは別のfresh environment identityを要求する。反証されてもFindingを削除せず、観測をappendする。
 
-[![Target、Research、Validation、Human Reviewの状態遷移](diagrams/lifecycle-states.svg)](diagrams/lifecycle-states.svg)
+AIはSubmission Draftを作れる。外部行動はhuman-confirmed verificationに加え、exact Draft digestとdestinationへbindしたauthorizationが必要である。Harnessは最後のSubmitを実行しない。
 
-## 6. 何がどこで動き、何を渡してはいけないか
+## 5. Resume and failure
 
-[![Host、AI Lab、Human Lab、Private Evidenceのruntimeとtrust boundary](diagrams/runtime-trust.svg)](diagrams/runtime-trust.svg)
+同じCampaign inputで`conduct`を再実行するとappend-only recordから再開する。入力digestが違えばconflictにする。Budget exhaustion、provider failure、policy denialまたはinvalid outputは`incomplete`として観測でき、no-findingへ変換しない。
+
+旧v7へ戻す時は現行databaseを混ぜず、tag `research-v7-before-native-agent-loop`と旧storageを組にする。

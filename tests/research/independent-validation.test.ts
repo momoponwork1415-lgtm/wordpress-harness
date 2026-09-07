@@ -32,6 +32,12 @@ function campaignInput(campaignId: string, maxNativeRuns = 2): CampaignInput {
       version: "1.0.0",
       digest:
         "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      sourceTree: {
+        digest:
+          "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+        entries: 1,
+        bytes: 6,
+      },
     },
     promptSet: {
       id: "agent-led-research-v1",

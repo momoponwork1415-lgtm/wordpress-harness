@@ -24,6 +24,11 @@ const targetSnapshotRefSchema = z.strictObject({
   pluginSlug: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
   version: z.string().min(1).max(64),
   digest: digestSchema,
+  sourceTree: z.strictObject({
+    digest: digestSchema,
+    entries: z.number().int().positive(),
+    bytes: z.number().int().nonnegative(),
+  }),
 });
 
 const agentRuntimeProfileSchema = z.strictObject({

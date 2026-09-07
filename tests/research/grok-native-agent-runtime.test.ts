@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   chmod,
   mkdir,
@@ -11,6 +12,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import {
   openGrokNativeAgentRuntime,
   openResearchCampaigns,
@@ -36,6 +38,11 @@ describe("Grok Native Agent Runtime", () => {
         image: `sha256:${"f".repeat(64)}`,
         sourceDirectory: "/source",
         targetSnapshotDigest: `sha256:${"a".repeat(64)}`,
+        sourceTree: {
+          digest: `sha256:${"9".repeat(64)}`,
+          entries: 1,
+          bytes: 1,
+        },
         providerConfigDirectory: "/provider",
         scratchRootDirectory: "/scratch",
         promptSet: {
@@ -64,6 +71,17 @@ describe("Grok Native Agent Runtime", () => {
       mkdir(scratchRootDirectory),
     ]);
     await writeFile(join(sourceDirectory, "plugin.php"), "<?php\n", "utf8");
+    const sourceTreeDigest = canonicalDigest({
+      kind: "canonical-file-manifest",
+      schemaVersion: 1,
+      entries: [
+        {
+          path: "plugin.php",
+          digest: `sha256:${createHash("sha256").update("<?php\n").digest("hex")}`,
+          size: 6,
+        },
+      ],
+    });
     await Promise.all([
       writeFile(join(providerConfigDirectory, "auth.json"), "{}", {
         encoding: "utf8",
@@ -92,6 +110,7 @@ has_host_user=0
 has_outer_owned_sandbox=0
 has_memory_disabled=0
 has_ephemeral_provider_home=0
+volume_count=0
 is_version_probe=0
 scratch=''
 for argument in "$@"; do
@@ -100,6 +119,10 @@ for argument in "$@"; do
   [ "$argument" != "off" ] || has_outer_owned_sandbox=1
   [ "$argument" != "--no-memory" ] || has_memory_disabled=1
   [ "$argument" != "--env=GROK_HOME=/workspace/research/provider-home" ] || has_ephemeral_provider_home=1
+  [ "$argument" != "--volume" ] || volume_count=$((volume_count + 1))
+  case "$argument" in
+    *:/provider:ro) exit 100 ;;
+  esac
   [ "$argument" != "--version" ] || is_version_probe=1
   [ "$argument" != "--no-subagents" ] || exit 91
   case "$argument" in
@@ -108,6 +131,7 @@ for argument in "$@"; do
 done
 [ "$has_runsc" -eq 1 ] || exit 90
 [ "$has_host_user" -eq 1 ] || exit 94
+[ "$volume_count" -eq 2 ] || exit 100
 if [ "$is_version_probe" -eq 1 ]; then
   printf '%s\n' 'grok 1.0.13 (Grok Build)'
   exit 0
@@ -153,6 +177,7 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
         version: "1.0.0",
         digest:
           "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
       },
       promptSet: {
         id: "agent-led-research-v1",
@@ -191,6 +216,7 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
         "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
       sourceDirectory,
       targetSnapshotDigest: input.targetSnapshot.digest,
+      sourceTree: input.targetSnapshot.sourceTree,
       providerConfigDirectory,
       scratchRootDirectory,
       promptSet: {
@@ -270,6 +296,36 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
       .split("\n");
     expect(scratchPaths).toHaveLength(2);
     expect(new Set(scratchPaths).size).toBe(2);
+    expect(await readFile(join(sourceDirectory, "plugin.php"), "utf8")).toBe(
+      "<?php\n",
+    );
+
+    await writeFile(
+      join(sourceDirectory, "plugin.php"),
+      "<?php // changed\n",
+      "utf8",
+    );
+    const changedInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-grok-native-source-mismatch",
+    };
+    await expect(campaigns.conduct(changedInput)).resolves.toMatchObject({
+      status: "incomplete",
+    });
+    await expect(
+      campaigns.inspect({ campaignId: changedInput.campaignId }),
+    ).resolves.toMatchObject({
+      nativeRuns: [
+        {
+          terminal: "policy-denied",
+          failure: {
+            summary:
+              "The mounted Target source does not match its sealed source tree.",
+          },
+        },
+      ],
+    });
+    expect(await readFile(`${dockerExecutablePath}.count`, "utf8")).toBe("2");
     campaigns.close();
   });
 });

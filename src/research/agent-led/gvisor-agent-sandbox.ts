@@ -13,6 +13,7 @@ import { isAbsolute, join } from "node:path";
 
 import { z } from "zod";
 
+import { verifyCanonicalSourceTree } from "../../infrastructure/canonical-source-tree.js";
 import { runNativeModelProcess } from "../model-execution/native-model-process.js";
 import {
   promptTextDigest,
@@ -32,6 +33,11 @@ export interface GvisorAgentRuntimeOptions {
   readonly image: string;
   readonly sourceDirectory: string;
   readonly targetSnapshotDigest: string;
+  readonly sourceTree: {
+    readonly digest: string;
+    readonly entries: number;
+    readonly bytes: number;
+  };
   readonly providerConfigDirectory: string;
   readonly scratchRootDirectory: string;
   readonly promptSet: {
@@ -183,6 +189,19 @@ export class GvisorAgentSandbox {
     }
     pinnedImageSchema.parse(options.image);
     digestSchema.parse(options.targetSnapshotDigest);
+    digestSchema.parse(options.sourceTree.digest);
+    if (
+      !Number.isSafeInteger(options.sourceTree.entries) ||
+      options.sourceTree.entries <= 0
+    ) {
+      throw new Error("Source tree entry count must be a positive integer");
+    }
+    if (
+      !Number.isSafeInteger(options.sourceTree.bytes) ||
+      options.sourceTree.bytes < 0
+    ) {
+      throw new Error("Source tree byte count must be a non-negative integer");
+    }
     digestSchema.parse(options.promptSet.digest);
     digestSchema.parse(options.validationPromptSet.digest);
     digestSchema.parse(options.permissionProfileDigest);
@@ -221,6 +240,11 @@ export class GvisorAgentSandbox {
         : this.#options.validationPromptSet;
     return (
       run.targetSnapshot.digest === this.#options.targetSnapshotDigest &&
+      run.targetSnapshot.sourceTree.digest ===
+        this.#options.sourceTree.digest &&
+      run.targetSnapshot.sourceTree.entries ===
+        this.#options.sourceTree.entries &&
+      run.targetSnapshot.sourceTree.bytes === this.#options.sourceTree.bytes &&
       run.promptSet.digest === promptSet.digest &&
       run.permissionProfile.digest === this.#options.permissionProfileDigest
     );
@@ -284,6 +308,24 @@ export class GvisorAgentSandbox {
         maxOutputBytes,
       });
 
+    const sourceIntegrity = await verifyCanonicalSourceTree(
+      sourceDirectory,
+      this.#options.sourceTree,
+    ).catch(() => ({ matches: false as const }));
+    if (!sourceIntegrity.matches) {
+      return {
+        status: "failed",
+        receipt: failedNativeRunReceipt(
+          run,
+          "policy-denied",
+          "The mounted Target source does not match its sealed source tree.",
+          startedAt,
+          this.#clock(),
+          false,
+        ),
+      };
+    }
+
     const runtimes = await docker(
       ["info", "--format", "{{json .Runtimes}}"],
       undefined,
@@ -338,8 +380,11 @@ export class GvisorAgentSandbox {
       `${sourceDirectory}:/workspace/main:ro`,
       "--volume",
       `${scratchDirectory}:/workspace/research:rw`,
-      "--volume",
-      `${providerConfigDirectory}:/provider:ro`,
+      ...(command.providerEnvironment.some((value) =>
+        value.endsWith("=/provider"),
+      )
+        ? ["--volume", `${providerConfigDirectory}:/provider:ro`]
+        : []),
       "--workdir=/workspace",
       ...command.providerEnvironment,
       this.#options.image,
@@ -393,12 +438,18 @@ export class GvisorAgentSandbox {
         versionTokens[command.versionTokenIndex] !==
           run.agentRuntimeProfile.executableVersion
       ) {
+        const observedVersion =
+          version.kind === "exited" && version.exitCode === 0
+            ? (versionTokens[command.versionTokenIndex] ?? "unavailable")
+            : "unavailable";
+        const processState =
+          version.kind === "exited" ? `exit-${version.exitCode}` : version.kind;
         return {
           status: "failed",
           receipt: failedNativeRunReceipt(
             run,
             "policy-denied",
-            "The sandboxed Agent Runtime version is not admitted.",
+            `The sandboxed Agent Runtime version is not admitted (expected ${run.agentRuntimeProfile.executableVersion}, observed ${observedVersion}, process ${processState}).`,
             startedAt,
             this.#clock(),
             true,

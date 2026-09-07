@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   chmod,
   mkdir,
@@ -11,6 +12,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import {
   openClaudeCodeNativeAgentRuntime,
   openResearchCampaigns,
@@ -41,6 +43,17 @@ describe("Claude Code Native Agent Runtime", () => {
       mkdir(scratchRootDirectory),
     ]);
     await writeFile(join(sourceDirectory, "plugin.php"), "<?php\n", "utf8");
+    const sourceTreeDigest = canonicalDigest({
+      kind: "canonical-file-manifest",
+      schemaVersion: 1,
+      entries: [
+        {
+          path: "plugin.php",
+          digest: `sha256:${createHash("sha256").update("<?php\n").digest("hex")}`,
+          size: 6,
+        },
+      ],
+    });
 
     const dockerExecutablePath = join(directory, "fake-docker");
     await writeFile(
@@ -106,6 +119,7 @@ printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_rea
         version: "1.0.0",
         digest:
           "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
       },
       promptSet: {
         id: "agent-led-research-v1",
@@ -144,6 +158,7 @@ printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_rea
         "example.invalid/claude-agent@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
       sourceDirectory,
       targetSnapshotDigest: input.targetSnapshot.digest,
+      sourceTree: input.targetSnapshot.sourceTree,
       providerConfigDirectory,
       scratchRootDirectory,
       promptSet: {

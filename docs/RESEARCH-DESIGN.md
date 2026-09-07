@@ -39,7 +39,7 @@ Programme対象外、Disclosure Route不明、既探索またはAIの低評価�
 
 ## Agent-led Research
 
-通常運転はwp2shell / Cycle Double Cover Promptを直接の系譜とする、raw-source-firstの一つの連続loopである。Root agentはTarget Snapshot全体を読み、必要に応じてClaude Code native subagentを起動し、互いに異なるroute、反証、synthesisまたは追加調査を進める。Harnessはagent数、role、round、探索classまたは読むfileを指定しない。
+通常運転はwp2shell / Cycle Double Cover Promptを直接の系譜とする、raw-source-firstの一つの連続loopである。Provider-native Root agentはTarget Snapshot全体を読み、必要に応じてnative subagentを起動し、互いに異なるroute、反証、synthesisまたは追加調査を進める。Harnessはagent数、role、round、探索classまたは読むfileを指定しない。探索評価ではGrokを先に使い、利用不能を別providerへのsilent fallbackで隠さない。
 
 判断は単純である。
 
@@ -52,7 +52,7 @@ source-boundで具体的な次の調査がある -> continue
 
 一つのcandidateを得ただけで停止せず、RCEへ伸びないことだけを理由に重大なSQLiやStored XSSを未完成扱いしない。支持数、model confidence、到着順、static rule non-match、Surface Map外であることをcandidateの棄却またはsafe判定に使わない。
 
-Surface Map、PHP Program Index、AST、Semgrep、CodeQLはagentが必要なら使えるnavigationとevidenceの補助であり、探索空間またはcompletion proofではない。
+Surface Map、AST、Semgrep、CodeQL等の派生解析を将来使う場合もnavigationとevidenceの補助に限り、探索空間またはcompletion proofにしない。現行agent pathはraw sourceを直接読む。
 
 ## Independent Validation
 
@@ -99,7 +99,7 @@ Prompt、runtime、permissionまたはresearch policyの変更は進行中Campai
 - source、provider、budgetまたはschema failureをnegativeへ丸めないか。
 - public Interfaceからbehaviorを観測でき、旧内部Testを削除できるか。
 
-Cost削減はrecall baseline確立後に一変数ずつablationする。LOCは設計の証明ではないが、Research production 15,000〜20,000 LOC、repository production 34,000〜41,000 LOCを複雑性のguardrailとし、超過時はAI判断をHarnessへ再実装していないか見直す。
+Cost削減はrecall baseline確立後に一変数ずつablationする。LOCは設計の証明または目標値にしない。未使用code、二つ目の実装がない汎用abstraction、AI判断を再実装するorchestrationを残さず、実測LOCの増加はpublic behaviorで説明する。
 
 ## References
 
