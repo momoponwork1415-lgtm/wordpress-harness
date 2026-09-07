@@ -93,8 +93,8 @@ const nativeRunUsageSchema = z.strictObject({
 });
 
 const nativeRunActivitySchema = z.strictObject({
-  subagents: z.number().int().nonnegative(),
-  tools: z.array(z.string().min(1)),
+  subagents: z.number().int().nonnegative().nullable(),
+  tools: z.array(z.string().min(1)).nullable(),
 });
 
 const nativeRunReceiptShape = {

@@ -4,6 +4,7 @@ export {
   openResearchCampaigns,
 } from "./research-campaigns.js";
 export { openClaudeCodeNativeAgentRuntime } from "./claude-code-native-agent-runtime.js";
+export { openGrokNativeAgentRuntime } from "./grok-native-agent-runtime.js";
 export {
   campaignInterruptionSchema,
   campaignInputSchema,
@@ -27,3 +28,4 @@ export type {
   SealedNativeRun,
 } from "./contracts.js";
 export type { OpenClaudeCodeNativeAgentRuntimeOptions } from "./claude-code-native-agent-runtime.js";
+export type { OpenGrokNativeAgentRuntimeOptions } from "./grok-native-agent-runtime.js";
