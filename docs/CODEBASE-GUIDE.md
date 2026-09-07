@@ -12,8 +12,8 @@ Status: current implementation map, 2026-09-07
 | Programme / disclosure observations | implemented | 全Programmeを一つのCandidate Poolへ組み立てるapplication serviceは未実装 |
 | AI Target Proposal | Grok production Adapterまでimplemented | CLIとCandidate Pool組立serviceが未実装 |
 | human Approved Target Batch | implemented | Research `CampaignInput`への変換が未接続 |
-| agent-led Research loop | implemented、Claude benign smoke完走 | known-positive Brizy boundary gateは未完了 |
-| Grok native runtime | implemented and structurally tested | real Brizy runはGrok usage balance不足で未完了 |
+| agent-led Research loop | implemented、Claude benign smoke完走 | known-positive BrizyはGrok quota failureとClaude budget exhaustionでincomplete。boundary gateは未通過 |
+| Grok native runtime | implemented and structurally tested | real Brizy runはproviderのHTTP 402で未完了 |
 | Claude Code native runtime | exact imageをreal boundary-probed | admitted image以外は再probeが必要 |
 | fresh Independent Validation | implemented | real targetのpositive / negative pairは未完了 |
 | Finding / Coverage / failure record | implemented | cross-context Coverage Receipt adapterは未実装 |
@@ -94,7 +94,7 @@ Status: current implementation map, 2026-09-07
 
 **Invariants:** immutable image、exact CLI version、non-root UID、read-only root / Target、writeable ephemeral scratch、dropped capabilities、no-new-privileges、Prompt / Target / Permission binding、ResearchとValidationの別scratchを要求する。sanitized provider homeはworkspace mount外へ分離し、agentのRead / Grepをdenyする。Grokは`read_file / grep / list_dir / task`だけを公開する探索試験の優先runtimeで、Claudeへsilent fallbackしない。Claudeは実測済みimage digestと2.1.220だけをadmitする。
 
-**Failure semantics:** runsc、image、unprobed version、binding、policy、providerまたはschema failureをtyped terminal receiptへする。timeoutは`budget-exhausted`である。
+**Failure semantics:** runsc、image、unprobed version、binding、policy、providerまたはschema failureをtyped terminal receiptへする。timeoutとproviderのbudget error envelopeは`budget-exhausted`である。providerがnon-zero exitしても、対応するerror envelopeのusageとcostを失わず、wall timeはprovider値とhost観測値の大きい方を記録する。
 
 **Code / Tests:** [`gvisor-agent-sandbox.ts`](../src/research/agent-led/gvisor-agent-sandbox.ts) · [`grok-native-agent-runtime.ts`](../src/research/agent-led/grok-native-agent-runtime.ts) · [`claude-code-native-agent-runtime.ts`](../src/research/agent-led/claude-code-native-agent-runtime.ts) · [`grok-native-agent-runtime.test.ts`](../tests/research/grok-native-agent-runtime.test.ts) · [`claude-code-native-agent-runtime.test.ts`](../tests/research/claude-code-native-agent-runtime.test.ts)
 

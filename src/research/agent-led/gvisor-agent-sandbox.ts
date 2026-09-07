@@ -82,6 +82,12 @@ export type SandboxedAgentResult =
       readonly startedAt: Date;
       readonly completedAt: Date;
     }
+  | {
+      readonly status: "exited-nonzero";
+      readonly stdout: string;
+      readonly startedAt: Date;
+      readonly completedAt: Date;
+    }
   | { readonly status: "failed"; readonly receipt: FailedReceipt };
 
 function processEnvironment(): NodeJS.ProcessEnv {
@@ -490,7 +496,15 @@ export class GvisorAgentSandbox {
           ),
         };
       }
-      if (result.kind !== "exited" || result.exitCode !== 0) {
+      if (result.kind === "exited" && result.exitCode !== 0) {
+        return {
+          status: "exited-nonzero",
+          stdout: result.stdout,
+          startedAt,
+          completedAt: this.#clock(),
+        };
+      }
+      if (result.kind !== "exited") {
         return {
           status: "failed",
           receipt: failedNativeRunReceipt(

@@ -48,6 +48,23 @@ const claudeResultSchema = z.object({
     .optional(),
   modelUsage: modelUsageSchema,
 });
+const claudeErrorResultSchema = z.object({
+  type: z.literal("result"),
+  subtype: z.string().min(1),
+  is_error: z.literal(true),
+  terminal_reason: z.string().nullable(),
+  total_cost_usd: z.number().finite().nonnegative().optional(),
+  duration_ms: z.number().int().nonnegative(),
+  num_turns: z.number().int().nonnegative(),
+  permission_denials: z.array(z.unknown()),
+  usage: z.object({
+    server_tool_use: z.object({
+      web_search_requests: z.number().int().nonnegative(),
+      web_fetch_requests: z.number().int().nonnegative(),
+    }),
+  }),
+  modelUsage: modelUsageSchema,
+});
 
 export interface OpenClaudeCodeNativeAgentRuntimeOptions extends GvisorAgentRuntimeOptions {}
 
@@ -89,6 +106,78 @@ function claudeJsonSchema(schema: z.ZodType): string {
   const providerSchema = { ...z.toJSONSchema(schema) };
   delete providerSchema.$schema;
   return JSON.stringify(providerSchema);
+}
+
+function wallTimeMs(
+  providerDurationMs: number,
+  startedAt: Date,
+  completedAt: Date,
+): number {
+  return Math.max(
+    providerDurationMs,
+    0,
+    completedAt.getTime() - startedAt.getTime(),
+  );
+}
+
+function errorReceipt(
+  run: SealedAgentRun,
+  envelope: z.infer<typeof claudeErrorResultSchema>,
+  startedAt: Date,
+  completedAt: Date,
+): NativeAgentReceipt {
+  const usedModels = Object.values(envelope.modelUsage);
+  const violatedPolicy =
+    envelope.permission_denials.length > 0 ||
+    envelope.usage.server_tool_use.web_search_requests !== 0 ||
+    envelope.usage.server_tool_use.web_fetch_requests !== 0;
+  const terminal = violatedPolicy
+    ? ("policy-denied" as const)
+    : envelope.terminal_reason === "budget_exhausted" ||
+        envelope.subtype === "error_max_budget_usd"
+      ? ("budget-exhausted" as const)
+      : ("provider-failed" as const);
+  const summary = violatedPolicy
+    ? "Claude Code violated the sealed tool policy."
+    : terminal === "budget-exhausted"
+      ? "Claude Code exhausted the provider cost budget."
+      : "Claude Code exited without a completed result.";
+  const receipt = {
+    schemaVersion: 1,
+    runId: run.runId,
+    runtimeProfileDigest: run.agentRuntimeProfile.digest,
+    terminal,
+    startedAt: startedAt.toISOString(),
+    completedAt: completedAt.toISOString(),
+    usage: {
+      wallTimeMs: wallTimeMs(envelope.duration_ms, startedAt, completedAt),
+      inputTokens: usedModels.reduce(
+        (total, usage) =>
+          total +
+          usage.inputTokens +
+          usage.cacheReadInputTokens +
+          usage.cacheCreationInputTokens,
+        0,
+      ),
+      outputTokens: usedModels.reduce(
+        (total, usage) => total + usage.outputTokens,
+        0,
+      ),
+      ...(envelope.total_cost_usd === undefined
+        ? {}
+        : { estimatedCostUsd: envelope.total_cost_usd }),
+    },
+    activity: { subagents: null, tools: null },
+    isolation: {
+      backend: "gvisor" as const,
+      runtime: "runsc" as const,
+      fallbackUsed: false as const,
+    },
+    failure: { summary },
+  };
+  return run.kind === "sealed-native-research-run"
+    ? nativeRunReceiptSchema.parse(receipt)
+    : validationRunReceiptSchema.parse(receipt);
 }
 
 class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
@@ -174,6 +263,26 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
       prompt: { kind: "stdin", text: this.#sandbox.prompt(run) },
     });
     if (execution.status === "failed") return execution.receipt;
+    if (execution.status === "exited-nonzero") {
+      const decodedError = claudeErrorResultSchema.safeParse(
+        parseJson(execution.stdout),
+      );
+      return decodedError.success
+        ? errorReceipt(
+            run,
+            decodedError.data,
+            execution.startedAt,
+            execution.completedAt,
+          )
+        : failedNativeRunReceipt(
+            run,
+            "provider-failed",
+            "Claude Code exited without a supported failure envelope.",
+            execution.startedAt,
+            execution.completedAt,
+            true,
+          );
+    }
 
     const decodedEnvelope = claudeResultSchema.safeParse(
       parseJson(execution.stdout),
@@ -230,7 +339,11 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
       startedAt: execution.startedAt.toISOString(),
       completedAt: execution.completedAt.toISOString(),
       usage: {
-        wallTimeMs: envelope.duration_ms,
+        wallTimeMs: wallTimeMs(
+          envelope.duration_ms,
+          execution.startedAt,
+          execution.completedAt,
+        ),
         inputTokens: usedModels.reduce(
           (total, usage) =>
             total +

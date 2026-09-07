@@ -123,6 +123,16 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
       prompt: { kind: "file", text: this.#sandbox.prompt(run) },
     });
     if (execution.status === "failed") return execution.receipt;
+    if (execution.status === "exited-nonzero") {
+      return failedNativeRunReceipt(
+        run,
+        "provider-failed",
+        "Grok Build exited without a completed result.",
+        execution.startedAt,
+        execution.completedAt,
+        true,
+      );
+    }
 
     const decodedEnvelope = grokResultSchema.safeParse(
       parseJson(execution.stdout),

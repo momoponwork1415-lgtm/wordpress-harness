@@ -144,6 +144,10 @@ if [ "$invocation" -eq 1 ]; then
   printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_reason":"completed","structured_output":{"schemaVersion":1,"candidates":[{"candidateId":"candidate-claude-stored-xss-1","attackerPremise":"An unauthenticated visitor can submit the public form.","brokenSecurityProperty":"Persisted attacker input must be inert in privileged output.","claim":"A public form value is stored and rendered to an administrator without escaping.","evidence":[{"path":"public/save.php","location":"save_value:44","observation":"Persists the public value."}]}],"decision":{"kind":"stop","basis":"No separate actionable source-bound frontier remains."}},"total_cost_usd":0.75,"duration_ms":90000,"num_turns":8,"permission_denials":[],"usage":{"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}},"modelUsage":{"claude-opus-4-1":{"canonicalModel":"claude-opus-4-1","inputTokens":8000,"outputTokens":1500,"cacheReadInputTokens":2000,"cacheCreationInputTokens":500}}}'
   exit 0
 fi
+if [ "$invocation" -eq 3 ]; then
+  printf '%s' '{"is_error":true,"duration_api_ms":754,"num_turns":1,"stop_reason":null,"session_id":"budget-session","total_cost_usd":0.25,"usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}},"modelUsage":{"claude-haiku-4-5":{"inputTokens":532,"outputTokens":13,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"canonicalModel":"claude-haiku-4-5"}},"permission_denials":[],"terminal_reason":"budget_exhausted","subtype":"error_max_budget_usd","errors":["Reached maximum budget"],"type":"result","duration_ms":1}'
+  exit 1
+fi
 printf '%s' "$prompt" | grep -F 'This is one fresh Independent Validation.' >/dev/null
 printf '%s' "$prompt" | grep -F 'Candidate:' >/dev/null
 if printf '%s' "$prompt" | grep -F 'Prior source-bound reports:' >/dev/null; then
@@ -202,6 +206,7 @@ printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_rea
           "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       },
     };
+    let clockTick = 0;
     const runtimeOptions = {
       dockerExecutablePath,
       sourceDirectory,
@@ -219,6 +224,7 @@ printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_rea
       },
       permissionProfileDigest: input.permissionProfile.digest,
       maxOutputBytes: 1_000_000,
+      clock: () => new Date(clockTick++ * 10_000),
     };
     const unadmittedCampaigns = openResearchCampaigns({
       databasePath: join(directory, "unadmitted.sqlite"),
@@ -316,6 +322,34 @@ printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_rea
     expect(await readFile(join(sourceDirectory, "plugin.php"), "utf8")).toBe(
       "<?php\n",
     );
+    const budgetInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-claude-provider-budget-1",
+      budgetEnvelope: {
+        ...input.budgetEnvelope,
+        maxEstimatedCostUsd: 0.1,
+        digest:
+          "sha256:abababababababababababababababababababababababababababababababab",
+      },
+    };
+    await expect(campaigns.conduct(budgetInput)).resolves.toMatchObject({
+      status: "incomplete",
+    });
+    await expect(
+      campaigns.inspect({ campaignId: budgetInput.campaignId }),
+    ).resolves.toMatchObject({
+      nativeRuns: [
+        {
+          terminal: "budget-exhausted",
+          usage: {
+            wallTimeMs: 10_000,
+            inputTokens: 532,
+            outputTokens: 13,
+            estimatedCostUsd: 0.25,
+          },
+        },
+      ],
+    });
     campaigns.close();
   });
 });
