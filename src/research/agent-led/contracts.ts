@@ -46,17 +46,49 @@ const budgetEnvelopeSchema = z.strictObject({
   digest: digestSchema,
 });
 
-export const campaignInputSchema = z.strictObject({
-  kind: z.literal("agent-led-campaign"),
+export const agentCheckpointRefSchema = z.strictObject({
+  kind: z.literal("agent-checkpoint"),
   schemaVersion: z.literal(1),
-  campaignId: identifierSchema,
-  targetSnapshot: targetSnapshotRefSchema,
-  promptSet: immutableRefSchema,
-  validationPromptSet: immutableRefSchema,
-  agentRuntimeProfile: agentRuntimeProfileSchema,
-  permissionProfile: immutableRefSchema,
-  budgetEnvelope: budgetEnvelopeSchema,
+  checkpointId: identifierSchema,
+  stateDigest: digestSchema,
+  stateEntries: z.number().int().positive(),
+  stateBytes: z.number().int().nonnegative(),
+  sessionId: z.uuid(),
+  targetSnapshotDigest: digestSchema,
+  promptSetDigest: digestSchema,
+  runtimeProfileDigest: digestSchema,
+  permissionProfileDigest: digestSchema,
 });
+
+export const campaignInputSchema = z
+  .strictObject({
+    kind: z.literal("agent-led-campaign"),
+    schemaVersion: z.literal(1),
+    campaignId: identifierSchema,
+    targetSnapshot: targetSnapshotRefSchema,
+    promptSet: immutableRefSchema,
+    validationPromptSet: immutableRefSchema,
+    agentRuntimeProfile: agentRuntimeProfileSchema,
+    permissionProfile: immutableRefSchema,
+    budgetEnvelope: budgetEnvelopeSchema,
+    resumeFrom: agentCheckpointRefSchema.optional(),
+  })
+  .superRefine((input, context) => {
+    const checkpoint = input.resumeFrom;
+    if (checkpoint === undefined) return;
+    if (
+      checkpoint.targetSnapshotDigest !== input.targetSnapshot.digest ||
+      checkpoint.promptSetDigest !== input.promptSet.digest ||
+      checkpoint.runtimeProfileDigest !== input.agentRuntimeProfile.digest ||
+      checkpoint.permissionProfileDigest !== input.permissionProfile.digest
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Agent Checkpoint does not match the Campaign binding",
+        path: ["resumeFrom"],
+      });
+    }
+  });
 
 const sourceEvidenceSchema = z.strictObject({
   path: z.string().min(1),
@@ -139,7 +171,7 @@ const nativeRunActivitySchema = z.strictObject({
   tools: z.array(z.string().min(1)).nullable(),
 });
 
-const nativeRunReceiptShape = {
+const agentRunReceiptShape = {
   schemaVersion: z.literal(1),
   runId: identifierSchema,
   runtimeProfileDigest: digestSchema,
@@ -156,10 +188,15 @@ const nativeRunReceiptShape = {
     .optional(),
 };
 
+const nativeRunReceiptShape = {
+  ...agentRunReceiptShape,
+};
+
 export const nativeRunReceiptSchema = z.discriminatedUnion("terminal", [
   z.strictObject({
     ...nativeRunReceiptShape,
     terminal: z.literal("completed"),
+    checkpoint: agentCheckpointRefSchema,
     report: researchReportSchema,
   }),
   z.strictObject({
@@ -170,18 +207,19 @@ export const nativeRunReceiptSchema = z.discriminatedUnion("terminal", [
       "policy-denied",
       "invalid-output",
     ]),
+    checkpoint: agentCheckpointRefSchema.optional(),
     failure: z.strictObject({ summary: z.string().min(1) }),
   }),
 ]);
 
 export const validationRunReceiptSchema = z.discriminatedUnion("terminal", [
   z.strictObject({
-    ...nativeRunReceiptShape,
+    ...agentRunReceiptShape,
     terminal: z.literal("completed"),
     report: validationReportSchema,
   }),
   z.strictObject({
-    ...nativeRunReceiptShape,
+    ...agentRunReceiptShape,
     terminal: z.enum([
       "provider-failed",
       "budget-exhausted",
@@ -203,6 +241,7 @@ export const sealedNativeRunSchema = z.strictObject({
   agentRuntimeProfile: agentRuntimeProfileSchema,
   permissionProfile: immutableRefSchema,
   budgetEnvelope: budgetEnvelopeSchema,
+  resumeFrom: agentCheckpointRefSchema.optional(),
   history: z.array(
     z.strictObject({
       runId: identifierSchema,
@@ -320,6 +359,7 @@ export interface OpenResearchCampaignsOptions {
 }
 
 export type CampaignInput = z.infer<typeof campaignInputSchema>;
+export type AgentCheckpointRef = z.infer<typeof agentCheckpointRefSchema>;
 export type CampaignInterruption = z.infer<typeof campaignInterruptionSchema>;
 export type CampaignStatus = z.infer<typeof campaignStatusSchema>;
 export type NativeRunReceipt = z.infer<typeof nativeRunReceiptSchema>;

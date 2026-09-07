@@ -6,8 +6,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   openResearchCampaigns,
+  type AgentCheckpointRef,
   type CampaignInput,
   type NativeAgentRuntime,
+  type SealedAgentRun,
 } from "../../src/research/index.js";
 
 const temporaryDirectories: string[] = [];
@@ -71,6 +73,23 @@ const input: CampaignInput = {
   },
 };
 
+function checkpointFor(run: SealedAgentRun): AgentCheckpointRef {
+  return {
+    kind: "agent-checkpoint",
+    schemaVersion: 1,
+    checkpointId: `${run.runId}:checkpoint`,
+    stateDigest:
+      "sha256:1212121212121212121212121212121212121212121212121212121212121212",
+    stateEntries: 1,
+    stateBytes: 1,
+    sessionId: "12121212-1212-4121-8121-121212121212",
+    targetSnapshotDigest: run.targetSnapshot.digest,
+    promptSetDigest: run.promptSet.digest,
+    runtimeProfileDigest: run.agentRuntimeProfile.digest,
+    permissionProfileDigest: run.permissionProfile.digest,
+  };
+}
+
 describe("ResearchCampaigns", () => {
   it("restores a sealed stopped Campaign through its public interface", async () => {
     const directory = await mkdtemp(join(tmpdir(), "research-campaigns-"));
@@ -96,6 +115,7 @@ describe("ResearchCampaigns", () => {
             subagents: 2,
             tools: ["source.search", "source.read"],
           },
+          checkpoint: checkpointFor(run),
           report: {
             schemaVersion: 1,
             candidates: [],
@@ -257,6 +277,59 @@ describe("ResearchCampaigns", () => {
     campaigns.close();
   });
 
+  it("does not claim resumable Research when the runtime omits its Checkpoint", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "research-no-checkpoint-"));
+    temporaryDirectories.push(directory);
+    const noCheckpointInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-no-checkpoint-1",
+    };
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "agent-led.sqlite"),
+      runtime: {
+        async execute(run) {
+          return {
+            schemaVersion: 1,
+            runId: run.runId,
+            runtimeProfileDigest: run.agentRuntimeProfile.digest,
+            terminal: "completed",
+            startedAt: "2026-09-07T03:10:00.000Z",
+            completedAt: "2026-09-07T03:11:00.000Z",
+            usage: { wallTimeMs: 60_000 },
+            activity: { subagents: 0, tools: ["source.read"] },
+            report: {
+              schemaVersion: 1,
+              candidates: [],
+              decision: {
+                kind: "stop",
+                basis: "The runtime returned a conclusion without state.",
+              },
+            },
+          } as unknown as Awaited<ReturnType<NativeAgentRuntime["execute"]>>;
+        },
+      },
+      clock: () => new Date("2026-09-07T03:12:00.000Z"),
+    });
+
+    await expect(campaigns.conduct(noCheckpointInput)).resolves.toMatchObject({
+      status: "incomplete",
+    });
+    await expect(
+      campaigns.inspect({ campaignId: noCheckpointInput.campaignId }),
+    ).resolves.toMatchObject({
+      nativeRuns: [
+        {
+          terminal: "invalid-output",
+          failure: {
+            summary:
+              "Native Agent Runtime returned an unsupported output schema.",
+          },
+        },
+      ],
+    });
+    campaigns.close();
+  });
+
   it("continues autonomously until the agent reports no actionable frontier", async () => {
     const directory = await mkdtemp(join(tmpdir(), "research-continues-"));
     temporaryDirectories.push(directory);
@@ -276,6 +349,29 @@ describe("ResearchCampaigns", () => {
             throw new Error("This scenario does not produce a candidate");
           }
           const invocation = run.history.length + 1;
+          const checkpoint = {
+            kind: "agent-checkpoint" as const,
+            schemaVersion: 1 as const,
+            checkpointId: `checkpoint-${invocation}`,
+            stateDigest:
+              invocation === 1
+                ? "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+                : "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            stateEntries: 2,
+            stateBytes: 128,
+            sessionId: "8f6d59a8-a2de-4a75-8a33-9f8065fc9a11",
+            targetSnapshotDigest: run.targetSnapshot.digest,
+            promptSetDigest: run.promptSet.digest,
+            runtimeProfileDigest: run.agentRuntimeProfile.digest,
+            permissionProfileDigest: run.permissionProfile.digest,
+          };
+          if (invocation === 2) {
+            expect(run.resumeFrom).toMatchObject({
+              checkpointId: "checkpoint-1",
+              stateDigest:
+                "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            });
+          }
           return {
             schemaVersion: 1,
             runId: run.runId,
@@ -285,6 +381,7 @@ describe("ResearchCampaigns", () => {
             completedAt: `2026-09-07T04:0${invocation}:30.000Z`,
             usage: { wallTimeMs: 30_000 },
             activity: { subagents: invocation, tools: ["source.read"] },
+            checkpoint,
             report: {
               schemaVersion: 1,
               candidates: [],
@@ -319,8 +416,14 @@ describe("ResearchCampaigns", () => {
       campaigns.inspect({ campaignId: "campaign-continues-1" }),
     ).resolves.toMatchObject({
       nativeRuns: [
-        { report: { decision: { kind: "continue" } } },
-        { report: { decision: { kind: "stop" } } },
+        {
+          checkpoint: { checkpointId: "checkpoint-1" },
+          report: { decision: { kind: "continue" } },
+        },
+        {
+          checkpoint: { checkpointId: "checkpoint-2" },
+          report: { decision: { kind: "stop" } },
+        },
       ],
     });
     campaigns.close();
@@ -346,6 +449,7 @@ describe("ResearchCampaigns", () => {
             completedAt: "2026-09-07T05:01:00.000Z",
             usage: { wallTimeMs: 60_000 },
             activity: { subagents: 1, tools: ["source.search"] },
+            checkpoint: checkpointFor(run),
             report: {
               schemaVersion: 1,
               candidates: [],
@@ -407,6 +511,7 @@ describe("ResearchCampaigns", () => {
             completedAt: "2026-09-07T06:01:00.000Z",
             usage: { wallTimeMs: 60_000 },
             activity: { subagents: 0, tools: ["source.read"] },
+            checkpoint: checkpointFor(run),
             report: {
               schemaVersion: 1,
               candidates: [],
@@ -466,6 +571,7 @@ describe("ResearchCampaigns", () => {
             completedAt: "2026-09-07T07:01:00.000Z",
             usage: { wallTimeMs: 60_000 },
             activity: { subagents: 1, tools: ["source.read"] },
+            checkpoint: checkpointFor(run),
             report: {
               schemaVersion: 1,
               candidates: [],
@@ -522,6 +628,7 @@ describe("ResearchCampaigns", () => {
             completedAt: "2026-09-07T08:00:30.000Z",
             usage: { wallTimeMs: 30_000, estimatedCostUsd: 1.25 },
             activity: { subagents: 1, tools: ["source.read"] },
+            checkpoint: checkpointFor(run),
             report: {
               schemaVersion: 1,
               candidates: [],
@@ -573,6 +680,7 @@ describe("ResearchCampaigns", () => {
             completedAt: "2026-09-07T09:01:00.000Z",
             usage: { wallTimeMs: 60_000 },
             activity: { subagents: 2, tools: ["source.read"] },
+            checkpoint: checkpointFor(run),
             report: {
               schemaVersion: 1,
               candidates: [
@@ -698,6 +806,7 @@ describe("ResearchCampaigns", () => {
           completedAt: "2026-09-07T10:01:00.000Z",
           usage: { wallTimeMs: 60_000 },
           activity: { subagents: 2, tools: ["source.read"] },
+          checkpoint: checkpointFor(run),
           report: {
             schemaVersion: 1,
             candidates: [
@@ -857,6 +966,7 @@ describe("ResearchCampaigns", () => {
               completedAt: "2026-09-07T11:03:00.000Z",
               usage: { wallTimeMs: 60_000 },
               activity: { subagents: 1, tools: ["source.read"] },
+              checkpoint: checkpointFor(run),
               report: {
                 schemaVersion: 1,
                 candidates: [],
@@ -878,6 +988,7 @@ describe("ResearchCampaigns", () => {
             completedAt: "2026-09-07T11:01:00.000Z",
             usage: { wallTimeMs: 60_000 },
             activity: { subagents: 1, tools: ["source.read"] },
+            checkpoint: checkpointFor(run),
             report: {
               schemaVersion: 1,
               candidates: [

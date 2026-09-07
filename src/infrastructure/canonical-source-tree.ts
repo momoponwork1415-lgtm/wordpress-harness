@@ -16,6 +16,11 @@ export interface SourceTreeVerification {
   readonly observedDigest?: string;
 }
 
+export interface CanonicalSourceTreeLimits {
+  readonly maxEntries: number;
+  readonly maxBytes: number;
+}
+
 function sameFile(before: Stats, after: Stats): boolean {
   return (
     before.dev === after.dev &&
@@ -53,13 +58,13 @@ async function digestRegularFile(path: string): Promise<{
   }
 }
 
-export async function verifyCanonicalSourceTree(
+async function canonicalSourceTree(
   root: string,
-  expected: ExpectedSourceTree,
-): Promise<SourceTreeVerification> {
+  limits: CanonicalSourceTreeLimits,
+): Promise<ExpectedSourceTree> {
   const rootStat = await lstat(root);
   if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
-    return { matches: false };
+    throw new Error("Source tree root must be a real directory");
   }
 
   const entries: Array<{
@@ -109,25 +114,62 @@ export async function verifyCanonicalSourceTree(
       const file = await digestRegularFile(absolutePath);
       entries.push({ path: relativePath, ...file });
       observedBytes += file.size;
-      if (entries.length > expected.entries || observedBytes > expected.bytes) {
+      if (
+        entries.length > limits.maxEntries ||
+        observedBytes > limits.maxBytes
+      ) {
         throw new Error("Source tree exceeds its sealed bounds");
       }
     }
   };
 
+  await walk(root, []);
+  return {
+    digest: canonicalDigest({
+      kind: "canonical-file-manifest",
+      schemaVersion: 1,
+      entries,
+    }),
+    entries: entries.length,
+    bytes: observedBytes,
+  };
+}
+
+export async function measureCanonicalSourceTree(
+  root: string,
+  limits: CanonicalSourceTreeLimits,
+): Promise<ExpectedSourceTree> {
+  if (
+    !Number.isSafeInteger(limits.maxEntries) ||
+    limits.maxEntries <= 0 ||
+    !Number.isSafeInteger(limits.maxBytes) ||
+    limits.maxBytes < 0
+  ) {
+    throw new Error("Canonical source tree limits are invalid");
+  }
+  return canonicalSourceTree(root, limits);
+}
+
+export async function verifyCanonicalSourceTree(
+  root: string,
+  expected: ExpectedSourceTree,
+): Promise<SourceTreeVerification> {
+  let observed: ExpectedSourceTree;
   try {
-    await walk(root, []);
+    observed = await canonicalSourceTree(root, {
+      maxEntries: expected.entries,
+      maxBytes: expected.bytes,
+    });
   } catch {
     return { matches: false };
   }
-  if (entries.length !== expected.entries || observedBytes !== expected.bytes) {
+  if (
+    observed.entries !== expected.entries ||
+    observed.bytes !== expected.bytes
+  ) {
     return { matches: false };
   }
-  const observedDigest = canonicalDigest({
-    kind: "canonical-file-manifest",
-    schemaVersion: 1,
-    entries,
-  });
+  const observedDigest = observed.digest;
   return {
     matches: observedDigest === expected.digest,
     observedDigest,

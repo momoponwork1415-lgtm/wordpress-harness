@@ -6,6 +6,7 @@ export {
 export { openClaudeCodeNativeAgentRuntime } from "./claude-code-native-agent-runtime.js";
 export { openGrokNativeAgentRuntime } from "./grok-native-agent-runtime.js";
 export {
+  agentCheckpointRefSchema,
   campaignInterruptionSchema,
   campaignInputSchema,
   campaignCoverageSchema,
@@ -22,6 +23,7 @@ export {
   promptTextDigest,
 } from "./contracts.js";
 export type {
+  AgentCheckpointRef,
   CampaignInput,
   CampaignCoverage,
   CampaignInterruption,

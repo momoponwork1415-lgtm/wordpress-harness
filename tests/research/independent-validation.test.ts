@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   openResearchCampaigns,
   type CampaignInput,
-  type NativeAgentReceipt,
+  type NativeRunReceipt,
   type SealedAgentRun,
 } from "../../src/research/index.js";
 
@@ -77,7 +77,7 @@ function campaignInput(campaignId: string, maxNativeRuns = 2): CampaignInput {
 function researchReceipt(
   run: Extract<SealedAgentRun, { readonly kind: "sealed-native-research-run" }>,
   decision: "stop" | "continue",
-): NativeAgentReceipt {
+): NativeRunReceipt {
   return {
     schemaVersion: 1,
     runId: run.runId,
@@ -87,6 +87,20 @@ function researchReceipt(
     completedAt: "2026-09-07T12:01:00.000Z",
     usage: { wallTimeMs: 60_000 },
     activity: { subagents: 1, tools: ["source.read"] },
+    checkpoint: {
+      kind: "agent-checkpoint",
+      schemaVersion: 1,
+      checkpointId: `${run.runId}:checkpoint`,
+      stateDigest:
+        "sha256:1313131313131313131313131313131313131313131313131313131313131313",
+      stateEntries: 1,
+      stateBytes: 1,
+      sessionId: "13131313-1313-4131-8131-131313131313",
+      targetSnapshotDigest: run.targetSnapshot.digest,
+      promptSetDigest: run.promptSet.digest,
+      runtimeProfileDigest: run.agentRuntimeProfile.digest,
+      permissionProfileDigest: run.permissionProfile.digest,
+    },
     report: {
       schemaVersion: 1,
       candidates: [

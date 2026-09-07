@@ -89,6 +89,20 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
       ],
       ephemeralProviderCredentialFiles: ["auth.json", "agent_id"],
       ephemeralProviderHomeMount: { path: "/provider", mode: "rw" },
+      ...(run.kind === "sealed-native-research-run"
+        ? {
+            researchSession: {
+              newSessionArguments: (sessionId: string) => [
+                "--session-id",
+                sessionId,
+              ],
+              resumeSessionArguments: (sessionId: string) => [
+                "--resume",
+                sessionId,
+              ],
+            },
+          }
+        : {}),
       args: [
         "--model",
         run.agentRuntimeProfile.model,
@@ -131,6 +145,7 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         execution.startedAt,
         execution.completedAt,
         true,
+        execution.checkpoint,
       );
     }
 
@@ -145,6 +160,7 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         execution.startedAt,
         execution.completedAt,
         true,
+        execution.checkpoint,
       );
     }
     const envelope = decodedEnvelope.data;
@@ -162,7 +178,10 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         modelUsage.inputTokens +
           modelUsage.cacheReadInputTokens +
           modelUsage.cacheCreationInputTokens +
-          modelUsage.outputTokens
+          modelUsage.outputTokens ||
+      (run.kind === "sealed-native-research-run" &&
+        (execution.checkpoint === undefined ||
+          envelope.sessionId !== execution.checkpoint.sessionId))
     ) {
       return failedNativeRunReceipt(
         run,
@@ -186,6 +205,7 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         execution.startedAt,
         execution.completedAt,
         true,
+        execution.checkpoint,
       );
     }
     const receipt = {
@@ -215,6 +235,10 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         runtime: "runsc",
         fallbackUsed: false,
       },
+      ...(run.kind === "sealed-native-research-run" &&
+      execution.checkpoint !== undefined
+        ? { checkpoint: execution.checkpoint }
+        : {}),
       report: report.data,
     };
     return run.kind === "sealed-native-research-run"

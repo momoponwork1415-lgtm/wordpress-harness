@@ -272,6 +272,11 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         continue;
       }
       const ordinal = view.nativeRuns.length + 1;
+      const resumeFrom =
+        [...view.nativeRuns]
+          .reverse()
+          .find((receipt) => receipt.checkpoint !== undefined)?.checkpoint ??
+        (view.nativeRuns.length === 0 ? input.resumeFrom : undefined);
       const run: SealedNativeRun = {
         kind: "sealed-native-research-run",
         schemaVersion: 1,
@@ -283,6 +288,7 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         agentRuntimeProfile: input.agentRuntimeProfile,
         permissionProfile: input.permissionProfile,
         budgetEnvelope: input.budgetEnvelope,
+        ...(resumeFrom === undefined ? {} : { resumeFrom }),
         history: view.nativeRuns.flatMap((receipt) =>
           receipt.terminal === "completed"
             ? [{ runId: receipt.runId, report: receipt.report }]

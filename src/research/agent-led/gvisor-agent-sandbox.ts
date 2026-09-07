@@ -1,9 +1,13 @@
+import { createHash } from "node:crypto";
 import { COPYFILE_EXCL } from "node:constants";
 import {
   chmod,
+  cp,
   copyFile,
+  mkdir,
   mkdtemp,
   realpath,
+  rename,
   rm,
   stat,
   writeFile,
@@ -12,10 +16,14 @@ import { isAbsolute, join } from "node:path";
 
 import { z } from "zod";
 
-import { verifyCanonicalSourceTree } from "../../infrastructure/canonical-source-tree.js";
+import {
+  measureCanonicalSourceTree,
+  verifyCanonicalSourceTree,
+} from "../../infrastructure/canonical-source-tree.js";
 import { runNativeModelProcess } from "../../infrastructure/native-model-process.js";
 import {
   promptTextDigest,
+  type AgentCheckpointRef,
   type NativeAgentReceipt,
   type SealedAgentRun,
 } from "./contracts.js";
@@ -65,6 +73,10 @@ export interface SandboxedAgentCommand {
     readonly mode: "ro" | "rw";
   };
   readonly args: readonly string[];
+  readonly researchSession?: {
+    readonly newSessionArguments: (sessionId: string) => readonly string[];
+    readonly resumeSessionArguments: (sessionId: string) => readonly string[];
+  };
   readonly prompt:
     | { readonly kind: "stdin"; readonly text: string }
     | { readonly kind: "file"; readonly text: string };
@@ -81,12 +93,14 @@ export type SandboxedAgentResult =
       readonly stdout: string;
       readonly startedAt: Date;
       readonly completedAt: Date;
+      readonly checkpoint?: AgentCheckpointRef;
     }
   | {
       readonly status: "exited-nonzero";
       readonly stdout: string;
       readonly startedAt: Date;
       readonly completedAt: Date;
+      readonly checkpoint?: AgentCheckpointRef;
     }
   | { readonly status: "failed"; readonly receipt: FailedReceipt };
 
@@ -129,6 +143,7 @@ export function failedNativeRunReceipt(
   startedAt: Date,
   completedAt: Date,
   isolated: boolean,
+  checkpoint?: AgentCheckpointRef,
 ): FailedReceipt {
   return {
     schemaVersion: 1,
@@ -150,6 +165,7 @@ export function failedNativeRunReceipt(
           },
         }
       : {}),
+    ...(checkpoint === undefined ? {} : { checkpoint }),
     failure: { summary },
   };
 }
@@ -188,6 +204,46 @@ Target: ${run.targetSnapshot.pluginSlug} ${run.targetSnapshot.version} (${run.ta
 Candidate: ${JSON.stringify(run.candidate)}
 
 Return only the requested structured Validation Report. Use source-validated only when independent source evidence supports the claim. Use disproven only for a source contradiction. Use needs-research for a concrete, source-bound proof gap. Use validation-pending when an external constraint prevents a decision.`;
+}
+
+const checkpointLimits = {
+  maxEntries: 20_000,
+  maxBytes: 128 * 1024 * 1024,
+} as const;
+
+interface ResearchWorkingState {
+  readonly root: string;
+  readonly providerHome: string;
+  readonly scratchDirectory: string;
+  readonly sessionId: string;
+}
+
+function deterministicSessionId(campaignInputDigest: string): string {
+  const bytes = createHash("sha256")
+    .update("wordpress-harness:research-session:")
+    .update(campaignInputDigest)
+    .digest();
+  const versionByte = bytes[6];
+  const variantByte = bytes[8];
+  if (versionByte === undefined || variantByte === undefined) {
+    throw new Error("Unable to derive Agent session identity");
+  }
+  bytes[6] = (versionByte & 0x0f) | 0x40;
+  bytes[8] = (variantByte & 0x3f) | 0x80;
+  const hex = bytes.subarray(0, 16).toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function checkpointMatchesRun(
+  checkpoint: AgentCheckpointRef,
+  run: Extract<SealedAgentRun, { readonly kind: "sealed-native-research-run" }>,
+): boolean {
+  return (
+    checkpoint.targetSnapshotDigest === run.targetSnapshot.digest &&
+    checkpoint.promptSetDigest === run.promptSet.digest &&
+    checkpoint.runtimeProfileDigest === run.agentRuntimeProfile.digest &&
+    checkpoint.permissionProfileDigest === run.permissionProfile.digest
+  );
 }
 
 export class GvisorAgentSandbox {
@@ -270,6 +326,124 @@ export class GvisorAgentSandbox {
 
   now(): Date {
     return this.#clock();
+  }
+
+  async #prepareResearchState(
+    run: Extract<
+      SealedAgentRun,
+      { readonly kind: "sealed-native-research-run" }
+    >,
+    scratchRootDirectory: string,
+  ): Promise<ResearchWorkingState> {
+    const checkpointRoot = join(scratchRootDirectory, "agent-checkpoints");
+    await mkdir(checkpointRoot, { recursive: true, mode: 0o700 });
+    const root = await mkdtemp(join(scratchRootDirectory, "active-research-"));
+    const providerHome = join(root, "provider");
+    const scratchDirectory = join(root, "scratch");
+    try {
+      const prior = run.resumeFrom;
+      if (prior === undefined) {
+        await Promise.all([
+          mkdir(providerHome, { mode: 0o700 }),
+          mkdir(scratchDirectory, { mode: 0o700 }),
+        ]);
+        return {
+          root,
+          providerHome,
+          scratchDirectory,
+          sessionId: deterministicSessionId(run.campaignInputDigest),
+        };
+      }
+      if (!checkpointMatchesRun(prior, run)) {
+        throw new Error("Agent Checkpoint binding mismatch");
+      }
+      const priorDirectory = join(checkpointRoot, prior.checkpointId);
+      const verified = await verifyCanonicalSourceTree(priorDirectory, {
+        digest: prior.stateDigest,
+        entries: prior.stateEntries,
+        bytes: prior.stateBytes,
+      });
+      if (!verified.matches) {
+        throw new Error("Agent Checkpoint integrity mismatch");
+      }
+      await Promise.all([
+        cp(join(priorDirectory, "provider"), providerHome, {
+          recursive: true,
+          force: false,
+          errorOnExist: true,
+        }),
+        cp(join(priorDirectory, "scratch"), scratchDirectory, {
+          recursive: true,
+          force: false,
+          errorOnExist: true,
+        }),
+      ]);
+      return {
+        root,
+        providerHome,
+        scratchDirectory,
+        sessionId: prior.sessionId,
+      };
+    } catch (error: unknown) {
+      await rm(root, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
+  async #finalizeResearchState(
+    run: Extract<
+      SealedAgentRun,
+      { readonly kind: "sealed-native-research-run" }
+    >,
+    state: ResearchWorkingState,
+    scratchRootDirectory: string,
+  ): Promise<AgentCheckpointRef | undefined> {
+    const providerState = await measureCanonicalSourceTree(
+      state.providerHome,
+      checkpointLimits,
+    );
+    if (providerState.entries === 0) return undefined;
+    const measured = await measureCanonicalSourceTree(
+      state.root,
+      checkpointLimits,
+    );
+    const checkpointId = `checkpoint-${createHash("sha256")
+      .update(measured.digest)
+      .update(state.sessionId)
+      .update(run.targetSnapshot.digest)
+      .update(run.promptSet.digest)
+      .update(run.agentRuntimeProfile.digest)
+      .update(run.permissionProfile.digest)
+      .digest("hex")}`;
+    const checkpointRoot = join(scratchRootDirectory, "agent-checkpoints");
+    const destination = join(checkpointRoot, checkpointId);
+    try {
+      await rename(state.root, destination);
+    } catch (error: unknown) {
+      if (!(
+        error instanceof Error &&
+        "code" in error &&
+        (error.code === "EEXIST" || error.code === "ENOTEMPTY")
+      )) {
+        throw error;
+      }
+      const existing = await verifyCanonicalSourceTree(destination, measured);
+      if (!existing.matches) throw error;
+      await rm(state.root, { recursive: true, force: true });
+    }
+    return {
+      kind: "agent-checkpoint",
+      schemaVersion: 1,
+      checkpointId,
+      stateDigest: measured.digest,
+      stateEntries: measured.entries,
+      stateBytes: measured.bytes,
+      sessionId: state.sessionId,
+      targetSnapshotDigest: run.targetSnapshot.digest,
+      promptSetDigest: run.promptSet.digest,
+      runtimeProfileDigest: run.agentRuntimeProfile.digest,
+      permissionProfileDigest: run.permissionProfile.digest,
+    };
   }
 
   async execute(
@@ -375,15 +549,53 @@ export class GvisorAgentSandbox {
       };
     }
 
-    const scratchDirectory = await mkdtemp(join(scratchRootDirectory, "run-"));
+    let researchState: ResearchWorkingState | undefined;
+    let scratchDirectory: string | undefined;
     let providerHome: string | undefined;
 
     try {
+      if (command.researchSession !== undefined) {
+        if (run.kind !== "sealed-native-research-run") {
+          throw new Error(
+            "Independent Validation cannot resume Research state",
+          );
+        }
+        try {
+          researchState = await this.#prepareResearchState(
+            run,
+            scratchRootDirectory,
+          );
+        } catch {
+          return {
+            status: "failed",
+            receipt: failedNativeRunReceipt(
+              run,
+              "policy-denied",
+              "The bound Agent Checkpoint is unavailable or invalid.",
+              startedAt,
+              this.#clock(),
+              false,
+            ),
+          };
+        }
+        scratchDirectory = researchState.scratchDirectory;
+        providerHome = researchState.providerHome;
+      } else {
+        if (
+          run.kind === "sealed-native-research-run" &&
+          run.resumeFrom !== undefined
+        ) {
+          throw new Error(
+            "Research resume requires a provider session binding",
+          );
+        }
+        scratchDirectory = await mkdtemp(join(scratchRootDirectory, "run-"));
+      }
       if (command.ephemeralProviderCredentialFiles !== undefined) {
         if (command.ephemeralProviderHomeMount === undefined) {
           throw new Error("Provider credentials require an isolated mount");
         }
-        providerHome = await mkdtemp(join(scratchRootDirectory, "provider-"));
+        providerHome ??= await mkdtemp(join(scratchRootDirectory, "provider-"));
         for (const candidate of command.ephemeralProviderCredentialFiles) {
           const filename = credentialFileSchema.parse(candidate);
           const source = await realpath(
@@ -403,6 +615,9 @@ export class GvisorAgentSandbox {
         }
       } else if (command.ephemeralProviderHomeMount !== undefined) {
         throw new Error("Provider mount requires credential files");
+      }
+      if (scratchDirectory === undefined) {
+        throw new Error("Agent scratch directory is unavailable");
       }
       const providerMount = command.ephemeralProviderHomeMount;
       const containerArgs = [
@@ -440,7 +655,7 @@ export class GvisorAgentSandbox {
           {
             encoding: "utf8",
             mode: 0o600,
-            flag: "wx",
+            flag: "w",
           },
         );
       }
@@ -477,13 +692,47 @@ export class GvisorAgentSandbox {
         };
       }
 
+      const sessionArguments =
+        researchState === undefined || command.researchSession === undefined
+          ? []
+          : run.kind === "sealed-native-research-run" &&
+              run.resumeFrom !== undefined
+            ? command.researchSession.resumeSessionArguments(
+                researchState.sessionId,
+              )
+            : command.researchSession.newSessionArguments(
+                researchState.sessionId,
+              );
+      const finalizeCheckpoint = async (): Promise<
+        AgentCheckpointRef | undefined
+      > => {
+        if (
+          researchState === undefined ||
+          run.kind !== "sealed-native-research-run"
+        ) {
+          return undefined;
+        }
+        for (const candidate of command.ephemeralProviderCredentialFiles ??
+          []) {
+          const filename = credentialFileSchema.parse(candidate);
+          await rm(join(researchState.providerHome, filename), { force: true });
+        }
+        return this.#finalizeResearchState(
+          run,
+          researchState,
+          scratchRootDirectory,
+        );
+      };
+
       const result = await docker(
-        [...containerArgs, ...command.args],
+        [...containerArgs, ...command.args, ...sessionArguments],
         command.prompt.kind === "stdin" ? command.prompt.text : undefined,
         run.budgetEnvelope.maxWallTimeMs,
         this.#options.maxOutputBytes,
       );
       if (result.kind === "timed-out") {
+        const completedAt = this.#clock();
+        const checkpoint = await finalizeCheckpoint();
         return {
           status: "failed",
           receipt: failedNativeRunReceipt(
@@ -491,20 +740,26 @@ export class GvisorAgentSandbox {
             "budget-exhausted",
             "The sandboxed Agent Runtime exhausted its wall-time budget.",
             startedAt,
-            this.#clock(),
+            completedAt,
             true,
+            checkpoint,
           ),
         };
       }
       if (result.kind === "exited" && result.exitCode !== 0) {
+        const completedAt = this.#clock();
+        const checkpoint = await finalizeCheckpoint();
         return {
           status: "exited-nonzero",
           stdout: result.stdout,
           startedAt,
-          completedAt: this.#clock(),
+          completedAt,
+          ...(checkpoint === undefined ? {} : { checkpoint }),
         };
       }
       if (result.kind !== "exited") {
+        const completedAt = this.#clock();
+        const checkpoint = await finalizeCheckpoint();
         return {
           status: "failed",
           receipt: failedNativeRunReceipt(
@@ -512,16 +767,20 @@ export class GvisorAgentSandbox {
             "provider-failed",
             "The sandboxed Agent Runtime did not complete.",
             startedAt,
-            this.#clock(),
+            completedAt,
             true,
+            checkpoint,
           ),
         };
       }
+      const completedAt = this.#clock();
+      const checkpoint = await finalizeCheckpoint();
       return {
         status: "completed",
         stdout: result.stdout,
         startedAt,
-        completedAt: this.#clock(),
+        completedAt,
+        ...(checkpoint === undefined ? {} : { checkpoint }),
       };
     } catch {
       return {
@@ -536,12 +795,17 @@ export class GvisorAgentSandbox {
         ),
       };
     } finally {
-      await Promise.all([
-        rm(scratchDirectory, { recursive: true, force: true }),
-        ...(providerHome === undefined
-          ? []
-          : [rm(providerHome, { recursive: true, force: true })]),
-      ]);
+      const cleanup = new Set<string>();
+      if (researchState !== undefined) cleanup.add(researchState.root);
+      if (scratchDirectory !== undefined && researchState === undefined) {
+        cleanup.add(scratchDirectory);
+      }
+      if (providerHome !== undefined && researchState === undefined) {
+        cleanup.add(providerHome);
+      }
+      await Promise.all(
+        [...cleanup].map((path) => rm(path, { recursive: true, force: true })),
+      );
     }
   }
 }

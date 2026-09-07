@@ -10,6 +10,7 @@ import {
   researchReportSchema,
   validationReportSchema,
   validationRunReceiptSchema,
+  type AgentCheckpointRef,
   type NativeAgentRuntime,
   type NativeAgentReceipt,
   type SealedAgentRun,
@@ -35,6 +36,7 @@ const claudeResultSchema = z.object({
   duration_ms: z.number().int().nonnegative(),
   num_turns: z.number().int().nonnegative(),
   permission_denials: z.array(z.unknown()),
+  session_id: z.uuid(),
   usage: z.object({
     server_tool_use: z.object({
       web_search_requests: z.number().int().nonnegative(),
@@ -57,6 +59,7 @@ const claudeErrorResultSchema = z.object({
   duration_ms: z.number().int().nonnegative(),
   num_turns: z.number().int().nonnegative(),
   permission_denials: z.array(z.unknown()),
+  session_id: z.uuid(),
   usage: z.object({
     server_tool_use: z.object({
       web_search_requests: z.number().int().nonnegative(),
@@ -125,6 +128,7 @@ function errorReceipt(
   envelope: z.infer<typeof claudeErrorResultSchema>,
   startedAt: Date,
   completedAt: Date,
+  checkpoint: AgentCheckpointRef | undefined,
 ): NativeAgentReceipt {
   const usedModels = Object.values(envelope.modelUsage);
   const violatedPolicy =
@@ -173,6 +177,9 @@ function errorReceipt(
       runtime: "runsc" as const,
       fallbackUsed: false as const,
     },
+    ...(run.kind === "sealed-native-research-run" && checkpoint !== undefined
+      ? { checkpoint }
+      : {}),
     failure: { summary },
   };
   return run.kind === "sealed-native-research-run"
@@ -217,7 +224,24 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         "--env=HOME=/tmp/home",
       ],
       ephemeralProviderCredentialFiles: [".credentials.json"],
-      ephemeralProviderHomeMount: { path: "/provider", mode: "ro" },
+      ephemeralProviderHomeMount: {
+        path: "/provider",
+        mode: run.kind === "sealed-native-research-run" ? "rw" : "ro",
+      },
+      ...(run.kind === "sealed-native-research-run"
+        ? {
+            researchSession: {
+              newSessionArguments: (sessionId: string) => [
+                "--session-id",
+                sessionId,
+              ],
+              resumeSessionArguments: (sessionId: string) => [
+                "--resume",
+                sessionId,
+              ],
+            },
+          }
+        : {}),
       args: [
         "-p",
         "--model",
@@ -250,7 +274,9 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         "--no-chrome",
         "--prompt-suggestions",
         "false",
-        "--no-session-persistence",
+        ...(run.kind === "sealed-native-validation-run"
+          ? ["--no-session-persistence"]
+          : []),
         "--output-format",
         "json",
         "--json-schema",
@@ -267,12 +293,28 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
       const decodedError = claudeErrorResultSchema.safeParse(
         parseJson(execution.stdout),
       );
+      if (
+        decodedError.success &&
+        run.kind === "sealed-native-research-run" &&
+        (execution.checkpoint === undefined ||
+          decodedError.data.session_id !== execution.checkpoint.sessionId)
+      ) {
+        return failedNativeRunReceipt(
+          run,
+          "policy-denied",
+          "Claude Code returned an unbound Research session.",
+          execution.startedAt,
+          execution.completedAt,
+          true,
+        );
+      }
       return decodedError.success
         ? errorReceipt(
             run,
             decodedError.data,
             execution.startedAt,
             execution.completedAt,
+            execution.checkpoint,
           )
         : failedNativeRunReceipt(
             run,
@@ -281,6 +323,7 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
             execution.startedAt,
             execution.completedAt,
             true,
+            execution.checkpoint,
           );
     }
 
@@ -295,6 +338,7 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         execution.startedAt,
         execution.completedAt,
         true,
+        execution.checkpoint,
       );
     }
     const envelope = decodedEnvelope.data;
@@ -303,6 +347,9 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
       envelope.permission_denials.length > 0 ||
       envelope.usage.server_tool_use.web_search_requests !== 0 ||
       envelope.usage.server_tool_use.web_fetch_requests !== 0 ||
+      (run.kind === "sealed-native-research-run" &&
+        (execution.checkpoint === undefined ||
+          envelope.session_id !== execution.checkpoint.sessionId)) ||
       !usedModels.some(
         (usage) => usage.canonicalModel === run.agentRuntimeProfile.model,
       )
@@ -329,6 +376,7 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         execution.startedAt,
         execution.completedAt,
         true,
+        execution.checkpoint,
       );
     }
     const receipt = {
@@ -369,6 +417,10 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         runtime: "runsc",
         fallbackUsed: false,
       },
+      ...(run.kind === "sealed-native-research-run" &&
+      execution.checkpoint !== undefined
+        ? { checkpoint: execution.checkpoint }
+        : {}),
       report: report.data,
     };
     return run.kind === "sealed-native-research-run"

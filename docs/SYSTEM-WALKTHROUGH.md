@@ -12,7 +12,7 @@ Target Intelligenceが取得可能性、identity、provenance、freshnessを検�
 
 ResearchはTarget Snapshot、Research Prompt、Validation Prompt、Agent Runtime Profile、Permission Profile、Budget Envelopeをdigest bindする。CLIの`campaign conduct`はprofileが指定するGrok BuildまたはClaude Code Adapterだけを使う。
 
-native agentはrunsc container内でread-only sourceとwriteable scratchを使う。AIが具体的な次手を返せば、そのhistoryとValidation feedbackを次のrunへ渡す。固定WaveやDepthはない。
+native agentはrunsc container内でread-only sourceとwriteable scratchを使う。AIが具体的な次手を返せば、同じbindingのprivate Agent Checkpointからprovider-native conversationとscratchを再開し、Validation feedbackを次のrunへ渡す。固定WaveやDepthはない。
 
 ## 3. Validate independently
 
@@ -33,6 +33,6 @@ AIはSubmission Draftを作れる。外部行動はhuman-confirmed verification�
 
 ## 5. Resume and failure
 
-同じCampaign inputで`conduct`を再実行するとappend-only recordから再開する。入力digestが違えばconflictにする。Budget exhaustion、provider failure、policy denialまたはinvalid outputは`incomplete`として観測でき、no-findingへ変換しない。
+同じCampaign inputで`conduct`を再実行するとappend-only recordから再開する。入力digestが違えばconflictにする。Budget exhaustion、provider failure、policy denialまたはinvalid outputは`incomplete`として観測でき、no-findingへ変換しない。有効なAgent Checkpointがあれば、同じTarget、Prompt、Runtime、Permissionと明示した新BudgetのCampaignから再開できる。Checkpoint本文はSQLiteやValidationへ渡さない。
 
 旧v7へ戻す時は現行databaseを混ぜず、tag `research-v7-before-native-agent-loop`と旧storageを組にする。

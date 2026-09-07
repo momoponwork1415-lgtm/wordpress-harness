@@ -117,7 +117,12 @@ volume_count=0
 is_version_probe=0
 scratch=''
 provider_mount=''
+new_session=''
+resume_session=''
+previous=''
 for argument in "$@"; do
+  if [ "$previous" = "--session-id" ]; then new_session="$argument"; fi
+  if [ "$previous" = "--resume" ]; then resume_session="$argument"; fi
   [ "$argument" != "--runtime=runsc" ] || has_runsc=1
   [ "$argument" != "--user=$(id -u):$(id -g)" ] || has_host_user=1
   [ "$argument" != "off" ] || has_outer_owned_sandbox=1
@@ -135,6 +140,7 @@ for argument in "$@"; do
   case "$argument" in
     *:/workspace/research:rw) scratch="\${argument%:/workspace/research:rw}" ;;
   esac
+  previous="$argument"
 done
 [ "$has_runsc" -eq 1 ] || exit 90
 [ "$has_host_user" -eq 1 ] || exit 94
@@ -156,6 +162,17 @@ case "$provider_mount" in
 esac
 [ -f "$provider_mount/auth.json" ] || exit 98
 [ -f "$provider_mount/agent_id" ] || exit 99
+if [ -n "$new_session" ] || [ -n "$resume_session" ]; then
+  active_session="$new_session$resume_session"
+  if [ -n "$resume_session" ]; then
+    [ -f "$provider_mount/session-$resume_session.jsonl" ] || exit 106
+    [ -f "$scratch/state.md" ] || exit 107
+  fi
+  printf '%s' '{"checkpoint":true}' > "$provider_mount/session-$active_session.jsonl"
+  printf '%s' 'durable research notes' > "$scratch/state.md"
+else
+  active_session='11111111-1111-4111-8111-111111111111'
+fi
 printf '%s\n' "$scratch" >> "$0.scratch"
 invocation=1
 if [ -f "$0.count" ]; then
@@ -163,7 +180,12 @@ if [ -f "$0.count" ]; then
 fi
 printf '%s' "$invocation" > "$0.count"
 if [ "$invocation" -eq 1 ]; then
-  printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-1","requestId":"request-1","usage":{"input_tokens":7000,"cache_read_input_tokens":1000,"cache_creation_input_tokens":500,"output_tokens":1250,"reasoning_tokens":400,"total_tokens":9750},"num_turns":7,"total_cost_usd":0.5,"modelUsage":{"grok-4.6-build":{"inputTokens":7000,"outputTokens":1250,"cacheReadInputTokens":1000,"cacheCreationInputTokens":500,"modelCalls":7,"costUSD":0.5}},"structuredOutput":{"schemaVersion":1,"candidates":[{"candidateId":"candidate-grok-stored-xss-1","attackerPremise":"An unauthenticated visitor can submit the public form.","brokenSecurityProperty":"Persisted attacker input must be inert in privileged output.","claim":"A public form value is stored and rendered to an administrator without escaping.","evidence":[{"path":"public/save.php","location":"save_value:44","observation":"Persists the public value."}]}],"decision":{"kind":"stop","basis":"No separate actionable source-bound frontier remains."}}}'
+  printf '{"text":"","stopReason":"end_turn","sessionId":"%s","requestId":"request-1","usage":{"input_tokens":7000,"cache_read_input_tokens":1000,"cache_creation_input_tokens":500,"output_tokens":1250,"reasoning_tokens":400,"total_tokens":9750},"num_turns":7,"total_cost_usd":0.5,"modelUsage":{"grok-4.6-build":{"inputTokens":7000,"outputTokens":1250,"cacheReadInputTokens":1000,"cacheCreationInputTokens":500,"modelCalls":7,"costUSD":0.5}},"structuredOutput":{"schemaVersion":1,"candidates":[{"candidateId":"candidate-grok-stored-xss-1","attackerPremise":"An unauthenticated visitor can submit the public form.","brokenSecurityProperty":"Persisted attacker input must be inert in privileged output.","claim":"A public form value is stored and rendered to an administrator without escaping.","evidence":[{"path":"public/save.php","location":"save_value:44","observation":"Persists the public value."}]}],"decision":{"kind":"continue","reason":"A separate source-bound frontier remains.","nextActions":[{"question":"Does the adjacent handler cross another trust boundary?","sourcePointers":["public/next.php"]}]}}}' "$active_session"
+  exit 0
+fi
+if [ "$invocation" -eq 3 ]; then
+  [ -n "$resume_session" ] || exit 108
+  printf '{"text":"","stopReason":"end_turn","sessionId":"%s","requestId":"request-3","usage":{"input_tokens":3000,"cache_read_input_tokens":500,"cache_creation_input_tokens":250,"output_tokens":500,"reasoning_tokens":200,"total_tokens":4250},"num_turns":3,"total_cost_usd":0.3,"modelUsage":{"grok-4.6-build":{"inputTokens":3000,"outputTokens":500,"cacheReadInputTokens":500,"cacheCreationInputTokens":250,"modelCalls":3,"costUSD":0.3}},"structuredOutput":{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"The remaining frontier was resolved."}}}' "$active_session"
   exit 0
 fi
 grep -F 'This is one fresh Independent Validation.' "$scratch/prompt.txt" >/dev/null
@@ -217,7 +239,7 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
       },
       budgetEnvelope: {
         id: "agent-led-budget-v1",
-        maxNativeRuns: 2,
+        maxNativeRuns: 3,
         maxWallTimeMs: 600_000,
         maxEstimatedCostUsd: 5,
         digest:
@@ -271,8 +293,17 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
           },
           report: {
             decision: {
+              kind: "continue",
+            },
+          },
+        },
+        {
+          terminal: "completed",
+          checkpoint: { sessionId: expect.any(String) },
+          report: {
+            decision: {
               kind: "stop",
-              basis: "No separate actionable source-bound frontier remains.",
+              basis: "The remaining frontier was resolved.",
             },
           },
         },
@@ -308,8 +339,8 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
     )
       .trim()
       .split("\n");
-    expect(scratchPaths).toHaveLength(2);
-    expect(new Set(scratchPaths).size).toBe(2);
+    expect(scratchPaths).toHaveLength(3);
+    expect(new Set(scratchPaths).size).toBe(3);
     expect(await readFile(join(sourceDirectory, "plugin.php"), "utf8")).toBe(
       "<?php\n",
     );
@@ -339,7 +370,7 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
         },
       ],
     });
-    expect(await readFile(`${dockerExecutablePath}.count`, "utf8")).toBe("2");
+    expect(await readFile(`${dockerExecutablePath}.count`, "utf8")).toBe("3");
     campaigns.close();
   });
 });
