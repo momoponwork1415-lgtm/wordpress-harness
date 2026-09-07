@@ -79,7 +79,7 @@ const researchDecisionSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-const researchReportSchema = z.strictObject({
+export const researchReportSchema = z.strictObject({
   schemaVersion: z.literal(1),
   candidates: z.array(validationCandidateSchema),
   decision: researchDecisionSchema,
@@ -105,6 +105,13 @@ const nativeRunReceiptShape = {
   completedAt: z.iso.datetime(),
   usage: nativeRunUsageSchema,
   activity: nativeRunActivitySchema,
+  isolation: z
+    .strictObject({
+      backend: z.literal("gvisor"),
+      runtime: z.literal("runsc"),
+      fallbackUsed: z.literal(false),
+    })
+    .optional(),
 };
 
 export const nativeRunReceiptSchema = z.discriminatedUnion("terminal", [
@@ -199,4 +206,5 @@ export type CampaignInput = z.infer<typeof campaignInputSchema>;
 export type CampaignInterruption = z.infer<typeof campaignInterruptionSchema>;
 export type CampaignStatus = z.infer<typeof campaignStatusSchema>;
 export type NativeRunReceipt = z.infer<typeof nativeRunReceiptSchema>;
+export type ResearchReport = z.infer<typeof researchReportSchema>;
 export type SealedNativeRun = z.infer<typeof sealedNativeRunSchema>;

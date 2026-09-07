@@ -6,7 +6,9 @@ export {
   campaignInputSchema,
   campaignStatusSchema,
   nativeRunReceiptSchema,
+  openClaudeCodeNativeAgentRuntime,
   openResearchCampaigns,
+  researchReportSchema,
   sealedNativeRunSchema,
 } from "./agent-led/index.js";
 export type {
@@ -17,9 +19,11 @@ export type {
   CampaignStatus,
   NativeAgentRuntime,
   NativeRunReceipt,
+  OpenClaudeCodeNativeAgentRuntimeOptions,
   OpenResearchCampaignsOptions,
   ResearchCampaigns,
   ResearchCampaignView,
+  ResearchReport,
   SealedNativeRun,
 } from "./agent-led/index.js";
 export type {
