@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; orchestration deferral superseded by ADR 0125
 supersedes: 0123
 ---
 

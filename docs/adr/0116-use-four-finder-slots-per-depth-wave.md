@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR 0125
 ---
 
 # Use four Finder slots per Depth Work Wave

@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR 0125
 ---
 
 # Run source-aware Recon alongside a whole-target baseline

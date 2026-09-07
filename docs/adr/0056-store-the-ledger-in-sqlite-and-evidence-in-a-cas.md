@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; legacy event vocabulary superseded by ADR 0125
 ---
 
 # Store the Ledger in SQLite and evidence in a CAS

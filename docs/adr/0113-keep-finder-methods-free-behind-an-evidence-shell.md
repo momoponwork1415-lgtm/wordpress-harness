@@ -1,5 +1,5 @@
 ---
-status: accepted; Finder count amended by ADR 0116
+status: accepted; Finder role and count mechanics superseded by ADR 0125
 ---
 
 # Keep Finder methods free behind a deterministic Evidence Shell

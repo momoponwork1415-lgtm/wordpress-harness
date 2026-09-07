@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; Work Lease and Work Wave dimensions superseded by ADR 0125
 ---
 
 # Enforce Campaign budgets outside the model

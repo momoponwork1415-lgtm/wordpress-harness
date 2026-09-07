@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; fixed Wave and Depth structure superseded by ADR 0125
 supersedes: 0015
 ---
 

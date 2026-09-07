@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; role-specific orchestration schemas superseded by ADR 0125
 ---
 
 # Use strict TypeScript for the core

@@ -1,5 +1,5 @@
 ---
-status: accepted; normal-operation priority amended by ADR 0117
+status: superseded by ADR 0125
 ---
 
 # Separate breadth and depth Campaign policies

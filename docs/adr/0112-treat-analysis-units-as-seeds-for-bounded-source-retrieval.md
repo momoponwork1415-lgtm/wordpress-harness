@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; orchestration and source-tool mechanics superseded by ADR 0125
 ---
 
 # Treat Analysis Units as seeds for bounded source retrieval

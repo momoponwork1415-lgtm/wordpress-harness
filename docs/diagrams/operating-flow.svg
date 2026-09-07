@@ -55,14 +55,14 @@
     <rect width="1520" height="790" rx="24" class="panel" filter="url(#shadow)"/>
     <text x="28" y="38" class="section-no">02 · OPERATING ACTIVITY</text>
     <text x="28" y="78" class="section-title">一件のTargetは、どの分岐と人間gateを通るか</text>
-    <text x="28" y="107" class="question">採用した設計のView。初期利用は選定・検証を対話で進め、自動化の完成を待たない。</text>
+    <text x="28" y="107" class="question">採用した設計のView。AIの判断を固定workflowへ写さず、Harnessは権限・証拠・実行条件を守る。</text>
 
     <rect x="28" y="140" width="456" height="610" rx="18" class="blue"/>
     <text x="52" y="172" class="label">TARGET INTELLIGENCE · 選ぶ</text>
     <rect x="52" y="194" width="408" height="92" rx="13" class="panel"/>
-    <text x="74" y="222" class="box-title">1 · Observe &amp; rank</text>
-    <text x="74" y="246" class="body">programme、version、履歴を取得し、oracle-freeな</text>
-    <text x="74" y="266" class="body">事実で多数のTarget候補をrankする。</text>
+    <text x="74" y="222" class="box-title">1 · Observe &amp; propose</text>
+    <text x="74" y="246" class="body">programme、version、履歴等のoracle-freeな事実から、</text>
+    <text x="74" y="266" class="body">AIが優先Target、理由、不確実性を提案する。</text>
     <path d="M256 286 V310" class="line"/>
     <rect x="52" y="320" width="408" height="92" rx="13" class="panel"/>
     <text x="74" y="348" class="box-title">2 · Human batch approval</text>
@@ -85,25 +85,25 @@
     <rect x="532" y="140" width="456" height="610" rx="18" class="purple"/>
     <text x="556" y="172" class="label">RESEARCH · 仮説を作る</text>
     <rect x="556" y="194" width="408" height="92" rx="13" class="panel"/>
-    <text x="578" y="222" class="box-title">4 · Fix Target &amp; plan</text>
-    <text x="578" y="246" class="body">Snapshot、Manifest、policy、budget、Model Profileを</text>
+    <text x="578" y="222" class="box-title">4 · Seal Campaign input</text>
+    <text x="578" y="246" class="body">Snapshot、Prompt、Permission、budget、Runtime Profileを</text>
     <text x="578" y="266" class="body">digestで固定する。</text>
     <path d="M760 286 V310" class="line"/>
     <rect x="556" y="320" width="408" height="112" rx="13" class="panel"/>
-    <text x="578" y="348" class="box-title">5 · Independent Finder wave</text>
-    <text x="578" y="372" class="body">最大4つのfresh thesisがread-only sourceを追う。</text>
-    <text x="578" y="394" class="body">支持数やmodel多数決でcandidateを捨てない。</text>
-    <text x="578" y="414" class="small">output: Hypothesis · Route · Frontier · Gap</text>
+    <text x="578" y="348" class="box-title">5 · Agent-led research</text>
+    <text x="578" y="372" class="body">Claude Code Rootが必要に応じnative subagentを使う。</text>
+    <text x="578" y="394" class="body">具体的なsource-bound next actionがある間は続ける。</text>
+    <text x="578" y="414" class="small">AI owns hypotheses · routes · critique · continuation</text>
     <path d="M760 432 V456" class="line"/>
     <rect x="556" y="466" width="408" height="112" rx="13" class="panel"/>
-    <text x="578" y="494" class="box-title">6 · Root evaluation &amp; depth</text>
-    <text x="578" y="518" class="body">直接impact → Validation</text>
-    <text x="578" y="540" class="body">strong frontier → conditional Depth</text>
-    <text x="578" y="562" class="body">material evidenceなし → 根拠付きstop</text>
+    <text x="578" y="494" class="box-title">6 · AI continuation decision</text>
+    <text x="578" y="518" class="body">重大candidate → fresh Validation</text>
+    <text x="578" y="540" class="body">actionable frontier → Researchを継続</text>
+    <text x="578" y="562" class="body">有望な次手なし → 根拠付きstop</text>
     <path d="M760 578 V602" class="line"/>
     <rect x="556" y="612" width="408" height="92" rx="13" class="panel"/>
-    <text x="578" y="640" class="box-title">7 · Single source Validation</text>
-    <text x="578" y="664" class="body">fresh reviewが決定的な反証だけを除く。</text>
+    <text x="578" y="640" class="box-title">7 · Independent Validation</text>
+    <text x="578" y="664" class="body">fresh reviewが方法を選び、sourceから再導出する。</text>
     <text x="578" y="684" class="small">output: Finding / needs-research / disproven / pending</text>
 
     <path d="M988 435 H1018" class="line-purple"/>

@@ -6,7 +6,7 @@
 
 - Productの到達点は、oracle-freeなprospective Campaignで**high-impactなbroken security semanticsを高recallで発見し、独立ValidationからFindingを作り、fresh runtime verificationと人間の提出判断まで閉じること**。Finding生成を人間専用gateにせず、外部提出だけを人間の明示承認で許可する。
 - RCEやsite-wide compromiseは最上位impactだが唯一の成功条件ではない。
-- 通常運転はraw-source-firstのSemantic Research Wave。strong semantic frontierだけをconditional Depthへ昇格する。
+- 通常運転はClaude Code Rootと必要に応じたnative subagentによるraw-source-firstの連続Research loop。source-boundで具体的な次手があればAIが継続し、有望なactionable frontierがなければ根拠付きで停止する。
 - **Do not optimize for sinks. Optimize for broken security semantics.**
 - **Harness owns the research process; agents own research decisions.**
 
@@ -37,12 +37,12 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 
 - strict TypeScriptのmodular monolithとし、`Target Intelligence -> Research -> Human OS`をprimary flowとする。
 - context間はversioned handoff contractだけを渡し、別contextのstorageや内部moduleを直接参照しない。
-- Target Intelligenceはoracle-freeな事実から候補を自律選定する。人間がApproved Target Batchを作るまでResearchへdispatchせず、実行直前にversionとsourceのfreshnessを再確認する。
-- ResearchはCampaign Control、Source Understanding、Exploration、Validation、Model Execution、Research Recordの6 Moduleで構成する。
-- Model Executionはprovider/process/tool bindingを所有するが研究判断を所有しない。
-- ExplorationはFinderのfile、CWE、手順を固定しない。最大4個の独立research thesisを保ち、支持数やmodel多数決でcandidateを捨てない。
+- Target Intelligenceはoracle-freeな事実からAIがTarget Proposalを作る。固定rank、diversity cap、Research Value Bandまたはreason codeを要求しない。人間がApproved Target Batchを作るまでResearchへdispatchせず、実行直前にversionとsourceのfreshnessを再確認する。
+- Researchのexternal seamは`conduct`と`inspect`だけを持つdeepなResearch Campaigns Moduleに置き、Agent-led Research、Independent Validation、Finding、Coverage、BudgetとResearch Recordを隠す。
+- Native Agent Runtimeはprovider/process/session/tool bindingとreceiptを所有するが研究判断を所有しない。最初のproduction AdapterはClaude Codeとし、二つ目の実在runtimeを採用するまで汎用provider DSLを作らない。
+- Root AIはnative subagent、仮説、読む順序、synthesis、critique、candidate、継続と停止を所有する。HarnessはFinder数、role、Wave、Lease、Depth、Approach Familyまたは固定手順を実装しない。
 - Surface Map、PHP Program Index、AST、Semgrep、CodeQLは補助toolであり探索空間ではない。
-- ResearchのValidationはWave BarrierとRoot Evaluation後に一つのfreshなsource-only Attemptを行う。Finder自身ではなくIndependent Validationだけがsource-validated Findingを生成できる。
+- ResearchのValidationはcandidateごとに一つのfreshなsource-only runを行う。固定rubricまたはclass別Adapterを要求せず、Research Root自身ではなくIndependent Validationだけがsource-validated Findingを生成できる。
 - Human OSはFindingをfreshな隔離環境でAI Reproductionし、runtime / human Verification Recordをappend-onlyに追加する。runtime失敗や人間の反証はFindingを削除せず、disprovedまたは理由付きincompleteとして残す。
 - AIは脆弱性の理解とSubmission Draft作成を支援できるが、External Action Authorization、Draft承認、最後のSubmitを代行しない。
 - SQLi、XSS等のclassはReproduction Recipeのsuccess criterionを助けるが、固定Adapterへの対応をcandidate admissionの条件にしない。
@@ -81,7 +81,7 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 - mockはprovider CLI、clock、filesystem等のsystem seamへ限定する。
 - fixtureへprivate Target、未公開Finding、credentialを入れない。
 - commit前のrepository gateは`pnpm check`。
-- Ledger replay、stable ordering、minority Hypothesis保持、single fresh Validation、Independent ValidationだけがFindingを生成すること、FindingとCoverageの分離、AI failureを棄却へ丸めないこと、external actionのhuman gateは回帰対象とする。multi-Attempt Synthesis、Witness/Causal Control、固定mechanism Adapterはlegacy replayの回帰対象として残す。
+- Target/Prompt/Runtime/Permission/Budget binding、Rootとnative subagentの権限制約、single fresh Validation、Independent ValidationだけがFindingを生成すること、FindingとCoverageの分離、AI failureを棄却へ丸めないこと、external actionのhuman gateは回帰対象とする。旧schema、legacy replay、固定role orchestrationまたは未使用Adapterを新binaryへ残さない。
 
 ## TypeScript and PHP
 
@@ -94,10 +94,11 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 
 - Target sourceはuntrusted dataとして扱う。host上でtarget package scriptを実行しない。
 - Agentへprovider credential、container socket、ambient MCP、任意network、任意shellを渡さない。
-- Finderはread-only source toolsと隔離scratchを使い、runtime attackを行わない。
+- Research Rootとnative subagentはread-only Target Snapshotと隔離scratchを使い、runtime attackを行わない。
+- Agent SandboxはgVisor相当以上のisolation backendを要求し、利用不能時にhost processまたはplain Dockerへsilent fallbackしない。
 - Research ValidationはTarget sourceのread-only toolだけを使い、target code、build、testまたはruntime attackを実行しない。
 - AI ReproductionとHuman Verificationは互いに異なるfreshな使い捨て隔離環境と実Target interfaceを使い、host上でtarget codeを実行しない。gVisor利用時にplain Dockerへsilent fallbackしない。
-- Finder、static ruleまたはself-reviewだけでFindingを生成しない。FindingはfreshなIndependent Validationとsource evidenceを要求し、runtime / human verification levelを明示する。外部行動はexact Draft revisionとdestinationへbindしたExternal Action Authorizationを要求する。
+- Research Root、static ruleまたはself-reviewだけでFindingを生成しない。FindingはfreshなIndependent Validationとsource evidenceを要求し、runtime / human verification levelを明示する。外部行動はexact Draft revisionとdestinationへbindしたExternal Action Authorizationを要求する。
 - exact payload、HTTP request、screenshot、runtime logはHuman OSのPrivate Evidence Bundleへ置く。credential、private target、transcript、PoC、未公開FindingをGitへcommitしない。
 - RCEの証明はdisposable Lab内のnonce付きExecution Canaryに限定し、reverse shell、persistence、host access、許可外egressを使わない。
 - external report、vendor連絡、公開artifactの送信は明示的なuser authorizationなしに行わない。

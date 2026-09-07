@@ -120,7 +120,7 @@
     <text x="202" y="558" class="small center">必要なadapterへ最小範囲だけ</text>
     <rect x="392" y="510" width="348" height="72" rx="12" class="panel"/>
     <text x="566" y="536" class="box-title-small center">Network / shell</text>
-    <text x="566" y="558" class="small center">Finder / Validatorへambient提供しない</text>
+    <text x="566" y="558" class="small center">Root / subagent / Validatorへambient提供しない</text>
     <rect x="756" y="510" width="348" height="72" rx="12" class="panel"/>
     <text x="930" y="536" class="box-title-small center">Isolation</text>
     <text x="930" y="558" class="small center">gVisor失敗時にplain Dockerへfallbackしない</text>

@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; provider-native subagent prohibition superseded by ADR 0125
 supersedes: 0066
 ---
 

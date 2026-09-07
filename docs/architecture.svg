@@ -54,7 +54,7 @@
     <text x="1412" y="225" class="zone-title" fill="#205e42">HUMAN OS</text>
   </g>
 
-  <text x="42" y="182" class="small">Initial use: operator-assisted selection / verification · automation is a later slice · implementation status: Codebase Guide</text>
+  <text x="42" y="182" class="small">AI selection · agent-led research · independent validation · implementation status: Codebase Guide</text>
 
   <!-- Target Intelligence -->
   <g>
@@ -63,8 +63,8 @@
     <text x="205" y="302" text-anchor="middle" class="module-sub">WordPress.org · programmes · disclosure routes</text>
 
     <rect x="66" y="338" width="278" height="58" rx="11" fill="white" stroke="#4d86c6" stroke-width="1.6" />
-    <text x="205" y="361" text-anchor="middle" class="module-title" fill="#173b64">Autonomous Target Selection</text>
-    <text x="205" y="381" text-anchor="middle" class="module-sub">oracle-free reasons · diverse Candidate Batch</text>
+    <text x="205" y="361" text-anchor="middle" class="module-title" fill="#173b64">AI Target Selection</text>
+    <text x="205" y="381" text-anchor="middle" class="module-sub">oracle-free facts · rationale · uncertainty</text>
 
     <rect x="66" y="418" width="278" height="58" rx="11" fill="#eaf3ff" stroke="#4d86c6" stroke-width="1.8" />
     <text x="205" y="441" text-anchor="middle" class="module-title" fill="#173b64">Human Batch Approval</text>
@@ -91,38 +91,38 @@
   <!-- Research modules -->
   <g>
     <rect x="456" y="270" width="190" height="70" rx="11" fill="white" stroke="#7457c5" stroke-width="1.6" />
-    <text x="551" y="296" text-anchor="middle" class="module-title" fill="#3f2d7d">Campaign Control</text>
-    <text x="551" y="318" text-anchor="middle" class="module-sub">lifecycle · budget · replay</text>
+    <text x="551" y="296" text-anchor="middle" class="module-title" fill="#3f2d7d">Research Campaigns</text>
+    <text x="551" y="318" text-anchor="middle" class="module-sub">conduct · inspect · budget</text>
 
     <rect x="676" y="270" width="190" height="70" rx="11" fill="white" stroke="#7457c5" stroke-width="1.6" />
-    <text x="771" y="296" text-anchor="middle" class="module-title" fill="#3f2d7d">Source Understanding</text>
-    <text x="771" y="318" text-anchor="middle" class="module-sub">source evidence · optional map</text>
+    <text x="771" y="296" text-anchor="middle" class="module-title" fill="#3f2d7d">Source Workspace</text>
+    <text x="771" y="318" text-anchor="middle" class="module-sub">immutable source · optional tools</text>
 
     <rect x="896" y="270" width="190" height="70" rx="11" fill="white" stroke="#7457c5" stroke-width="1.6" />
-    <text x="991" y="296" text-anchor="middle" class="module-title" fill="#3f2d7d">Exploration</text>
-    <text x="991" y="318" text-anchor="middle" class="module-sub">theses · hypotheses · Depth</text>
+    <text x="991" y="296" text-anchor="middle" class="module-title" fill="#3f2d7d">Agent-led Research</text>
+    <text x="991" y="318" text-anchor="middle" class="module-sub">hypothesize · continue · stop</text>
 
     <rect x="1116" y="270" width="190" height="70" rx="11" fill="white" stroke="#7457c5" stroke-width="1.6" />
-    <text x="1211" y="296" text-anchor="middle" class="module-title" fill="#3f2d7d">Validation</text>
-    <text x="1211" y="316" text-anchor="middle" class="module-sub">independent source review</text>
+    <text x="1211" y="296" text-anchor="middle" class="module-title" fill="#3f2d7d">Independent Validation</text>
+    <text x="1211" y="316" text-anchor="middle" class="module-sub">fresh source review</text>
 
     <rect x="676" y="423" width="190" height="70" rx="11" fill="#f7f4ff" stroke="#7457c5" stroke-width="1.6" />
-    <text x="771" y="449" text-anchor="middle" class="module-title" fill="#3f2d7d">Model Execution</text>
-    <text x="771" y="471" text-anchor="middle" class="module-sub">process · tools · capacity</text>
+    <text x="771" y="449" text-anchor="middle" class="module-title" fill="#3f2d7d">Native Agent Runtime</text>
+    <text x="771" y="471" text-anchor="middle" class="module-sub">Claude Code Adapter · receipt</text>
 
     <rect x="896" y="423" width="190" height="70" rx="11" fill="#f7f4ff" stroke="#7457c5" stroke-width="1.6" />
-    <text x="991" y="449" text-anchor="middle" class="module-title" fill="#3f2d7d">Source Gateway</text>
-    <text x="991" y="471" text-anchor="middle" class="module-sub">read-only · list / search / read</text>
+    <text x="991" y="449" text-anchor="middle" class="module-title" fill="#3f2d7d">Permission Profile</text>
+    <text x="991" y="471" text-anchor="middle" class="module-sub">source read · scratch write</text>
 
     <ellipse cx="1211" cy="426" rx="95" ry="15" fill="#e4daff" stroke="#7457c5" />
     <rect x="1116" y="426" width="190" height="69" fill="#e4daff" stroke="#7457c5" />
     <ellipse cx="1211" cy="495" rx="95" ry="15" fill="#e4daff" stroke="#7457c5" />
     <text x="1211" y="455" text-anchor="middle" class="module-title" fill="#3f2d7d">Research Record / CAS</text>
-    <text x="1211" y="477" text-anchor="middle" class="module-sub">current write · versioned read</text>
+    <text x="1211" y="477" text-anchor="middle" class="module-sub">current schema · append only</text>
 
     <rect x="676" y="582" width="190" height="90" rx="11" fill="#fff2f1" stroke="#c85b51" stroke-width="1.5" stroke-dasharray="7 5" />
     <text x="771" y="612" text-anchor="middle" class="module-title" fill="#7b2f2a">Agent Sandbox</text>
-    <text x="771" y="634" text-anchor="middle" class="module-sub">fresh context · isolated scratch</text>
+    <text x="771" y="634" text-anchor="middle" class="module-sub">Root + native subagents · isolated scratch</text>
     <text x="771" y="652" text-anchor="middle" class="module-sub">no ambient shell / network</text>
 
     <ellipse cx="991" cy="594" rx="95" ry="15" fill="#edf1f7" stroke="#64748b" />
@@ -234,5 +234,5 @@
   <path d="M158 904h62v50h1190V619h6" class="edge-muted" />
 
   <rect x="260" y="1000" width="1280" height="54" rx="12" fill="#f2f5f9" stroke="#c4ccd8" />
-  <text x="900" y="1033" text-anchor="middle" class="ownership">Harness: process, provenance, budget, persistence · Independent Validation: Findings · Humans: batch and external-action approval</text>
+  <text x="900" y="1033" text-anchor="middle" class="ownership">Harness: authority, evidence, execution constraints · Agents: research decisions · Humans: scope and external-action approval</text>
 </svg>

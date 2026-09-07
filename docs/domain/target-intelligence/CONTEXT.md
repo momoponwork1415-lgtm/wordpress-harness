@@ -56,12 +56,12 @@ _Avoid_: Selection Fact、Vulnerability profile、Research hint
 Finding後のKnown Duplicate Dispositionだけに使う、versioned vulnerability intelligence snapshotからのexact record投影。公開authorization providerが、FindingをPlugin Identity、verified version、Canonical File Manifest digestとFinding後purposeへbindした時だけ利用する。同じversion文字列でもManifest digestが異なるsource treeへ流用しない。affected version interval、patched version、CVE、CWE、CVSS、公開時刻、copyright / license attributionを保持するが、Target選定、Research inputまたはTarget Intake Packetへ渡さない。
 _Avoid_: Vulnerability History Aggregate、Research prior、Finding validity
 
-**Selection Policy**:
-provenance、取得可能性、利用規模、更新鮮度、公開integration、調査履歴から、重複せず多様なProspective Targetを自律選定するversion固定した判断基準。hard gate、Programme Opportunity Band、Research Value Band、diversity、stable tie-breakerの順で理由を示す。sourceのsemantic解析、疑わしいsymbol、CWE、sink、既知route、推定報奨額を選定根拠にしない。
-_Avoid_: Vulnerability scan、Opaque score、Research procedure
+**Selection Guidance**:
+AIがoracle-freeなSelection FactからTarget Proposalを作る時の、high-impact recall、prospective価値、source取得可能性、更新鮮度、不確実性と重複回避に関するversionedな目的と禁止事項。固定rank、Research Value Band、diversity cap、reason codeまたはstable tie-breakerを判断手順として要求しない。疑わしいsymbol、CWE、sink、既知route、推定報奨額を入力にしない。
+_Avoid_: Ranking algorithm、Vulnerability scan、Research procedure
 
 **Target Candidate**:
-Selection Policyを満たす可能性があり、取得または人間reviewの対象になったpluginとversionの組。
+Candidate Poolへ観測され、AIのTarget Proposalまたは人間reviewの対象になり得るpluginとversionの組。
 _Avoid_: Target Snapshot、Finding candidate
 
 **Plugin Identity**:
@@ -72,32 +72,32 @@ _Avoid_: Directory name、Plugin title、Bare slug
 技術的な調査価値はあるが、現在の外部programme規則またはDisclosure Route Observationでは提出対象外、適格性不明、もしくはrouteが`conflicting`なTarget Candidate。programme対象外またはscope不明であることを、技術的なResearch対象外と同一視しない。scope不明のCandidateはbounty候補から外し、人間の確認までこの状態に保つ。
 _Avoid_: Out-of-scope Target、False positive、Rejected Candidate
 
-**Selection Receipt**:
-Target IntelligenceがTarget Candidateを採用、保留、拒否した結論を、使用したSelection Fact、Selection Attempt、policy version、理由、不確実性に結び付けた記録。Approval時のoperator nominationはTarget Selectionが同じhard gateを再評価し、Selection AttemptとApproval verificationへbindしたdurable Receiptにする。採用結論はCampaign開始命令ではなく、人間がCandidate Batchを判断する入力である。Researchへ渡す場合は採用結論、policy version、oracle-freeな理由だけを公開する。
-_Avoid_: Score、Approval
+**Target Proposal**:
+AIがCandidate Poolから選んだTarget Candidateを、使用したSelection Fact、Selection Guidance、理由、不確実性、Target Selection Runへ結び付けた記録。未選択Candidateすべての順位や拒否理由を要求しない。提案はCampaign開始命令ではなく、人間がResearch対象範囲を判断する入力である。
+_Avoid_: Score、Complete ranking、Approval
 
-**Selection Attempt**:
-一つのCandidate Pool、Selection Policy、Opus Model Profile、revision、model結果または`selection-pending`をdigest固定した実行記録。model実行前のintentからdurable化し、同じinputのreplayでmodelを再起動せず、明示的な再選定だけを新revisionにする。
+**Target Selection Run**:
+一つのCandidate Pool、Selection Guidance、Agent Runtime Profile、Permission Profile、Budget Envelope、revision、Target Proposalまたは`selection-pending`をdigest固定した実行記録。同じ入力のreplayでagentを再起動せず、明示的な再選定だけを新revisionにする。
 _Avoid_: Candidate Batch、Model transcript、Campaign run
 
 **Research Value Band**:
-許可されたSelection FactだけからTarget Candidateのprospectiveな調査価値を`high / medium / low`へ粗く比較するmodel出力。脆弱性の存在、class、sinkまたは報奨額を予測せず、Programme Opportunity Bandは同じResearch Value Band内のtie-breakerにだけ使う。
-_Avoid_: Vulnerability likelihood、Severity prediction、Expected payout
+旧Target Selectionがprospectiveな調査価値を`high / medium / low`へ固定分類した出力。新しいTarget Proposalでは理由と不確実性を自由に説明し、このBandを必須にしない。legacy recordのreadだけで元の意味を保つ。
+_Avoid_: Current Target Proposal、Vulnerability likelihood、Expected payout
 
 **Candidate Pool**:
 Programmeごとに分割せず、少なくとも一つのProgrammeで提出可能性があるTarget CandidateとResearch-only Candidateをまとめた選定母集団。同じTargetを提出先ごとに重複Researchせず、Programme AssignmentはFinding後にHuman OSが決める。
 _Avoid_: Programme queue、Campaign list、Duplicate Target set
 
 **Candidate Batch**:
-Candidate Poolから同じSelection Policyで一度に人間へ提示する有限なTarget Candidate集合。3件pilot後は多数Targetを含められるが、Research同時実行数またはProgramme別queueではない。batch sizeの拡大には先行batchの完走率、Human Verification負荷、外部programme outcomeを使う。
-_Avoid_: Campaign Wave、Submission batch、Leaderboard quota
+旧Selection PolicyがCandidate Poolから一度に人間へ提示した有限なTarget Candidate集合。新しい設計ではTarget Proposalを使い、固定batch size、全候補rankまたはdiversity capを選定判断へ課さない。Research同時実行数は別のcapacity制約である。
+_Avoid_: Current Target Proposal、Campaign Wave、Submission batch
 
 **Approved Target Batch**:
-一つのSelection Attemptについて、人間がCandidateごとの理由、欠損、freshness、Research Historyを確認し、承認、除外、順序変更、operator nominationを一回のApproval requestとして記録したversionedな実行許可。Target Selectionが検証したAttemptとdurable Receipt、Selection Policy、Opus Model Profile、source freshness、Campaign Policy、Batch Budget、execution windowへbindする。operator nominationもSelection hard gateを迂回せず、caller生成Receiptや自己申告Attempt refをauthorityにせず、Batchの承認だけではResearchまたは外部行動を開始しない。
-_Avoid_: Candidate Batch、Campaign Queue、Submission approval
+一つのTarget Proposalについて、人間が理由、不確実性、source identityとfreshnessを確認し、承認、除外、順序変更またはoracle-freeなoperator nominationを記録したversionedなResearch対象範囲の許可。Target Selection Run、Target Proposal、Budgetとexecution windowへbindする。programme eligibility、Disclosure RouteまたはAI rankingを再評価するtechnical gateではなく、Batchの承認だけでは外部行動を許可しない。
+_Avoid_: Target Proposal、Campaign Queue、Submission approval
 
 **Target Campaign Dispatch**:
-Approved Target Batchをdurable queueへ入れ、Targetごとの実行直前freshness、取得、Target Intakeを確認してResearchへ渡すTarget Intelligenceの運行。待機件数とactive Campaign数を分け、初期pilot後は約5 active Campaignをpolicyで許可する。versionやsourceをsilentに差し替えず、systemic failureでは新規開始を止める。
+Approved Target Batchをdurable queueへ入れ、Targetごとの実行直前freshness、取得、Target Intakeを確認してResearchへ渡すTarget Intelligenceの運行。待機件数とactive Campaign数を分けるが、具体的な同時実行数はversioned capacity policyへ置く。versionやsourceをsilentに差し替えず、systemic failureでは新規開始を止める。
 _Avoid_: Research Campaign Control、Model capacity、Automatic selection
 
 **Campaign Coverage Receipt**:
@@ -145,5 +145,5 @@ _Avoid_: Manual Campaign、Guided Research、Target recommendation
 _Avoid_: Skip、Import error、Finding status
 
 **Target Intake Packet**:
-プラグイン識別子、主プラグインファイル、正規インストールディレクトリ、プラグイン配置識別子、照合済みversion、取得原本、正規化ファイル一覧、provenance、Selection Receipt、Approved Target Batch参照を結び、Oracle Factを除外したResearch向けの不変handoff。
+プラグイン識別子、主プラグインファイル、正規インストールディレクトリ、プラグイン配置識別子、照合済みversion、取得原本、正規化ファイル一覧、provenance、Target Proposal、Approved Target Batch参照を結び、Oracle Factを除外したResearch向けの不変handoff。
 _Avoid_: Target Snapshot、Raw intelligence

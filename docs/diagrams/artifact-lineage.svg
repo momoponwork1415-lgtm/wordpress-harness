@@ -64,7 +64,7 @@
       <text x="105" y="52" class="small center">metadata · programme · history</text>
       <path d="M210 40 H242" class="line-purple"/>
       <rect x="252" y="0" width="210" height="80" rx="13" class="purple"/>
-      <text x="357" y="30" class="box-title-small center">Selection Receipt</text>
+      <text x="357" y="30" class="box-title-small center">Target Proposal</text>
       <text x="357" y="52" class="small center">候補 · 理由 · 不確実性</text>
       <path d="M462 40 H494" class="line-purple"/>
       <rect x="504" y="0" width="210" height="80" rx="13" class="blue"/>
@@ -84,23 +84,23 @@
       <text x="1362" y="52" class="small center">version · status · exclusion</text>
     </g>
 
-    <text x="28" y="292" class="label">研究判断を固定する</text>
+    <text x="28" y="292" class="label">研究条件、判断と証拠を固定する</text>
     <g transform="translate(28 310)">
       <rect x="0" y="0" width="210" height="80" rx="13" class="purple"/>
-      <text x="105" y="30" class="box-title-small center">Attempt Plan</text>
-      <text x="105" y="52" class="small center">role · thesis · model · budget</text>
+      <text x="105" y="30" class="box-title-small center">Sealed Native Run</text>
+      <text x="105" y="52" class="small center">target · prompt · runtime · budget</text>
       <path d="M210 40 H242" class="line-purple"/>
       <rect x="252" y="0" width="210" height="80" rx="13" class="purple"/>
       <text x="357" y="30" class="box-title-small center">Tool Receipts</text>
       <text x="357" y="52" class="small center">source · bytes · digest</text>
       <path d="M462 40 H494" class="line-purple"/>
       <rect x="504" y="0" width="210" height="80" rx="13" class="purple"/>
-      <text x="609" y="30" class="box-title-small center">Checkpoint</text>
-      <text x="609" y="52" class="small center">Hypothesis · Route · Frontier</text>
+      <text x="609" y="30" class="box-title-small center">Native Run Receipt</text>
+      <text x="609" y="52" class="small center">usage · activity · output · failure</text>
       <path d="M714 40 H746" class="line-purple"/>
       <rect x="756" y="0" width="210" height="80" rx="13" class="purple"/>
-      <text x="861" y="30" class="box-title-small center">Root Evaluation</text>
-      <text x="861" y="52" class="small center">candidate · Depth · stop</text>
+      <text x="861" y="30" class="box-title-small center">Research Decision</text>
+      <text x="861" y="52" class="small center">candidate · continue · stop</text>
       <path d="M966 40 H998" class="line-purple"/>
       <rect x="1008" y="0" width="210" height="80" rx="13" class="purple"/>
       <text x="1113" y="30" class="box-title-small center">Validation Record</text>
