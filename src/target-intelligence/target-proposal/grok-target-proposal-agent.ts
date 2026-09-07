@@ -12,6 +12,10 @@ import { isAbsolute, join } from "node:path";
 
 import { z } from "zod";
 
+import {
+  grokBuildTransportEligibility,
+  grokImageDigest,
+} from "../../infrastructure/grok-transport-eligibility.js";
 import { runNativeModelProcess } from "../../infrastructure/native-model-process.js";
 import { promptTextDigest } from "../../infrastructure/prompt-text.js";
 import {
@@ -162,6 +166,7 @@ class GrokTargetProposalAgent implements TargetProposalAgent {
   readonly #options: OpenGrokTargetProposalAgentOptions;
   readonly #clock: () => Date;
   readonly #containerUser: string;
+  readonly #transportAdmitted: boolean;
 
   constructor(options: OpenGrokTargetProposalAgentOptions) {
     if (!isAbsolute(options.dockerExecutablePath)) {
@@ -187,6 +192,9 @@ class GrokTargetProposalAgent implements TargetProposalAgent {
     this.#options = options;
     this.#clock = options.clock ?? (() => new Date());
     this.#containerUser = nonRootHostUser();
+    this.#transportAdmitted =
+      grokImageDigest(options.image) ===
+      grokBuildTransportEligibility.imageDigest;
   }
 
   async execute(candidateRun: SealedTargetSelectionRun): Promise<unknown> {
@@ -194,6 +202,9 @@ class GrokTargetProposalAgent implements TargetProposalAgent {
     const startedAt = this.#clock();
     if (
       run.agentRuntimeProfile.kind !== "grok-build-native/v1" ||
+      !this.#transportAdmitted ||
+      run.agentRuntimeProfile.executableVersion !==
+        grokBuildTransportEligibility.executableVersion ||
       run.agentRuntimeProfile.model !== "grok-4.6" ||
       run.agentRuntimeProfile.effort !== "xhigh" ||
       run.selectionGuidance.digest !== this.#options.selectionGuidance.digest ||

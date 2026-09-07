@@ -246,10 +246,8 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
           "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       },
     };
-    const runtime = openGrokNativeAgentRuntime({
+    const runtimeOptions = {
       dockerExecutablePath,
-      image:
-        "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
       sourceDirectory,
       targetSnapshotDigest: input.targetSnapshot.digest,
       sourceTree: input.targetSnapshot.sourceTree,
@@ -265,6 +263,31 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
       },
       permissionProfileDigest: input.permissionProfile.digest,
       maxOutputBytes: 1_000_000,
+    };
+    const unadmittedCampaigns = openResearchCampaigns({
+      databasePath: join(directory, "unadmitted.sqlite"),
+      runtime: openGrokNativeAgentRuntime({
+        ...runtimeOptions,
+        image:
+          "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      }),
+    });
+    await expect(
+      unadmittedCampaigns.conduct({
+        ...input,
+        campaignId: "campaign-grok-unadmitted-1",
+      }),
+    ).resolves.toMatchObject({ status: "incomplete" });
+    unadmittedCampaigns.close();
+    await Promise.all([
+      rm(`${dockerExecutablePath}.count`, { force: true }),
+      rm(`${dockerExecutablePath}.scratch`, { force: true }),
+    ]);
+
+    const runtime = openGrokNativeAgentRuntime({
+      ...runtimeOptions,
+      image:
+        "sha256:0390e43156357c08aab4ddc3f002ac11763789e90f0fac09f2fa2e73b8105267",
     });
     const campaigns = openResearchCampaigns({
       databasePath: join(directory, "agent-led.sqlite"),

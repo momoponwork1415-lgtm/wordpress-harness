@@ -1,6 +1,10 @@
 import { z } from "zod";
 
 import {
+  grokBuildTransportEligibility,
+  grokImageDigest,
+} from "../../infrastructure/grok-transport-eligibility.js";
+import {
   failedNativeRunReceipt,
   GvisorAgentSandbox,
   type GvisorAgentRuntimeOptions,
@@ -57,14 +61,21 @@ function parseJson(value: string): unknown {
 
 class GrokNativeAgentRuntime implements NativeAgentRuntime {
   readonly #sandbox: GvisorAgentSandbox;
+  readonly #transportAdmitted: boolean;
 
   constructor(options: OpenGrokNativeAgentRuntimeOptions) {
     this.#sandbox = new GvisorAgentSandbox(options);
+    this.#transportAdmitted =
+      grokImageDigest(options.image) ===
+      grokBuildTransportEligibility.imageDigest;
   }
 
   async execute(run: SealedAgentRun): Promise<NativeAgentReceipt> {
     if (
       run.agentRuntimeProfile.kind !== "grok-build-native/v1" ||
+      !this.#transportAdmitted ||
+      run.agentRuntimeProfile.executableVersion !==
+        grokBuildTransportEligibility.executableVersion ||
       run.agentRuntimeProfile.model !== "grok-4.6" ||
       run.agentRuntimeProfile.effort !== "xhigh" ||
       !this.#sandbox.bindingMatches(run)

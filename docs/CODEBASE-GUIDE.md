@@ -10,10 +10,10 @@ Status: current implementation map, 2026-09-07
 | --- | --- | --- |
 | local / WordPress.org source acquisition | implemented | Approved Batchからの自動dispatchは未接続 |
 | Programme / disclosure observations | implemented | 全Programmeを一つのCandidate Poolへ組み立てるapplication serviceは未実装 |
-| AI Target Proposal | Grok production Adapterまでimplemented | CLIとCandidate Pool組立serviceが未実装 |
+| AI Target Proposal | exact Grok transportをadmitするproduction Adapterまでimplemented | CLIとCandidate Pool組立serviceが未実装 |
 | human Approved Target Batch | implemented | Research `CampaignInput`への変換が未接続 |
 | agent-led Research loop | private Agent Checkpointからのresumeまでimplemented、Claude benign smoke / resume probe完走 | known-positive BrizyはGrok quota failureとCheckpoint導入前のClaude budget exhaustionでincomplete。boundary gateは未通過 |
-| Grok native runtime | implemented and structurally tested | real Brizy runはproviderのHTTP 402で未完了 |
+| Grok native runtime | exact image / CLI versionをadmitし、structurally tested | real Brizy runはproviderのHTTP 402で未完了 |
 | Claude Code native runtime | exact imageをreal boundary-probed | admitted image以外は再probeが必要 |
 | fresh Independent Validation | implemented | real targetのpositive / negative pairは未完了 |
 | Finding / Coverage / failure record | implemented | cross-context Coverage Receipt adapterは未実装 |
@@ -54,7 +54,7 @@ Status: current implementation map, 2026-09-07
 
 **Owned state:** Candidate Pool digest、sealed Selection Run、Native Receipt、Target Proposalをfile-backed revisionとして保存する。
 
-**Invariants:** AIはpool外、source unavailable、unverified identity / provenance、stale candidateを選べない。全候補ranking、固定Bandまたはreason codeを要求しない。
+**Invariants:** AIはpool外、source unavailable、unverified identity / provenance、stale candidateを選べない。全候補ranking、固定Bandまたはreason codeを要求しない。Grok AdapterはResearch runtimeと同じexact image digestとCLI versionだけをadmitする。
 
 **Failure semantics:** provider、Budget、policy、invalid outputは`selection-pending`にする。同じselection revisionへの異なるinputはconflictにする。
 
@@ -92,7 +92,7 @@ Status: current implementation map, 2026-09-07
 
 **Interface:** `NativeAgentRuntime.execute`、`openGrokNativeAgentRuntime`、`openClaudeCodeNativeAgentRuntime`。
 
-**Invariants:** immutable image、exact CLI version、non-root UID、read-only root / Target、dropped capabilities、no-new-privileges、Prompt / Target / Permission binding、ResearchとValidationの別scratchを要求する。Researchのprovider-native conversationとscratchはcredentialを除外したprivate Checkpointとしてcontent-addressed保存し、同じbindingだけが再開できる。ValidationはCheckpointをmountしない。sanitized provider homeはworkspace mount外へ分離し、agentのRead / Grepをdenyする。Grokは`read_file / grep / list_dir / task`だけを公開する探索試験の優先runtimeで、Claudeへsilent fallbackしない。Claudeは実測済みimage digestと2.1.220だけをadmitする。
+**Invariants:** immutable image、exact CLI version、non-root UID、read-only root / Target、dropped capabilities、no-new-privileges、Prompt / Target / Permission binding、ResearchとValidationの別scratchを要求する。Researchのprovider-native conversationとscratchはcredentialを除外したprivate Checkpointとしてcontent-addressed保存し、同じbindingだけが再開できる。ValidationはCheckpointをmountしない。sanitized provider homeはworkspace mount外へ分離し、agentのRead / Grepをdenyする。Grokは`read_file / grep / list_dir / task`だけを公開する探索試験の優先runtimeで、Claudeへsilent fallbackしない。Grokは共通のexact image digestと1.0.13、Claudeは実測済みimage digestと2.1.220だけをadmitする。
 
 **Failure semantics:** runsc、image、unprobed version、binding、Checkpoint integrity、policy、providerまたはschema failureをtyped terminal receiptへする。timeoutとproviderのbudget error envelopeは`budget-exhausted`である。providerがnon-zero exitしても、対応するerror envelopeのusage、costと有効なCheckpoint refを失わず、wall timeはprovider値とhost観測値の大きい方を記録する。
 

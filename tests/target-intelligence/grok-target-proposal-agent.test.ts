@@ -134,9 +134,8 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"selection-session",
       web: false,
       ambientConfig: false,
     });
-    const agent = openGrokTargetProposalAgent({
+    const runtimeOptions = {
       dockerExecutablePath: docker,
-      image: digest("f"),
       providerConfigDirectory: provider,
       scratchRootDirectory: scratch,
       selectionGuidance: {
@@ -145,6 +144,19 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"selection-session",
       },
       permissionProfileDigest,
       maxOutputBytes: 1_000_000,
+    };
+    const unadmittedProposals = openTargetProposals({
+      storageDirectory: join(directory, "unadmitted-records"),
+      agent: openGrokTargetProposalAgent({
+        ...runtimeOptions,
+        image: digest("e"),
+      }),
+      clock: () => new Date("2026-09-07T00:01:00.000Z"),
+    });
+    const agent = openGrokTargetProposalAgent({
+      ...runtimeOptions,
+      image:
+        "sha256:0390e43156357c08aab4ddc3f002ac11763789e90f0fac09f2fa2e73b8105267",
     });
     const proposals = openTargetProposals({
       storageDirectory: join(directory, "records"),
@@ -186,6 +198,12 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"selection-session",
     };
 
     try {
+      await expect(
+        unadmittedProposals.propose({
+          ...input,
+          selectionKey: "unadmitted-selection",
+        }),
+      ).resolves.toMatchObject({ status: "selection-pending" });
       await expect(proposals.propose(input)).resolves.toMatchObject({
         status: "proposed",
       });
