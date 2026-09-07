@@ -2,7 +2,9 @@
 
 Status: current implementation map, 2026-09-07
 
-現在動くproduction seam、owner、failure semantics、Behavior Testを示す。設計理由は[ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)、research policyは[Research Design](RESEARCH-DESIGN.md)を参照する。
+現在動くproduction seam、owner、failure semantics、Behavior Testを示す。設計理由は[ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)と[ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)、research policyは[Research Design](RESEARCH-DESIGN.md)を参照する。
+
+診断coreは`Target Snapshot -> agent-led Research -> Independent Validation -> Finding`である。Target Selection、Human OS、runtime reproduction、隔離方式の高度化はsupporting workflowまたはAdapter内部の関心であり、診断coreのpromotion blockerではない。
 
 ## Current capability
 

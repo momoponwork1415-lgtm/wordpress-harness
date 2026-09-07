@@ -2,6 +2,8 @@
 
 一件のTargetが通る経路を、現在のpublic seamに沿って示す。実装済みと未接続の境界は[Codebase Guide](CODEBASE-GUIDE.md)を正本とする。
 
+診断coreはStep 2と3で完結する。Step 1と4は前後に接続できるsupporting workflowであり、診断coreの実行またはpromotionに必須ではない。
+
 ## 1. Select and approve
 
 Target Intelligenceが取得可能性、identity、provenance、freshnessを検査したCandidate Poolを作る。AIは固定rankやreason codeなしにTarget Proposalを返す。人間はProposalの一部または全部をApproved Target Batchとして承認する。

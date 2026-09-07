@@ -6,7 +6,9 @@ WordPress Targetの選定からagent-led Research、Independent Validation、fre
 
 ## Architecture rule
 
-**Harness owns authority, evidence, isolation and limits; agents own research decisions; Independent Validation owns Findings; humans own external actions.**
+**Diagnostic core owns evidence and limits; agents own Discovery decisions; Independent Validation owns Findings; humans own external actions.**
+
+Productの必須flowは`Target Snapshot -> Discovery -> Independent Validation -> Finding`である。Target IntelligenceとHuman OSは前後のsupporting workflowであり、未接続でも診断coreの失敗にしない。隔離はNative Agent Runtime Adapterの内部安全条件であり、診断結果やpromotionの目的にしない。
 
 Harnessが固定するのはTarget identity、source provenance、Prompt、Permission、Budget、freshness、record、failure semanticsと人間のauthorizationである。AIがTargetの優先順位、探索方法、native subagent、読む順序、継続、停止、candidateと検証方法を決める。
 
@@ -88,4 +90,4 @@ Unauthenticated SQLi、Stored XSS、ATO、PrivEsc、arbitrary file operation、o
 - exact payload、HTTP request、screenshot、runtime logはPrivate Evidenceへ置く。
 - external actionはhuman-confirmed verificationとexact authorizationを要求する。
 
-旧v7はtag `research-v7-before-native-agent-loop`と旧storageで再現する。現行binaryへlegacy reader、feature flagまたは旧writerを残さない。判断根拠は[ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)を参照する。
+旧v7はtag `research-v7-before-native-agent-loop`と旧storageで再現する。現行binaryへlegacy reader、feature flagまたは旧writerを残さない。判断根拠は[ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)と[ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)を参照する。

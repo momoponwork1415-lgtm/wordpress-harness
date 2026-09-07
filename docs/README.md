@@ -9,7 +9,7 @@
 | 一件のTargetの処理順 | [System Walkthrough](SYSTEM-WALKTHROUGH.md) |
 | 探索、停止、Validationの原則 | [Research Design](RESEARCH-DESIGN.md) |
 | domain language | [Context Map](../CONTEXT-MAP.md) |
-| agent-led移行の判断 | [ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md) |
+| agent-led移行と診断coreの成功条件 | [ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md) · [ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md) |
 | native探索状態の保存判断 | [ADR 0126](adr/0126-preserve-native-research-checkpoints-opaquely.md) |
 | 次の有限workと受入条件 | [GitHub Issues](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues) |
 

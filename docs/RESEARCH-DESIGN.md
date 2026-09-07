@@ -4,7 +4,7 @@ Status: accepted research policy, 2026-09-07
 
 ## Goal
 
-既知脆弱性のoracleなしに、high-impactなbroken security semanticsを高recallで発見する。freshなIndependent ValidationからFindingを生成し、fresh runtime verificationと人間の外部提出判断まで閉じる。
+既知脆弱性のoracleなしに、high-impactなbroken security semanticsを高recallで発見し、freshなIndependent ValidationからFindingを生成する。これが診断coreの成功条件である。runtime verification、Target Selection自動化、Human OSと外部提出支援は前後のsupporting workflowであり、Researchのpromotion条件にしない。
 
 **Do not optimize for sinks. Optimize for broken security semantics.**
 
@@ -101,11 +101,14 @@ Prompt、runtime、permissionまたはresearch policyの変更は進行中Campai
 - source、provider、budgetまたはschema failureをnegativeへ丸めないか。
 - public Interfaceからbehaviorを観測でき、旧内部Testを削除できるか。
 
+診断coreの合否は既知positiveのoracle-free再発見、Independent Validation成立、patched negative controlの同一causal identity非昇格で測る。隔離方式、Target Selection、Human OS、Coverage closureまたはLOCを診断精度の代理指標にしない。既存隔離は安全用Adapterとして再利用するが、実CVEの発見・検証を改善しない高度化へ先行投資しない。
+
 Cost削減はrecall baseline確立後に一変数ずつablationする。LOCは設計の証明または目標値にしない。未使用code、二つ目の実装がない汎用abstraction、AI判断を再実装するorchestrationを残さず、実測LOCの増加はpublic behaviorで説明する。
 
 ## References
 
 - [ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)
+- [ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)
 - [wp2shell exact prompt](https://www.slcyber.io/research/exploit-brokers-pay-500000-for-a-wordpress-rce-i-found-one-with-gpt5-6#the-story-of-wp2shell)
 - [Cycle Double Cover Prompt](https://cdn.openai.com/pdf/04d1d1e4-bc75-476a-97cf-49055cd98d31/cdc_prompt.pdf)
 - [Reference harness comparison](knowledge/reference-harness-observability.md)
