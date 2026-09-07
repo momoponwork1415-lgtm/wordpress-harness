@@ -1,4 +1,14 @@
-import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { COPYFILE_EXCL } from "node:constants";
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
 import { z } from "zod";
@@ -11,6 +21,9 @@ const pinnedImageSchema = z
   .string()
   .regex(/^(?:sha256:[a-f0-9]{64}|[^\s@]+@sha256:[a-f0-9]{64})$/);
 const dockerRuntimesSchema = z.record(z.string(), z.unknown());
+const credentialFileSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
 
 export interface GvisorAgentRuntimeOptions {
   readonly dockerExecutablePath: string;
@@ -36,6 +49,7 @@ export interface SandboxedAgentCommand {
   readonly executable: string;
   readonly versionTokenIndex: number;
   readonly providerEnvironment: readonly string[];
+  readonly ephemeralProviderCredentialFiles?: readonly string[];
   readonly args: readonly string[];
   readonly prompt:
     | { readonly kind: "stdin"; readonly text: string }
@@ -296,17 +310,6 @@ export class GvisorAgentSandbox {
     }
 
     const scratchDirectory = await mkdtemp(join(scratchRootDirectory, "run-"));
-    if (command.prompt.kind === "file") {
-      await writeFile(
-        join(scratchDirectory, "prompt.txt"),
-        command.prompt.text,
-        {
-          encoding: "utf8",
-          mode: 0o600,
-          flag: "wx",
-        },
-      );
-    }
     const containerArgs = [
       "run",
       "--rm",
@@ -332,6 +335,34 @@ export class GvisorAgentSandbox {
     ];
 
     try {
+      if (command.ephemeralProviderCredentialFiles !== undefined) {
+        const providerHome = join(scratchDirectory, "provider-home");
+        await mkdir(providerHome, { mode: 0o700 });
+        for (const candidate of command.ephemeralProviderCredentialFiles) {
+          const filename = credentialFileSchema.parse(candidate);
+          const source = await realpath(join(providerConfigDirectory, filename));
+          if (
+            !source.startsWith(`${providerConfigDirectory}/`) ||
+            !(await stat(source)).isFile()
+          ) {
+            throw new Error("Provider credential is outside the bound directory");
+          }
+          const destination = join(providerHome, filename);
+          await copyFile(source, destination, COPYFILE_EXCL);
+          await chmod(destination, 0o600);
+        }
+      }
+      if (command.prompt.kind === "file") {
+        await writeFile(
+          join(scratchDirectory, "prompt.txt"),
+          command.prompt.text,
+          {
+            encoding: "utf8",
+            mode: 0o600,
+            flag: "wx",
+          },
+        );
+      }
       const version = await docker(
         [...containerArgs, "--version"],
         undefined,

@@ -40,6 +40,16 @@ describe("Grok Native Agent Runtime", () => {
       mkdir(scratchRootDirectory),
     ]);
     await writeFile(join(sourceDirectory, "plugin.php"), "<?php\n", "utf8");
+    await Promise.all([
+      writeFile(join(providerConfigDirectory, "auth.json"), "{}", {
+        encoding: "utf8",
+        mode: 0o600,
+      }),
+      writeFile(join(providerConfigDirectory, "agent_id"), "agent-1", {
+        encoding: "utf8",
+        mode: 0o600,
+      }),
+    ]);
 
     const dockerExecutablePath = join(directory, "fake-docker");
     await writeFile(
@@ -57,6 +67,7 @@ has_runsc=0
 has_host_user=0
 has_outer_owned_sandbox=0
 has_memory_disabled=0
+has_ephemeral_provider_home=0
 is_version_probe=0
 scratch=''
 for argument in "$@"; do
@@ -64,6 +75,7 @@ for argument in "$@"; do
   [ "$argument" != "--user=$(id -u):$(id -g)" ] || has_host_user=1
   [ "$argument" != "off" ] || has_outer_owned_sandbox=1
   [ "$argument" != "--no-memory" ] || has_memory_disabled=1
+  [ "$argument" != "--env=GROK_HOME=/workspace/research/provider-home" ] || has_ephemeral_provider_home=1
   [ "$argument" != "--version" ] || is_version_probe=1
   [ "$argument" != "--no-subagents" ] || exit 91
   case "$argument" in
@@ -78,7 +90,10 @@ if [ "$is_version_probe" -eq 1 ]; then
 fi
 [ "$has_outer_owned_sandbox" -eq 1 ] || exit 95
 [ "$has_memory_disabled" -eq 1 ] || exit 96
+[ "$has_ephemeral_provider_home" -eq 1 ] || exit 97
 [ -n "$scratch" ] || exit 92
+[ -f "$scratch/provider-home/auth.json" ] || exit 98
+[ -f "$scratch/provider-home/agent_id" ] || exit 99
 printf '%s\n' "$scratch" >> "$0.scratch"
 invocation=1
 if [ -f "$0.count" ]; then

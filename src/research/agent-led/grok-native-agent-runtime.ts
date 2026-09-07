@@ -84,9 +84,10 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
       executable: "grok",
       versionTokenIndex: 1,
       providerEnvironment: [
-        "--env=GROK_HOME=/provider",
+        "--env=GROK_HOME=/workspace/research/provider-home",
         "--env=HOME=/tmp/home",
       ],
+      ephemeralProviderCredentialFiles: ["auth.json", "agent_id"],
       args: [
         "--model",
         run.agentRuntimeProfile.model,
