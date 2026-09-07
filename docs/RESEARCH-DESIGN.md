@@ -60,7 +60,9 @@ staticまたは派生解析の出力があってもnavigationとevidenceの補�
 
 Validation Candidateは、Target Snapshot、attacker premise、broken security property、主張と初期source anchorを持つ。固定rubric、順番付き完全route、vulnerability class、RCE escalationまたは特定mechanism Adapterへの対応をadmission条件にしない。
 
-Independent Validationはcandidateごとに一回のfresh source-only runを行う。最大4 candidateを並列実行するが、Validator間でもconversation、scratchまたはverdictを共有しない。各Validatorはreachability、attacker control、既存防御、security effectとcounterevidenceを再導出する。Target code、build、testまたはruntime attackを実行しない。
+Independent Validationはcandidateごとに一回のfresh source-only runを行う。Research Rootのconversation、scratch、verdictを共有せず、Validator自身がreachability、attacker control、既存防御、security effectとcounterevidenceを再導出する。Target code、build、testまたはruntime attackを実行しない。
+
+複数Targetは互いに独立したCampaignとprocessとして並列実行する。Harness内へ中央schedulerやcross-Target Validation queueを作らず、providerまたはoperatorの既存process並列性を使う。
 
 | Disposition | Meaning |
 | --- | --- |

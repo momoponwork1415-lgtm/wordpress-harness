@@ -52,7 +52,7 @@
       <rect x="24" y="190" width="342" height="102" rx="18" class="outline"/>
       <text x="46" y="220" class="mono eyebrow" fill="#78aaff">INPUT</text>
       <text x="46" y="250" class="cardTitle">Target Snapshot</text>
-      <text x="46" y="274" class="body">WordPress pluginのraw source</text>
+      <text x="46" y="274" class="body">Plugin A / B / Cを独立Campaignで並列実行</text>
     </g>
 
     <path d="M195 294V326" class="flow"/>
@@ -85,10 +85,10 @@
       <rect x="44" y="740" width="77" height="25" rx="12" fill="#4a367e"/>
       <text x="58" y="757" class="mono tiny" fill="#ded6ff">AI OWNS</text>
       <text x="44" y="798" class="cardTitle">2. Independent Validation</text>
-      <text x="44" y="828" class="body">最大4候補を別contextで並列検証</text>
+      <text x="44" y="828" class="body">候補を別contextで独立検証</text>
       <text x="44" y="855" class="body">Discoveryの結論を信用しない</text>
       <text x="44" y="882" class="body">到達性・防御・impact・反証を確認</text>
-      <text x="44" y="916" class="small">各Validatorは独立 · RCEへの昇格は不要</text>
+      <text x="44" y="916" class="small">RCEへの昇格は不要</text>
     </g>
 
     <path d="M195 940V972" class="flow"/>

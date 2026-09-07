@@ -59,7 +59,9 @@ Grok BuildとClaude Codeのprovider固有CLIはAdapter内へ局所化する。GL
 
 ### Independent Validation
 
-Researchと別のfresh native runがcandidateを同じread-only sourceから再導出し、`source-validated / needs-research / disproven / validation-pending`を返す。最大4 candidateを並列実行し、各Validatorのcontextとscratchは共有しない。固定rubricやclass Adapterをpublic seamへ出さない。`source-validated`だけがFindingを生成する。
+Researchと別のfresh native runがcandidateを同じread-only sourceから再導出し、`source-validated / needs-research / disproven / validation-pending`を返す。固定rubricやclass Adapterをpublic seamへ出さない。`source-validated`だけがFindingを生成する。
+
+複数Targetは独立したCampaign processを同時起動する。Target間を調整するproduction schedulerは持たず、一CampaignのDiscoveryとValidationはそのCampaignだけで完結する。
 
 ### Human OS
 

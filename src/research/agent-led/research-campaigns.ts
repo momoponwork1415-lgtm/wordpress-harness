@@ -29,7 +29,6 @@ import {
 } from "./contracts.js";
 
 const jsonValueSchema = z.json();
-const MAX_CONCURRENT_VALIDATIONS = 4;
 
 const eventRowSchema = z.object({
   kind: z.enum([
@@ -264,61 +263,35 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
       const attemptedCandidates = new Set(
         view.validationRuns.map((record) => record.candidateId),
       );
-      const pendingCandidates = candidatesFor(view.nativeRuns).filter(
+      const pendingCandidate = candidatesFor(view.nativeRuns).find(
         (candidate) => !attemptedCandidates.has(candidate.candidateId),
       );
-      if (pendingCandidates.length > 0) {
+      if (pendingCandidate !== undefined) {
         if (!hasRunBudget(input, allReceipts(view))) {
           this.#interruptForBudget(input, inputDigest, true);
           view = this.#requireView(input.campaignId);
           continue;
         }
-        const receiptsBeforeBatch = allReceipts(view);
-        const remainingRunSlots =
-          input.budgetEnvelope.maxNativeRuns - receiptsBeforeBatch.length;
-        const batch = pendingCandidates.slice(
-          0,
-          Math.min(MAX_CONCURRENT_VALIDATIONS, remainingRunSlots),
-        );
-        const remainingAllowance = budgetAllowance(input, receiptsBeforeBatch);
-        const perValidationAllowance = {
-          maxWallTimeMs: Math.max(
-            1,
-            Math.floor(remainingAllowance.maxWallTimeMs / batch.length),
-          ),
-          maxEstimatedCostUsd:
-            remainingAllowance.maxEstimatedCostUsd / batch.length,
+        const run: SealedValidationRun = {
+          kind: "sealed-native-validation-run",
+          schemaVersion: 1,
+          runId: `${input.campaignId}:validation:${view.validationRuns.length + 1}`,
+          campaignId: input.campaignId,
+          campaignInputDigest: inputDigest,
+          targetSnapshot: input.targetSnapshot,
+          promptSet: input.validationPromptSet,
+          agentRuntimeProfile: input.agentRuntimeProfile,
+          permissionProfile: input.permissionProfile,
+          budgetEnvelope: input.budgetEnvelope,
+          budgetAllowance: budgetAllowance(input, allReceipts(view)),
+          candidate: pendingCandidate,
         };
-        const firstOrdinal = view.validationRuns.length + 1;
-        const completed = await Promise.all(
-          batch.map(async (candidate, index) => {
-            const run: SealedValidationRun = {
-              kind: "sealed-native-validation-run",
-              schemaVersion: 1,
-              runId: `${input.campaignId}:validation:${firstOrdinal + index}`,
-              campaignId: input.campaignId,
-              campaignInputDigest: inputDigest,
-              targetSnapshot: input.targetSnapshot,
-              promptSet: input.validationPromptSet,
-              agentRuntimeProfile: input.agentRuntimeProfile,
-              permissionProfile: input.permissionProfile,
-              budgetEnvelope: input.budgetEnvelope,
-              budgetAllowance: perValidationAllowance,
-              candidate,
-            };
-            return {
-              candidate,
-              receipt: await this.#executeValidation(run),
-            };
-          }),
-        );
-        for (const { candidate, receipt } of completed) {
-          this.#append(input.campaignId, "validation-run.recorded", {
-            inputDigest,
-            candidateId: candidate.candidateId,
-            receipt,
-          });
-        }
+        const receipt = await this.#executeValidation(run);
+        this.#append(input.campaignId, "validation-run.recorded", {
+          inputDigest,
+          candidateId: pendingCandidate.candidateId,
+          receipt,
+        });
         view = this.#requireView(input.campaignId);
         if (exceededBudget(input, allReceipts(view))) {
           this.#interruptForBudget(input, inputDigest, true, true);
