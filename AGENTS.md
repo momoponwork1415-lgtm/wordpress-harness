@@ -39,7 +39,7 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 - context間はversioned handoff contractだけを渡し、別contextのstorageや内部moduleを直接参照しない。
 - Target Intelligenceはoracle-freeな事実からAIがTarget Proposalを作る。固定rank、diversity cap、Research Value Bandまたはreason codeを要求しない。人間がApproved Target Batchを作るまでResearchへdispatchせず、実行直前にversionとsourceのfreshnessを再確認する。
 - Researchのexternal seamは`conduct`と`inspect`だけを持つdeepなResearch Campaigns Moduleに置き、Agent-led Research、Independent Validation、Finding、Coverage、BudgetとResearch Recordを隠す。
-- Native Agent Runtimeはprovider/process/session/tool bindingとreceiptを所有するが研究判断を所有しない。最初のproduction AdapterはClaude Codeとし、二つ目の実在runtimeを採用するまで汎用provider DSLを作らない。
+- Native Agent Runtimeはprovider/process/session/tool bindingとreceiptを所有するが研究判断を所有しない。Grok Buildを探索評価の第一選択とし、Claude Codeも独立Adapterとして使う。provider-neutralなtool DSLを作らない。
 - Root AIはnative subagent、仮説、読む順序、synthesis、critique、candidate、継続と停止を所有する。HarnessはFinder数、role、Wave、Lease、Depth、Approach Familyまたは固定手順を実装しない。
 - Surface Map、PHP Program Index、AST、Semgrep、CodeQLは補助toolであり探索空間ではない。
 - ResearchのValidationはcandidateごとに一つのfreshなsource-only runを行う。固定rubricまたはclass別Adapterを要求せず、Research Root自身ではなくIndependent Validationだけがsource-validated Findingを生成できる。

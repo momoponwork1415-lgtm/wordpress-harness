@@ -107,18 +107,16 @@ export function runNativeModelProcess(
       if (terminalKind !== undefined) {
         signalProcessTree(child, "SIGKILL");
         if (killTimer !== undefined) clearTimeout(killTimer);
-        const result = { kind: terminalKind, stderr: stderrText } as const;
-        resolve(result);
+        resolve({ kind: terminalKind, stderr: stderrText });
         return;
       }
       if (killTimer !== undefined) clearTimeout(killTimer);
-      const result = {
+      resolve({
         kind: "exited",
         exitCode: exitCode ?? -1,
         stdout: redact(Buffer.concat(stdout).toString("utf8")),
         stderr: stderrText,
-      } as const;
-      resolve(result);
+      });
     });
 
     if (options.stdin === undefined) {

@@ -2,7 +2,6 @@ import { COPYFILE_EXCL } from "node:constants";
 import {
   chmod,
   copyFile,
-  mkdir,
   mkdtemp,
   realpath,
   rm,
@@ -14,7 +13,7 @@ import { isAbsolute, join } from "node:path";
 import { z } from "zod";
 
 import { verifyCanonicalSourceTree } from "../../infrastructure/canonical-source-tree.js";
-import { runNativeModelProcess } from "../model-execution/native-model-process.js";
+import { runNativeModelProcess } from "../../infrastructure/native-model-process.js";
 import {
   promptTextDigest,
   type NativeAgentReceipt,
@@ -26,7 +25,10 @@ const pinnedImageSchema = z
   .string()
   .regex(/^(?:sha256:[a-f0-9]{64}|[^\s@]+@sha256:[a-f0-9]{64})$/);
 const dockerRuntimesSchema = z.record(z.string(), z.unknown());
-const credentialFileSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+const credentialFileSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9.][A-Za-z0-9._-]*$/)
+  .refine((value) => value !== "." && value !== "..");
 
 export interface GvisorAgentRuntimeOptions {
   readonly dockerExecutablePath: string;
@@ -58,6 +60,10 @@ export interface SandboxedAgentCommand {
   readonly versionTokenIndex: number;
   readonly providerEnvironment: readonly string[];
   readonly ephemeralProviderCredentialFiles?: readonly string[];
+  readonly ephemeralProviderHomeMount?: {
+    readonly path: string;
+    readonly mode: "ro" | "rw";
+  };
   readonly args: readonly string[];
   readonly prompt:
     | { readonly kind: "stdin"; readonly text: string }
@@ -364,37 +370,14 @@ export class GvisorAgentSandbox {
     }
 
     const scratchDirectory = await mkdtemp(join(scratchRootDirectory, "run-"));
-    const containerArgs = [
-      "run",
-      "--rm",
-      "--runtime=runsc",
-      `--user=${this.#containerUser}`,
-      "--read-only",
-      "--cap-drop=ALL",
-      "--security-opt=no-new-privileges",
-      "--pids-limit=512",
-      "--memory=8g",
-      "--cpus=4",
-      "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=512m",
-      "--volume",
-      `${sourceDirectory}:/workspace/main:ro`,
-      "--volume",
-      `${scratchDirectory}:/workspace/research:rw`,
-      ...(command.providerEnvironment.some((value) =>
-        value.endsWith("=/provider"),
-      )
-        ? ["--volume", `${providerConfigDirectory}:/provider:ro`]
-        : []),
-      "--workdir=/workspace",
-      ...command.providerEnvironment,
-      this.#options.image,
-      command.executable,
-    ];
+    let providerHome: string | undefined;
 
     try {
       if (command.ephemeralProviderCredentialFiles !== undefined) {
-        const providerHome = join(scratchDirectory, "provider-home");
-        await mkdir(providerHome, { mode: 0o700 });
+        if (command.ephemeralProviderHomeMount === undefined) {
+          throw new Error("Provider credentials require an isolated mount");
+        }
+        providerHome = await mkdtemp(join(scratchRootDirectory, "provider-"));
         for (const candidate of command.ephemeralProviderCredentialFiles) {
           const filename = credentialFileSchema.parse(candidate);
           const source = await realpath(
@@ -412,7 +395,38 @@ export class GvisorAgentSandbox {
           await copyFile(source, destination, COPYFILE_EXCL);
           await chmod(destination, 0o600);
         }
+      } else if (command.ephemeralProviderHomeMount !== undefined) {
+        throw new Error("Provider mount requires credential files");
       }
+      const providerMount = command.ephemeralProviderHomeMount;
+      const containerArgs = [
+        "run",
+        "--rm",
+        "--interactive",
+        "--runtime=runsc",
+        `--user=${this.#containerUser}`,
+        "--read-only",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        "--pids-limit=512",
+        "--memory=8g",
+        "--cpus=4",
+        "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=512m",
+        "--volume",
+        `${sourceDirectory}:/workspace/main:ro`,
+        "--volume",
+        `${scratchDirectory}:/workspace/research:rw`,
+        ...(providerHome === undefined || providerMount === undefined
+          ? []
+          : [
+              "--volume",
+              `${providerHome}:${providerMount.path}:${providerMount.mode}`,
+            ]),
+        "--workdir=/workspace",
+        ...command.providerEnvironment,
+        this.#options.image,
+        command.executable,
+      ];
       if (command.prompt.kind === "file") {
         await writeFile(
           join(scratchDirectory, "prompt.txt"),
@@ -508,7 +522,12 @@ export class GvisorAgentSandbox {
         ),
       };
     } finally {
-      await rm(scratchDirectory, { recursive: true, force: true });
+      await Promise.all([
+        rm(scratchDirectory, { recursive: true, force: true }),
+        ...(providerHome === undefined
+          ? []
+          : [rm(providerHome, { recursive: true, force: true })]),
+      ]);
     }
   }
 }

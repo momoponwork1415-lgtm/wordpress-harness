@@ -41,13 +41,41 @@ const claudeResultSchema = z.object({
       web_fetch_requests: z.number().int().nonnegative(),
     }),
   }),
-  subagent_stats: z.object({
-    spawned: z.number().int().nonnegative(),
-  }),
+  subagent_stats: z
+    .object({
+      spawned: z.number().int().nonnegative(),
+    })
+    .optional(),
   modelUsage: modelUsageSchema,
 });
 
 export interface OpenClaudeCodeNativeAgentRuntimeOptions extends GvisorAgentRuntimeOptions {}
+
+const claudeCodeTransportEligibility = {
+  schemaVersion: 1,
+  imageDigest:
+    "sha256:b8bb6b8f8865dbabb70f03bb71639792fe1f5c4301a8cd874d212435e5cda355",
+  executableVersion: "2.1.220",
+  probedAt: "2026-09-07T05:34:00.000Z",
+  root: {
+    providerRead: "denied",
+    targetWrite: "denied",
+    scratchWrite: "allowed",
+    shell: "unavailable",
+    web: "unavailable",
+  },
+  subagent: {
+    providerRead: "denied",
+    targetWrite: "denied",
+    shell: "unavailable",
+    web: "unavailable",
+  },
+} as const;
+
+function imageDigest(reference: string): string {
+  const separator = reference.lastIndexOf("@sha256:");
+  return separator === -1 ? reference : reference.slice(separator + 1);
+}
 
 function parseJson(value: string): unknown {
   try {
@@ -57,16 +85,28 @@ function parseJson(value: string): unknown {
   }
 }
 
+function claudeJsonSchema(schema: z.ZodType): string {
+  const providerSchema = { ...z.toJSONSchema(schema) };
+  delete providerSchema.$schema;
+  return JSON.stringify(providerSchema);
+}
+
 class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
   readonly #sandbox: GvisorAgentSandbox;
+  readonly #transportAdmitted: boolean;
 
   constructor(options: OpenClaudeCodeNativeAgentRuntimeOptions) {
     this.#sandbox = new GvisorAgentSandbox(options);
+    this.#transportAdmitted =
+      imageDigest(options.image) === claudeCodeTransportEligibility.imageDigest;
   }
 
   async execute(run: SealedAgentRun): Promise<NativeAgentReceipt> {
     if (
       run.agentRuntimeProfile.kind !== "claude-code-native/v1" ||
+      !this.#transportAdmitted ||
+      run.agentRuntimeProfile.executableVersion !==
+        claudeCodeTransportEligibility.executableVersion ||
       !this.#sandbox.bindingMatches(run)
     ) {
       const now = this.#sandbox.now();
@@ -83,7 +123,12 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
     const execution = await this.#sandbox.execute(run, {
       executable: "claude",
       versionTokenIndex: 0,
-      providerEnvironment: ["--env=CLAUDE_CONFIG_DIR=/provider"],
+      providerEnvironment: [
+        "--env=CLAUDE_CONFIG_DIR=/provider",
+        "--env=HOME=/tmp/home",
+      ],
+      ephemeralProviderCredentialFiles: [".credentials.json"],
+      ephemeralProviderHomeMount: { path: "/provider", mode: "ro" },
       args: [
         "-p",
         "--model",
@@ -92,7 +137,6 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         run.agentRuntimeProfile.effort,
         "--max-budget-usd",
         String(run.budgetEnvelope.maxEstimatedCostUsd),
-        "--restricted",
         "--strict-mcp-config",
         "--safe-mode",
         "--disable-slash-commands",
@@ -101,11 +145,19 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         "--allowedTools",
         "Agent,Read,Glob,Grep,Write,Edit",
         "--disallowedTools",
-        "Bash,WebFetch,WebSearch",
+        "Bash",
+        "WebFetch",
+        "WebSearch",
+        "Read(//provider/**)",
+        "Glob(//provider/**)",
+        "Grep(//provider/**)",
+        "Write(//provider/**)",
+        "Edit(//provider/**)",
+        "Read(//proc/**)",
+        "Glob(//proc/**)",
+        "Grep(//proc/**)",
         "--permission-mode",
         "dontAsk",
-        "--permission-prompts",
-        "none",
         "--no-chrome",
         "--prompt-suggestions",
         "false",
@@ -113,12 +165,10 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         "--output-format",
         "json",
         "--json-schema",
-        JSON.stringify(
-          z.toJSONSchema(
-            run.kind === "sealed-native-research-run"
-              ? researchReportSchema
-              : validationReportSchema,
-          ),
+        claudeJsonSchema(
+          run.kind === "sealed-native-research-run"
+            ? researchReportSchema
+            : validationReportSchema,
         ),
       ],
       prompt: { kind: "stdin", text: this.#sandbox.prompt(run) },
@@ -198,7 +248,7 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
           : { estimatedCostUsd: envelope.total_cost_usd }),
       },
       activity: {
-        subagents: envelope.subagent_stats.spawned,
+        subagents: envelope.subagent_stats?.spawned ?? null,
         tools: null,
       },
       isolation: {

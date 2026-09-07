@@ -67,4 +67,4 @@ Status: official-source comparison, checked 2026-09-07
 | Validation | Researchとは別scratch / sessionでcandidateを一度再導出する。 | [`independent-validation.test.ts`](../../tests/research/independent-validation.test.ts) |
 | Finding / Coverage | `source-validated`だけがFindingを作り、Coverageとfailureを別々に復元する。 | [`research-campaigns.test.ts`](../../tests/research/research-campaigns.test.ts) |
 
-現在の弱点は、real providerのforbidden-capability probe、Target Proposalのproduction Adapter、Approved BatchからCampaignへのdispatch、Human OSのactual runtime provisioner、Brizy vulnerable / patched / bare controlの境界試験が未完了なことである。構造が小さくなったこと自体は探索性能の証明ではない。
+Claudeのexact imageでは、Root / native subagent双方についてprovider read、Target write、shell、Webの拒否とscratch writeを実測し、public Campaign smokeも完走した。Grok Target Proposal Adapterもproduction seamへ接続した。現在の弱点は、Grokの同等capability probeとBrizy vulnerable / patched / bare controlがusage balance不足で未完了なこと、Approved BatchからCampaignへのdispatch、Human OSのactual runtime provisionerが未接続なことである。構造が小さくなったこと自体は探索性能の証明ではない。
