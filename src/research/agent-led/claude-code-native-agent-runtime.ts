@@ -249,7 +249,7 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         "--effort",
         run.agentRuntimeProfile.effort,
         "--max-budget-usd",
-        String(run.budgetEnvelope.maxEstimatedCostUsd),
+        String(run.budgetAllowance.maxEstimatedCostUsd),
         "--strict-mcp-config",
         "--safe-mode",
         "--disable-slash-commands",

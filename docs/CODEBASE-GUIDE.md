@@ -80,7 +80,7 @@ Status: current implementation map, 2026-09-07
 
 **Owned state:** Campaign input、Native Run Receipt、private Agent Checkpoint ref、Validation Receipt、Finding、Coverage、interruptionをSQLite append-only eventsへ記録する。provider conversationとscratch本文はprivate content-addressed stateに置く。
 
-**Invariants:** candidateは到着順や支持数で捨てない。各candidateのValidationは一つのfresh runである。`source-validated`だけがFindingを生成する。FindingとCoverageを分離する。
+**Invariants:** candidateは到着順や支持数で捨てない。各candidateのValidationは一つのfresh runである。各runへ累積使用量を引いた残りのwall time / costだけを渡し、超過したterminal reportでCoverageを閉じない。`source-validated`だけがFindingを生成する。FindingとCoverageを分離する。
 
 **Failure semantics:** provider、Budget、policy、invalid outputは`incomplete`または`validation-pending`にする。同じCampaign IDへの異なるinputはconflictにする。再実行はdurable stateからresumeする。
 

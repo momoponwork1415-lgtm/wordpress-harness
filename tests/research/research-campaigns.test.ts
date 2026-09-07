@@ -546,7 +546,7 @@ describe("ResearchCampaigns", () => {
     campaigns.close();
   });
 
-  it("stops before another run when reported wall-time exhausts the budget", async () => {
+  it("keeps a terminal report incomplete when it exceeds the wall-time budget", async () => {
     const directory = await mkdtemp(join(tmpdir(), "research-wall-budget-"));
     temporaryDirectories.push(directory);
     const wallBudgetInput: CampaignInput = {
@@ -576,14 +576,8 @@ describe("ResearchCampaigns", () => {
               schemaVersion: 1,
               candidates: [],
               decision: {
-                kind: "continue",
-                reason: "One source-bound question remains.",
-                nextActions: [
-                  {
-                    question: "Where is the value rendered?",
-                    sourcePointers: ["render.php"],
-                  },
-                ],
+                kind: "stop",
+                basis: "No actionable frontier remains.",
               },
             },
           };
@@ -603,7 +597,7 @@ describe("ResearchCampaigns", () => {
     campaigns.close();
   });
 
-  it("stops before another run when reported cost exhausts the budget", async () => {
+  it("keeps a terminal report incomplete when it exceeds the cost budget", async () => {
     const directory = await mkdtemp(join(tmpdir(), "research-cost-budget-"));
     temporaryDirectories.push(directory);
     const costBudgetInput: CampaignInput = {
@@ -633,14 +627,8 @@ describe("ResearchCampaigns", () => {
               schemaVersion: 1,
               candidates: [],
               decision: {
-                kind: "continue",
-                reason: "One source-bound question remains.",
-                nextActions: [
-                  {
-                    question: "Which handler stores the value?",
-                    sourcePointers: ["handler.php"],
-                  },
-                ],
+                kind: "stop",
+                basis: "No actionable frontier remains.",
               },
             },
           };
@@ -657,6 +645,87 @@ describe("ResearchCampaigns", () => {
       interruption: { reason: "budget-exhausted" },
       nativeRuns: [{ usage: { estimatedCostUsd: 1.25 } }],
     });
+    campaigns.close();
+  });
+
+  it("gives each run only the remaining wall-time and cost allowance", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "research-allowance-"));
+    temporaryDirectories.push(directory);
+    const allowanceInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-allowance-1",
+      budgetEnvelope: {
+        ...input.budgetEnvelope,
+        maxNativeRuns: 2,
+        maxWallTimeMs: 100_000,
+        maxEstimatedCostUsd: 2,
+      },
+    };
+    const seenRuns: SealedAgentRun[] = [];
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "agent-led.sqlite"),
+      runtime: {
+        async execute(run) {
+          seenRuns.push(run);
+          const first = seenRuns.length === 1;
+          return {
+            schemaVersion: 1,
+            runId: run.runId,
+            runtimeProfileDigest: run.agentRuntimeProfile.digest,
+            terminal: "completed",
+            startedAt: first
+              ? "2026-09-07T08:00:00.000Z"
+              : "2026-09-07T08:00:40.000Z",
+            completedAt: first
+              ? "2026-09-07T08:00:40.000Z"
+              : "2026-09-07T08:01:00.000Z",
+            usage: {
+              wallTimeMs: first ? 40_000 : 20_000,
+              estimatedCostUsd: first ? 0.75 : 0.5,
+            },
+            activity: { subagents: 1, tools: ["source.read"] },
+            checkpoint: checkpointFor(run),
+            report: {
+              schemaVersion: 1,
+              candidates: [],
+              decision: first
+                ? {
+                    kind: "continue" as const,
+                    reason: "One source-bound question remains.",
+                    nextActions: [
+                      {
+                        question: "Where is the value rendered?",
+                        sourcePointers: ["render.php"],
+                      },
+                    ],
+                  }
+                : {
+                    kind: "stop" as const,
+                    basis: "No actionable frontier remains.",
+                  },
+            },
+          };
+        },
+      },
+    });
+
+    await expect(campaigns.conduct(allowanceInput)).resolves.toMatchObject({
+      status: "coverage-closed",
+    });
+    expect(seenRuns).toMatchObject([
+      {
+        budgetAllowance: {
+          maxWallTimeMs: 100_000,
+          maxEstimatedCostUsd: 2,
+        },
+      },
+      {
+        budgetAllowance: {
+          maxWallTimeMs: 60_000,
+          maxEstimatedCostUsd: 1.25,
+        },
+      },
+    ]);
     campaigns.close();
   });
 

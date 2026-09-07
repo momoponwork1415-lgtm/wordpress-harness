@@ -727,7 +727,7 @@ export class GvisorAgentSandbox {
       const result = await docker(
         [...containerArgs, ...command.args, ...sessionArguments],
         command.prompt.kind === "stdin" ? command.prompt.text : undefined,
-        run.budgetEnvelope.maxWallTimeMs,
+        run.budgetAllowance.maxWallTimeMs,
         this.#options.maxOutputBytes,
       );
       if (result.kind === "timed-out") {

@@ -120,6 +120,18 @@ function hasRunBudget(
   input: CampaignInput,
   receipts: readonly NativeAgentReceipt[],
 ): boolean {
+  const usage = budgetUsage(receipts);
+  return (
+    receipts.length < input.budgetEnvelope.maxNativeRuns &&
+    usage.wallTimeMs < input.budgetEnvelope.maxWallTimeMs &&
+    usage.estimatedCostUsd < input.budgetEnvelope.maxEstimatedCostUsd
+  );
+}
+
+function budgetUsage(receipts: readonly NativeAgentReceipt[]): Readonly<{
+  wallTimeMs: number;
+  estimatedCostUsd: number;
+}> {
   const wallTimeMs = receipts.reduce(
     (total, receipt) => total + receipt.usage.wallTimeMs,
     0,
@@ -128,10 +140,30 @@ function hasRunBudget(
     (total, receipt) => total + (receipt.usage.estimatedCostUsd ?? 0),
     0,
   );
+  return { wallTimeMs, estimatedCostUsd };
+}
+
+function budgetAllowance(
+  input: CampaignInput,
+  receipts: readonly NativeAgentReceipt[],
+): Readonly<{ maxWallTimeMs: number; maxEstimatedCostUsd: number }> {
+  const usage = budgetUsage(receipts);
+  return {
+    maxWallTimeMs: input.budgetEnvelope.maxWallTimeMs - usage.wallTimeMs,
+    maxEstimatedCostUsd:
+      input.budgetEnvelope.maxEstimatedCostUsd - usage.estimatedCostUsd,
+  };
+}
+
+function exceededBudget(
+  input: CampaignInput,
+  receipts: readonly NativeAgentReceipt[],
+): boolean {
+  const usage = budgetUsage(receipts);
   return (
-    receipts.length < input.budgetEnvelope.maxNativeRuns &&
-    wallTimeMs < input.budgetEnvelope.maxWallTimeMs &&
-    estimatedCostUsd < input.budgetEnvelope.maxEstimatedCostUsd
+    receipts.length > input.budgetEnvelope.maxNativeRuns ||
+    usage.wallTimeMs > input.budgetEnvelope.maxWallTimeMs ||
+    usage.estimatedCostUsd > input.budgetEnvelope.maxEstimatedCostUsd
   );
 }
 
@@ -251,6 +283,7 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
           agentRuntimeProfile: input.agentRuntimeProfile,
           permissionProfile: input.permissionProfile,
           budgetEnvelope: input.budgetEnvelope,
+          budgetAllowance: budgetAllowance(input, allReceipts(view)),
           candidate: pendingCandidate,
         };
         const receipt = await this.#executeValidation(run);
@@ -260,6 +293,10 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
           receipt,
         });
         view = this.#requireView(input.campaignId);
+        if (exceededBudget(input, allReceipts(view))) {
+          this.#interruptForBudget(input, inputDigest, true, true);
+          view = this.#requireView(input.campaignId);
+        }
         continue;
       }
 
@@ -288,6 +325,7 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         agentRuntimeProfile: input.agentRuntimeProfile,
         permissionProfile: input.permissionProfile,
         budgetEnvelope: input.budgetEnvelope,
+        budgetAllowance: budgetAllowance(input, allReceipts(view)),
         ...(resumeFrom === undefined ? {} : { resumeFrom }),
         history: view.nativeRuns.flatMap((receipt) =>
           receipt.terminal === "completed"
@@ -361,6 +399,10 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         receipt,
       });
       view = this.#requireView(input.campaignId);
+      if (exceededBudget(input, allReceipts(view))) {
+        this.#interruptForBudget(input, inputDigest, false, true);
+        view = this.#requireView(input.campaignId);
+      }
     }
   }
 
@@ -419,14 +461,19 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
     input: CampaignInput,
     inputDigest: string,
     validationPending: boolean,
+    exceeded = false,
   ): void {
     this.#append(input.campaignId, "campaign.interrupted", {
       inputDigest,
       interruption: {
         reason: "budget-exhausted",
-        summary: validationPending
-          ? "The Native Run budget ended before Independent Validation completed."
-          : "The Native Run budget ended with an actionable frontier remaining.",
+        summary: exceeded
+          ? validationPending
+            ? "Independent Validation exceeded the remaining Campaign budget."
+            : "A Native Run exceeded the remaining Campaign budget."
+          : validationPending
+            ? "The Native Run budget ended before Independent Validation completed."
+            : "The Native Run budget ended with an actionable frontier remaining.",
       },
     });
   }

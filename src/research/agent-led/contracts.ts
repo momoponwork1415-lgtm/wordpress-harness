@@ -46,6 +46,11 @@ const budgetEnvelopeSchema = z.strictObject({
   digest: digestSchema,
 });
 
+const runBudgetAllowanceSchema = z.strictObject({
+  maxWallTimeMs: z.number().int().positive(),
+  maxEstimatedCostUsd: z.number().positive(),
+});
+
 export const agentCheckpointRefSchema = z.strictObject({
   kind: z.literal("agent-checkpoint"),
   schemaVersion: z.literal(1),
@@ -241,6 +246,7 @@ export const sealedNativeRunSchema = z.strictObject({
   agentRuntimeProfile: agentRuntimeProfileSchema,
   permissionProfile: immutableRefSchema,
   budgetEnvelope: budgetEnvelopeSchema,
+  budgetAllowance: runBudgetAllowanceSchema,
   resumeFrom: agentCheckpointRefSchema.optional(),
   history: z.array(
     z.strictObject({
@@ -268,6 +274,7 @@ export const sealedValidationRunSchema = z.strictObject({
   agentRuntimeProfile: agentRuntimeProfileSchema,
   permissionProfile: immutableRefSchema,
   budgetEnvelope: budgetEnvelopeSchema,
+  budgetAllowance: runBudgetAllowanceSchema,
   candidate: validationCandidateSchema,
 });
 
