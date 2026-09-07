@@ -12,6 +12,8 @@ Productの必須flowは`Target Snapshot -> Discovery -> Independent Validation -
 
 ![スマホ向け診断core図](visuals/diagnosis-architecture.svg)
 
+探索の仮説loop、candidate handoff、Independent Validationの詳細は[探索・検証アーキテクチャ図](visuals/discovery-validation-architecture.svg)に示す。
+
 Harnessが固定するのはTarget identity、source provenance、Prompt、Permission、Budget、freshness、record、failure semanticsと人間のauthorizationである。AIがTargetの優先順位、探索方法、native subagent、読む順序、継続、停止、candidateと検証方法を決める。
 
 ## Contexts

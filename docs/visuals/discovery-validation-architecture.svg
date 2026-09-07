@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="390" height="2520" viewBox="0 0 390 2520" role="img" aria-labelledby="title desc" style="width:100%;max-width:390px;height:auto">
+  <title id="title">Discovery and Independent Validation architecture</title>
+  <desc id="desc">複数WordPress pluginを独立Campaignとして並列探索し、Root Agentの仮説ループからValidation Candidateを作り、別contextのValidatorが独立検証してFinding、Disproved、Needs Research、Incompleteへ振り分ける詳細アーキテクチャ。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#06101d"/>
+      <stop offset="0.5" stop-color="#0a1525"/>
+      <stop offset="1" stop-color="#101827"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#123f38"/>
+      <stop offset="1" stop-color="#0e2b30"/>
+    </linearGradient>
+    <linearGradient id="purple" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#34265e"/>
+      <stop offset="1" stop-color="#211f45"/>
+    </linearGradient>
+    <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%">
+      <feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#000" flood-opacity="0.28"/>
+    </filter>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#78aaff"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#68d8a2"/>
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#b39aff"/>
+    </marker>
+    <style>
+      .sans{font-family:Inter,"Noto Sans JP",system-ui,-apple-system,"Segoe UI",sans-serif}
+      .mono{font-family:"SFMono-Regular",Consolas,monospace}
+      .title{fill:#f7f9fc;font-size:29px;font-weight:780;letter-spacing:-.8px}
+      .subtitle{fill:#adbbce;font-size:14px}
+      .sectionTitle{fill:#f7f9fc;font-size:21px;font-weight:740}
+      .cardTitle{fill:#f7f9fc;font-size:17px;font-weight:710}
+      .body{fill:#c8d4e3;font-size:13px}
+      .small{fill:#a9b7c9;font-size:11.5px}
+      .tiny{fill:#91a2b8;font-size:10.5px}
+      .eyebrow{font-size:10.5px;font-weight:780;letter-spacing:1.05px}
+      .panel{fill:#101d30;stroke:#36516f;stroke-width:1.3}
+      .mini{fill:#15263b;stroke:#355270;stroke-width:1}
+      .flowBlue{fill:none;stroke:#78aaff;stroke-width:2.3;marker-end:url(#arrowBlue)}
+      .flowGreen{fill:none;stroke:#68d8a2;stroke-width:2.3;marker-end:url(#arrowGreen)}
+      .flowPurple{fill:none;stroke:#b39aff;stroke-width:2.3;marker-end:url(#arrowPurple)}
+      .dashed{stroke-dasharray:5 5}
+    </style>
+  </defs>
+
+  <rect width="390" height="2520" fill="url(#bg)"/>
+  <circle cx="350" cy="20" r="120" fill="#17345c" opacity=".36"/>
+  <circle cx="18" cy="2420" r="145" fill="#123f38" opacity=".18"/>
+
+  <g class="sans">
+    <text x="22" y="38" class="mono eyebrow" fill="#78aaff">DISCOVERY + VALIDATION</text>
+    <text x="22" y="76" class="title">探索・検証アーキテクチャ</text>
+    <text x="22" y="105" class="subtitle">AIの調査判断を縛らず、Findingだけを独立検証する。</text>
+    <rect x="22" y="126" width="346" height="36" rx="18" fill="#142e4c" stroke="#315d90"/>
+    <circle cx="42" cy="144" r="5" fill="#78aaff"/>
+    <text x="55" y="149" class="small">成功 = oracleなしのDiscovery + fresh Validation</text>
+
+    <!-- Target-level parallelism -->
+    <g filter="url(#shadow)">
+      <rect x="22" y="195" width="346" height="164" rx="20" class="panel"/>
+      <text x="44" y="226" class="mono eyebrow" fill="#78aaff">PARALLELISM UNIT</text>
+      <text x="44" y="257" class="sectionTitle">複数pluginを同時実行</text>
+      <rect x="44" y="280" width="88" height="34" rx="11" fill="#17304e" stroke="#39658f"/>
+      <text x="88" y="302" text-anchor="middle" class="small">Campaign A</text>
+      <rect x="151" y="280" width="88" height="34" rx="11" fill="#17304e" stroke="#39658f"/>
+      <text x="195" y="302" text-anchor="middle" class="small">Campaign B</text>
+      <rect x="258" y="280" width="88" height="34" rx="11" fill="#17304e" stroke="#39658f"/>
+      <text x="302" y="302" text-anchor="middle" class="small">Campaign C</text>
+      <text x="44" y="339" class="small">process · database · Target · Checkpointは相互に独立</text>
+    </g>
+
+    <path d="M195 361V393" class="flowBlue"/>
+
+    <!-- Sealed input -->
+    <g filter="url(#shadow)">
+      <rect x="22" y="397" width="346" height="180" rx="20" class="panel"/>
+      <text x="44" y="428" class="mono eyebrow" fill="#78aaff">ONE CAMPAIGN INPUT</text>
+      <text x="44" y="458" class="sectionTitle">固定するもの</text>
+      <rect x="44" y="478" width="302" height="76" rx="13" class="mini"/>
+      <text x="62" y="503" class="body">Target Snapshot · raw source digest</text>
+      <text x="62" y="526" class="body">Research / Validation Prompt · runtime</text>
+      <text x="62" y="547" class="small">Budget · permission · Campaign identity</text>
+    </g>
+
+    <path d="M195 579V611" class="flowBlue"/>
+
+    <!-- Discovery -->
+    <g filter="url(#shadow)">
+      <rect x="22" y="615" width="346" height="630" rx="22" fill="url(#green)" stroke="#328669" stroke-width="1.5"/>
+      <rect x="43" y="636" width="78" height="25" rx="12" fill="#1f5a45"/>
+      <text x="57" y="653" class="mono tiny" fill="#b8f2d4">AI OWNS</text>
+      <text x="43" y="694" class="sectionTitle">1. Agent-led Discovery</text>
+      <text x="43" y="721" class="body">Root agentはTarget全体とraw sourceを直接読む</text>
+
+      <rect x="43" y="745" width="302" height="83" rx="14" fill="#163b35" stroke="#2e7a5c"/>
+      <text x="61" y="772" class="cardTitle">気になるsecurity semantics</text>
+      <text x="61" y="797" class="body">匿名入口、権限境界、保存、後段consumer…</text>
+      <text x="61" y="817" class="small">sink checklistではなくroute全体を見る</text>
+
+      <path d="M195 830V854" class="flowGreen"/>
+
+      <rect x="43" y="858" width="302" height="85" rx="14" fill="#163b35" stroke="#2e7a5c"/>
+      <text x="61" y="886" class="cardTitle">source-boundな仮説を作る</text>
+      <text x="61" y="911" class="body">「この値はguardを越えて保存されるか？」</text>
+      <text x="61" y="932" class="small">仮説schemaや固定CWEはHarnessに置かない</text>
+
+      <path d="M195 945V969" class="flowGreen"/>
+
+      <rect x="43" y="973" width="302" height="101" rx="14" fill="#163b35" stroke="#2e7a5c"/>
+      <text x="61" y="1001" class="cardTitle">自由に調査・反証</text>
+      <text x="61" y="1026" class="body">Read · Search · Grep · native subagent</text>
+      <text x="61" y="1050" class="body">attacker control → transform → guard → effect</text>
+      <text x="61" y="1068" class="small">subagent数・役割・読む順番もAIが決める</text>
+
+      <path d="M195 1076V1099" class="flowGreen"/>
+
+      <rect x="43" y="1103" width="302" height="112" rx="14" fill="#112f2b" stroke="#2e7a5c"/>
+      <text x="61" y="1130" class="mono eyebrow" fill="#68d8a2">AI DECISION</text>
+      <text x="61" y="1157" class="body">支持できるclaim → Candidate</text>
+      <text x="61" y="1180" class="body">具体的な次手あり → Checkpointから継続</text>
+      <text x="61" y="1203" class="body">有望なfrontierなし → Stop</text>
+
+      <path d="M43 1150H31V895H42" class="flowGreen dashed"/>
+      <rect x="26" y="1003" width="26" height="64" rx="13" fill="#174438"/>
+      <text x="39" y="1035" text-anchor="middle" class="mono tiny" fill="#9ae7bf" transform="rotate(-90 39 1035)">CONTINUE</text>
+    </g>
+
+    <path d="M195 1247V1279" class="flowGreen"/>
+
+    <!-- Candidate handoff -->
+    <g filter="url(#shadow)">
+      <rect x="22" y="1283" width="346" height="194" rx="20" fill="#112d28" stroke="#328669" stroke-width="1.4"/>
+      <text x="43" y="1314" class="mono eyebrow" fill="#68d8a2">VERSIONED HANDOFF</text>
+      <text x="43" y="1344" class="sectionTitle">Validation Candidate</text>
+      <rect x="43" y="1364" width="302" height="88" rx="13" fill="#163a34"/>
+      <text x="61" y="1389" class="body">attacker premise · broken property</text>
+      <text x="61" y="1413" class="body">precise claim · initial source anchors</text>
+      <text x="61" y="1437" class="small">confidenceや支持数で候補を捨てない</text>
+    </g>
+
+    <path d="M195 1479V1511" class="flowPurple"/>
+
+    <!-- Fresh barrier -->
+    <g filter="url(#shadow)">
+      <rect x="22" y="1515" width="346" height="426" rx="22" fill="url(#purple)" stroke="#826bd2" stroke-width="1.5"/>
+      <rect x="43" y="1536" width="91" height="25" rx="12" fill="#4b367f"/>
+      <text x="56" y="1553" class="mono tiny" fill="#ded6ff">FRESH AI</text>
+      <text x="43" y="1594" class="sectionTitle">2. Independent Validation</text>
+      <text x="43" y="1621" class="body">候補ごとに別process / conversation / scratch</text>
+
+      <rect x="43" y="1644" width="302" height="92" rx="14" fill="#2d2755" stroke="#745fc0"/>
+      <text x="61" y="1671" class="cardTitle">Validatorへ渡さないもの</text>
+      <text x="61" y="1697" class="body">Research transcript · scratch · Checkpoint</text>
+      <text x="61" y="1720" class="body">Rootのverdictや「正解」のoracle</text>
+
+      <path d="M195 1738V1762" class="flowPurple"/>
+
+      <rect x="43" y="1766" width="302" height="143" rx="14" fill="#2d2755" stroke="#745fc0"/>
+      <text x="61" y="1793" class="cardTitle">sourceから独立に再導出</text>
+      <text x="61" y="1819" class="body">入口とattacker premiseは成立するか</text>
+      <text x="61" y="1844" class="body">値はclaim通りのrouteを通るか</text>
+      <text x="61" y="1869" class="body">既存defenseや反証はないか</text>
+      <text x="61" y="1894" class="body">security effectは実在するか</text>
+
+      <text x="43" y="1928" class="small">検証方法は自由。RCEへの昇格は要求しない。</text>
+    </g>
+
+    <path d="M195 1943V1975" class="flowPurple"/>
+
+    <!-- Dispositions -->
+    <g filter="url(#shadow)">
+      <rect x="22" y="1979" width="346" height="298" rx="20" class="panel"/>
+      <text x="43" y="2010" class="mono eyebrow" fill="#78aaff">VALIDATION DISPOSITION</text>
+
+      <rect x="43" y="2028" width="302" height="48" rx="12" fill="#153b30"/>
+      <circle cx="61" cy="2052" r="5" fill="#68d8a2"/>
+      <text x="75" y="2049" class="cardTitle">source-validated</text>
+      <text x="75" y="2067" class="tiny">immutable Findingを生成</text>
+
+      <rect x="43" y="2087" width="302" height="48" rx="12" fill="#292b40"/>
+      <circle cx="61" cy="2111" r="5" fill="#b39aff"/>
+      <text x="75" y="2108" class="cardTitle">disproven</text>
+      <text x="75" y="2126" class="tiny">必要条件のsource反証を保存</text>
+
+      <rect x="43" y="2146" width="302" height="48" rx="12" fill="#18354a"/>
+      <circle cx="61" cy="2170" r="5" fill="#71b8ec"/>
+      <text x="75" y="2167" class="cardTitle">needs-research</text>
+      <text x="75" y="2185" class="tiny">具体的next actionをDiscoveryへ返す</text>
+
+      <rect x="43" y="2205" width="302" height="48" rx="12" fill="#362d25"/>
+      <circle cx="61" cy="2229" r="5" fill="#e6aa68"/>
+      <text x="75" y="2226" class="cardTitle">validation-pending</text>
+      <text x="75" y="2244" class="tiny">provider / budget / output failure。negativeではない</text>
+    </g>
+
+    <path d="M195 2279V2311" class="flowBlue"/>
+
+    <!-- Durable record -->
+    <g filter="url(#shadow)">
+      <rect x="22" y="2315" width="346" height="130" rx="20" fill="#13243a" stroke="#3d6590" stroke-width="1.4"/>
+      <text x="43" y="2346" class="mono eyebrow" fill="#78aaff">HARNESS RECORDS</text>
+      <text x="43" y="2374" class="body">Campaign seal · usage · failure · Checkpoint ref</text>
+      <text x="43" y="2399" class="body">Candidate · Validation result · Finding</text>
+      <text x="43" y="2427" class="small">AI内部の仮説・role・tool順序はdomain化しない</text>
+    </g>
+
+    <!-- Ownership footer -->
+    <g>
+      <rect x="22" y="2471" width="346" height="30" rx="15" fill="#151e2d" stroke="#35465c"/>
+      <circle cx="40" cy="2486" r="4" fill="#68d8a2"/>
+      <text x="51" y="2490" class="tiny">AI: 調査判断</text>
+      <circle cx="142" cy="2486" r="4" fill="#78aaff"/>
+      <text x="153" y="2490" class="tiny">Harness: 記録</text>
+      <circle cx="261" cy="2486" r="4" fill="#b39aff"/>
+      <text x="272" y="2490" class="tiny">Validator: Finding</text>
+    </g>
+  </g>
+</svg>
