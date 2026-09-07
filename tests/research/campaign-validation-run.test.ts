@@ -15,10 +15,6 @@ import {
   openResearch,
   type CurrentCampaignExecutionDependencies,
 } from "../../src/research/index.js";
-import {
-  chainSynthesisIncompleteSchema,
-  semanticDepthWorkQueueV2Schema,
-} from "../../src/research/exploration/index.js";
 import type {
   AttemptExecutionResultV2,
   ModelAttemptPlan,
@@ -2512,7 +2508,7 @@ describe("CampaignRunner.run source-only Validation", () => {
     }
   });
 
-  it("stops cross-candidate Validation at its budget boundary", async () => {
+  it("continues cross-candidate Validation after reported token overshoot", async () => {
     const fixture = await createCampaignValidationFixture();
     const { controls, input, observedPlans, plan, research } = fixture;
     try {
@@ -2539,21 +2535,27 @@ describe("CampaignRunner.run source-only Validation", () => {
         }),
       ).resolves.toMatchObject({
         value: {
-          validations: [{ status: "source-validated" }],
-          findings: [{ kind: "finding", schemaVersion: 1 }],
+          validations: [
+            { status: "source-validated" },
+            { status: "source-validated" },
+          ],
+          findings: [
+            { kind: "finding", schemaVersion: 1 },
+            { kind: "finding", schemaVersion: 1 },
+          ],
           coverage: { status: "incomplete" },
           approachFamilyRegistry: {
-            pendingValidations: 1,
-            validationOutcomes: 1,
+            pendingValidations: 0,
+            validationOutcomes: 2,
           },
-          decision: { kind: "incomplete", reason: "validation-pending" },
+          decision: { kind: "incomplete", reason: "research-work-remains" },
         },
       });
       expect(
         observedPlans
           .slice(crossCandidateCallOffset)
           .filter((attempt) => attempt.role === "validator"),
-      ).toHaveLength(1);
+      ).toHaveLength(2);
       await expect(
         research.reader.inspect(input.campaignId, {
           kind: "budget",
@@ -2565,7 +2567,7 @@ describe("CampaignRunner.run source-only Validation", () => {
             remaining: { modelTokens: 0 },
           },
         },
-        overshoot: { modelTokens: 350_000 },
+        overshoot: { modelTokens: 700_000 },
       });
       const crossCandidateCallsAfterCompletion = observedPlans.length;
       await expect(
@@ -2580,10 +2582,9 @@ describe("CampaignRunner.run source-only Validation", () => {
     }
   });
 
-  it("protects the measured Root reserve after Finder overshoot", async () => {
+  it("does not block Depth after reported Finder token overshoot", async () => {
     const fixture = await createCampaignValidationFixture();
     const {
-      artifacts,
       campaignExecution,
       controls,
       databasePath,
@@ -2641,25 +2642,6 @@ describe("CampaignRunner.run source-only Validation", () => {
           decision: { kind: "incomplete", reason: "research-work-remains" },
         },
       });
-      const incompleteDepth = z
-        .object({
-          value: z.object({
-            depthResearch: z.object({
-              rounds: z.array(
-                z.object({
-                  batches: z.array(
-                    z.object({
-                      kind: z.literal("semantic-depth-batch-incomplete"),
-                      stage: z.literal("root-synthesis"),
-                      artifactDigest: z.string(),
-                    }),
-                  ),
-                }),
-              ),
-            }),
-          }),
-        })
-        .parse(measuredInspected);
       const measuredCalls = observedPlans.slice(measuredCallOffset);
       const initialRootIndex = measuredCalls.findIndex(
         (attempt) =>
@@ -2674,7 +2656,7 @@ describe("CampaignRunner.run source-only Validation", () => {
       ).toHaveLength(3);
       expect(
         measuredCalls.filter((attempt) => attempt.role === "root-synthesizer"),
-      ).toEqual([]);
+      ).toHaveLength(2);
       expect(
         measuredCalls.filter((attempt) => attempt.role === "validator"),
       ).toHaveLength(1);
@@ -2714,46 +2696,6 @@ describe("CampaignRunner.run source-only Validation", () => {
         throw new Error("Expected measured Campaign budget");
       }
       expect(measuredBudget.overshoot.modelTokens).toBe(1_176_741);
-      const idempotencyRecord = openSqliteResearchRecord({
-        databasePath,
-        artifactStore: artifacts,
-      });
-      try {
-        const queueRecord =
-          await idempotencyRecord.readSemanticDepthWorkQueueV2(
-            measuredCampaignInput.campaignId,
-            measuredPlan.runId,
-          );
-        const incompleteBatch = incompleteDepth.value.depthResearch.rounds
-          .flatMap((round) => round.batches)
-          .at(0);
-        if (queueRecord === undefined || incompleteBatch === undefined) {
-          throw new Error("Expected durable incomplete Depth artifacts");
-        }
-        const queue = semanticDepthWorkQueueV2Schema.parse(
-          await artifacts.readJson(queueRecord.queue.digest),
-        );
-        const incomplete = chainSynthesisIncompleteSchema.parse(
-          await artifacts.readJson(incompleteBatch.artifactDigest),
-        );
-        const firstReplay =
-          await idempotencyRecord.recordSemanticChainSynthesisV2(
-            measuredCampaignInput.campaignId,
-            measuredPlan.runId,
-            queue,
-            incomplete,
-          );
-        await expect(
-          idempotencyRecord.recordSemanticChainSynthesisV2(
-            measuredCampaignInput.campaignId,
-            measuredPlan.runId,
-            queue,
-            incomplete,
-          ),
-        ).resolves.toEqual(firstReplay);
-      } finally {
-        idempotencyRecord.close();
-      }
       const replayAfterRootCompletion = openResearch({
         databasePath,
         campaignExecution,

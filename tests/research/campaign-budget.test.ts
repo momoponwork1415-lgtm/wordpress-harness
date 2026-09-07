@@ -12,6 +12,98 @@ import {
 const digest = `sha256:${"a".repeat(64)}`;
 
 describe("Campaign budget owner reserves", () => {
+  it("does not use reported token telemetry for current Attempt admission", () => {
+    const zero = zeroCampaignBudgetAmount();
+    const reservation = campaignAttemptBudgetReservationSchema.parse({
+      kind: "campaign-attempt-budget-reservation",
+      schemaVersion: 1,
+      campaignId: "campaign-token-telemetry",
+      runId: "run-token-telemetry",
+      attemptId: "finder-after-reported-token-overshoot",
+      attemptPlanDigest: digest,
+      owner: "exploration",
+      role: "finder",
+      amount: {
+        ...zero,
+        modelAttempts: 1,
+        modelWallTimeMs: 1_000,
+        modelTokens: 100_000,
+        estimatedCostUsd: 1,
+      },
+    });
+    const current = campaignBudgetViewSchema.parse({
+      kind: "budget",
+      schemaVersion: 2,
+      campaignId: reservation.campaignId,
+      runId: reservation.runId,
+      ledgerHead: 1,
+      policy: { id: "semantic-research-recall-baseline-v7", digest },
+      enforcement: {
+        modelAttempts: "hard-precondition",
+        modelWallTimeMs: "hard-precondition",
+        estimatedCostUsd: "hard-precondition",
+        modelTokens: "reported-postcondition",
+        modelTurns: "reported-postcondition",
+      },
+      limits: {
+        modelAttempts: 10,
+        modelWallTimeMs: 10_000,
+        modelTokens: 100_000,
+        estimatedCostUsd: 10,
+      },
+      spent: zero,
+      reserved: zero,
+      activeReservations: [],
+      protectedReservations: [],
+      remaining: {
+        modelAttempts: 10,
+        modelWallTimeMs: 10_000,
+        modelTokens: 0,
+        estimatedCostUsd: 10,
+      },
+      owners: {
+        exploration: {
+          limits: {
+            modelWallTimeMs: 10_000,
+            modelTokens: 100_000,
+            estimatedCostUsd: 10,
+          },
+          spent: zero,
+          reserved: zero,
+          remaining: {
+            modelWallTimeMs: 10_000,
+            modelTokens: 0,
+            estimatedCostUsd: 10,
+          },
+        },
+        validation: {
+          limits: {
+            modelWallTimeMs: 10_000,
+            modelTokens: 100_000,
+            estimatedCostUsd: 10,
+          },
+          spent: zero,
+          reserved: zero,
+          remaining: {
+            modelWallTimeMs: 10_000,
+            modelTokens: 100_000,
+            estimatedCostUsd: 10,
+          },
+        },
+      },
+      unknownUsageAttemptIds: [],
+      overshoot: {
+        modelWallTimeMs: 0,
+        modelTokens: 1,
+        estimatedCostUsd: 0,
+      },
+    });
+
+    expect(campaignBudgetExhaustionDimensions(current, reservation)).toEqual(
+      [],
+    );
+  });
+
   it("keeps every Validation dimension available after Exploration overshoots v7 totals", () => {
     const zero = zeroCampaignBudgetAmount();
     const reservation = campaignAttemptBudgetReservationSchema.parse({

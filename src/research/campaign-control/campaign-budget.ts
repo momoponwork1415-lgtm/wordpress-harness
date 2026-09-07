@@ -460,6 +460,11 @@ export function campaignBudgetExhaustionDimensions(
     ],
   ] as const) {
     const ownerPartitionedAdmission = budget.schemaVersion === 2;
+    // Current profiles report cache reads in this total, so it is evidence for
+    // observability, not a reliable measure of remaining research capacity.
+    if (ownerPartitionedAdmission && dimension === "model-tokens") {
+      continue;
+    }
     if (
       amount > ownerRemaining ||
       (!ownerPartitionedAdmission && amount > totalRemaining)
