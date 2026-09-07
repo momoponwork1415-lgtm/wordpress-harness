@@ -10,7 +10,7 @@ Target Intelligenceが取得可能性、identity、provenance、freshnessを検�
 
 ## 2. Seal and conduct
 
-ResearchはTarget Snapshot、Research Prompt、Validation Prompt、Agent Runtime Profile、Permission Profile、Budget Envelopeをdigest bindする。CLIの`campaign conduct`はprofileが指定するGrok BuildまたはClaude Code Adapterだけを使う。
+ResearchはTarget Snapshot、Research Prompt、Validation Prompt、Agent Runtime Profile、Permission Profile、Budget Envelopeをdigest bindする。CLIの`campaign conduct`はprofileが指定するGrok Build、Claude Code、またはClaude Code process上のGLM 5.3 Adapterだけを使う。
 
 native agentはrunsc container内でread-only sourceとwriteable scratchを使う。AIが具体的な次手を返せば、同じbindingのprivate Agent Checkpointからprovider-native conversationとscratchを再開し、Validation feedbackを次のrunへ渡す。固定WaveやDepthはない。
 

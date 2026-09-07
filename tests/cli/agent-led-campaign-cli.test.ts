@@ -66,11 +66,11 @@ describe("agent-led campaign CLI", () => {
         digest: promptTextDigest(validationPrompt),
       },
       agentRuntimeProfile: {
-        id: "grok-build-native-v1",
-        kind: "grok-build-native/v1",
-        executableVersion: "1.0.13",
-        model: "grok-4.6",
-        effort: "xhigh",
+        id: "glm-5.3-claude-code-native-v1",
+        kind: "glm-claude-code-native/v1",
+        executableVersion: "2.1.220",
+        model: "glm-5.3",
+        effort: "max",
         digest: digest("b"),
       },
       permissionProfile: {

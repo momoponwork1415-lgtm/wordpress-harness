@@ -51,7 +51,7 @@ interface NativeAgentRuntime {
 }
 ```
 
-Grok BuildとClaude Codeのprovider固有CLIはAdapter内へ局所化する。各runはimmutable imageをrunscで起動し、read-only Targetとisolated scratch / provider homeだけをmountする。Research continuationはprovider-native conversationとscratchをprivate Agent Checkpointから再開し、append-only recordにはopaque refだけを置く。ValidationはCheckpointを共有しない。runtime profileで指定したproviderからsilent fallbackしない。
+Grok BuildとClaude Codeのprovider固有CLIはAdapter内へ局所化する。GLM 5.3はZ.AI endpointへ固定したClaude Code process Adapterを使い、Claude Code自身のagent、subagent、source tool運用を再実装しない。各runはimmutable imageをrunscで起動し、read-only Targetとisolated scratch / provider homeだけをmountする。Research continuationはprovider-native conversationとscratchをprivate Agent Checkpointから再開し、append-only recordにはopaque refだけを置く。ValidationはCheckpointを共有しない。runtime profileで指定したproviderからsilent fallbackしない。
 
 ### Independent Validation
 

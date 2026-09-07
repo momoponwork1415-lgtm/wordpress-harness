@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import {
   campaignInputSchema,
   openClaudeCodeNativeAgentRuntime,
+  openGlmNativeAgentRuntime,
   openGrokNativeAgentRuntime,
   openResearchCampaigns,
   type CampaignInput,
@@ -81,6 +82,9 @@ function openNativeRuntime(
   }
   if (input.agentRuntimeProfile.kind === "claude-code-native/v1") {
     return openClaudeCodeNativeAgentRuntime(options);
+  }
+  if (input.agentRuntimeProfile.kind === "glm-claude-code-native/v1") {
+    return openGlmNativeAgentRuntime(options);
   }
   throw new Error(
     `Unsupported Agent Runtime: ${input.agentRuntimeProfile.kind}`,

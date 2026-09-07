@@ -39,7 +39,7 @@ Programme対象外、Disclosure Route不明、既探索またはAIの低評価�
 
 ## Agent-led Research
 
-通常運転はwp2shell / Cycle Double Cover Promptを直接の系譜とする、raw-source-firstの一つの連続loopである。Provider-native Root agentはTarget Snapshot全体を読み、必要に応じてnative subagentを起動し、互いに異なるroute、反証、synthesisまたは追加調査を進める。Harnessはagent数、role、round、探索classまたは読むfileを指定しない。探索評価ではGrokを先に使い、利用不能を別providerへのsilent fallbackで隠さない。
+通常運転はwp2shell / Cycle Double Cover Promptを直接の系譜とする、raw-source-firstの一つの連続loopである。Provider-native Root agentはTarget Snapshot全体を読み、必要に応じてnative subagentを起動し、互いに異なるroute、反証、synthesisまたは追加調査を進める。Harnessはagent数、role、round、探索classまたは読むfileを指定しない。探索評価ではGrokを先に使う。利用不能時に同じCampaignを暗黙fallbackせず、GLM 5.3等の別Runtime Profileをbindした新しいCampaignとして明示的に比較する。
 
 Research Rootのprovider-native conversationとscratchはprivate Agent Checkpointとして継続できる。Harnessは固定checkpoint cadenceや内部tool eventをdomain modelにせず、bindingとintegrityを持つopaque refだけを記録する。budgetまたはprovider interruptionでもCheckpointを保存できなければ`incomplete`であり、resume可能とは扱わない。Independent ValidationへResearch Checkpointを渡さない。
 
@@ -85,7 +85,7 @@ AIが有望なsource-bound next actionを残さず、全Validationがterminalで
 - ambient shell、network、credential、container socket、host path、plugin、hook、memory、未承認MCPを与えない。
 - gVisor相当以上のOS-level sandboxとTransport Eligibility capability probeを通らないruntimeを使わず、host processまたはplain Dockerへfallbackしない。
 - Target Snapshot、Prompt Set、Agent Runtime Profile、Permission Profile、Budget Envelope、outputをCampaignへdigest bindする。
-- providerまたはmodelをsilent fallbackしない。
+- providerまたはmodelをsilent fallbackしない。GrokからGLM 5.3へ切り替える場合も別Runtime Profileと新しいCampaign inputを使う。
 - 人間の必須gateはApproved Target BatchとExternal Action Authorization、最後のSubmitに置く。
 
 Prompt、runtime、permissionまたはresearch policyの変更は進行中Campaignへ適用せず、新しいversioned Campaignで比較する。旧implementationはGit tagと旧storageで再現し、新binaryへlegacy reader、feature flagまたは未使用Adapterを残さない。

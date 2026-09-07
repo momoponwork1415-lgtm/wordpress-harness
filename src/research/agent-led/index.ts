@@ -3,7 +3,10 @@ export {
   AgentLedCampaignNotFoundError,
   openResearchCampaigns,
 } from "./research-campaigns.js";
-export { openClaudeCodeNativeAgentRuntime } from "./claude-code-native-agent-runtime.js";
+export {
+  openClaudeCodeNativeAgentRuntime,
+  openGlmNativeAgentRuntime,
+} from "./claude-code-native-agent-runtime.js";
 export { openGrokNativeAgentRuntime } from "./grok-native-agent-runtime.js";
 export {
   agentCheckpointRefSchema,
@@ -46,5 +49,8 @@ export type {
   ValidationRunReceipt,
   ValidationRunRecord,
 } from "./contracts.js";
-export type { OpenClaudeCodeNativeAgentRuntimeOptions } from "./claude-code-native-agent-runtime.js";
+export type {
+  OpenClaudeCodeNativeAgentRuntimeOptions,
+  OpenGlmNativeAgentRuntimeOptions,
+} from "./claude-code-native-agent-runtime.js";
 export type { OpenGrokNativeAgentRuntimeOptions } from "./grok-native-agent-runtime.js";
