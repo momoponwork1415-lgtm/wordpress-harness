@@ -77,9 +77,37 @@ function decodeJson(value: string): unknown {
 
 function statusFor(receipt: NativeRunReceipt): CampaignStatus {
   if (receipt.terminal !== "completed") return "incomplete";
-  return receipt.report.decision.kind === "stop"
+  if (receipt.report.decision.kind === "continue") return "research-continues";
+  return receipt.report.candidates.length === 0
     ? "coverage-closed"
-    : "research-continues";
+    : "validation-pending";
+}
+
+type FailedNativeRunReceipt = Exclude<
+  NativeRunReceipt,
+  { readonly terminal: "completed" }
+>;
+
+function failedReceipt(
+  run: SealedNativeRun,
+  startedAt: Date,
+  completedAt: Date,
+  terminal: FailedNativeRunReceipt["terminal"],
+  summary: string,
+): FailedNativeRunReceipt {
+  return {
+    schemaVersion: 1,
+    runId: run.runId,
+    runtimeProfileDigest: run.agentRuntimeProfile.digest,
+    terminal,
+    startedAt: startedAt.toISOString(),
+    completedAt: completedAt.toISOString(),
+    usage: {
+      wallTimeMs: Math.max(0, completedAt.getTime() - startedAt.getTime()),
+    },
+    activity: { subagents: 0, tools: [] },
+    failure: { summary },
+  };
 }
 
 function hasRunBudget(
@@ -185,72 +213,34 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         if (decoded.success) {
           receipt = decoded.data;
         } else {
-          const completedAt = this.#clock();
-          receipt = {
-            schemaVersion: 1,
-            runId: run.runId,
-            runtimeProfileDigest: run.agentRuntimeProfile.digest,
-            terminal: "invalid-output",
-            startedAt: startedAt.toISOString(),
-            completedAt: completedAt.toISOString(),
-            usage: {
-              wallTimeMs: Math.max(
-                0,
-                completedAt.getTime() - startedAt.getTime(),
-              ),
-            },
-            activity: { subagents: 0, tools: [] },
-            failure: {
-              summary:
-                "Native Agent Runtime returned an unsupported output schema.",
-            },
-          };
+          receipt = failedReceipt(
+            run,
+            startedAt,
+            this.#clock(),
+            "invalid-output",
+            "Native Agent Runtime returned an unsupported output schema.",
+          );
         }
       } catch {
-        const completedAt = this.#clock();
-        receipt = {
-          schemaVersion: 1,
-          runId: run.runId,
-          runtimeProfileDigest: run.agentRuntimeProfile.digest,
-          terminal: "provider-failed",
-          startedAt: startedAt.toISOString(),
-          completedAt: completedAt.toISOString(),
-          usage: {
-            wallTimeMs: Math.max(
-              0,
-              completedAt.getTime() - startedAt.getTime(),
-            ),
-          },
-          activity: { subagents: 0, tools: [] },
-          failure: {
-            summary: "Native Agent Runtime failed before returning a receipt.",
-          },
-        };
+        receipt = failedReceipt(
+          run,
+          startedAt,
+          this.#clock(),
+          "provider-failed",
+          "Native Agent Runtime failed before returning a receipt.",
+        );
       }
       if (
         receipt.runId !== run.runId ||
         receipt.runtimeProfileDigest !== run.agentRuntimeProfile.digest
       ) {
-        const completedAt = this.#clock();
-        receipt = {
-          schemaVersion: 1,
-          runId: run.runId,
-          runtimeProfileDigest: run.agentRuntimeProfile.digest,
-          terminal: "invalid-output",
-          startedAt: startedAt.toISOString(),
-          completedAt: completedAt.toISOString(),
-          usage: {
-            wallTimeMs: Math.max(
-              0,
-              completedAt.getTime() - startedAt.getTime(),
-            ),
-          },
-          activity: { subagents: 0, tools: [] },
-          failure: {
-            summary:
-              "Native Run Receipt did not match the sealed Campaign binding.",
-          },
-        };
+        receipt = failedReceipt(
+          run,
+          startedAt,
+          this.#clock(),
+          "invalid-output",
+          "Native Run Receipt did not match the sealed Campaign binding.",
+        );
       }
       this.#append(input.campaignId, "native-run.recorded", {
         inputDigest,

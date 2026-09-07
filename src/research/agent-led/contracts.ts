@@ -146,6 +146,7 @@ export const sealedNativeRunSchema = z.strictObject({
 
 export const campaignStatusSchema = z.enum([
   "research-continues",
+  "validation-pending",
   "coverage-closed",
   "incomplete",
 ]);

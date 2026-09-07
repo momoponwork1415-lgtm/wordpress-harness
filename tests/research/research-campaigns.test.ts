@@ -538,4 +538,74 @@ describe("ResearchCampaigns", () => {
     });
     campaigns.close();
   });
+
+  it("keeps a stopped Campaign pending while a candidate awaits Validation", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "research-candidate-"));
+    temporaryDirectories.push(directory);
+    const candidateInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-validation-pending-1",
+    };
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "agent-led.sqlite"),
+      runtime: {
+        async execute(run) {
+          return {
+            schemaVersion: 1,
+            runId: run.runId,
+            runtimeProfileDigest: run.agentRuntimeProfile.digest,
+            terminal: "completed",
+            startedAt: "2026-09-07T09:00:00.000Z",
+            completedAt: "2026-09-07T09:01:00.000Z",
+            usage: { wallTimeMs: 60_000 },
+            activity: { subagents: 2, tools: ["source.read"] },
+            report: {
+              schemaVersion: 1,
+              candidates: [
+                {
+                  candidateId: "candidate-persistent-output-1",
+                  claim:
+                    "An unauthenticated value is persisted and rendered to another principal without context-appropriate escaping.",
+                  evidence: [
+                    {
+                      path: "includes/form.php",
+                      location: "submit_form:42",
+                      observation: "Stores the public form value.",
+                    },
+                    {
+                      path: "admin/render.php",
+                      location: "render_entry:99",
+                      observation: "Renders the stored value in an attribute.",
+                    },
+                  ],
+                },
+              ],
+              decision: {
+                kind: "stop",
+                basis:
+                  "The candidate is source-bound and no separate actionable frontier remains.",
+              },
+            },
+          };
+        },
+      },
+    });
+
+    await expect(campaigns.conduct(candidateInput)).resolves.toMatchObject({
+      status: "validation-pending",
+    });
+    await expect(
+      campaigns.inspect({ campaignId: "campaign-validation-pending-1" }),
+    ).resolves.toMatchObject({
+      status: "validation-pending",
+      nativeRuns: [
+        {
+          report: {
+            candidates: [{ candidateId: "candidate-persistent-output-1" }],
+          },
+        },
+      ],
+    });
+    campaigns.close();
+  });
 });
