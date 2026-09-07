@@ -44,6 +44,12 @@ describe("GLM Native Agent Runtime", () => {
       mkdir(scratchRootDirectory),
     ]);
     await writeFile(join(sourceDirectory, "plugin.php"), "<?php\n", "utf8");
+    const providerResultPath = join(directory, "provider-result.txt");
+    await writeFile(
+      providerResultPath,
+      '{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"No actionable frontier remains.","nextActions":[]}]}',
+      "utf8",
+    );
     const providerSettings = {
       env: {
         ANTHROPIC_AUTH_TOKEN: "test-zai-token",
@@ -135,7 +141,7 @@ printf '%s' "$prompt" | grep -F 'Return exactly one JSON value matching this sch
 printf '%s' "$prompt" | grep -F '"schemaVersion"' >/dev/null
 printf '%s' '{"checkpoint":true}' > "$provider_mount/session-$session.jsonl"
 printf '%s' 'durable GLM research notes' > "$scratch/state.md"
-printf '{"type":"result","subtype":"success","is_error":false,"terminal_reason":"completed","session_id":"%s","result":"{\\"schemaVersion\\":1,\\"candidates\\":[],\\"decision\\":{\\"kind\\":\\"stop\\",\\"basis\\":\\"No actionable frontier remains.\\"}}","duration_ms":30000,"num_turns":3,"permission_denials":[],"usage":{"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}},"subagent_stats":{"spawned":2},"modelUsage":{"glm-5.3":{"canonicalModel":"glm-5.3","inputTokens":3000,"outputTokens":500,"cacheReadInputTokens":1000,"cacheCreationInputTokens":250}}}' "$session"
+node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1],"utf8");process.stdout.write(JSON.stringify({type:"result",subtype:"success",is_error:false,terminal_reason:"completed",session_id:process.argv[2],result,duration_ms:30000,num_turns:3,permission_denials:[],usage:{server_tool_use:{web_search_requests:0,web_fetch_requests:0}},subagent_stats:{spawned:2},modelUsage:{"glm-5.3":{canonicalModel:"glm-5.3",inputTokens:3000,outputTokens:500,cacheReadInputTokens:1000,cacheCreationInputTokens:250}}}));' '${providerResultPath}' "$session"
 `,
       { encoding: "utf8", mode: 0o700 },
     );
@@ -264,6 +270,22 @@ printf '{"type":"result","subtype":"success","is_error":false,"terminal_reason":
     expect(await readFile(join(sourceDirectory, "plugin.php"), "utf8")).toBe(
       "<?php\n",
     );
+    await writeFile(
+      providerResultPath,
+      '{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"Ambiguous stop.","nextActions":[{"question":"Continue?","sourcePointers":["plugin.php"]}]}}',
+      "utf8",
+    );
+    await expect(
+      campaigns.conduct({
+        ...input,
+        campaignId: "campaign-glm-ambiguous-stop-1",
+      }),
+    ).resolves.toMatchObject({ status: "incomplete" });
+    await expect(
+      campaigns.inspect({ campaignId: "campaign-glm-ambiguous-stop-1" }),
+    ).resolves.toMatchObject({
+      nativeRuns: [{ terminal: "invalid-output" }],
+    });
     campaigns.close();
   });
 });

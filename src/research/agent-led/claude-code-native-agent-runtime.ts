@@ -153,19 +153,46 @@ function claudeJsonSchema(schema: z.ZodType): string {
 
 function terminalJson(value: string): unknown | undefined {
   const trimmed = value.trim();
-  try {
-    return JSON.parse(trimmed) as unknown;
-  } catch {
-    const offsets = [trimmed.indexOf("{"), trimmed.indexOf("[")].filter(
-      (offset) => offset > 0,
-    );
-    if (offsets.length === 0) return undefined;
+  const offsets = [0, trimmed.indexOf("{"), trimmed.indexOf("[")].filter(
+    (offset, index, candidates) =>
+      offset >= 0 && candidates.indexOf(offset) === index,
+  );
+  for (const offset of offsets) {
+    const candidate = trimmed.slice(offset);
     try {
-      return JSON.parse(trimmed.slice(Math.min(...offsets))) as unknown;
+      return JSON.parse(candidate) as unknown;
     } catch {
-      return undefined;
+      const extraTerminalArrayClose = /\]\s*\}\s*$/u.exec(candidate);
+      if (extraTerminalArrayClose === null) continue;
+      const repaired =
+        candidate.slice(0, extraTerminalArrayClose.index) +
+        candidate.slice(extraTerminalArrayClose.index + 1);
+      try {
+        return JSON.parse(repaired) as unknown;
+      } catch {
+        continue;
+      }
     }
   }
+  return undefined;
+}
+
+function unknownRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeGlmStructuredOutput(value: unknown): unknown {
+  if (!unknownRecord(value) || !unknownRecord(value.decision)) return value;
+  const decision = value.decision;
+  if (
+    decision.kind !== "stop" ||
+    !Array.isArray(decision.nextActions) ||
+    decision.nextActions.length !== 0
+  ) {
+    return value;
+  }
+  const { nextActions: _emptyNextActions, ...normalizedDecision } = decision;
+  return { ...value, decision: normalizedDecision };
 }
 
 function resultEnvelope(
@@ -179,7 +206,9 @@ function resultEnvelope(
   }
   const decoded = glmResultSchema.safeParse(parsed);
   if (!decoded.success) return undefined;
-  const structuredOutput = terminalJson(decoded.data.result);
+  const structuredOutput = normalizeGlmStructuredOutput(
+    terminalJson(decoded.data.result),
+  );
   if (structuredOutput === undefined) return undefined;
   const normalized = claudeResultSchema.safeParse({
     ...decoded.data,
@@ -189,7 +218,7 @@ function resultEnvelope(
 }
 
 function glmPrompt(prompt: string, schema: z.ZodType): string {
-  return `${prompt}\n\nReturn exactly one JSON value matching this schema. Do not use Markdown fences or add prose.\n${claudeJsonSchema(schema)}`;
+  return `${prompt}\n\nReturn exactly one JSON value matching this schema. Do not use Markdown fences or add prose. For a stop decision, omit nextActions entirely. For a continue decision, omit basis entirely.\n${claudeJsonSchema(schema)}`;
 }
 
 function wallTimeMs(
