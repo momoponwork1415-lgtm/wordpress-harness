@@ -7,7 +7,9 @@ import { runNativeModelProcess } from "../model-execution/native-model-process.j
 import type { NativeAgentReceipt, SealedAgentRun } from "./contracts.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
-const pinnedImageSchema = z.string().regex(/^[^\s@]+@sha256:[a-f0-9]{64}$/);
+const pinnedImageSchema = z
+  .string()
+  .regex(/^(?:sha256:[a-f0-9]{64}|[^\s@]+@sha256:[a-f0-9]{64})$/);
 const dockerRuntimesSchema = z.record(z.string(), z.unknown());
 
 export interface GvisorAgentRuntimeOptions {

@@ -138,7 +138,7 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
     const runtime = openGrokNativeAgentRuntime({
       dockerExecutablePath,
       image:
-        "example.invalid/grok-agent@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
       sourceDirectory,
       targetSnapshotDigest: input.targetSnapshot.digest,
       providerConfigDirectory,
