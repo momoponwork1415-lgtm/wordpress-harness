@@ -55,11 +55,15 @@ if [ "\${1:-}" = "image" ]; then
 fi
 has_runsc=0
 has_host_user=0
+has_outer_owned_sandbox=0
+has_memory_disabled=0
 is_version_probe=0
 scratch=''
 for argument in "$@"; do
   [ "$argument" != "--runtime=runsc" ] || has_runsc=1
   [ "$argument" != "--user=$(id -u):$(id -g)" ] || has_host_user=1
+  [ "$argument" != "off" ] || has_outer_owned_sandbox=1
+  [ "$argument" != "--no-memory" ] || has_memory_disabled=1
   [ "$argument" != "--version" ] || is_version_probe=1
   [ "$argument" != "--no-subagents" ] || exit 91
   case "$argument" in
@@ -72,6 +76,8 @@ if [ "$is_version_probe" -eq 1 ]; then
   printf '%s\n' 'grok 1.0.13 (Grok Build)'
   exit 0
 fi
+[ "$has_outer_owned_sandbox" -eq 1 ] || exit 95
+[ "$has_memory_disabled" -eq 1 ] || exit 96
 [ -n "$scratch" ] || exit 92
 printf '%s\n' "$scratch" >> "$0.scratch"
 invocation=1
