@@ -266,7 +266,10 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
       const pendingCandidate = candidatesFor(view.nativeRuns).find(
         (candidate) => !attemptedCandidates.has(candidate.candidateId),
       );
-      if (pendingCandidate !== undefined) {
+      if (
+        pendingCandidate !== undefined &&
+        view.status !== "research-continues"
+      ) {
         if (!hasRunBudget(input, allReceipts(view))) {
           this.#interruptForBudget(input, inputDigest, true);
           view = this.#requireView(input.campaignId);
@@ -637,26 +640,29 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
     const hasUnattemptedCandidate = candidatesFor(nativeRuns).some(
       (candidate) => !attemptedCandidates.has(candidate.candidateId),
     );
-    const hasFailedRun =
-      nativeRuns.some((receipt) => receipt.terminal !== "completed") ||
-      validationRuns.some(
-        (record) =>
-          record.receipt.terminal !== "completed" ||
-          record.receipt.report.disposition === "validation-pending",
-      );
+    const hasFailedResearchRun = nativeRuns.some(
+      (receipt) => receipt.terminal !== "completed",
+    );
+    const hasFailedValidationRun = validationRuns.some(
+      (record) =>
+        record.receipt.terminal !== "completed" ||
+        record.receipt.report.disposition === "validation-pending",
+    );
     let status: CampaignStatus;
-    if (interruption !== undefined || hasFailedRun) {
+    if (interruption !== undefined || hasFailedResearchRun) {
       status = "incomplete";
     } else if (latest === undefined) {
       status = "research-continues";
-    } else if (hasUnattemptedCandidate) {
-      status = "validation-pending";
     } else if (
       needsResearchAfterLatestNativeRun ||
       (latest.terminal === "completed" &&
         latest.report.decision.kind === "continue")
     ) {
       status = "research-continues";
+    } else if (hasUnattemptedCandidate) {
+      status = "validation-pending";
+    } else if (hasFailedValidationRun) {
+      status = "incomplete";
     } else {
       status = "coverage-closed";
     }

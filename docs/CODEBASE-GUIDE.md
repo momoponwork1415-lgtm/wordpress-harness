@@ -4,7 +4,7 @@ Status: current implementation map, 2026-09-07
 
 現在動くproduction seam、owner、failure semantics、Behavior Testを示す。設計理由は[ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)と[ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)、research policyは[Research Design](RESEARCH-DESIGN.md)を参照する。
 
-診断coreは`Target Snapshot -> agent-led Research -> Independent Validation -> Finding`である。Target Selection、Human OS、runtime reproduction、隔離方式の高度化はsupporting workflowまたはAdapter内部の関心であり、診断coreのpromotion blockerではない。
+診断coreは`Target Snapshot -> agent-led Research -> Independent Source Validation -> Finding`である。Source Validationは明白なsource矛盾を落とすsanity gateで、実質的なtrue-positive assuranceはHuman OSのfresh Dynamic AI Reproductionが所有する。Target Selectionと隔離方式の高度化はsupporting workflowまたはAdapter内部の関心であり、診断coreのpromotion blockerではない。
 
 ## Current capability
 
@@ -20,7 +20,7 @@ Status: current implementation map, 2026-09-07
 | GLM native runtime | exact Claude Code imageからZ.AI GLM 5.3へ接続し、runscでreal research / native subagent / fresh Validationを実行済み | Brizy boundary pair全体は未完了 |
 | fresh Independent Validation | implemented | Brizy positiveで実測済み。残るknown-positive corpusは未完了 |
 | Finding / Coverage / failure record | implemented | cross-context Coverage Receipt adapterは未実装 |
-| Human OS append-only records and external gate | implemented | runtime environmentのprovision / executionは未接続 |
+| Human OS append-only records and external gate | implemented | fresh WordPress / MySQL Dynamic AI Reproductionのprovision / executionは未接続 |
 | actual external submission | intentionally absent | 人間が最後のSubmitを行う |
 
 `implemented`はpublic seamからdeterministic Behavior Testを通る意味である。実provider、実Target、prospective recallの実証とは区別する。
@@ -83,7 +83,7 @@ Status: current implementation map, 2026-09-07
 
 **Owned state:** Target / Dependency Snapshotsを含むCampaign input、Native Run Receipt、private Agent Checkpoint ref、Validation Receipt、Finding、Coverage、interruptionをSQLite append-only eventsへ記録する。provider conversationとscratch本文はprivate content-addressed stateに置く。
 
-**Invariants:** candidateは到着順や支持数で捨てない。各candidateのValidationは一つのfresh runである。ResearchとValidationへ同じread-only Dependency Snapshotsを渡し、Agent CheckpointとFindingにもdependency digest / refsを残す。複数Targetは別Campaign processとして並列実行し、Campaign間でstateを共有しない。completed Research / Validation Receiptはrunsc上のgVisor実行とfallback不使用の証跡を必須とする。各runへ累積使用量を引いた残りのwall time / costだけを渡し、超過したterminal reportでCoverageを閉じない。`source-validated`だけがFindingを生成する。FindingとCoverageを分離する。
+**Invariants:** candidateは到着順や支持数で捨てない。Research decisionが`continue`である間はcandidateを蓄積してRootの連続Researchを優先し、Rootが停止した後にだけ各candidateを一つのfresh Validationへ渡す。ResearchとValidationへ同じread-only Dependency Snapshotsを渡し、Agent CheckpointとFindingにもdependency digest / refsを残す。複数Targetは別Campaign processとして並列実行し、Campaign間でstateを共有しない。completed Research / Validation Receiptはrunsc上のgVisor実行とfallback不使用の証跡を必須とする。各runへ累積使用量を引いた残りのwall time / costだけを渡し、超過したterminal reportでCoverageを閉じない。`source-validated`だけがFindingを生成する。FindingとCoverageを分離する。
 
 **Failure semantics:** provider、Budget、policy、invalid outputは`incomplete`または`validation-pending`にする。同じCampaign IDへの異なるinputはconflictにする。再実行はdurable stateからresumeする。
 
@@ -103,15 +103,15 @@ Status: current implementation map, 2026-09-07
 
 ## Human OS
 
-**Purpose:** immutable Findingへruntime / human assuranceをappendし、外部行動を人間のexact authorizationでgateする。
+**Purpose:** immutable Findingをfresh Dynamic AI Reproductionへ渡してruntime / human assuranceをappendし、外部行動を人間のexact authorizationでgateする。
 
 **Interface:** `HumanOs.receiveFinding / recordAIReproduction / recordHumanVerification / saveSubmissionDraft / authorizeExternalAction / admitExternalAction / inspect`。
 
 **Owned state:** Finding、AI Reproduction Record、Human Verification Record、Draft、AuthorizationをSQLite v3 eventsへ保存する。
 
-**Invariants:** AIとhuman verificationは異なるfresh gVisor environment identityを持つ。Findingはdisproved observationでも削除しない。Draft revisionは連続し、authorizationはexact Draft digestとdestinationへbindする。
+**Invariants:** Dynamic AI Reproductionは実WordPress / MySQLをfresh gVisor environment内だけで動かす。AIとhuman verificationは異なるfresh environment identityを持つ。`runtime-confirmed / disproved / incomplete`のどの結果でもFindingは削除しない。環境、依存条件、手順またはBudgetで決着しない場合を`disproved`へ丸めない。Draft revisionは連続し、authorizationはexact Draft digestとdestinationへbindする。
 
-**Failure semantics:** Finding不在、Draft不在、human confirmation不在、exact authorization不在はexternal actionを拒否する。Harnessは送信しない。
+**Failure semantics:** Dynamic runtimeのprovision、recipe、dependency、Budgetまたはevidence failureは`incomplete`として記録する。Finding不在、Draft不在、human confirmation不在、exact authorization不在はexternal actionを拒否する。Harnessは送信しない。
 
 **Code / Tests:** [`src/human-os`](../src/human-os) · [`agent-led-human-os.test.ts`](../tests/human-os/agent-led-human-os.test.ts) · [`context-interface.test.ts`](../tests/human-os/context-interface.test.ts)
 

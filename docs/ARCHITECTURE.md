@@ -8,7 +8,7 @@ WordPress Targetの選定からagent-led Research、Independent Validation、fre
 
 **Diagnostic core owns evidence and limits; agents own Discovery decisions; Independent Validation owns Findings; humans own external actions.**
 
-Productの必須flowは`Target Snapshot + Dependency Snapshots -> Discovery -> Independent Validation -> Finding`である。Target IntelligenceとHuman OSは前後のsupporting workflowであり、未接続でも診断coreの失敗にしない。隔離はNative Agent Runtime Adapterの内部安全条件であり、診断結果やpromotionの目的にしない。
+診断coreの必須flowは`Target Snapshot + Dependency Snapshots -> Discovery -> Source Validation -> Finding`である。Source Validationは明白なsource矛盾を落とす独立sanity gateに留め、実質的なtrue-positive assuranceは`Finding -> fresh Dynamic AI Reproduction`で得る。Target Intelligenceは前段、Human OSはruntime / human assuranceと外部提出判断を所有する。隔離は各Runtime Adapterの内部安全条件であり、診断結果やpromotionの目的にしない。
 
 ![スマホ向け診断core図](visuals/diagnosis-architecture.svg)
 
@@ -61,13 +61,13 @@ Grok BuildとClaude Codeのprovider固有CLIはAdapter内へ局所化する。GL
 
 ### Independent Validation
 
-Researchと別のfresh native runがcandidateを同じread-only sourceから再導出し、`source-validated / needs-research / disproven / validation-pending`を返す。固定rubricやclass Adapterをpublic seamへ出さない。`source-validated`だけがFindingを生成する。
+Researchと別のfresh native runがcandidateを同じread-only sourceから再導出し、`source-validated / needs-research / disproven / validation-pending`を返す。固定rubricやclass Adapterをpublic seamへ出さない。最適payloadやruntime reproductionを要求せず、必要条件がsourceで直接反証された時だけ`disproven`にする。`source-validated`だけがFindingを生成する。
 
 複数Targetは独立したCampaign processを同時起動する。Target間を調整するproduction schedulerは持たず、一CampaignのDiscoveryとValidationはそのCampaignだけで完結する。
 
 ### Human OS
 
-`HumanOs`はFindingを受け取り、AI reproduction、別fresh environmentでのhuman verification、Submission Draft、exact Draft digestとdestinationへbindしたauthorizationをappend-onlyに記録する。実際の外部送信は所有しない。
+`HumanOs`はFindingを受け取り、freshなWordPress / MySQL環境でのDynamic AI Reproduction、別fresh environmentでのhuman verification、Submission Draft、exact Draft digestとdestinationへbindしたauthorizationをappend-onlyに記録する。Dynamic AI Reproductionは`runtime-confirmed / disproved / incomplete`を返し、失敗や反証でも元Findingを削除しない。実際の外部送信は所有しない。
 
 ## Operating flow
 
@@ -76,10 +76,11 @@ Researchと別のfresh native runがcandidateを同じread-only sourceから再�
 3. 実行直前にversion、source、identity、provenanceを再確認する。
 4. ResearchがTarget、Dependency、Prompt、Runtime、Permission、Budgetをsealする。
 5. Provider-native Root agentがsubagentを必要に応じて使い、具体的なsource-bound next actionがある間は続ける。
-6. Candidateをfresh Independent Validationへ渡す。具体的なproof gapはRootが続行可否を決める。
+6. Candidateをfresh Independent Source Validationへ渡す。明白なsource反証だけを棄却し、具体的なproof gapはRootが続行可否を決める。
 7. AIにactionable frontierがなくpending ValidationもなければCoverageを閉じる。外部制約やBudgetで続行不能なら`incomplete`にする。
-8. Human OSがfresh runtime / human evidenceを追記し、AIがDraftを支援する。
-9. 人間がexact Draftとdestinationを承認し、最後のSubmitを行う。
+8. Human OSがFindingをfresh Dynamic AI Reproductionへ渡す。実効性を確認できなければ`disproved`、決着不能なら`incomplete`をappendする。
+9. 別fresh environmentで人間が確認し、AIがDraftを支援する。
+10. 人間がexact Draftとdestinationを承認し、最後のSubmitを行う。
 
 Unauthenticated SQLi、Stored XSS、ATO、PrivEsc、arbitrary file operation、object injection、authorizationやbusiness-logic failureは、RCEへ昇格しなくてもFindingになり得る。
 
@@ -93,6 +94,7 @@ Unauthenticated SQLi、Stored XSS、ATO、PrivEsc、arbitrary file operation、o
 - Independent ValidationはResearchのconversation、scratch、verdictを共有しない。
 - Findingの有無とCoverage completionを分離する。
 - provider、budget、tool、source、permission、schema、storage failureをno-findingまたは`disproven`へ丸めない。
+- Dynamic AI Reproductionは実WordPress / MySQLをfresh gVisor environment内だけで動かし、失敗をsource Findingの削除へ読み替えない。
 - exact payload、HTTP request、screenshot、runtime logはPrivate Evidenceへ置く。
 - external actionはhuman-confirmed verificationとexact authorizationを要求する。
 

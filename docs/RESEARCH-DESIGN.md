@@ -18,8 +18,8 @@ Harnessは判断内容ではなく、判断できる安全な条件と証拠を�
 | --- | --- | --- |
 | Target Selection | oracle-free Candidate Pool、source identity、freshness、Budget、人間のBatch承認 | 優先Target、理由、不確実性、再調査価値 |
 | Research | Target / Dependency Snapshots、Prompt、Permission、Budget、record、terminal semantics | 仮説、native subagent、読む順序、継続、停止、candidate |
-| Validation | fresh独立runtime、source-only権限、candidate binding、Finding生成条件 | 検証方法、counterevidence、proof gap、disposition提案 |
-| Human OS | fresh runtime、Private Evidence、external authorization | reproduction、理解支援、Draft作成 |
+| Source Validation | fresh独立runtime、source-only権限、candidate binding、Finding生成条件 | source上の明白な反証、proof gap、disposition提案 |
+| Dynamic Verification / Human OS | fresh WordPress / MySQL runtime、Private Evidence、external authorization | bounded reproduction、実効性の判定、理解支援、Draft作成 |
 
 固定のrank、diversity cap、reason code、worker role、Finder数、Wave、Lease、Depth、Approach Family、Validation RubricをAI判断の代わりにしない。schemaはidentity、authority、evidence、failure semanticsとcontext handoffに使う。
 
@@ -39,7 +39,7 @@ Programme対象外、Disclosure Route不明、既探索またはAIの低評価�
 
 ## Agent-led Research
 
-通常運転はwp2shell / Cycle Double Cover Promptを直接の系譜とする、raw-source-firstの一つの連続loopである。Provider-native Root agentはTarget Snapshot全体を読み、pluginが依存するWordPress core等の挙動をpinned Dependency Snapshotから解決する。必要に応じてnative subagentを起動し、互いに異なるroute、反証、synthesisまたは追加調査を進める。Dependencyはsource worldを完成させるreferenceであり、別のaudit Targetにしない。Harnessはagent数、role、round、探索classまたは読むfileを指定しない。探索評価ではGrokを先に使う。利用不能時に同じCampaignを暗黙fallbackせず、GLM 5.3等の別Runtime Profileをbindした新しいCampaignとして明示的に比較する。
+通常運転はwp2shell / Cycle Double Cover Promptを直接の系譜とする、raw-source-firstの一つの連続loopである。Provider-native Root agentはTarget Snapshot全体を読み、pluginが依存するWordPress core等の挙動をpinned Dependency Snapshotから解決する。必要に応じてnative subagentを起動し、互いに異なるroute、反証、synthesisまたは追加調査を進める。Dependencyはsource worldを完成させるreferenceであり、別のaudit Targetにしない。Harnessはagent数、role、round、探索classまたは読むfileを指定しない。versioned [WordPress Plugin Research v1](../prompts/wordpress-plugin-research-v1.md)は同時activeなnative subagentを最大4体に制限するが、固定割当は作らず、実数、役割、再投入をRoot AIへ任せる。探索評価ではGrokを先に使う。利用不能時に同じCampaignを暗黙fallbackせず、GLM 5.3等の別Runtime Profileをbindした新しいCampaignとして明示的に比較する。
 
 Research Rootのprovider-native conversationとscratchはprivate Agent Checkpointとして継続できる。Harnessは固定checkpoint cadenceや内部tool eventをdomain modelにせず、bindingとintegrityを持つopaque refだけを記録する。budgetまたはprovider interruptionでもCheckpointを保存できなければ`incomplete`であり、resume可能とは扱わない。Independent ValidationへResearch Checkpointを渡さない。
 
@@ -47,12 +47,12 @@ Research Rootのprovider-native conversationとscratchはprivate Agent Checkpoin
 
 ```text
 source-boundで具体的な次の調査がある -> continue
-重大なcandidateがある                 -> Independent Validationへ渡し、必要ならResearchも続ける
+重大なcandidateがある                 -> scratchへ記録し、探索内で敵対的に反証する
 有望なactionable frontierがない       -> evidence-backed stopを提案
 外部制約で続行できない                -> incomplete
 ```
 
-一つのcandidateを得ただけで停止せず、RCEへ伸びないことだけを理由に重大なSQLiやStored XSSを未完成扱いしない。支持数、model confidence、到着順、static rule non-match、Surface Map外であることをcandidateの棄却またはsafe判定に使わない。
+一つのcandidateを得ただけで停止せず、Rootはnative subagentによる敵対的レビュー、合成、リダイレクトと新しいroundを同じ連続Research loop内で行う。Candidateは探索中に蓄積し、Rootが有望なactionable frontierなしと判断して停止した後にだけIndependent Validationへ渡す。RCEへ伸びないことだけを理由に重大なSQLiやStored XSSを未完成扱いしない。支持数、model confidence、到着順、static rule non-match、Surface Map外であることをcandidateの棄却またはsafe判定に使わない。
 
 staticまたは派生解析の出力があってもnavigationとevidenceの補助に限り、探索空間またはcompletion proofにしない。現行agent pathはraw sourceを直接読む。
 
@@ -60,7 +60,7 @@ staticまたは派生解析の出力があってもnavigationとevidenceの補�
 
 Validation Candidateは、Target Snapshot、attacker premise、broken security property、主張と初期source anchorを持つ。固定rubric、順番付き完全route、vulnerability class、RCE escalationまたは特定mechanism Adapterへの対応をadmission条件にしない。
 
-Independent Validationはcandidateごとに一回のfresh source-only runを行う。Research Rootのconversation、scratch、verdictを共有せず、同じTarget / Dependency SnapshotsからValidator自身がreachability、attacker control、既存防御、security effectとcounterevidenceを再導出する。TargetまたはDependencyのcode、build、test、runtime attackを実行しない。
+Independent ValidationはRootがResearchを停止した後、candidateごとに一回のfresh source-only runを行う。Research Rootのconversation、scratch、verdictを共有せず、同じTarget / Dependency SnapshotsからValidator自身がreachability、attacker control、既存防御、security effectとcounterevidenceを再導出する。[Fresh Source Validation v1](../prompts/fresh-source-validation-v1.md)はsubmission-readyなexploitを要求せず、source上で実在するvulnerable pathかを判定する。最適payload、完全な抽出、runtime reproduction、最大severityまたはRCE昇格は後段のVerification事項であり、source上のtrue positiveを棄却する理由にしない。TargetまたはDependencyのcode、build、test、runtime attackを実行しない。Candidateが存在してもResearch decisionが`continue`ならValidationを割り込ませない。
 
 複数Targetは互いに独立したCampaignとprocessとして並列実行する。Harness内へ中央schedulerやcross-Target Validation queueを作らず、providerまたはoperatorの既存process並列性を使う。
 
@@ -71,7 +71,7 @@ Independent Validationはcandidateごとに一回のfresh source-only runを行�
 | `disproven` | 必要なpremise、route、controlまたはeffectがsource evidenceで反証された |
 | `validation-pending` | Budget、provider、tool、sourceまたはoutput failureで判断できない |
 
-Findingの存在とCampaign completionは独立する。runtimeとhuman verificationはFindingへassuranceを追記し、元Findingを暗黙に削除または書き換えない。
+Findingの存在とCampaign completionは独立する。Independent Validationは軽いsource sanity gateであり、submission-readyなtrue positiveの最終判定器ではない。`source-validated` FindingはHuman OSのfresh Dynamic Verificationへ渡し、実WordPress / MySQL上でAIがbounded reproductionを組み立てる。`runtime-confirmed`は動的に実効性が確認されたことを示す。`disproved`は実行時反証をappendするが元Findingを削除せず、環境、依存条件、手順またはBudgetの不足は`incomplete`としてnegativeと区別する。別fresh environmentでのhuman verificationも同じくassuranceを追記する。
 
 ## Completion and failure
 

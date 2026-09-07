@@ -149,6 +149,63 @@ function researchReceipt(
 }
 
 describe("Independent Validation", () => {
+  it("finishes actionable Research before validating accumulated Candidates", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "validation-after-research-"),
+    );
+    temporaryDirectories.push(directory);
+    const input = campaignInput("campaign-validation-after-research-1", 3);
+    const runKinds: SealedAgentRun["kind"][] = [];
+    let researchRuns = 0;
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "agent-led.sqlite"),
+      runtime: {
+        async execute(run) {
+          runKinds.push(run.kind);
+          if (run.kind === "sealed-native-validation-run") {
+            return {
+              schemaVersion: 1,
+              runId: run.runId,
+              runtimeProfileDigest: run.agentRuntimeProfile.digest,
+              terminal: "completed",
+              startedAt: "2026-09-07T12:02:00.000Z",
+              completedAt: "2026-09-07T12:03:00.000Z",
+              usage: { wallTimeMs: 60_000 },
+              activity: { subagents: 0, tools: ["source.read"] },
+              isolation: gvisorIsolation,
+              report: {
+                schemaVersion: 1,
+                candidateId: run.candidate.candidateId,
+                disposition: "source-validated",
+                reason: "The source independently supports the claim.",
+                evidence: [
+                  {
+                    path: "admin/view.php",
+                    location: "render_value:88",
+                    observation: "Emits the persisted value without escaping.",
+                  },
+                ],
+              },
+            };
+          }
+
+          researchRuns += 1;
+          return researchReceipt(run, researchRuns === 1 ? "continue" : "stop");
+        },
+      },
+    });
+
+    await expect(campaigns.conduct(input)).resolves.toMatchObject({
+      status: "coverage-closed",
+    });
+    expect(runKinds).toEqual([
+      "sealed-native-research-run",
+      "sealed-native-research-run",
+      "sealed-native-validation-run",
+    ]);
+    campaigns.close();
+  });
+
   it("records a source contradiction as disproven without creating a Finding", async () => {
     const directory = await mkdtemp(join(tmpdir(), "validation-disproven-"));
     temporaryDirectories.push(directory);
@@ -290,7 +347,7 @@ describe("Independent Validation", () => {
     campaigns.close();
   });
 
-  it("preserves a Finding while separate Research work is incomplete", async () => {
+  it("does not validate while separate Research work remains actionable", async () => {
     const directory = await mkdtemp(join(tmpdir(), "finding-open-coverage-"));
     temporaryDirectories.push(directory);
     const input = campaignInput("campaign-finding-open-coverage-1");
@@ -338,12 +395,8 @@ describe("Independent Validation", () => {
       status: "incomplete",
       coverage: { status: "incomplete" },
       interruption: { reason: "budget-exhausted" },
-      findings: [
-        {
-          candidateId: "candidate-public-output-1",
-          assurance: "source-validated",
-        },
-      ],
+      validationRuns: [],
+      findings: [],
     });
     campaigns.close();
   });
