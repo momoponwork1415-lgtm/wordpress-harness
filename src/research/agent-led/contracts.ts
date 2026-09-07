@@ -176,6 +176,12 @@ const nativeRunActivitySchema = z.strictObject({
   tools: z.array(z.string().min(1)).nullable(),
 });
 
+const agentRunIsolationSchema = z.strictObject({
+  backend: z.literal("gvisor"),
+  runtime: z.literal("runsc"),
+  fallbackUsed: z.literal(false),
+});
+
 const agentRunReceiptShape = {
   schemaVersion: z.literal(1),
   runId: identifierSchema,
@@ -184,13 +190,6 @@ const agentRunReceiptShape = {
   completedAt: z.iso.datetime(),
   usage: nativeRunUsageSchema,
   activity: nativeRunActivitySchema,
-  isolation: z
-    .strictObject({
-      backend: z.literal("gvisor"),
-      runtime: z.literal("runsc"),
-      fallbackUsed: z.literal(false),
-    })
-    .optional(),
 };
 
 const nativeRunReceiptShape = {
@@ -201,6 +200,7 @@ export const nativeRunReceiptSchema = z.discriminatedUnion("terminal", [
   z.strictObject({
     ...nativeRunReceiptShape,
     terminal: z.literal("completed"),
+    isolation: agentRunIsolationSchema,
     checkpoint: agentCheckpointRefSchema,
     report: researchReportSchema,
   }),
@@ -212,6 +212,7 @@ export const nativeRunReceiptSchema = z.discriminatedUnion("terminal", [
       "policy-denied",
       "invalid-output",
     ]),
+    isolation: agentRunIsolationSchema.optional(),
     checkpoint: agentCheckpointRefSchema.optional(),
     failure: z.strictObject({ summary: z.string().min(1) }),
   }),
@@ -221,6 +222,7 @@ export const validationRunReceiptSchema = z.discriminatedUnion("terminal", [
   z.strictObject({
     ...agentRunReceiptShape,
     terminal: z.literal("completed"),
+    isolation: agentRunIsolationSchema,
     report: validationReportSchema,
   }),
   z.strictObject({
@@ -231,6 +233,7 @@ export const validationRunReceiptSchema = z.discriminatedUnion("terminal", [
       "policy-denied",
       "invalid-output",
     ]),
+    isolation: agentRunIsolationSchema.optional(),
     failure: z.strictObject({ summary: z.string().min(1) }),
   }),
 ]);

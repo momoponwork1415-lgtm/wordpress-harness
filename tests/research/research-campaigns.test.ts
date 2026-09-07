@@ -13,6 +13,11 @@ import {
 } from "../../src/research/index.js";
 
 const temporaryDirectories: string[] = [];
+const gvisorIsolation = {
+  backend: "gvisor",
+  runtime: "runsc",
+  fallbackUsed: false,
+} as const;
 
 afterEach(async () => {
   await Promise.all(
@@ -115,6 +120,7 @@ describe("ResearchCampaigns", () => {
             subagents: 2,
             tools: ["source.search", "source.read"],
           },
+          isolation: gvisorIsolation,
           checkpoint: checkpointFor(run),
           report: {
             schemaVersion: 1,
@@ -250,6 +256,7 @@ describe("ResearchCampaigns", () => {
             completedAt: "2026-09-07T03:01:00.000Z",
             usage: { wallTimeMs: 60_000 },
             activity: { subagents: 0, tools: ["source.read"] },
+            isolation: gvisorIsolation,
             report: { decision: "not-a-research-decision" },
           } as unknown as Awaited<ReturnType<NativeAgentRuntime["execute"]>>;
         },
@@ -297,6 +304,7 @@ describe("ResearchCampaigns", () => {
             completedAt: "2026-09-07T03:11:00.000Z",
             usage: { wallTimeMs: 60_000 },
             activity: { subagents: 0, tools: ["source.read"] },
+            isolation: gvisorIsolation,
             report: {
               schemaVersion: 1,
               candidates: [],
@@ -381,6 +389,7 @@ describe("ResearchCampaigns", () => {
             completedAt: `2026-09-07T04:0${invocation}:30.000Z`,
             usage: { wallTimeMs: 30_000 },
             activity: { subagents: invocation, tools: ["source.read"] },
+            isolation: gvisorIsolation,
             checkpoint,
             report: {
               schemaVersion: 1,
@@ -449,6 +458,7 @@ describe("ResearchCampaigns", () => {
             completedAt: "2026-09-07T05:01:00.000Z",
             usage: { wallTimeMs: 60_000 },
             activity: { subagents: 1, tools: ["source.search"] },
+            isolation: gvisorIsolation,
             checkpoint: checkpointFor(run),
             report: {
               schemaVersion: 1,
@@ -511,6 +521,7 @@ describe("ResearchCampaigns", () => {
             completedAt: "2026-09-07T06:01:00.000Z",
             usage: { wallTimeMs: 60_000 },
             activity: { subagents: 0, tools: ["source.read"] },
+            isolation: gvisorIsolation,
             checkpoint: checkpointFor(run),
             report: {
               schemaVersion: 1,
@@ -571,6 +582,7 @@ describe("ResearchCampaigns", () => {
             completedAt: "2026-09-07T07:01:00.000Z",
             usage: { wallTimeMs: 60_000 },
             activity: { subagents: 1, tools: ["source.read"] },
+            isolation: gvisorIsolation,
             checkpoint: checkpointFor(run),
             report: {
               schemaVersion: 1,
@@ -622,6 +634,7 @@ describe("ResearchCampaigns", () => {
             completedAt: "2026-09-07T08:00:30.000Z",
             usage: { wallTimeMs: 30_000, estimatedCostUsd: 1.25 },
             activity: { subagents: 1, tools: ["source.read"] },
+            isolation: gvisorIsolation,
             checkpoint: checkpointFor(run),
             report: {
               schemaVersion: 1,
@@ -684,6 +697,7 @@ describe("ResearchCampaigns", () => {
               estimatedCostUsd: first ? 0.75 : 0.5,
             },
             activity: { subagents: 1, tools: ["source.read"] },
+            isolation: gvisorIsolation,
             checkpoint: checkpointFor(run),
             report: {
               schemaVersion: 1,
@@ -749,6 +763,7 @@ describe("ResearchCampaigns", () => {
             completedAt: "2026-09-07T09:01:00.000Z",
             usage: { wallTimeMs: 60_000 },
             activity: { subagents: 2, tools: ["source.read"] },
+            isolation: gvisorIsolation,
             checkpoint: checkpointFor(run),
             report: {
               schemaVersion: 1,
@@ -843,6 +858,7 @@ describe("ResearchCampaigns", () => {
             completedAt: "2026-09-07T10:03:00.000Z",
             usage: { wallTimeMs: 60_000 },
             activity: { subagents: 1, tools: ["source.read"] },
+            isolation: gvisorIsolation,
             report: {
               schemaVersion: 1,
               candidateId: run.candidate.candidateId,
@@ -875,6 +891,7 @@ describe("ResearchCampaigns", () => {
           completedAt: "2026-09-07T10:01:00.000Z",
           usage: { wallTimeMs: 60_000 },
           activity: { subagents: 2, tools: ["source.read"] },
+          isolation: gvisorIsolation,
           checkpoint: checkpointFor(run),
           report: {
             schemaVersion: 1,
@@ -986,6 +1003,7 @@ describe("ResearchCampaigns", () => {
               completedAt: "2026-09-07T11:02:00.000Z",
               usage: { wallTimeMs: 60_000 },
               activity: { subagents: 0, tools: ["source.read"] },
+              isolation: gvisorIsolation,
               report: {
                 schemaVersion: 1,
                 candidateId: run.candidate.candidateId,
@@ -1035,6 +1053,7 @@ describe("ResearchCampaigns", () => {
               completedAt: "2026-09-07T11:03:00.000Z",
               usage: { wallTimeMs: 60_000 },
               activity: { subagents: 1, tools: ["source.read"] },
+              isolation: gvisorIsolation,
               checkpoint: checkpointFor(run),
               report: {
                 schemaVersion: 1,
@@ -1057,6 +1076,7 @@ describe("ResearchCampaigns", () => {
             completedAt: "2026-09-07T11:01:00.000Z",
             usage: { wallTimeMs: 60_000 },
             activity: { subagents: 1, tools: ["source.read"] },
+            isolation: gvisorIsolation,
             checkpoint: checkpointFor(run),
             report: {
               schemaVersion: 1,

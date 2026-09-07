@@ -7,11 +7,17 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   openResearchCampaigns,
   type CampaignInput,
+  type NativeAgentRuntime,
   type NativeRunReceipt,
   type SealedAgentRun,
 } from "../../src/research/index.js";
 
 const temporaryDirectories: string[] = [];
+const gvisorIsolation = {
+  backend: "gvisor",
+  runtime: "runsc",
+  fallbackUsed: false,
+} as const;
 
 afterEach(async () => {
   await Promise.all(
@@ -87,6 +93,7 @@ function researchReceipt(
     completedAt: "2026-09-07T12:01:00.000Z",
     usage: { wallTimeMs: 60_000 },
     activity: { subagents: 1, tools: ["source.read"] },
+    isolation: gvisorIsolation,
     checkpoint: {
       kind: "agent-checkpoint",
       schemaVersion: 1,
@@ -162,6 +169,7 @@ describe("Independent Validation", () => {
             completedAt: "2026-09-07T12:02:00.000Z",
             usage: { wallTimeMs: 60_000 },
             activity: { subagents: 0, tools: ["source.read"] },
+            isolation: gvisorIsolation,
             report: {
               schemaVersion: 1,
               candidateId: run.candidate.candidateId,
@@ -232,6 +240,56 @@ describe("Independent Validation", () => {
     campaigns.close();
   });
 
+  it("rejects a completed Validation without fresh gVisor evidence", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "validation-isolation-"));
+    temporaryDirectories.push(directory);
+    const input = campaignInput("campaign-validation-isolation-1");
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "agent-led.sqlite"),
+      runtime: {
+        async execute(run) {
+          if (run.kind === "sealed-native-research-run") {
+            return researchReceipt(run, "stop");
+          }
+          return {
+            schemaVersion: 1,
+            runId: run.runId,
+            runtimeProfileDigest: run.agentRuntimeProfile.digest,
+            terminal: "completed",
+            startedAt: "2026-09-07T13:01:00.000Z",
+            completedAt: "2026-09-07T13:02:00.000Z",
+            usage: { wallTimeMs: 60_000 },
+            activity: { subagents: 0, tools: ["source.read"] },
+            report: {
+              schemaVersion: 1,
+              candidateId: run.candidate.candidateId,
+              disposition: "source-validated",
+              reason: "The source supports the candidate claim.",
+              evidence: [
+                {
+                  path: "admin/view.php",
+                  location: "render_value:88",
+                  observation: "Emits the persisted value without escaping.",
+                },
+              ],
+            },
+          } as unknown as Awaited<ReturnType<NativeAgentRuntime["execute"]>>;
+        },
+      },
+    });
+
+    await expect(campaigns.conduct(input)).resolves.toMatchObject({
+      status: "incomplete",
+    });
+    await expect(
+      campaigns.inspect({ campaignId: input.campaignId }),
+    ).resolves.toMatchObject({
+      validationRuns: [{ receipt: { terminal: "invalid-output" } }],
+      findings: [],
+    });
+    campaigns.close();
+  });
+
   it("preserves a Finding while separate Research work is incomplete", async () => {
     const directory = await mkdtemp(join(tmpdir(), "finding-open-coverage-"));
     temporaryDirectories.push(directory);
@@ -252,6 +310,7 @@ describe("Independent Validation", () => {
             completedAt: "2026-09-07T12:02:00.000Z",
             usage: { wallTimeMs: 60_000 },
             activity: { subagents: 1, tools: ["source.read"] },
+            isolation: gvisorIsolation,
             report: {
               schemaVersion: 1,
               candidateId: run.candidate.candidateId,
@@ -308,6 +367,7 @@ describe("Independent Validation", () => {
               completedAt: "2026-09-07T14:02:00.000Z",
               usage: { wallTimeMs: 60_000 },
               activity: { subagents: 0, tools: ["source.read"] },
+              isolation: gvisorIsolation,
               report: {
                 schemaVersion: 1,
                 candidateId: run.candidate.candidateId,
