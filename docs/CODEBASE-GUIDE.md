@@ -28,7 +28,7 @@ Status: current implementation map, 2026-09-07
 
 **Interface:** `TargetIntake.intake`、`WordPressOrgTargetSource.observe / acquire`。
 
-**Invariants:** archive path traversal、symlink、duplicate path、size / count limitを拒否する。Target package script、autoload、WordPress bootstrapを実行しない。
+**Invariants:** archive path traversal、symlink、duplicate path、size / count limitを拒否する。canonical manifestはpathのglobal orderingを使い、Researchの起動直前source integrityと同じdigestを作る。Target package script、autoload、WordPress bootstrapを実行しない。
 
 **Failure semantics:** acquisition、identity、provenance、archive policy failureをready packetへ丸めない。
 

@@ -124,6 +124,9 @@ async function canonicalSourceTree(
   };
 
   await walk(root, []);
+  entries.sort((left, right) =>
+    left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
+  );
   return {
     digest: canonicalDigest({
       kind: "canonical-file-manifest",
