@@ -12,13 +12,13 @@ Target Intelligenceが取得可能性、identity、provenance、freshnessを検�
 
 ## 2. Seal and conduct
 
-ResearchはTarget Snapshot、Research Prompt、Validation Prompt、Agent Runtime Profile、Permission Profile、Budget Envelopeをdigest bindする。CLIの`campaign conduct`はprofileが指定するGrok Build、Claude Code、またはClaude Code process上のGLM 5.3 Adapterだけを使う。
+ResearchはTarget Snapshot、WordPress core等のDependency Snapshots、Research Prompt、Validation Prompt、Agent Runtime Profile、Permission Profile、Budget Envelopeをdigest bindする。CLIの`campaign conduct`はprofileが指定するGrok Build、Claude Code、またはClaude Code process上のGLM 5.3 Adapterだけを使う。
 
-native agentはrunsc container内でread-only sourceとwriteable scratchを使う。AIが具体的な次手を返せば、同じbindingのprivate Agent Checkpointからprovider-native conversationとscratchを再開し、Validation feedbackを次のrunへ渡す。固定WaveやDepthはない。
+native agentはrunsc container内でread-only Target / Dependency sourceとwriteable scratchを使う。Dependencyからframework挙動を確認するが、Dependency自体はaudit Targetにしない。AIが具体的な次手を返せば、同じbindingのprivate Agent Checkpointからprovider-native conversationとscratchを再開し、Validation feedbackを次のrunへ渡す。固定WaveやDepthはない。
 
 ## 3. Validate independently
 
-Research reportにcandidateがあれば、別provider home、別scratch、fresh sessionのIndependent Validationを一度行う。Validatorはcandidateの主張をsourceから再導出する。
+Research reportにcandidateがあれば、別provider home、別scratch、fresh sessionのIndependent Validationを一度行う。Validatorは同じTarget / Dependency sourceからcandidateの主張を再導出する。
 
 - `source-validated`: immutable Findingを作る。
 - `needs-research`: concrete next actionをResearchへ返す。
@@ -35,6 +35,6 @@ AIはSubmission Draftを作れる。外部行動はhuman-confirmed verification�
 
 ## 5. Resume and failure
 
-同じCampaign inputで`conduct`を再実行するとappend-only recordから再開する。入力digestが違えばconflictにする。Budget exhaustion、provider failure、policy denialまたはinvalid outputは`incomplete`として観測でき、no-findingへ変換しない。有効なAgent Checkpointがあれば、同じTarget、Prompt、Runtime、Permissionと明示した新BudgetのCampaignから再開できる。Checkpoint本文はSQLiteやValidationへ渡さない。
+同じCampaign inputで`conduct`を再実行するとappend-only recordから再開する。入力digestが違えばconflictにする。Budget exhaustion、provider failure、policy denialまたはinvalid outputは`incomplete`として観測でき、no-findingへ変換しない。有効なAgent Checkpointがあれば、同じTarget、Dependency、Prompt、Runtime、Permissionと明示した新BudgetのCampaignから再開できる。Checkpoint本文はSQLiteやValidationへ渡さない。
 
 旧v7へ戻す時は現行databaseを混ぜず、tag `research-v7-before-native-agent-loop`と旧storageを組にする。

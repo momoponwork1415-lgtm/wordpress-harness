@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import {
   openResearchCampaigns,
   type AgentCheckpointRef,
@@ -79,6 +80,7 @@ const input: CampaignInput = {
 };
 
 function checkpointFor(run: SealedAgentRun): AgentCheckpointRef {
+  const dependencySnapshots = run.dependencySnapshots ?? [];
   return {
     kind: "agent-checkpoint",
     schemaVersion: 1,
@@ -92,6 +94,9 @@ function checkpointFor(run: SealedAgentRun): AgentCheckpointRef {
     promptSetDigest: run.promptSet.digest,
     runtimeProfileDigest: run.agentRuntimeProfile.digest,
     permissionProfileDigest: run.permissionProfile.digest,
+    ...(dependencySnapshots.length === 0
+      ? {}
+      : { dependencySnapshotsDigest: canonicalDigest(dependencySnapshots) }),
   };
 }
 
@@ -833,6 +838,21 @@ describe("ResearchCampaigns", () => {
     const candidateInput: CampaignInput = {
       ...input,
       campaignId: "campaign-source-validated-1",
+      dependencySnapshots: [
+        {
+          id: "wordpress-core-7.1",
+          mountName: "wordpress",
+          version: "7.1",
+          digest:
+            "sha256:abababababababababababababababababababababababababababababababab",
+          sourceTree: {
+            digest:
+              "sha256:9898989898989898989898989898989898989898989898989898989898989898",
+            entries: 10,
+            bytes: 1_024,
+          },
+        },
+      ],
       validationPromptSet: {
         id: "prompt-independent-validation-v1",
         digest:
@@ -846,6 +866,9 @@ describe("ResearchCampaigns", () => {
     const seenValidationCandidates: string[] = [];
     const runtime: NativeAgentRuntime = {
       async execute(run) {
+        expect(run.dependencySnapshots).toEqual(
+          candidateInput.dependencySnapshots,
+        );
         if (run.kind === "sealed-native-validation-run") {
           expect("history" in run).toBe(false);
           seenValidationCandidates.push(run.candidate.candidateId);
@@ -954,6 +977,7 @@ describe("ResearchCampaigns", () => {
         {
           candidateId: "candidate-unauth-stored-xss-1",
           targetSnapshot: candidateInput.targetSnapshot,
+          dependencySnapshots: candidateInput.dependencySnapshots,
           attackerPremise:
             "An unauthenticated visitor can submit the public form.",
           brokenSecurityProperty:

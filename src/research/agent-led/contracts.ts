@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { canonicalDigest } from "../../infrastructure/canonical-json.js";
 import { promptTextDigest } from "../../infrastructure/prompt-text.js";
 
 export { promptTextDigest } from "../../infrastructure/prompt-text.js";
@@ -28,6 +29,44 @@ const targetSnapshotRefSchema = z.strictObject({
     bytes: z.number().int().nonnegative(),
   }),
 });
+
+export const dependencySnapshotRefSchema = z.strictObject({
+  id: identifierSchema,
+  mountName: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
+  version: z.string().min(1).max(64),
+  digest: digestSchema,
+  sourceTree: z.strictObject({
+    digest: digestSchema,
+    entries: z.number().int().positive(),
+    bytes: z.number().int().nonnegative(),
+  }),
+});
+
+const dependencySnapshotsSchema = z
+  .array(dependencySnapshotRefSchema)
+  .max(16)
+  .superRefine((snapshots, context) => {
+    const ids = new Set<string>();
+    const mounts = new Set<string>();
+    for (const [index, snapshot] of snapshots.entries()) {
+      if (ids.has(snapshot.id)) {
+        context.addIssue({
+          code: "custom",
+          message: "Dependency Snapshot ids must be unique",
+          path: [index, "id"],
+        });
+      }
+      if (mounts.has(snapshot.mountName)) {
+        context.addIssue({
+          code: "custom",
+          message: "Dependency Snapshot mount names must be unique",
+          path: [index, "mountName"],
+        });
+      }
+      ids.add(snapshot.id);
+      mounts.add(snapshot.mountName);
+    }
+  });
 
 const agentRuntimeProfileSchema = z.strictObject({
   id: identifierSchema,
@@ -63,6 +102,7 @@ export const agentCheckpointRefSchema = z.strictObject({
   promptSetDigest: digestSchema,
   runtimeProfileDigest: digestSchema,
   permissionProfileDigest: digestSchema,
+  dependencySnapshotsDigest: digestSchema.optional(),
 });
 
 export const campaignInputSchema = z
@@ -71,6 +111,7 @@ export const campaignInputSchema = z
     schemaVersion: z.literal(1),
     campaignId: identifierSchema,
     targetSnapshot: targetSnapshotRefSchema,
+    dependencySnapshots: dependencySnapshotsSchema.optional(),
     promptSet: immutableRefSchema,
     validationPromptSet: immutableRefSchema,
     agentRuntimeProfile: agentRuntimeProfileSchema,
@@ -81,11 +122,17 @@ export const campaignInputSchema = z
   .superRefine((input, context) => {
     const checkpoint = input.resumeFrom;
     if (checkpoint === undefined) return;
+    const dependencySnapshots = input.dependencySnapshots ?? [];
+    const dependencySnapshotsDigest =
+      dependencySnapshots.length === 0
+        ? undefined
+        : canonicalDigest(dependencySnapshots);
     if (
       checkpoint.targetSnapshotDigest !== input.targetSnapshot.digest ||
       checkpoint.promptSetDigest !== input.promptSet.digest ||
       checkpoint.runtimeProfileDigest !== input.agentRuntimeProfile.digest ||
-      checkpoint.permissionProfileDigest !== input.permissionProfile.digest
+      checkpoint.permissionProfileDigest !== input.permissionProfile.digest ||
+      checkpoint.dependencySnapshotsDigest !== dependencySnapshotsDigest
     ) {
       context.addIssue({
         code: "custom",
@@ -245,6 +292,7 @@ export const sealedNativeRunSchema = z.strictObject({
   campaignId: identifierSchema,
   campaignInputDigest: digestSchema,
   targetSnapshot: targetSnapshotRefSchema,
+  dependencySnapshots: dependencySnapshotsSchema.optional(),
   promptSet: immutableRefSchema,
   agentRuntimeProfile: agentRuntimeProfileSchema,
   permissionProfile: immutableRefSchema,
@@ -273,6 +321,7 @@ export const sealedValidationRunSchema = z.strictObject({
   campaignId: identifierSchema,
   campaignInputDigest: digestSchema,
   targetSnapshot: targetSnapshotRefSchema,
+  dependencySnapshots: dependencySnapshotsSchema.optional(),
   promptSet: immutableRefSchema,
   agentRuntimeProfile: agentRuntimeProfileSchema,
   permissionProfile: immutableRefSchema,
@@ -309,6 +358,7 @@ export const sourceValidatedFindingSchema = z.strictObject({
   findingId: z.string().min(1).max(512),
   candidateId: identifierSchema,
   targetSnapshot: targetSnapshotRefSchema,
+  dependencySnapshots: dependencySnapshotsSchema.optional(),
   attackerPremise: z.string().min(1),
   brokenSecurityProperty: z.string().min(1),
   claim: z.string().min(1),
@@ -369,6 +419,7 @@ export interface OpenResearchCampaignsOptions {
 }
 
 export type CampaignInput = z.infer<typeof campaignInputSchema>;
+export type DependencySnapshotRef = z.infer<typeof dependencySnapshotRefSchema>;
 export type AgentCheckpointRef = z.infer<typeof agentCheckpointRefSchema>;
 export type CampaignInterruption = z.infer<typeof campaignInterruptionSchema>;
 export type CampaignStatus = z.infer<typeof campaignStatusSchema>;

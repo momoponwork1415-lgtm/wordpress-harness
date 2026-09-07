@@ -9,13 +9,16 @@ ResearchはTarget選定、source acquisition policy、runtime exploit verificati
 ## Ubiquitous language
 
 **Campaign**
-: 一つのsealed Target、Prompt、Agent Runtime、Permission、Budgetを持つ継続可能な調査単位。
+: 一つのsealed Target、Dependency群、Prompt、Agent Runtime、Permission、Budgetを持つ継続可能な調査単位。
 
 **Campaign Input**
 : Campaign identityと五つのimmutable bindingを持つversioned command。同じCampaign IDへ異なるinputを使えない。
 
 **Target Snapshot**
 : plugin identity、version、canonical manifest digestで固定したread-only source。Research中に更新しない。
+
+**Dependency Snapshot**
+: WordPress core等のauthoritative behaviorをmemoryではなくsourceから解決するため、identity、version、canonical manifest digestで固定したread-only reference source。audit Targetではない。
 
 **Native Agent Runtime**
 : sealed ResearchまたはValidation Runをprovider-native agentへ渡し、typed Receiptを返す外部dependency。AIの研究判断を所有しない。
@@ -56,9 +59,9 @@ ResearchはTarget選定、source acquisition policy、runtime exploit verificati
 ## Invariants
 
 - Target sourceをhost上で実行しない。
-- Prompt、Target、Runtime、Permission、BudgetとReceiptをdigest bindする。
+- Prompt、Target、Dependency、Runtime、Permission、BudgetとReceiptをdigest bindする。
 - ResearchとValidationは異なるfresh sessionとscratchを使う。
-- Agent Checkpointは同じTarget、Prompt、Runtime、PermissionへbindされたResearchだけが再開できる。
+- Agent Checkpointは同じTarget、Dependency、Prompt、Runtime、PermissionへbindされたResearchだけが再開できる。
 - `source-validated`だけがFindingを作る。
 - Findingの有無とCoverage completionを分離する。
 - supporting agent数、到着順、多数決またはconfidenceでcandidateを捨てない。

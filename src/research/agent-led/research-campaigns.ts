@@ -279,6 +279,9 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
           campaignId: input.campaignId,
           campaignInputDigest: inputDigest,
           targetSnapshot: input.targetSnapshot,
+          ...(input.dependencySnapshots === undefined
+            ? {}
+            : { dependencySnapshots: input.dependencySnapshots }),
           promptSet: input.validationPromptSet,
           agentRuntimeProfile: input.agentRuntimeProfile,
           permissionProfile: input.permissionProfile,
@@ -321,6 +324,9 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         campaignId: input.campaignId,
         campaignInputDigest: inputDigest,
         targetSnapshot: input.targetSnapshot,
+        ...(input.dependencySnapshots === undefined
+          ? {}
+          : { dependencySnapshots: input.dependencySnapshots }),
         promptSet: input.promptSet,
         agentRuntimeProfile: input.agentRuntimeProfile,
         permissionProfile: input.permissionProfile,
@@ -673,6 +679,11 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
           findingId: `${campaignId}:finding:${candidate.candidateId}`,
           candidateId: candidate.candidateId,
           targetSnapshot: definition.input.targetSnapshot,
+          ...(definition.input.dependencySnapshots === undefined
+            ? {}
+            : {
+                dependencySnapshots: definition.input.dependencySnapshots,
+              }),
           attackerPremise: candidate.attackerPremise,
           brokenSecurityProperty: candidate.brokenSecurityProperty,
           claim: candidate.claim,

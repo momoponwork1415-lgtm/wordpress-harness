@@ -175,11 +175,11 @@ if [ "$is_validation" -eq 1 ]; then
   subagents=0
 fi
 case "$prompt:$is_validation" in
-  *'The prior response was invalid JSON.'*:0)
+  *'The prior response was invalid'*:0)
     result_path='${correctedProviderResultPath}'
     subagents=0
     ;;
-  *'The prior response was invalid JSON.'*:1)
+  *'The prior response was invalid'*:1)
     result_path='${correctedValidationResultPath}'
     subagents=0
     ;;
@@ -360,17 +360,17 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
       nativeRuns: [{ terminal: "invalid-output" }],
     });
     await writeFile(providerResultPath, ambiguousStop, "utf8");
-    await writeFile(correctedProviderResultPath, ambiguousStop, "utf8");
+    await writeFile(correctedProviderResultPath, validStop, "utf8");
     await expect(
       campaigns.conduct({
         ...input,
         campaignId: "campaign-glm-ambiguous-stop-1",
       }),
-    ).resolves.toMatchObject({ status: "incomplete" });
+    ).resolves.toMatchObject({ status: "coverage-closed" });
     await expect(
       campaigns.inspect({ campaignId: "campaign-glm-ambiguous-stop-1" }),
     ).resolves.toMatchObject({
-      nativeRuns: [{ terminal: "invalid-output" }],
+      nativeRuns: [{ terminal: "completed" }],
     });
     campaigns.close();
   });

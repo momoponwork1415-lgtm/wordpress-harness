@@ -40,6 +40,56 @@ function readOption(args: readonly string[], name: string): string {
   return value;
 }
 
+function readOptions(args: readonly string[], name: string): readonly string[] {
+  const values: string[] = [];
+  for (const [index, argument] of args.entries()) {
+    if (argument !== name) continue;
+    const value = args[index + 1];
+    if (value === undefined || value.startsWith("--")) {
+      throw new Error(`Missing value for option: ${name}`);
+    }
+    values.push(value);
+  }
+  return values;
+}
+
+function dependencySources(
+  args: readonly string[],
+  input: CampaignInput,
+): readonly {
+  readonly snapshot: NonNullable<CampaignInput["dependencySnapshots"]>[number];
+  readonly sourceDirectory: string;
+}[] {
+  const paths = new Map<string, string>();
+  for (const binding of readOptions(args, "--dependency-source")) {
+    const separator = binding.indexOf("=");
+    if (separator <= 0 || separator === binding.length - 1) {
+      throw new Error("Dependency source must use <mount-name>=<directory>");
+    }
+    const mountName = binding.slice(0, separator);
+    if (paths.has(mountName)) {
+      throw new Error(`Duplicate Dependency source: ${mountName}`);
+    }
+    paths.set(mountName, binding.slice(separator + 1));
+  }
+  const snapshots = input.dependencySnapshots ?? [];
+  const expectedMounts = new Set(
+    snapshots.map((snapshot) => snapshot.mountName),
+  );
+  for (const mountName of paths.keys()) {
+    if (!expectedMounts.has(mountName)) {
+      throw new Error(`Unbound Dependency source: ${mountName}`);
+    }
+  }
+  return snapshots.map((snapshot) => {
+    const sourceDirectory = paths.get(snapshot.mountName);
+    if (sourceDirectory === undefined) {
+      throw new Error(`Missing Dependency source: ${snapshot.mountName}`);
+    }
+    return { snapshot, sourceDirectory: resolve(sourceDirectory) };
+  });
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
@@ -63,6 +113,7 @@ function openNativeRuntime(
     sourceDirectory: resolve(readOption(args, "--source")),
     targetSnapshotDigest: input.targetSnapshot.digest,
     sourceTree: input.targetSnapshot.sourceTree,
+    dependencySources: dependencySources(args, input),
     providerConfigDirectory: resolve(readOption(args, "--provider-config")),
     scratchRootDirectory: resolve(readOption(args, "--scratch")),
     promptSet: {

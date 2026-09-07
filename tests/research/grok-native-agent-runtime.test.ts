@@ -63,14 +63,21 @@ describe("Grok Native Agent Runtime", () => {
     const directory = await mkdtemp(join(tmpdir(), "grok-native-runtime-"));
     temporaryDirectories.push(directory);
     const sourceDirectory = join(directory, "source");
+    const dependencyDirectory = join(directory, "wordpress-core");
     const providerConfigDirectory = join(directory, "provider-config");
     const scratchRootDirectory = join(directory, "scratch");
     await Promise.all([
       mkdir(sourceDirectory),
+      mkdir(dependencyDirectory),
       mkdir(providerConfigDirectory),
       mkdir(scratchRootDirectory),
     ]);
     await writeFile(join(sourceDirectory, "plugin.php"), "<?php\n", "utf8");
+    await writeFile(
+      join(dependencyDirectory, "wp-load.php"),
+      "<?php // core\n",
+      "utf8",
+    );
     const sourceTreeDigest = canonicalDigest({
       kind: "canonical-file-manifest",
       schemaVersion: 1,
@@ -79,6 +86,17 @@ describe("Grok Native Agent Runtime", () => {
           path: "plugin.php",
           digest: `sha256:${createHash("sha256").update("<?php\n").digest("hex")}`,
           size: 6,
+        },
+      ],
+    });
+    const dependencyTreeDigest = canonicalDigest({
+      kind: "canonical-file-manifest",
+      schemaVersion: 1,
+      entries: [
+        {
+          path: "wp-load.php",
+          digest: `sha256:${createHash("sha256").update("<?php // core\n").digest("hex")}`,
+          size: 14,
         },
       ],
     });
@@ -111,6 +129,7 @@ has_outer_owned_sandbox=0
 has_memory_disabled=0
 has_ephemeral_provider_home=0
 has_read_only_tools=0
+has_dependency_mount=0
 denies_provider_read=0
 denies_provider_grep=0
 volume_count=0
@@ -134,6 +153,7 @@ for argument in "$@"; do
   [ "$argument" != "--volume" ] || volume_count=$((volume_count + 1))
   case "$argument" in
     *:/provider:rw) provider_mount="\${argument%:/provider:rw}" ;;
+    *:/workspace/dependencies/wordpress:ro) has_dependency_mount=1 ;;
   esac
   [ "$argument" != "--version" ] || is_version_probe=1
   [ "$argument" != "--no-subagents" ] || exit 91
@@ -144,7 +164,8 @@ for argument in "$@"; do
 done
 [ "$has_runsc" -eq 1 ] || exit 90
 [ "$has_host_user" -eq 1 ] || exit 94
-[ "$volume_count" -eq 3 ] || exit 100
+[ "$volume_count" -eq 4 ] || exit 100
+[ "$has_dependency_mount" -eq 1 ] || exit 109
 if [ "$is_version_probe" -eq 1 ]; then
   printf '%s\n' 'grok 1.0.13 (Grok Build)'
   exit 0
@@ -156,6 +177,7 @@ fi
 [ "$denies_provider_read" -eq 1 ] || exit 102
 [ "$denies_provider_grep" -eq 1 ] || exit 103
 [ -n "$scratch" ] || exit 92
+grep -F 'wordpress-core-7.1' "$scratch/prompt.txt" >/dev/null
 [ -n "$provider_mount" ] || exit 104
 case "$provider_mount" in
   "$scratch"/*) exit 105 ;;
@@ -203,6 +225,18 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
       "Audit the immutable WordPress plugin source from first principles.";
     const validationPrompt =
       "Independently validate one source-bound candidate.";
+    const wordpressDependency = {
+      id: "wordpress-core-7.1",
+      mountName: "wordpress",
+      version: "7.1",
+      digest:
+        "sha256:abababababababababababababababababababababababababababababababab",
+      sourceTree: {
+        digest: dependencyTreeDigest,
+        entries: 1,
+        bytes: 14,
+      },
+    } as const;
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 1,
@@ -215,6 +249,7 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
           "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
       },
+      dependencySnapshots: [wordpressDependency],
       promptSet: {
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
@@ -251,6 +286,12 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
       sourceDirectory,
       targetSnapshotDigest: input.targetSnapshot.digest,
       sourceTree: input.targetSnapshot.sourceTree,
+      dependencySources: [
+        {
+          snapshot: wordpressDependency,
+          sourceDirectory: dependencyDirectory,
+        },
+      ],
       providerConfigDirectory,
       scratchRootDirectory,
       promptSet: {
@@ -367,6 +408,9 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
     expect(await readFile(join(sourceDirectory, "plugin.php"), "utf8")).toBe(
       "<?php\n",
     );
+    expect(
+      await readFile(join(dependencyDirectory, "wp-load.php"), "utf8"),
+    ).toBe("<?php // core\n");
 
     await writeFile(
       join(sourceDirectory, "plugin.php"),
@@ -394,6 +438,33 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
       ],
     });
     expect(await readFile(`${dockerExecutablePath}.count`, "utf8")).toBe("3");
+
+    await writeFile(join(sourceDirectory, "plugin.php"), "<?php\n", "utf8");
+    await writeFile(
+      join(dependencyDirectory, "wp-load.php"),
+      "<?php // changed core\n",
+      "utf8",
+    );
+    const changedDependencyInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-grok-native-dependency-mismatch",
+    };
+    await expect(
+      campaigns.conduct(changedDependencyInput),
+    ).resolves.toMatchObject({ status: "incomplete" });
+    await expect(
+      campaigns.inspect({ campaignId: changedDependencyInput.campaignId }),
+    ).resolves.toMatchObject({
+      nativeRuns: [
+        {
+          terminal: "policy-denied",
+          failure: {
+            summary:
+              "A mounted Dependency source does not match its sealed source tree.",
+          },
+        },
+      ],
+    });
     campaigns.close();
   });
 });

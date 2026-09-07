@@ -8,7 +8,7 @@ WordPress Targetの選定からagent-led Research、Independent Validation、fre
 
 **Diagnostic core owns evidence and limits; agents own Discovery decisions; Independent Validation owns Findings; humans own external actions.**
 
-Productの必須flowは`Target Snapshot -> Discovery -> Independent Validation -> Finding`である。Target IntelligenceとHuman OSは前後のsupporting workflowであり、未接続でも診断coreの失敗にしない。隔離はNative Agent Runtime Adapterの内部安全条件であり、診断結果やpromotionの目的にしない。
+Productの必須flowは`Target Snapshot + Dependency Snapshots -> Discovery -> Independent Validation -> Finding`である。Target IntelligenceとHuman OSは前後のsupporting workflowであり、未接続でも診断coreの失敗にしない。隔離はNative Agent Runtime Adapterの内部安全条件であり、診断結果やpromotionの目的にしない。
 
 ![スマホ向け診断core図](visuals/diagnosis-architecture.svg)
 
@@ -57,7 +57,7 @@ interface NativeAgentRuntime {
 }
 ```
 
-Grok BuildとClaude Codeのprovider固有CLIはAdapter内へ局所化する。GLM 5.3はZ.AI endpointへ固定したClaude Code process Adapterを使い、Claude Code自身のagent、subagent、source tool運用を再実装しない。各runはimmutable imageをrunscで起動し、read-only Targetとisolated scratch / provider homeだけをmountする。Research continuationはprovider-native conversationとscratchをprivate Agent Checkpointから再開し、append-only recordにはopaque refだけを置く。ValidationはCheckpointを共有しない。runtime profileで指定したproviderからsilent fallbackしない。
+Grok BuildとClaude Codeのprovider固有CLIはAdapter内へ局所化する。GLM 5.3はZ.AI endpointへ固定したClaude Code process Adapterを使い、Claude Code自身のagent、subagent、source tool運用を再実装しない。各runはimmutable imageをrunscで起動し、read-only Target、read-only Dependency Snapshots、isolated scratch / provider homeだけをmountする。Dependencyはframework behaviorのauthoritative referenceでありaudit Targetにしない。Research continuationはprovider-native conversationとscratchをprivate Agent Checkpointから再開し、append-only recordにはopaque refだけを置く。ValidationはCheckpointを共有しない。runtime profileで指定したproviderからsilent fallbackしない。
 
 ### Independent Validation
 
@@ -74,7 +74,7 @@ Researchと別のfresh native runがcandidateを同じread-only sourceから再�
 1. Target Intelligenceがoracle-free Candidate Poolを固定する。
 2. AIがTarget Proposalを作り、人間がApproved Target Batchを承認する。
 3. 実行直前にversion、source、identity、provenanceを再確認する。
-4. ResearchがTarget、Prompt、Runtime、Permission、Budgetをsealする。
+4. ResearchがTarget、Dependency、Prompt、Runtime、Permission、Budgetをsealする。
 5. Provider-native Root agentがsubagentを必要に応じて使い、具体的なsource-bound next actionがある間は続ける。
 6. Candidateをfresh Independent Validationへ渡す。具体的なproof gapはRootが続行可否を決める。
 7. AIにactionable frontierがなくpending ValidationもなければCoverageを閉じる。外部制約やBudgetで続行不能なら`incomplete`にする。
@@ -86,7 +86,7 @@ Unauthenticated SQLi、Stored XSS、ATO、PrivEsc、arbitrary file operation、o
 ## Invariants
 
 - Target sourceをhost上で実行しない。
-- Target mountはread-only、scratchだけをwriteableにする。
+- TargetとDependency mountはread-only、scratchだけをwriteableにする。
 - Rootとnative subagentへ同じPermission Profileを適用する。
 - ambient shell、network、credential、container socket、host path、plugin、hook、memory、未承認MCPを渡さない。
 - runsc capabilityを確認できないruntimeへfallbackしない。

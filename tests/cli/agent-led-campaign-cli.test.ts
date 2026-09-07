@@ -18,14 +18,21 @@ describe("agent-led campaign CLI", () => {
   it("conducts and inspects only the agent-led Campaign interface", async () => {
     const directory = await mkdtemp(join(tmpdir(), "agent-led-cli-"));
     const sourceDirectory = join(directory, "source");
+    const dependencyDirectory = join(directory, "wordpress-core");
     const providerConfigDirectory = join(directory, "provider");
     const scratchRootDirectory = join(directory, "scratch");
     await Promise.all([
       mkdir(sourceDirectory),
+      mkdir(dependencyDirectory),
       mkdir(providerConfigDirectory),
       mkdir(scratchRootDirectory),
     ]);
     await writeFile(join(sourceDirectory, "plugin.php"), "<?php\n", "utf8");
+    await writeFile(
+      join(dependencyDirectory, "wp-load.php"),
+      "<?php // core\n",
+      "utf8",
+    );
     const sourceTreeDigest = canonicalDigest({
       kind: "canonical-file-manifest",
       schemaVersion: 1,
@@ -34,6 +41,17 @@ describe("agent-led campaign CLI", () => {
           path: "plugin.php",
           digest: `sha256:${createHash("sha256").update("<?php\n").digest("hex")}`,
           size: 6,
+        },
+      ],
+    });
+    const dependencyTreeDigest = canonicalDigest({
+      kind: "canonical-file-manifest",
+      schemaVersion: 1,
+      entries: [
+        {
+          path: "wp-load.php",
+          digest: `sha256:${createHash("sha256").update("<?php // core\n").digest("hex")}`,
+          size: 14,
         },
       ],
     });
@@ -57,6 +75,19 @@ describe("agent-led campaign CLI", () => {
         digest: digest("a"),
         sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
       },
+      dependencySnapshots: [
+        {
+          id: "wordpress-core-7.1",
+          mountName: "wordpress",
+          version: "7.1",
+          digest: digest("9"),
+          sourceTree: {
+            digest: dependencyTreeDigest,
+            entries: 1,
+            bytes: 14,
+          },
+        },
+      ],
       promptSet: {
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
@@ -127,6 +158,8 @@ exit 90
           digest("f"),
           "--source",
           sourceDirectory,
+          "--dependency-source",
+          `wordpress=${dependencyDirectory}`,
           "--provider-config",
           providerConfigDirectory,
           "--scratch",

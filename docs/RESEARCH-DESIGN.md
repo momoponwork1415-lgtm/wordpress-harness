@@ -17,7 +17,7 @@ Harnessは判断内容ではなく、判断できる安全な条件と証拠を�
 | Concern | Harness owns | AI owns |
 | --- | --- | --- |
 | Target Selection | oracle-free Candidate Pool、source identity、freshness、Budget、人間のBatch承認 | 優先Target、理由、不確実性、再調査価値 |
-| Research | Target Snapshot、Prompt、Permission、Budget、record、terminal semantics | 仮説、native subagent、読む順序、継続、停止、candidate |
+| Research | Target / Dependency Snapshots、Prompt、Permission、Budget、record、terminal semantics | 仮説、native subagent、読む順序、継続、停止、candidate |
 | Validation | fresh独立runtime、source-only権限、candidate binding、Finding生成条件 | 検証方法、counterevidence、proof gap、disposition提案 |
 | Human OS | fresh runtime、Private Evidence、external authorization | reproduction、理解支援、Draft作成 |
 
@@ -39,7 +39,7 @@ Programme対象外、Disclosure Route不明、既探索またはAIの低評価�
 
 ## Agent-led Research
 
-通常運転はwp2shell / Cycle Double Cover Promptを直接の系譜とする、raw-source-firstの一つの連続loopである。Provider-native Root agentはTarget Snapshot全体を読み、必要に応じてnative subagentを起動し、互いに異なるroute、反証、synthesisまたは追加調査を進める。Harnessはagent数、role、round、探索classまたは読むfileを指定しない。探索評価ではGrokを先に使う。利用不能時に同じCampaignを暗黙fallbackせず、GLM 5.3等の別Runtime Profileをbindした新しいCampaignとして明示的に比較する。
+通常運転はwp2shell / Cycle Double Cover Promptを直接の系譜とする、raw-source-firstの一つの連続loopである。Provider-native Root agentはTarget Snapshot全体を読み、pluginが依存するWordPress core等の挙動をpinned Dependency Snapshotから解決する。必要に応じてnative subagentを起動し、互いに異なるroute、反証、synthesisまたは追加調査を進める。Dependencyはsource worldを完成させるreferenceであり、別のaudit Targetにしない。Harnessはagent数、role、round、探索classまたは読むfileを指定しない。探索評価ではGrokを先に使う。利用不能時に同じCampaignを暗黙fallbackせず、GLM 5.3等の別Runtime Profileをbindした新しいCampaignとして明示的に比較する。
 
 Research Rootのprovider-native conversationとscratchはprivate Agent Checkpointとして継続できる。Harnessは固定checkpoint cadenceや内部tool eventをdomain modelにせず、bindingとintegrityを持つopaque refだけを記録する。budgetまたはprovider interruptionでもCheckpointを保存できなければ`incomplete`であり、resume可能とは扱わない。Independent ValidationへResearch Checkpointを渡さない。
 
@@ -60,7 +60,7 @@ staticまたは派生解析の出力があってもnavigationとevidenceの補�
 
 Validation Candidateは、Target Snapshot、attacker premise、broken security property、主張と初期source anchorを持つ。固定rubric、順番付き完全route、vulnerability class、RCE escalationまたは特定mechanism Adapterへの対応をadmission条件にしない。
 
-Independent Validationはcandidateごとに一回のfresh source-only runを行う。Research Rootのconversation、scratch、verdictを共有せず、Validator自身がreachability、attacker control、既存防御、security effectとcounterevidenceを再導出する。Target code、build、testまたはruntime attackを実行しない。
+Independent Validationはcandidateごとに一回のfresh source-only runを行う。Research Rootのconversation、scratch、verdictを共有せず、同じTarget / Dependency SnapshotsからValidator自身がreachability、attacker control、既存防御、security effectとcounterevidenceを再導出する。TargetまたはDependencyのcode、build、test、runtime attackを実行しない。
 
 複数Targetは互いに独立したCampaignとprocessとして並列実行する。Harness内へ中央schedulerやcross-Target Validation queueを作らず、providerまたはoperatorの既存process並列性を使う。
 
@@ -82,11 +82,11 @@ AIが有望なsource-bound next actionを残さず、全Validationがterminalで
 ## Trust and versioning
 
 - Target sourceをhost上で実行しない。
-- Target Snapshotはread-only、隔離scratchだけをwriteableにする。
+- Target / Dependency Snapshotsはread-only、隔離scratchだけをwriteableにする。
 - Rootとnative subagentへ同じPermission Profileを適用する。
 - ambient shell、network、credential、container socket、host path、plugin、hook、memory、未承認MCPを与えない。
 - gVisor相当以上のOS-level sandboxとTransport Eligibility capability probeを通らないruntimeを使わず、host processまたはplain Dockerへfallbackしない。
-- Target Snapshot、Prompt Set、Agent Runtime Profile、Permission Profile、Budget Envelope、outputをCampaignへdigest bindする。
+- Target / Dependency Snapshots、Prompt Set、Agent Runtime Profile、Permission Profile、Budget Envelope、outputをCampaignへdigest bindする。
 - providerまたはmodelをsilent fallbackしない。GrokからGLM 5.3へ切り替える場合も別Runtime Profileと新しいCampaign inputを使う。
 - 人間の必須gateはApproved Target BatchとExternal Action Authorization、最後のSubmitに置く。
 
@@ -111,6 +111,7 @@ Cost削減はrecall baseline確立後に一変数ずつablationする。LOCは�
 
 - [ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)
 - [ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)
+- [ADR 0128](adr/0128-provide-pinned-dependency-source-to-research.md)
 - [wp2shell exact prompt](https://www.slcyber.io/research/exploit-brokers-pay-500000-for-a-wordpress-rce-i-found-one-with-gpt5-6#the-story-of-wp2shell)
 - [Cycle Double Cover Prompt](https://cdn.openai.com/pdf/04d1d1e4-bc75-476a-97cf-49055cd98d31/cdc_prompt.pdf)
 - [Reference harness comparison](knowledge/reference-harness-observability.md)
