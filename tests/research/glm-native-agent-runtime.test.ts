@@ -54,13 +54,24 @@ describe("GLM Native Agent Runtime", () => {
       '{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"No actionable frontier remains."}}';
     const ambiguousStop =
       '{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"Ambiguous stop.","nextActions":[{"question":"Continue?","sourcePointers":["plugin.php"]}]}}';
+    const malformedValidation =
+      '{"schemaVersion":1,"candidateId":"candidate-1","disposition":"source-validated","reason":"The source supports the claim.","evidence":[{"path":"plugin.php","location":"1","observation":"source observation"}],"}';
+    const validValidation =
+      '{"schemaVersion":1,"candidateId":"candidate-1","disposition":"source-validated","reason":"The source supports the claim.","evidence":[{"path":"plugin.php","location":"1","observation":"source observation"}]}';
     const providerResultPath = join(directory, "provider-result.txt");
     const correctedProviderResultPath = join(
       directory,
       "corrected-provider-result.txt",
     );
+    const validationResultPath = join(directory, "validation-result.txt");
+    const correctedValidationResultPath = join(
+      directory,
+      "corrected-validation-result.txt",
+    );
     await writeFile(providerResultPath, missingClosuresResult, "utf8");
     await writeFile(correctedProviderResultPath, validCandidateResult, "utf8");
+    await writeFile(validationResultPath, malformedValidation, "utf8");
+    await writeFile(correctedValidationResultPath, validValidation, "utf8");
     const providerSettings = {
       env: {
         ANTHROPIC_AUTH_TOKEN: "test-zai-token",
@@ -115,6 +126,7 @@ provider_mount=''
 scratch=''
 session=''
 is_version_probe=0
+is_validation=0
 previous=''
 for argument in "$@"; do
   if [ "$previous" = "--model" ] && [ "$argument" = "opus" ]; then has_alias=1; fi
@@ -127,8 +139,10 @@ for argument in "$@"; do
   [ "$argument" != "--json-schema" ] || has_json_schema=1
   [ "$argument" != "--max-budget-usd" ] || has_cost_cap=1
   [ "$argument" != "--version" ] || is_version_probe=1
+  [ "$argument" != "--no-session-persistence" ] || is_validation=1
   case "$argument" in
     *:/provider:rw) provider_mount="\${argument%:/provider:rw}" ;;
+    *:/provider:ro) provider_mount="\${argument%:/provider:ro}" ;;
     *:/workspace/research:rw) scratch="\${argument%:/workspace/research:rw}" ;;
   esac
   previous="$argument"
@@ -147,6 +161,7 @@ fi
 [ -f "$provider_mount/settings.json" ] || exit 97
 [ ! -e "$provider_mount/.mcp.json" ] || exit 98
 [ -n "$scratch" ] || exit 99
+[ "$is_validation" -eq 0 ] || session='11111111-1111-4111-8111-111111111111'
 [ -n "$session" ] || exit 100
 prompt=$(cat)
 printf '%s' "$prompt" | grep -F 'Return exactly one JSON value matching this schema.' >/dev/null
@@ -155,9 +170,17 @@ printf '%s' '{"checkpoint":true}' > "$provider_mount/session-$session.jsonl"
 printf '%s' 'durable GLM research notes' > "$scratch/state.md"
 result_path='${providerResultPath}'
 subagents=2
-case "$prompt" in
-  *'Your immediately preceding response was invalid JSON.'*)
+if [ "$is_validation" -eq 1 ]; then
+  result_path='${validationResultPath}'
+  subagents=0
+fi
+case "$prompt:$is_validation" in
+  *'The prior response was invalid JSON.'*:0)
     result_path='${correctedProviderResultPath}'
+    subagents=0
+    ;;
+  *'The prior response was invalid JSON.'*:1)
+    result_path='${correctedValidationResultPath}'
     subagents=0
     ;;
 esac
@@ -205,7 +228,7 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
       },
       budgetEnvelope: {
         id: "agent-led-budget-v1",
-        maxNativeRuns: 1,
+        maxNativeRuns: 2,
         maxWallTimeMs: 600_000,
         maxEstimatedCostUsd: 5,
         digest:
@@ -260,7 +283,7 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
     });
 
     await expect(campaigns.conduct(input)).resolves.toMatchObject({
-      status: "incomplete",
+      status: "coverage-closed",
     });
     await expect(
       campaigns.inspect({ campaignId: input.campaignId }),
@@ -283,6 +306,20 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
           report: { decision: { kind: "stop" } },
         },
       ],
+      validationRuns: [
+        {
+          receipt: {
+            terminal: "completed",
+            usage: {
+              wallTimeMs: 60_000,
+              inputTokens: 8_500,
+              outputTokens: 1_000,
+            },
+            report: { disposition: "source-validated" },
+          },
+        },
+      ],
+      findings: [{ candidateId: "candidate-1" }],
     });
     const checkpointEntries = await readdir(
       join(scratchRootDirectory, "agent-checkpoints"),
