@@ -14,11 +14,11 @@ Status: current implementation map, 2026-09-07
 | Programme / disclosure observations | implemented | 全Programmeを一つのCandidate Poolへ組み立てるapplication serviceは未実装 |
 | AI Target Proposal | exact Grok transportをadmitするproduction Adapterまでimplemented | CLIとCandidate Pool組立serviceが未実装 |
 | human Approved Target Batch | implemented | Research `CampaignInput`への変換が未接続 |
-| agent-led Research loop | private Agent Checkpointからのresumeまでimplemented、Claude benign smoke / resume probe完走 | GLM 5.3がknown-positive Brizyの既知境界を再発見しfresh Validation済み。patched / bareを含むboundary pair全体は未完了 |
+| agent-led Research loop | private Agent Checkpointからのresumeまでimplemented、Claude benign smoke / resume probe完走 | GLM 5.3がknown-positive Brizyを再発見しfresh Validation済み。残るknown-positive corpusは未完了 |
 | Grok native runtime | exact image / CLI versionをadmitし、structurally tested | real Brizy runはproviderのHTTP 402で未完了 |
 | Claude Code native runtime | exact imageをreal boundary-probed | admitted image以外は再probeが必要 |
 | GLM native runtime | exact Claude Code imageからZ.AI GLM 5.3へ接続し、runscでreal research / native subagent / fresh Validationを実行済み | Brizy boundary pair全体は未完了 |
-| fresh Independent Validation | implemented | real targetのpositive / negative pairは未完了 |
+| fresh Independent Validation | implemented | Brizy positiveで実測済み。残るknown-positive corpusは未完了 |
 | Finding / Coverage / failure record | implemented | cross-context Coverage Receipt adapterは未実装 |
 | Human OS append-only records and external gate | implemented | runtime environmentのprovision / executionは未接続 |
 | actual external submission | intentionally absent | 人間が最後のSubmitを行う |
@@ -83,7 +83,7 @@ Status: current implementation map, 2026-09-07
 
 **Owned state:** Campaign input、Native Run Receipt、private Agent Checkpoint ref、Validation Receipt、Finding、Coverage、interruptionをSQLite append-only eventsへ記録する。provider conversationとscratch本文はprivate content-addressed stateに置く。
 
-**Invariants:** candidateは到着順や支持数で捨てない。各candidateのValidationは一つのfresh runである。completed Research / Validation Receiptはrunsc上のgVisor実行とfallback不使用の証跡を必須とする。各runへ累積使用量を引いた残りのwall time / costだけを渡し、超過したterminal reportでCoverageを閉じない。`source-validated`だけがFindingを生成する。FindingとCoverageを分離する。
+**Invariants:** candidateは到着順や支持数で捨てない。各candidateのValidationは一つのfresh runであり、最大4 candidateを独立contextで並列実行する。並列batchへ残Budgetを分配し、結果はcandidate順でappendする。completed Research / Validation Receiptはrunsc上のgVisor実行とfallback不使用の証跡を必須とする。各runへ累積使用量を引いた残りのwall time / costだけを渡し、超過したterminal reportでCoverageを閉じない。`source-validated`だけがFindingを生成する。FindingとCoverageを分離する。
 
 **Failure semantics:** provider、Budget、policy、invalid outputは`incomplete`または`validation-pending`にする。同じCampaign IDへの異なるinputはconflictにする。再実行はdurable stateからresumeする。
 

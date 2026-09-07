@@ -19,7 +19,7 @@ Target Snapshot -> agent-led Discovery -> Validation Candidate
 
 HarnessはTargetとPromptのbinding、探索状態、usage、failure、candidate、Validation resultとFindingを記録する。AIは調査順序、subagent、継続、停止、candidateと検証方法を決める。
 
-合否は既知positiveのoracle-free再発見、Independent Validation成立、patched negative controlの同一causal identity非昇格で測る。LOC、sandbox機能数、Target Selection自動化、Human OS接続またはCampaign Coverage closureを診断精度の代理指標にしない。
+合否は既知positiveのoracle-free再発見とIndependent Validation成立で測る。patched版やbare controlは必要な比較実験でだけ使い、通常の診断またはpromotionに要求しない。LOC、sandbox機能数、Target Selection自動化、Human OS接続またはCampaign Coverage closureを診断精度の代理指標にしない。
 
 ## Safety envelope
 

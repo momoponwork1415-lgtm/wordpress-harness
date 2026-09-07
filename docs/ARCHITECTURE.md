@@ -10,6 +10,8 @@ WordPress Targetの選定からagent-led Research、Independent Validation、fre
 
 Productの必須flowは`Target Snapshot -> Discovery -> Independent Validation -> Finding`である。Target IntelligenceとHuman OSは前後のsupporting workflowであり、未接続でも診断coreの失敗にしない。隔離はNative Agent Runtime Adapterの内部安全条件であり、診断結果やpromotionの目的にしない。
 
+![スマホ向け診断core図](visuals/diagnosis-architecture.svg)
+
 Harnessが固定するのはTarget identity、source provenance、Prompt、Permission、Budget、freshness、record、failure semanticsと人間のauthorizationである。AIがTargetの優先順位、探索方法、native subagent、読む順序、継続、停止、candidateと検証方法を決める。
 
 ## Contexts
@@ -57,7 +59,7 @@ Grok BuildとClaude Codeのprovider固有CLIはAdapter内へ局所化する。GL
 
 ### Independent Validation
 
-Researchと別のfresh native runがcandidateを同じread-only sourceから再導出し、`source-validated / needs-research / disproven / validation-pending`を返す。固定rubricやclass Adapterをpublic seamへ出さない。`source-validated`だけがFindingを生成する。
+Researchと別のfresh native runがcandidateを同じread-only sourceから再導出し、`source-validated / needs-research / disproven / validation-pending`を返す。最大4 candidateを並列実行し、各Validatorのcontextとscratchは共有しない。固定rubricやclass Adapterをpublic seamへ出さない。`source-validated`だけがFindingを生成する。
 
 ### Human OS
 

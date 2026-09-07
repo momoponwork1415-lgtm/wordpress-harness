@@ -60,7 +60,7 @@ staticまたは派生解析の出力があってもnavigationとevidenceの補�
 
 Validation Candidateは、Target Snapshot、attacker premise、broken security property、主張と初期source anchorを持つ。固定rubric、順番付き完全route、vulnerability class、RCE escalationまたは特定mechanism Adapterへの対応をadmission条件にしない。
 
-Independent Validationはcandidateごとに一回のfresh source-only runを行う。Research Rootのconversation、scratch、verdictを共有せず、Validator自身がreachability、attacker control、既存防御、security effectとcounterevidenceを再導出する。Target code、build、testまたはruntime attackを実行しない。
+Independent Validationはcandidateごとに一回のfresh source-only runを行う。最大4 candidateを並列実行するが、Validator間でもconversation、scratchまたはverdictを共有しない。各Validatorはreachability、attacker control、既存防御、security effectとcounterevidenceを再導出する。Target code、build、testまたはruntime attackを実行しない。
 
 | Disposition | Meaning |
 | --- | --- |
@@ -101,7 +101,7 @@ Prompt、runtime、permissionまたはresearch policyの変更は進行中Campai
 - source、provider、budgetまたはschema failureをnegativeへ丸めないか。
 - public Interfaceからbehaviorを観測でき、旧内部Testを削除できるか。
 
-診断coreの合否は既知positiveのoracle-free再発見、Independent Validation成立、patched negative controlの同一causal identity非昇格で測る。隔離方式、Target Selection、Human OS、Coverage closureまたはLOCを診断精度の代理指標にしない。既存隔離は安全用Adapterとして再利用するが、実CVEの発見・検証を改善しない高度化へ先行投資しない。
+診断coreの合否は既知positiveのoracle-free再発見とIndependent Validation成立で測る。patched版やbare controlは必要な比較実験でだけ使い、通常の診断またはpromotionに要求しない。隔離方式、Target Selection、Human OS、Coverage closureまたはLOCを診断精度の代理指標にしない。既存隔離は安全用Adapterとして再利用するが、実CVEの発見・検証を改善しない高度化へ先行投資しない。
 
 Cost削減はrecall baseline確立後に一変数ずつablationする。LOCは設計の証明または目標値にしない。未使用code、二つ目の実装がない汎用abstraction、AI判断を再実装するorchestrationを残さず、実測LOCの増加はpublic behaviorで説明する。
 
