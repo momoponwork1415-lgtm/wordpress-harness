@@ -41,7 +41,7 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 - Researchのexternal seamは`conduct`と`inspect`だけを持つdeepなResearch Campaigns Moduleに置き、Agent-led Research、Independent Validation、Finding、Coverage、BudgetとResearch Recordを隠す。
 - Native Agent Runtimeはprovider/process/session/tool bindingとreceiptを所有するが研究判断を所有しない。Grok Buildを探索評価の第一選択とし、Claude Codeも独立Adapterとして使う。provider-neutralなtool DSLを作らない。
 - Root AIはnative subagent、仮説、読む順序、synthesis、critique、candidate、継続と停止を所有する。HarnessはFinder数、role、Wave、Lease、Depth、Approach Familyまたは固定手順を実装しない。
-- Surface Map、PHP Program Index、AST、Semgrep、CodeQLは補助toolであり探索空間ではない。
+- staticまたは派生解析の出力があってもnavigationとevidenceの補助に限り、探索空間またはcompletion proofにしない。
 - ResearchのValidationはcandidateごとに一つのfreshなsource-only runを行う。固定rubricまたはclass別Adapterを要求せず、Research Root自身ではなくIndependent Validationだけがsource-validated Findingを生成できる。
 - Human OSはFindingをfreshな隔離環境でAI Reproductionし、runtime / human Verification Recordをappend-onlyに追加する。runtime失敗や人間の反証はFindingを削除せず、disprovedまたは理由付きincompleteとして残す。
 - AIは脆弱性の理解とSubmission Draft作成を支援できるが、External Action Authorization、Draft承認、最後のSubmitを代行しない。
@@ -83,11 +83,10 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 - commit前のrepository gateは`pnpm check`。
 - Target/Prompt/Runtime/Permission/Budget binding、Rootとnative subagentの権限制約、single fresh Validation、Independent ValidationだけがFindingを生成すること、FindingとCoverageの分離、AI failureを棄却へ丸めないこと、external actionのhuman gateは回帰対象とする。旧schema、legacy replay、固定role orchestrationまたは未使用Adapterを新binaryへ残さない。
 
-## TypeScript and PHP
+## TypeScript
 
 - TypeScriptは`strict`、`noUncheckedIndexedAccess`、`exactOptionalPropertyTypes`、`useUnknownInCatchVariables`を維持する。
 - `any`やunchecked assertionをvalidationの代用にしない。versioned discriminated unionとruntime schemaを使う。
-- PHP helperはpinned `nikic/PHP-Parser`に限定し、Campaign stateを所有させない。
 - source analysisのためにtarget PHP、autoload、Composer script、WordPress bootstrapをhost上で実行しない。
 
 ## Security and evidence

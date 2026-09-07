@@ -54,7 +54,7 @@ source-boundで具体的な次の調査がある -> continue
 
 一つのcandidateを得ただけで停止せず、RCEへ伸びないことだけを理由に重大なSQLiやStored XSSを未完成扱いしない。支持数、model confidence、到着順、static rule non-match、Surface Map外であることをcandidateの棄却またはsafe判定に使わない。
 
-Surface Map、AST、Semgrep、CodeQL等の派生解析を将来使う場合もnavigationとevidenceの補助に限り、探索空間またはcompletion proofにしない。現行agent pathはraw sourceを直接読む。
+staticまたは派生解析の出力があってもnavigationとevidenceの補助に限り、探索空間またはcompletion proofにしない。現行agent pathはraw sourceを直接読む。
 
 ## Independent Validation
 
