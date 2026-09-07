@@ -1,17 +1,16 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 
-import type { ModelProcessResult } from "./contracts.js";
-import type {
-  ModelProcessObservation,
-  ModelProcessObserver,
-} from "./model-process-observability.js";
-
-export type NativeModelProcessResult = Extract<
-  ModelProcessResult,
-  {
-    readonly kind: "exited" | "timed-out" | "output-limit-exceeded";
-  }
->;
+export type NativeModelProcessResult =
+  | {
+      readonly kind: "exited";
+      readonly exitCode: number;
+      readonly stdout: string;
+      readonly stderr: string;
+    }
+  | {
+      readonly kind: "timed-out" | "output-limit-exceeded";
+      readonly stderr: string;
+    };
 
 export interface NativeModelProcessRunOptions {
   readonly executablePath: string;
@@ -22,13 +21,6 @@ export interface NativeModelProcessRunOptions {
   readonly timeoutMs: number;
   readonly maxOutputBytes: number;
   readonly redact?: (text: string) => string;
-  readonly observer?: ModelProcessObserver;
-  readonly heartbeatIntervalMs: number;
-  readonly observation?: {
-    readonly operationId: string;
-    readonly phase: ModelProcessObservation["phase"];
-    readonly segmentOrdinal: number;
-  };
 }
 
 function signalProcessTree(
@@ -57,23 +49,6 @@ export function runNativeModelProcess(
   options: NativeModelProcessRunOptions,
 ): Promise<NativeModelProcessResult> {
   return new Promise((resolve, reject) => {
-    const processStartedAt = performance.now();
-    const observation = options.observation;
-    const observe = (event: ModelProcessObservation): void => {
-      try {
-        options.observer?.observe(event);
-      } catch {
-        // Observability must not change provider execution.
-      }
-    };
-    if (observation !== undefined) {
-      observe({
-        kind: "model-process-started",
-        schemaVersion: 1,
-        ...observation,
-        occurredAt: new Date().toISOString(),
-      });
-    }
     const child = spawn(options.executablePath, options.args, {
       cwd: options.workingDirectory,
       detached: process.platform !== "win32",
@@ -86,20 +61,6 @@ export function runNativeModelProcess(
     let stderrBytes = 0;
     let terminalKind: "timed-out" | "output-limit-exceeded" | undefined;
     let killTimer: NodeJS.Timeout | undefined;
-    const heartbeat =
-      observation === undefined
-        ? undefined
-        : setInterval(() => {
-            observe({
-              kind: "model-process-heartbeat",
-              schemaVersion: 1,
-              ...observation,
-              occurredAt: new Date().toISOString(),
-              elapsedMs: Math.ceil(performance.now() - processStartedAt),
-            });
-          }, options.heartbeatIntervalMs);
-    heartbeat?.unref();
-
     const terminate = (kind: "timed-out" | "output-limit-exceeded"): void => {
       if (terminalKind !== undefined) return;
       terminalKind = kind;
@@ -129,57 +90,24 @@ export function runNativeModelProcess(
     });
     child.once("error", (error) => {
       clearTimeout(timeout);
-      if (heartbeat !== undefined) clearInterval(heartbeat);
       if (killTimer !== undefined) clearTimeout(killTimer);
-      if (observation !== undefined) {
-        observe({
-          kind: "model-process-failed",
-          schemaVersion: 1,
-          ...observation,
-          occurredAt: new Date().toISOString(),
-          elapsedMs: Math.ceil(performance.now() - processStartedAt),
-          reason: "spawn-failed",
-        });
-      }
       reject(error);
     });
     child.stdin.once("error", (error: NodeJS.ErrnoException) => {
       if (error.code === "EPIPE") return;
       clearTimeout(timeout);
-      if (heartbeat !== undefined) clearInterval(heartbeat);
       if (killTimer !== undefined) clearTimeout(killTimer);
       signalProcessTree(child, "SIGKILL");
-      if (observation !== undefined) {
-        observe({
-          kind: "model-process-failed",
-          schemaVersion: 1,
-          ...observation,
-          occurredAt: new Date().toISOString(),
-          elapsedMs: Math.ceil(performance.now() - processStartedAt),
-          reason: "stdin-failed",
-        });
-      }
       reject(error);
     });
     child.once("close", (exitCode) => {
       clearTimeout(timeout);
-      if (heartbeat !== undefined) clearInterval(heartbeat);
       const redact = options.redact ?? ((text: string) => text);
       const stderrText = redact(Buffer.concat(stderr).toString("utf8"));
       if (terminalKind !== undefined) {
         signalProcessTree(child, "SIGKILL");
         if (killTimer !== undefined) clearTimeout(killTimer);
         const result = { kind: terminalKind, stderr: stderrText } as const;
-        if (observation !== undefined) {
-          observe({
-            kind: "model-process-completed",
-            schemaVersion: 1,
-            ...observation,
-            occurredAt: new Date().toISOString(),
-            elapsedMs: Math.ceil(performance.now() - processStartedAt),
-            result,
-          });
-        }
         resolve(result);
         return;
       }
@@ -190,16 +118,6 @@ export function runNativeModelProcess(
         stdout: redact(Buffer.concat(stdout).toString("utf8")),
         stderr: stderrText,
       } as const;
-      if (observation !== undefined) {
-        observe({
-          kind: "model-process-completed",
-          schemaVersion: 1,
-          ...observation,
-          occurredAt: new Date().toISOString(),
-          elapsedMs: Math.ceil(performance.now() - processStartedAt),
-          result,
-        });
-      }
       resolve(result);
     });
 

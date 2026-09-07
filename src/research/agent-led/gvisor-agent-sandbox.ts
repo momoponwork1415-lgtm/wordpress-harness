@@ -25,9 +25,7 @@ const pinnedImageSchema = z
   .string()
   .regex(/^(?:sha256:[a-f0-9]{64}|[^\s@]+@sha256:[a-f0-9]{64})$/);
 const dockerRuntimesSchema = z.record(z.string(), z.unknown());
-const credentialFileSchema = z
-  .string()
-  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+const credentialFileSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
 
 export interface GvisorAgentRuntimeOptions {
   readonly dockerExecutablePath: string;
@@ -192,9 +190,7 @@ export class GvisorAgentSandbox {
       throw new Error("Agent Runtime prompt must not be empty");
     }
     if (promptTextDigest(options.promptSet.text) !== options.promptSet.digest) {
-      throw new Error(
-        "Research prompt text does not match its sealed digest",
-      );
+      throw new Error("Research prompt text does not match its sealed digest");
     }
     if (options.validationPromptSet.text.length === 0) {
       throw new Error("Independent Validation prompt must not be empty");
@@ -286,7 +282,6 @@ export class GvisorAgentSandbox {
         ...(stdin === undefined ? {} : { stdin }),
         timeoutMs,
         maxOutputBytes,
-        heartbeatIntervalMs: 25_000,
       });
 
     const runtimes = await docker(
@@ -357,12 +352,16 @@ export class GvisorAgentSandbox {
         await mkdir(providerHome, { mode: 0o700 });
         for (const candidate of command.ephemeralProviderCredentialFiles) {
           const filename = credentialFileSchema.parse(candidate);
-          const source = await realpath(join(providerConfigDirectory, filename));
+          const source = await realpath(
+            join(providerConfigDirectory, filename),
+          );
           if (
             !source.startsWith(`${providerConfigDirectory}/`) ||
             !(await stat(source)).isFile()
           ) {
-            throw new Error("Provider credential is outside the bound directory");
+            throw new Error(
+              "Provider credential is outside the bound directory",
+            );
           }
           const destination = join(providerHome, filename);
           await copyFile(source, destination, COPYFILE_EXCL);
