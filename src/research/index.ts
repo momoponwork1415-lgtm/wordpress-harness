@@ -10,7 +10,12 @@ export {
   openGrokNativeAgentRuntime,
   openResearchCampaigns,
   researchReportSchema,
+  sealedAgentRunSchema,
   sealedNativeRunSchema,
+  sealedValidationRunSchema,
+  sourceValidatedFindingSchema,
+  validationReportSchema,
+  validationRunReceiptSchema,
 } from "./agent-led/index.js";
 export type {
   CampaignInput,
@@ -19,6 +24,7 @@ export type {
   CampaignQuery,
   CampaignStatus,
   NativeAgentRuntime,
+  NativeAgentReceipt,
   NativeRunReceipt,
   OpenClaudeCodeNativeAgentRuntimeOptions,
   OpenGrokNativeAgentRuntimeOptions,
@@ -26,7 +32,13 @@ export type {
   ResearchCampaigns,
   ResearchCampaignView,
   ResearchReport,
+  SealedAgentRun,
   SealedNativeRun,
+  SealedValidationRun,
+  SourceValidatedFinding,
+  ValidationReport,
+  ValidationRunReceipt,
+  ValidationRunRecord,
 } from "./agent-led/index.js";
 export type {
   CampaignProgressSubjectRef,

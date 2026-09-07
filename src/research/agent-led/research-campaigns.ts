@@ -9,16 +9,23 @@ import {
   campaignInterruptionSchema,
   campaignInputSchema,
   nativeRunReceiptSchema,
+  validationRunReceiptSchema,
   type CampaignInput,
   type CampaignOutcomeRef,
   type CampaignQuery,
   type CampaignStatus,
+  type NativeAgentReceipt,
   type NativeAgentRuntime,
   type NativeRunReceipt,
   type OpenResearchCampaignsOptions,
   type ResearchCampaigns,
   type ResearchCampaignView,
+  type SealedAgentRun,
   type SealedNativeRun,
+  type SealedValidationRun,
+  type ValidationCandidate,
+  type ValidationRunReceipt,
+  type ValidationRunRecord,
 } from "./contracts.js";
 
 const jsonValueSchema = z.json();
@@ -27,6 +34,7 @@ const eventRowSchema = z.object({
   kind: z.enum([
     "campaign.defined",
     "native-run.recorded",
+    "validation-run.recorded",
     "campaign.interrupted",
   ]),
   occurred_at: z.string(),
@@ -42,6 +50,12 @@ const campaignDefinedPayloadSchema = z.strictObject({
 const nativeRunRecordedPayloadSchema = z.strictObject({
   inputDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
   receipt: nativeRunReceiptSchema,
+});
+
+const validationRunRecordedPayloadSchema = z.strictObject({
+  inputDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  candidateId: z.string().min(1),
+  receipt: validationRunReceiptSchema,
 });
 
 const campaignInterruptedPayloadSchema = z.strictObject({
@@ -75,26 +89,18 @@ function decodeJson(value: string): unknown {
   return JSON.parse(value) as unknown;
 }
 
-function statusFor(receipt: NativeRunReceipt): CampaignStatus {
-  if (receipt.terminal !== "completed") return "incomplete";
-  if (receipt.report.decision.kind === "continue") return "research-continues";
-  return receipt.report.candidates.length === 0
-    ? "coverage-closed"
-    : "validation-pending";
-}
-
-type FailedNativeRunReceipt = Exclude<
-  NativeRunReceipt,
+type FailedNativeAgentReceipt = Exclude<
+  NativeAgentReceipt,
   { readonly terminal: "completed" }
 >;
 
 function failedReceipt(
-  run: SealedNativeRun,
+  run: SealedAgentRun,
   startedAt: Date,
   completedAt: Date,
-  terminal: FailedNativeRunReceipt["terminal"],
+  terminal: FailedNativeAgentReceipt["terminal"],
   summary: string,
-): FailedNativeRunReceipt {
+): FailedNativeAgentReceipt {
   return {
     schemaVersion: 1,
     runId: run.runId,
@@ -105,28 +111,59 @@ function failedReceipt(
     usage: {
       wallTimeMs: Math.max(0, completedAt.getTime() - startedAt.getTime()),
     },
-    activity: { subagents: 0, tools: [] },
+    activity: { subagents: null, tools: null },
     failure: { summary },
   };
 }
 
 function hasRunBudget(
   input: CampaignInput,
-  nativeRuns: readonly NativeRunReceipt[],
+  receipts: readonly NativeAgentReceipt[],
 ): boolean {
-  const wallTimeMs = nativeRuns.reduce(
+  const wallTimeMs = receipts.reduce(
     (total, receipt) => total + receipt.usage.wallTimeMs,
     0,
   );
-  const estimatedCostUsd = nativeRuns.reduce(
+  const estimatedCostUsd = receipts.reduce(
     (total, receipt) => total + (receipt.usage.estimatedCostUsd ?? 0),
     0,
   );
   return (
-    nativeRuns.length < input.budgetEnvelope.maxNativeRuns &&
+    receipts.length < input.budgetEnvelope.maxNativeRuns &&
     wallTimeMs < input.budgetEnvelope.maxWallTimeMs &&
     estimatedCostUsd < input.budgetEnvelope.maxEstimatedCostUsd
   );
+}
+
+function allReceipts(
+  view: ResearchCampaignView,
+): readonly NativeAgentReceipt[] {
+  return [
+    ...view.nativeRuns,
+    ...view.validationRuns.map((record) => record.receipt),
+  ];
+}
+
+function candidatesFor(
+  nativeRuns: readonly NativeRunReceipt[],
+): readonly ValidationCandidate[] {
+  const candidates = new Map<string, ValidationCandidate>();
+  for (const receipt of nativeRuns) {
+    if (receipt.terminal !== "completed") continue;
+    for (const candidate of receipt.report.candidates) {
+      const prior = candidates.get(candidate.candidateId);
+      if (
+        prior !== undefined &&
+        encodeCanonicalJson(prior) !== encodeCanonicalJson(candidate)
+      ) {
+        throw new Error(
+          `Validation Candidate identity was reused with different evidence: ${candidate.candidateId}`,
+        );
+      }
+      candidates.set(candidate.candidateId, candidate);
+    }
+  }
+  return [...candidates.values()];
 }
 
 function outcomeFor(view: ResearchCampaignView): CampaignOutcomeRef {
@@ -172,7 +209,10 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
       if (existing.inputDigest !== inputDigest) {
         throw new AgentLedCampaignConflictError(input.campaignId);
       }
-      if (existing.status !== "research-continues") {
+      if (
+        existing.status === "coverage-closed" ||
+        existing.status === "incomplete"
+      ) {
         return outcomeFor(existing);
       }
     } else {
@@ -183,10 +223,54 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
     }
 
     let view = this.#requireView(input.campaignId);
-    while (
-      view.status === "research-continues" &&
-      hasRunBudget(input, view.nativeRuns)
-    ) {
+    for (;;) {
+      if (view.status === "coverage-closed" || view.status === "incomplete") {
+        return outcomeFor(view);
+      }
+
+      const attemptedCandidates = new Set(
+        view.validationRuns.map((record) => record.candidateId),
+      );
+      const pendingCandidate = candidatesFor(view.nativeRuns).find(
+        (candidate) => !attemptedCandidates.has(candidate.candidateId),
+      );
+      if (pendingCandidate !== undefined) {
+        if (!hasRunBudget(input, allReceipts(view))) {
+          this.#interruptForBudget(input, inputDigest, true);
+          view = this.#requireView(input.campaignId);
+          continue;
+        }
+        const run: SealedValidationRun = {
+          kind: "sealed-native-validation-run",
+          schemaVersion: 1,
+          runId: `${input.campaignId}:validation:${view.validationRuns.length + 1}`,
+          campaignId: input.campaignId,
+          campaignInputDigest: inputDigest,
+          targetSnapshot: input.targetSnapshot,
+          promptSet: input.validationPromptSet,
+          agentRuntimeProfile: input.agentRuntimeProfile,
+          permissionProfile: input.permissionProfile,
+          budgetEnvelope: input.budgetEnvelope,
+          candidate: pendingCandidate,
+        };
+        const receipt = await this.#executeValidation(run);
+        this.#append(input.campaignId, "validation-run.recorded", {
+          inputDigest,
+          candidateId: pendingCandidate.candidateId,
+          receipt,
+        });
+        view = this.#requireView(input.campaignId);
+        continue;
+      }
+
+      if (view.status !== "research-continues") {
+        return outcomeFor(view);
+      }
+      if (!hasRunBudget(input, allReceipts(view))) {
+        this.#interruptForBudget(input, inputDigest, false);
+        view = this.#requireView(input.campaignId);
+        continue;
+      }
       const ordinal = view.nativeRuns.length + 1;
       const run: SealedNativeRun = {
         kind: "sealed-native-research-run",
@@ -202,6 +286,17 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         history: view.nativeRuns.flatMap((receipt) =>
           receipt.terminal === "completed"
             ? [{ runId: receipt.runId, report: receipt.report }]
+            : [],
+        ),
+        validationFeedback: view.validationRuns.flatMap((record) =>
+          record.receipt.terminal === "completed"
+            ? [
+                {
+                  runId: record.receipt.runId,
+                  candidateId: record.candidateId,
+                  report: record.receipt.report,
+                },
+              ]
             : [],
         ),
       };
@@ -242,29 +337,25 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
           "Native Run Receipt did not match the sealed Campaign binding.",
         );
       }
+      if (receipt.terminal === "completed") {
+        try {
+          candidatesFor([...view.nativeRuns, receipt]);
+        } catch {
+          receipt = failedReceipt(
+            run,
+            startedAt,
+            this.#clock(),
+            "invalid-output",
+            "Native Agent Runtime reused a Candidate identity with different evidence.",
+          );
+        }
+      }
       this.#append(input.campaignId, "native-run.recorded", {
         inputDigest,
         receipt,
       });
       view = this.#requireView(input.campaignId);
     }
-
-    if (
-      view.status === "research-continues" &&
-      !hasRunBudget(input, view.nativeRuns)
-    ) {
-      this.#append(input.campaignId, "campaign.interrupted", {
-        inputDigest,
-        interruption: {
-          reason: "budget-exhausted",
-          summary:
-            "The Native Run budget ended with an actionable frontier remaining.",
-        },
-      });
-      view = this.#requireView(input.campaignId);
-    }
-
-    return outcomeFor(view);
   }
 
   async inspect(query: CampaignQuery): Promise<ResearchCampaignView> {
@@ -273,6 +364,65 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
 
   close(): void {
     this.#database.close();
+  }
+
+  async #executeValidation(
+    run: SealedValidationRun,
+  ): Promise<ValidationRunReceipt> {
+    const startedAt = this.#clock();
+    let receipt: ValidationRunReceipt;
+    try {
+      const returnedReceipt = await this.#runtime.execute(run);
+      const decoded = validationRunReceiptSchema.safeParse(returnedReceipt);
+      receipt = decoded.success
+        ? decoded.data
+        : failedReceipt(
+            run,
+            startedAt,
+            this.#clock(),
+            "invalid-output",
+            "Native Agent Runtime returned an unsupported Validation output schema.",
+          );
+    } catch {
+      receipt = failedReceipt(
+        run,
+        startedAt,
+        this.#clock(),
+        "provider-failed",
+        "Native Agent Runtime failed before returning a Validation receipt.",
+      );
+    }
+    if (
+      receipt.runId !== run.runId ||
+      receipt.runtimeProfileDigest !== run.agentRuntimeProfile.digest ||
+      (receipt.terminal === "completed" &&
+        receipt.report.candidateId !== run.candidate.candidateId)
+    ) {
+      return failedReceipt(
+        run,
+        startedAt,
+        this.#clock(),
+        "invalid-output",
+        "Validation Run Receipt did not match the sealed Candidate binding.",
+      );
+    }
+    return receipt;
+  }
+
+  #interruptForBudget(
+    input: CampaignInput,
+    inputDigest: string,
+    validationPending: boolean,
+  ): void {
+    this.#append(input.campaignId, "campaign.interrupted", {
+      inputDigest,
+      interruption: {
+        reason: "budget-exhausted",
+        summary: validationPending
+          ? "The Native Run budget ended before Independent Validation completed."
+          : "The Native Run budget ended with an actionable frontier remaining.",
+      },
+    });
   }
 
   #append(campaignId: string, kind: EventRow["kind"], payload: unknown): void {
@@ -343,7 +493,9 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
     }
 
     const nativeRuns: NativeRunReceipt[] = [];
+    const validationRuns: ValidationRunRecord[] = [];
     let interruption: z.infer<typeof campaignInterruptionSchema> | undefined;
+    let needsResearchAfterLatestNativeRun = false;
     for (const row of rows.slice(1)) {
       const value = decodeJson(row.payload_json);
       if (canonicalDigest(value) !== row.payload_digest) {
@@ -357,6 +509,51 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
           throw new Error(`Native Run input binding mismatch: ${campaignId}`);
         }
         nativeRuns.push(event.receipt);
+        needsResearchAfterLatestNativeRun = false;
+        continue;
+      }
+      if (row.kind === "validation-run.recorded") {
+        const event = validationRunRecordedPayloadSchema.parse(value);
+        if (event.inputDigest !== definition.inputDigest) {
+          throw new Error(
+            `Validation Run input binding mismatch: ${campaignId}`,
+          );
+        }
+        const candidate = candidatesFor(nativeRuns).find(
+          (item) => item.candidateId === event.candidateId,
+        );
+        if (candidate === undefined) {
+          throw new Error(
+            `Validation Run references an unknown Candidate: ${campaignId}`,
+          );
+        }
+        if (
+          validationRuns.some(
+            (record) => record.candidateId === event.candidateId,
+          )
+        ) {
+          throw new Error(
+            `Duplicate Validation Run for Candidate: ${event.candidateId}`,
+          );
+        }
+        if (
+          event.receipt.terminal === "completed" &&
+          event.receipt.report.candidateId !== event.candidateId
+        ) {
+          throw new Error(
+            `Validation Run Candidate binding mismatch: ${campaignId}`,
+          );
+        }
+        validationRuns.push({
+          candidateId: event.candidateId,
+          receipt: event.receipt,
+        });
+        if (
+          event.receipt.terminal === "completed" &&
+          event.receipt.report.disposition === "needs-research"
+        ) {
+          needsResearchAfterLatestNativeRun = true;
+        }
         continue;
       }
       if (row.kind === "campaign.interrupted") {
@@ -375,20 +572,87 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
       throw new Error(`Unsupported agent-led Campaign event: ${row.kind}`);
     }
     const latest = nativeRuns.at(-1);
+    const attemptedCandidates = new Set(
+      validationRuns.map((record) => record.candidateId),
+    );
+    const hasUnattemptedCandidate = candidatesFor(nativeRuns).some(
+      (candidate) => !attemptedCandidates.has(candidate.candidateId),
+    );
+    const hasFailedRun =
+      nativeRuns.some((receipt) => receipt.terminal !== "completed") ||
+      validationRuns.some(
+        (record) =>
+          record.receipt.terminal !== "completed" ||
+          record.receipt.report.disposition === "validation-pending",
+      );
+    let status: CampaignStatus;
+    if (interruption !== undefined || hasFailedRun) {
+      status = "incomplete";
+    } else if (latest === undefined) {
+      status = "research-continues";
+    } else if (hasUnattemptedCandidate) {
+      status = "validation-pending";
+    } else if (
+      needsResearchAfterLatestNativeRun ||
+      (latest.terminal === "completed" &&
+        latest.report.decision.kind === "continue")
+    ) {
+      status = "research-continues";
+    } else {
+      status = "coverage-closed";
+    }
+    const candidates = candidatesFor(nativeRuns);
+    const findings = validationRuns.flatMap((record) => {
+      if (
+        record.receipt.terminal !== "completed" ||
+        record.receipt.report.disposition !== "source-validated"
+      ) {
+        return [];
+      }
+      const candidate = candidates.find(
+        (item) => item.candidateId === record.candidateId,
+      );
+      if (candidate === undefined) return [];
+      return [
+        {
+          kind: "source-validated-finding" as const,
+          schemaVersion: 1 as const,
+          findingId: `${campaignId}:finding:${candidate.candidateId}`,
+          candidateId: candidate.candidateId,
+          targetSnapshot: definition.input.targetSnapshot,
+          attackerPremise: candidate.attackerPremise,
+          brokenSecurityProperty: candidate.brokenSecurityProperty,
+          claim: candidate.claim,
+          assurance: "source-validated" as const,
+          validation: {
+            runId: record.receipt.runId,
+            promptSet: definition.input.validationPromptSet,
+            runtimeProfileDigest: definition.input.agentRuntimeProfile.digest,
+            permissionProfileDigest: definition.input.permissionProfile.digest,
+          },
+          evidence: record.receipt.report.evidence,
+        },
+      ];
+    });
 
     return {
       kind: "agent-led-campaign-outcome",
       schemaVersion: 1,
       campaignId,
       inputDigest: definition.inputDigest,
-      status:
-        interruption === undefined
-          ? latest === undefined
-            ? "research-continues"
-            : statusFor(latest)
-          : "incomplete",
+      status,
       input: definition.input,
       nativeRuns,
+      validationRuns,
+      findings,
+      coverage: {
+        status:
+          status === "coverage-closed"
+            ? "closed"
+            : status === "incomplete"
+              ? "incomplete"
+              : "open",
+      },
       ...(interruption === undefined ? {} : { interruption }),
     };
   }

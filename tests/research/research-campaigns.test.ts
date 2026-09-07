@@ -36,6 +36,11 @@ const input: CampaignInput = {
     digest:
       "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   },
+  validationPromptSet: {
+    id: "prompt-independent-validation-v1",
+    digest:
+      "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  },
   agentRuntimeProfile: {
     id: "runtime-scripted-v1",
     kind: "scripted-native-agent/v1",
@@ -189,7 +194,7 @@ describe("ResearchCampaigns", () => {
         {
           terminal: "provider-failed",
           usage: { wallTimeMs: 0 },
-          activity: { subagents: 0, tools: [] },
+          activity: { subagents: null, tools: null },
           failure: {
             summary: "Native Agent Runtime failed before returning a receipt.",
           },
@@ -261,6 +266,9 @@ describe("ResearchCampaigns", () => {
       databasePath: join(directory, "agent-led.sqlite"),
       runtime: {
         async execute(run) {
+          if (run.kind !== "sealed-native-research-run") {
+            throw new Error("This scenario does not produce a candidate");
+          }
           const invocation = run.history.length + 1;
           return {
             schemaVersion: 1,
@@ -539,7 +547,7 @@ describe("ResearchCampaigns", () => {
     campaigns.close();
   });
 
-  it("keeps a stopped Campaign pending while a candidate awaits Validation", async () => {
+  it("keeps a budget-starved Validation incomplete instead of negative", async () => {
     const directory = await mkdtemp(join(tmpdir(), "research-candidate-"));
     temporaryDirectories.push(directory);
     const candidateInput: CampaignInput = {
@@ -564,6 +572,10 @@ describe("ResearchCampaigns", () => {
               candidates: [
                 {
                   candidateId: "candidate-persistent-output-1",
+                  attackerPremise:
+                    "An unauthenticated visitor can submit the public form.",
+                  brokenSecurityProperty:
+                    "Persisted attacker input must be made inert at privileged output.",
                   claim:
                     "An unauthenticated value is persisted and rendered to another principal without context-appropriate escaping.",
                   evidence: [
@@ -592,12 +604,18 @@ describe("ResearchCampaigns", () => {
     });
 
     await expect(campaigns.conduct(candidateInput)).resolves.toMatchObject({
-      status: "validation-pending",
+      status: "incomplete",
     });
     await expect(
       campaigns.inspect({ campaignId: "campaign-validation-pending-1" }),
     ).resolves.toMatchObject({
-      status: "validation-pending",
+      status: "incomplete",
+      coverage: { status: "incomplete" },
+      interruption: {
+        reason: "budget-exhausted",
+        summary:
+          "The Native Run budget ended before Independent Validation completed.",
+      },
       nativeRuns: [
         {
           report: {
@@ -605,6 +623,303 @@ describe("ResearchCampaigns", () => {
           },
         },
       ],
+      validationRuns: [],
+      findings: [],
+    });
+    campaigns.close();
+  });
+
+  it("creates a Finding only after one fresh independent source Validation", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "research-validation-"));
+    temporaryDirectories.push(directory);
+    const candidateInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-source-validated-1",
+      validationPromptSet: {
+        id: "prompt-independent-validation-v1",
+        digest:
+          "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      },
+      budgetEnvelope: {
+        ...input.budgetEnvelope,
+        maxNativeRuns: 2,
+      },
+    };
+    const seenValidationCandidates: string[] = [];
+    const runtime: NativeAgentRuntime = {
+      async execute(run) {
+        if (run.kind === "sealed-native-validation-run") {
+          expect("history" in run).toBe(false);
+          seenValidationCandidates.push(run.candidate.candidateId);
+          return {
+            schemaVersion: 1,
+            runId: run.runId,
+            runtimeProfileDigest: run.agentRuntimeProfile.digest,
+            terminal: "completed",
+            startedAt: "2026-09-07T10:02:00.000Z",
+            completedAt: "2026-09-07T10:03:00.000Z",
+            usage: { wallTimeMs: 60_000 },
+            activity: { subagents: 1, tools: ["source.read"] },
+            report: {
+              schemaVersion: 1,
+              candidateId: run.candidate.candidateId,
+              disposition: "source-validated",
+              reason:
+                "A public request controls persisted markup which is rendered to an administrator without context-appropriate escaping.",
+              evidence: [
+                {
+                  path: "public/submit.php",
+                  location: "submit_public_form:51",
+                  observation:
+                    "The unauthenticated handler persists the request value without sanitizing markup.",
+                },
+                {
+                  path: "admin/entries.php",
+                  location: "render_entry:103",
+                  observation:
+                    "The administrator view emits the persisted value without output escaping.",
+                },
+              ],
+            },
+          };
+        }
+        return {
+          schemaVersion: 1,
+          runId: run.runId,
+          runtimeProfileDigest: run.agentRuntimeProfile.digest,
+          terminal: "completed",
+          startedAt: "2026-09-07T10:00:00.000Z",
+          completedAt: "2026-09-07T10:01:00.000Z",
+          usage: { wallTimeMs: 60_000 },
+          activity: { subagents: 2, tools: ["source.read"] },
+          report: {
+            schemaVersion: 1,
+            candidates: [
+              {
+                candidateId: "candidate-unauth-stored-xss-1",
+                attackerPremise:
+                  "An unauthenticated visitor can submit the public form.",
+                brokenSecurityProperty:
+                  "Persisted attacker input must be made inert at privileged output.",
+                claim:
+                  "An unauthenticated form value is persisted and later rendered as active markup to an administrator.",
+                evidence: [
+                  {
+                    path: "public/submit.php",
+                    location: "submit_public_form:51",
+                    observation: "Persists an unauthenticated request value.",
+                  },
+                  {
+                    path: "admin/entries.php",
+                    location: "render_entry:103",
+                    observation:
+                      "Emits the persisted value to an administrator.",
+                  },
+                ],
+              },
+            ],
+            decision: {
+              kind: "stop",
+              basis:
+                "The candidate is source-bound and no separate actionable frontier remains.",
+            },
+          },
+        };
+      },
+    };
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "agent-led.sqlite"),
+      runtime,
+    });
+
+    await expect(campaigns.conduct(candidateInput)).resolves.toMatchObject({
+      status: "coverage-closed",
+    });
+    await expect(
+      campaigns.inspect({ campaignId: "campaign-source-validated-1" }),
+    ).resolves.toMatchObject({
+      status: "coverage-closed",
+      coverage: { status: "closed" },
+      validationRuns: [
+        {
+          candidateId: "candidate-unauth-stored-xss-1",
+          receipt: {
+            terminal: "completed",
+            report: { disposition: "source-validated" },
+          },
+        },
+      ],
+      findings: [
+        {
+          candidateId: "candidate-unauth-stored-xss-1",
+          targetSnapshot: candidateInput.targetSnapshot,
+          attackerPremise:
+            "An unauthenticated visitor can submit the public form.",
+          brokenSecurityProperty:
+            "Persisted attacker input must be made inert at privileged output.",
+          claim:
+            "An unauthenticated form value is persisted and later rendered as active markup to an administrator.",
+          assurance: "source-validated",
+          validation: {
+            runId: "campaign-source-validated-1:validation:1",
+            promptSet: candidateInput.validationPromptSet,
+            runtimeProfileDigest: candidateInput.agentRuntimeProfile.digest,
+            permissionProfileDigest: candidateInput.permissionProfile.digest,
+          },
+        },
+      ],
+    });
+    await expect(campaigns.conduct(candidateInput)).resolves.toMatchObject({
+      status: "coverage-closed",
+    });
+    expect(seenValidationCandidates).toEqual(["candidate-unauth-stored-xss-1"]);
+    campaigns.close();
+  });
+
+  it("returns a source-bound Validation proof gap to the Research Root", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "research-proof-gap-"));
+    temporaryDirectories.push(directory);
+    const proofGapInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-proof-gap-1",
+      budgetEnvelope: {
+        ...input.budgetEnvelope,
+        maxNativeRuns: 3,
+      },
+    };
+    let researchRuns = 0;
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "agent-led.sqlite"),
+      runtime: {
+        async execute(run) {
+          if (run.kind === "sealed-native-validation-run") {
+            return {
+              schemaVersion: 1,
+              runId: run.runId,
+              runtimeProfileDigest: run.agentRuntimeProfile.digest,
+              terminal: "completed",
+              startedAt: "2026-09-07T11:01:00.000Z",
+              completedAt: "2026-09-07T11:02:00.000Z",
+              usage: { wallTimeMs: 60_000 },
+              activity: { subagents: 0, tools: ["source.read"] },
+              report: {
+                schemaVersion: 1,
+                candidateId: run.candidate.candidateId,
+                disposition: "needs-research",
+                reason:
+                  "The write path is established, but the privileged renderer named in the claim is only referenced indirectly.",
+                evidence: [
+                  {
+                    path: "public/save.php",
+                    location: "save_value:44",
+                    observation: "Persists the public request value.",
+                  },
+                ],
+                nextActions: [
+                  {
+                    question:
+                      "Which registered admin callback invokes render_saved_value?",
+                    sourcePointers: ["admin/bootstrap.php", "admin/view.php"],
+                  },
+                ],
+              },
+            };
+          }
+
+          researchRuns += 1;
+          if (researchRuns === 2) {
+            expect(run.validationFeedback).toMatchObject([
+              {
+                candidateId: "candidate-proof-gap-1",
+                report: {
+                  disposition: "needs-research",
+                  nextActions: [
+                    {
+                      question:
+                        "Which registered admin callback invokes render_saved_value?",
+                    },
+                  ],
+                },
+              },
+            ]);
+            return {
+              schemaVersion: 1,
+              runId: run.runId,
+              runtimeProfileDigest: run.agentRuntimeProfile.digest,
+              terminal: "completed",
+              startedAt: "2026-09-07T11:02:00.000Z",
+              completedAt: "2026-09-07T11:03:00.000Z",
+              usage: { wallTimeMs: 60_000 },
+              activity: { subagents: 1, tools: ["source.read"] },
+              report: {
+                schemaVersion: 1,
+                candidates: [],
+                decision: {
+                  kind: "stop",
+                  basis:
+                    "The callback registration was traced and applies output escaping; no actionable frontier remains.",
+                },
+              },
+            };
+          }
+
+          return {
+            schemaVersion: 1,
+            runId: run.runId,
+            runtimeProfileDigest: run.agentRuntimeProfile.digest,
+            terminal: "completed",
+            startedAt: "2026-09-07T11:00:00.000Z",
+            completedAt: "2026-09-07T11:01:00.000Z",
+            usage: { wallTimeMs: 60_000 },
+            activity: { subagents: 1, tools: ["source.read"] },
+            report: {
+              schemaVersion: 1,
+              candidates: [
+                {
+                  candidateId: "candidate-proof-gap-1",
+                  attackerPremise:
+                    "An unauthenticated visitor can submit the public form.",
+                  brokenSecurityProperty:
+                    "Persisted attacker input must be inert in privileged output.",
+                  claim:
+                    "A public request value reaches privileged HTML output without escaping.",
+                  evidence: [
+                    {
+                      path: "public/save.php",
+                      location: "save_value:44",
+                      observation: "Persists the public request value.",
+                    },
+                  ],
+                },
+              ],
+              decision: {
+                kind: "stop",
+                basis:
+                  "The candidate is source-bound and no other frontier remains.",
+              },
+            },
+          };
+        },
+      },
+    });
+
+    await expect(campaigns.conduct(proofGapInput)).resolves.toMatchObject({
+      status: "coverage-closed",
+    });
+    await expect(
+      campaigns.inspect({ campaignId: "campaign-proof-gap-1" }),
+    ).resolves.toMatchObject({
+      coverage: { status: "closed" },
+      nativeRuns: [{}, {}],
+      validationRuns: [
+        {
+          receipt: {
+            terminal: "completed",
+            report: { disposition: "needs-research" },
+          },
+        },
+      ],
+      findings: [],
     });
     campaigns.close();
   });

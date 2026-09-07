@@ -8,9 +8,11 @@ import {
 import {
   nativeRunReceiptSchema,
   researchReportSchema,
+  validationReportSchema,
+  validationRunReceiptSchema,
   type NativeAgentRuntime,
-  type NativeRunReceipt,
-  type SealedNativeRun,
+  type NativeAgentReceipt,
+  type SealedAgentRun,
 } from "./contracts.js";
 
 const modelUsageSchema = z.record(
@@ -62,7 +64,7 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
     this.#sandbox = new GvisorAgentSandbox(options);
   }
 
-  async execute(run: SealedNativeRun): Promise<NativeRunReceipt> {
+  async execute(run: SealedAgentRun): Promise<NativeAgentReceipt> {
     if (
       run.agentRuntimeProfile.kind !== "claude-code-native/v1" ||
       !this.#sandbox.bindingMatches(run)
@@ -111,7 +113,13 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         "--output-format",
         "json",
         "--json-schema",
-        JSON.stringify(z.toJSONSchema(researchReportSchema)),
+        JSON.stringify(
+          z.toJSONSchema(
+            run.kind === "sealed-native-research-run"
+              ? researchReportSchema
+              : validationReportSchema,
+          ),
+        ),
       ],
       prompt: { kind: "stdin", text: this.#sandbox.prompt(run) },
     });
@@ -149,18 +157,22 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         true,
       );
     }
-    const report = researchReportSchema.safeParse(envelope.structured_output);
+    const report = (
+      run.kind === "sealed-native-research-run"
+        ? researchReportSchema
+        : validationReportSchema
+    ).safeParse(envelope.structured_output);
     if (!report.success) {
       return failedNativeRunReceipt(
         run,
         "invalid-output",
-        "Claude Code returned an unsupported Research Report.",
+        "Claude Code returned an unsupported Agent Report.",
         execution.startedAt,
         execution.completedAt,
         true,
       );
     }
-    return nativeRunReceiptSchema.parse({
+    const receipt = {
       schemaVersion: 1,
       runId: run.runId,
       runtimeProfileDigest: run.agentRuntimeProfile.digest,
@@ -195,7 +207,10 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         fallbackUsed: false,
       },
       report: report.data,
-    });
+    };
+    return run.kind === "sealed-native-research-run"
+      ? nativeRunReceiptSchema.parse(receipt)
+      : validationRunReceiptSchema.parse(receipt);
   }
 }
 

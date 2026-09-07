@@ -8,9 +8,11 @@ import {
 import {
   nativeRunReceiptSchema,
   researchReportSchema,
+  validationReportSchema,
+  validationRunReceiptSchema,
   type NativeAgentRuntime,
-  type NativeRunReceipt,
-  type SealedNativeRun,
+  type NativeAgentReceipt,
+  type SealedAgentRun,
 } from "./contracts.js";
 
 const grokUsageSchema = z.strictObject({
@@ -60,7 +62,7 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
     this.#sandbox = new GvisorAgentSandbox(options);
   }
 
-  async execute(run: SealedNativeRun): Promise<NativeRunReceipt> {
+  async execute(run: SealedAgentRun): Promise<NativeAgentReceipt> {
     if (
       run.agentRuntimeProfile.kind !== "grok-build-native/v1" ||
       run.agentRuntimeProfile.model !== "grok-4.6" ||
@@ -101,7 +103,13 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         "--permission-mode",
         "bypassPermissions",
         "--json-schema",
-        JSON.stringify(z.toJSONSchema(researchReportSchema)),
+        JSON.stringify(
+          z.toJSONSchema(
+            run.kind === "sealed-native-research-run"
+              ? researchReportSchema
+              : validationReportSchema,
+          ),
+        ),
         "--prompt-file",
         "/workspace/research/prompt.txt",
       ],
@@ -148,18 +156,22 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         true,
       );
     }
-    const report = researchReportSchema.safeParse(envelope.structuredOutput);
+    const report = (
+      run.kind === "sealed-native-research-run"
+        ? researchReportSchema
+        : validationReportSchema
+    ).safeParse(envelope.structuredOutput);
     if (!report.success) {
       return failedNativeRunReceipt(
         run,
         "invalid-output",
-        "Grok Build returned an unsupported Research Report.",
+        "Grok Build returned an unsupported Agent Report.",
         execution.startedAt,
         execution.completedAt,
         true,
       );
     }
-    return nativeRunReceiptSchema.parse({
+    const receipt = {
       schemaVersion: 1,
       runId: run.runId,
       runtimeProfileDigest: run.agentRuntimeProfile.digest,
@@ -187,7 +199,10 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         fallbackUsed: false,
       },
       report: report.data,
-    });
+    };
+    return run.kind === "sealed-native-research-run"
+      ? nativeRunReceiptSchema.parse(receipt)
+      : validationRunReceiptSchema.parse(receipt);
   }
 }
 

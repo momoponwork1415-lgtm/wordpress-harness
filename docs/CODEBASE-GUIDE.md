@@ -1,6 +1,6 @@
 # Codebase Guide
 
-Status: living module map, 2026-09-06
+Status: living module map, 2026-09-07
 
 ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所で引くためのガイドである。whole-systemの関係とflowは[Architecture](ARCHITECTURE.md)、research policyは[Research Design](RESEARCH-DESIGN.md)を参照する。
 
@@ -11,7 +11,7 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Target Acquisition / Intake | local directory、WordPress.org archiveを実装済み | premium acquisition |
 | Target selection / approval | Research History、programme / route観測、自律選定、人間のBatch承認を実装済み | Campaign Coverage Receipt、unattended dispatch |
 | Vulnerability Intelligence | Wordfence Intelligence v3のlocal indexとoracle-separated projectionを実装済み | なし（Wordfence-only方針を#102で確定済み） |
-| Agent-led Research migration | `ResearchCampaigns.conduct / inspect`、sealed Native Run、Claude/Grok gVisor Adapter、継続・停止・incompleteの新event streamを実装 | 実provider Acceptance、Independent Validation、Finding接続、旧経路削除（#143–#148） |
+| Agent-led Research migration | `ResearchCampaigns.conduct / inspect`、Claude/Grok gVisor Adapter、fresh Independent Validation、Finding/Coverage分離を新event streamへ実装 | 実provider Acceptance、production接続、旧経路削除（#143–#148） |
 | Semantic Research | v7 initial Wave、Decision@3、conditional Depth実行、`campaign run`入口まで実装済み | Missing-link / Closure |
 | Source-only Validation | v7 single fresh Attempt、4 disposition、source-validated Findingを実装済み | Frontier Gapの次Wave |
 | Runtime handoff | FindingをAI Reproductionへ直接渡すcurrent contract、旧Runtime Verification Packetのread-only replayを実装済み | Human Verification移行（#126 / #129） |
@@ -23,7 +23,7 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 
 到達点は**主要機能が部分接続された開発版**である。表の「実装済み」は対応するInterfaceとBehavior Testがあることを示し、実対象での一連の運用や検出品質を保証しない。新Findingへの人間確認の追記と提出準備は未接続であり、旧Packetでの完了実績を現行lifecycleの完了へ読み替えない。
 
-現在のproduction CLIは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / single source Validation -> source-validated Finding + Coverage`のv7経路である。並行してADR 0125の新しい`ResearchCampaigns`が別schema familyと別event tableで実装を開始しているが、production Agent RuntimeとCLIには未接続である。Findingの存在とCoverage状態は別々にterminal viewへ返す。Researchの旧Packetはread-only replayに限定する。Human OSには移行前のHuman Review writerとdirect legacy AI writerが残り、物理的な退役は#126 / #129で扱う。
+現在のproduction CLIは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / single source Validation -> source-validated Finding + Coverage`のv7経路である。並行してADR 0125の新しい`ResearchCampaigns`が別schema familyと別event tableでAgent-led Research、Independent Validation、Finding/Coverage projectionを実装したが、production Agent RuntimeとCLIには未接続である。Researchの旧Packetはread-only replayに限定する。Human OSには移行前のHuman Review writerとdirect legacy AI writerが残り、物理的な退役は#126 / #129で扱う。
 
 Finding handoffとAI Reproductionのcurrent contractは接続済みであり、Human Verificationは旧Finding gateから移行中である。[ADR 0124](adr/0124-align-campaign-and-finding-lifecycle-with-reference-harnesses.md)ではFinding lifecycleだけを変更し、現行のSemantic Research Waveとpublic seamは維持する。Target Intelligence内の自律選定とBatch承認は実装済みだが、Approved Target BatchからTarget Acquisition / Researchへのdispatchは未接続であり、完成度をpercentでは表さない。進捗表示はcurrent Validation / Findingをv2、旧VerificationだけのCampaignをv1で返す。集計は保存recordから再生成する（[Issue #132](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/132)）。次の有限workと順序は[Issue #124](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/124)と[Issue #86](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/86)を正本とする。
 
@@ -158,11 +158,11 @@ production v7のContext外入口は`openResearch`。移行中のagent-led入口�
 **Interface:** `ResearchCampaigns.conduct(input) -> CampaignOutcomeRef`、`ResearchCampaigns.inspect(query) -> ResearchCampaignView`
 
 - **Purpose:** Agent Runtimeが所有する連続Researchを、固定入力、外部Budget、durable receiptとterminal semanticsの薄いshellで囲む。
-- **Owned state:** `agent_led_research_events`へCampaign definition、Native Run Receipt、Budget interruptionをappendする。Target Snapshot、Prompt Set、Agent Runtime Profile、Permission Profile、Budget EnvelopeをCampaign input digestへ同時にbindする。
-- **Invariants:** callerはFinder、role、Wave、Lease、Depth、CWE、fileまたはsubagent数を指定しない。AIの`continue`は保存済みreport履歴とともに次のsealed runへ進み、`stop`はactionable frontierが残らない根拠を保持する。candidateを伴うstopは`validation-pending`であり、candidateのないstopだけを`coverage-closed`にする。max native runs、reported wall time、reported provider costは次run開始前に強制する。
-- **Failure semantics:** provider例外、unsupported output schema、receipt binding不一致、Budget exhaustionは`incomplete`として保存し、no-findingまたは`disproven`へ変換しない。raw provider errorはcredentialまたはhost pathを含み得るためpublic recordへ複製しない。
-- **Status:** scripted Native Agent Runtimeを使う最小vertical slice、同一`conduct`内の継続・停止、再起動後のinspect、run/time/cost Budget interruptionを実装。Claude CodeとGrok BuildのAdapterは共通`GvisorAgentSandbox`でrunsc availability、digest-pinned image、sandbox内CLI versionをpreflightし、Target read-only / scratch write、capability drop、Bash / Web denialを固定する。Claudeはreported native subagent数を保存する。Grokはsubagentを禁止せず、envelopeにないactivityを0へ丸めず`null`で保持する。process contractはfake Dockerで検査済みだが、実image / providerを使うAcceptance、Independent Validation、Finding接続は未実施（[#143](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/143)、[#144](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/144)、[#148](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/148)）。
-- **Code / Behavior Test:** [agent-led](../src/research/agent-led) · [ResearchCampaigns](../tests/research/research-campaigns.test.ts) · [Claude Code Adapter](../tests/research/claude-code-native-agent-runtime.test.ts) · [Grok Adapter](../tests/research/grok-native-agent-runtime.test.ts)
+- **Owned state:** `agent_led_research_events`へCampaign definition、Research / ValidationのNative Run Receipt、Budget interruptionをappendする。Target Snapshot、Research / Validation Prompt Set、Agent Runtime Profile、Permission Profile、Budget EnvelopeをCampaign input digestへ同時にbindする。FindingとCoverageはdigest検証済みeventから別々に投影する。
+- **Invariants:** callerはFinder、role、Wave、Lease、Depth、CWE、fileまたはsubagent数を指定しない。AIの`continue`は保存済みsource-bound reportとValidation feedbackを次のsealed Research runへ渡す。candidateはResearch history、transcript、scratch、verdictを持たないfreshなsealed Validation runで一度だけ検証する。`source-validated`だけがFindingを作り、`needs-research`はRootへ返す。Findingの有無はCoverageを閉じない。max native runs、reported wall time、reported provider costはResearchとValidationを合算し、次run開始前に強制する。
+- **Failure semantics:** provider例外、unsupported output schema、receipt / Candidate binding不一致、Budget exhaustion、`validation-pending`は`incomplete`として保存し、no-findingまたは`disproven`へ変換しない。`disproven`はsource contradictionを示すevidenceを要求する。raw provider errorはcredentialまたはhost pathを含み得るためpublic recordへ複製しない。
+- **Status:** scripted Runtimeで自動継続、fresh Validation、proof gapのRoot再投入、Finding/Coverage分離、reopenとBudget interruptionを実装。Claude CodeとGrok Buildは共通`GvisorAgentSandbox`で各runに異なるscratchを作り、runsc availability、digest-pinned image、sandbox内CLI version、Target read-only / scratch write、capability drop、Bash / Web denialを固定する。Grokはsubagentを禁止せず、envelopeにないactivityを0へ丸めず`null`で保持する。process contractとResearch / Validation分離はfake Dockerで検査済みだが、実image / providerを使うAcceptanceとproduction CLI接続は未実施（[#143](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/143)、[#144](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/144)、[#148](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/148)）。
+- **Code / Behavior Test:** [agent-led](../src/research/agent-led) · [ResearchCampaigns](../tests/research/research-campaigns.test.ts) · [Independent Validation](../tests/research/independent-validation.test.ts) · [Claude Code Adapter](../tests/research/claude-code-native-agent-runtime.test.ts) · [Grok Adapter](../tests/research/grok-native-agent-runtime.test.ts)
 
 ### Campaign Control
 
