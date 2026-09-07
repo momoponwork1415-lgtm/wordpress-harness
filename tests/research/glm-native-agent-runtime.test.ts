@@ -44,12 +44,23 @@ describe("GLM Native Agent Runtime", () => {
       mkdir(scratchRootDirectory),
     ]);
     await writeFile(join(sourceDirectory, "plugin.php"), "<?php\n", "utf8");
+    const missingClosuresResult =
+      '{"schemaVersion":1,"candidates":[{"candidateId":"candidate-1","attackerPremise":"anonymous actor","brokenSecurityProperty":"untrusted state reaches another actor","claim":"candidate claim","evidence":[{"path":"plugin.php","location":"1","observation":"source observation"]}],"decision":{"kind":"stop","basis":"No actionable frontier remains.","}';
+    const validCandidateResult =
+      '{"schemaVersion":1,"candidates":[{"candidateId":"candidate-1","attackerPremise":"anonymous actor","brokenSecurityProperty":"untrusted state reaches another actor","claim":"candidate claim","evidence":[{"path":"plugin.php","location":"1","observation":"source observation"}]}],"decision":{"kind":"stop","basis":"No actionable frontier remains."}}';
+    const malformedStop =
+      '{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"No actionable frontier remains.","nextActions":[]}]}';
+    const validStop =
+      '{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"No actionable frontier remains."}}';
+    const ambiguousStop =
+      '{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"Ambiguous stop.","nextActions":[{"question":"Continue?","sourcePointers":["plugin.php"]}]}}';
     const providerResultPath = join(directory, "provider-result.txt");
-    await writeFile(
-      providerResultPath,
-      '{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"No actionable frontier remains.","nextActions":[]}]}',
-      "utf8",
+    const correctedProviderResultPath = join(
+      directory,
+      "corrected-provider-result.txt",
     );
+    await writeFile(providerResultPath, missingClosuresResult, "utf8");
+    await writeFile(correctedProviderResultPath, validCandidateResult, "utf8");
     const providerSettings = {
       env: {
         ANTHROPIC_AUTH_TOKEN: "test-zai-token",
@@ -109,6 +120,7 @@ for argument in "$@"; do
   if [ "$previous" = "--model" ] && [ "$argument" = "opus" ]; then has_alias=1; fi
   if [ "$previous" = "--effort" ] && [ "$argument" = "max" ]; then has_effort=1; fi
   if [ "$previous" = "--session-id" ]; then session="$argument"; fi
+  if [ "$previous" = "--resume" ]; then session="$argument"; fi
   [ "$argument" != "--runtime=runsc" ] || has_runsc=1
   [ "$argument" != "--interactive" ] || has_interactive=1
   [ "$argument" != "--env=CLAUDE_CONFIG_DIR=/provider" ] || has_provider_env=1
@@ -141,7 +153,15 @@ printf '%s' "$prompt" | grep -F 'Return exactly one JSON value matching this sch
 printf '%s' "$prompt" | grep -F '"schemaVersion"' >/dev/null
 printf '%s' '{"checkpoint":true}' > "$provider_mount/session-$session.jsonl"
 printf '%s' 'durable GLM research notes' > "$scratch/state.md"
-node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1],"utf8");process.stdout.write(JSON.stringify({type:"result",subtype:"success",is_error:false,terminal_reason:"completed",session_id:process.argv[2],result,duration_ms:30000,num_turns:3,permission_denials:[],usage:{server_tool_use:{web_search_requests:0,web_fetch_requests:0}},subagent_stats:{spawned:2},modelUsage:{"glm-5.3":{canonicalModel:"glm-5.3",inputTokens:3000,outputTokens:500,cacheReadInputTokens:1000,cacheCreationInputTokens:250}}}));' '${providerResultPath}' "$session"
+result_path='${providerResultPath}'
+subagents=2
+case "$prompt" in
+  *'Your immediately preceding response was invalid JSON.'*)
+    result_path='${correctedProviderResultPath}'
+    subagents=0
+    ;;
+esac
+node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1],"utf8");process.stdout.write(JSON.stringify({type:"result",subtype:"success",is_error:false,terminal_reason:"completed",session_id:process.argv[2],result,duration_ms:30000,num_turns:3,permission_denials:[],usage:{server_tool_use:{web_search_requests:0,web_fetch_requests:0}},subagent_stats:{spawned:Number(process.argv[3])},modelUsage:{"glm-5.3":{canonicalModel:"glm-5.3",inputTokens:3000,outputTokens:500,cacheReadInputTokens:1000,cacheCreationInputTokens:250}}}));' "$result_path" "$session" "$subagents"
 `,
       { encoding: "utf8", mode: 0o700 },
     );
@@ -240,7 +260,7 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
     });
 
     await expect(campaigns.conduct(input)).resolves.toMatchObject({
-      status: "coverage-closed",
+      status: "incomplete",
     });
     await expect(
       campaigns.inspect({ campaignId: input.campaignId }),
@@ -248,7 +268,11 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
       nativeRuns: [
         {
           terminal: "completed",
-          usage: { wallTimeMs: 30_000, inputTokens: 4_250, outputTokens: 500 },
+          usage: {
+            wallTimeMs: 60_000,
+            inputTokens: 8_500,
+            outputTokens: 1_000,
+          },
           activity: { subagents: 2 },
           isolation: {
             backend: "gvisor",
@@ -270,11 +294,36 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
     expect(await readFile(join(sourceDirectory, "plugin.php"), "utf8")).toBe(
       "<?php\n",
     );
-    await writeFile(
-      providerResultPath,
-      '{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"Ambiguous stop.","nextActions":[{"question":"Continue?","sourcePointers":["plugin.php"]}]}}',
-      "utf8",
-    );
+    await writeFile(providerResultPath, malformedStop, "utf8");
+    await writeFile(correctedProviderResultPath, validStop, "utf8");
+    await expect(
+      campaigns.conduct({
+        ...input,
+        campaignId: "campaign-glm-format-correction-stop-1",
+      }),
+    ).resolves.toMatchObject({ status: "coverage-closed" });
+    await expect(
+      campaigns.inspect({
+        campaignId: "campaign-glm-format-correction-stop-1",
+      }),
+    ).resolves.toMatchObject({
+      nativeRuns: [{ terminal: "completed" }],
+    });
+    await writeFile(providerResultPath, missingClosuresResult, "utf8");
+    await writeFile(correctedProviderResultPath, missingClosuresResult, "utf8");
+    await expect(
+      campaigns.conduct({
+        ...input,
+        campaignId: "campaign-glm-bounded-correction-1",
+      }),
+    ).resolves.toMatchObject({ status: "incomplete" });
+    await expect(
+      campaigns.inspect({ campaignId: "campaign-glm-bounded-correction-1" }),
+    ).resolves.toMatchObject({
+      nativeRuns: [{ terminal: "invalid-output" }],
+    });
+    await writeFile(providerResultPath, ambiguousStop, "utf8");
+    await writeFile(correctedProviderResultPath, ambiguousStop, "utf8");
     await expect(
       campaigns.conduct({
         ...input,

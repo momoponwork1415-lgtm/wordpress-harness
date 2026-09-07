@@ -7,6 +7,7 @@ import {
   failedNativeRunReceipt,
   GvisorAgentSandbox,
   type GvisorAgentRuntimeOptions,
+  type SandboxedAgentCommand,
 } from "./gvisor-agent-sandbox.js";
 import {
   nativeRunReceiptSchema,
@@ -162,37 +163,10 @@ function terminalJson(value: string): unknown | undefined {
     try {
       return JSON.parse(candidate) as unknown;
     } catch {
-      const extraTerminalArrayClose = /\]\s*\}\s*$/u.exec(candidate);
-      if (extraTerminalArrayClose === null) continue;
-      const repaired =
-        candidate.slice(0, extraTerminalArrayClose.index) +
-        candidate.slice(extraTerminalArrayClose.index + 1);
-      try {
-        return JSON.parse(repaired) as unknown;
-      } catch {
-        continue;
-      }
+      continue;
     }
   }
   return undefined;
-}
-
-function unknownRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function normalizeGlmStructuredOutput(value: unknown): unknown {
-  if (!unknownRecord(value) || !unknownRecord(value.decision)) return value;
-  const decision = value.decision;
-  if (
-    decision.kind !== "stop" ||
-    !Array.isArray(decision.nextActions) ||
-    decision.nextActions.length !== 0
-  ) {
-    return value;
-  }
-  const { nextActions: _emptyNextActions, ...normalizedDecision } = decision;
-  return { ...value, decision: normalizedDecision };
 }
 
 function resultEnvelope(
@@ -206,9 +180,7 @@ function resultEnvelope(
   }
   const decoded = glmResultSchema.safeParse(parsed);
   if (!decoded.success) return undefined;
-  const structuredOutput = normalizeGlmStructuredOutput(
-    terminalJson(decoded.data.result),
-  );
+  const structuredOutput = terminalJson(decoded.data.result);
   if (structuredOutput === undefined) return undefined;
   const normalized = claudeResultSchema.safeParse({
     ...decoded.data,
@@ -219,6 +191,32 @@ function resultEnvelope(
 
 function glmPrompt(prompt: string, schema: z.ZodType): string {
   return `${prompt}\n\nReturn exactly one JSON value matching this schema. Do not use Markdown fences or add prose. For a stop decision, omit nextActions entirely. For a continue decision, omit basis entirely.\n${claudeJsonSchema(schema)}`;
+}
+
+function glmFormatCorrectionPrompt(): string {
+  return "Your immediately preceding response was invalid JSON. Do not do more research and do not change, add, remove, merge, or summarize any candidate. Re-emit the exact same complete report as one valid JSON object. Ensure every evidence object, array, candidate object, decision object, and the root object is closed correctly.";
+}
+
+type SuccessfulEnvelope =
+  z.infer<typeof claudeResultSchema> | z.infer<typeof glmResultSchema>;
+
+function violatesSealedPolicy(
+  envelope: SuccessfulEnvelope,
+  run: SealedAgentRun,
+  checkpoint: AgentCheckpointRef | undefined,
+): boolean {
+  const usedModels = Object.values(envelope.modelUsage);
+  return (
+    envelope.permission_denials.length > 0 ||
+    envelope.usage.server_tool_use.web_search_requests !== 0 ||
+    envelope.usage.server_tool_use.web_fetch_requests !== 0 ||
+    (run.kind === "sealed-native-research-run" &&
+      (checkpoint === undefined ||
+        envelope.session_id !== checkpoint.sessionId)) ||
+    !usedModels.some(
+      (usage) => usage.canonicalModel === run.agentRuntimeProfile.model,
+    )
+  );
 }
 
 function wallTimeMs(
@@ -314,55 +312,16 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
       imageDigest(options.image) === claudeCodeTransportEligibility.imageDigest;
   }
 
-  async execute(run: SealedAgentRun): Promise<NativeAgentReceipt> {
-    const glm = this.#provider === "zai";
-    if (
-      run.agentRuntimeProfile.kind !==
-        (glm ? "glm-claude-code-native/v1" : "claude-code-native/v1") ||
-      !this.#transportAdmitted ||
-      run.agentRuntimeProfile.executableVersion !==
-        claudeCodeTransportEligibility.executableVersion ||
-      (glm &&
-        (run.agentRuntimeProfile.model !== "glm-5.3" ||
-          run.agentRuntimeProfile.effort !== "max")) ||
-      !this.#sandbox.bindingMatches(run)
-    ) {
-      const now = this.#sandbox.now();
-      return failedNativeRunReceipt(
-        run,
-        "policy-denied",
-        "The sealed run does not match this Agent Runtime binding.",
-        now,
-        now,
-        false,
-      );
-    }
-
-    if (glm) {
-      try {
-        const settings = JSON.parse(
-          await readFile(
-            join(this.#providerConfigDirectory, "settings.json"),
-            "utf8",
-          ),
-        ) as unknown;
-        if (!glmSettingsSchema.safeParse(settings).success) {
-          throw new Error("unsupported GLM settings");
-        }
-      } catch {
-        const now = this.#sandbox.now();
-        return failedNativeRunReceipt(
-          run,
-          "policy-denied",
-          "The GLM provider settings do not match the sealed Z.AI binding.",
-          now,
-          now,
-          false,
-        );
-      }
-    }
-
-    const execution = await this.#sandbox.execute(run, {
+  #command(
+    run: SealedAgentRun,
+    glm: boolean,
+    prompt: string,
+  ): SandboxedAgentCommand {
+    const reportSchema =
+      run.kind === "sealed-native-research-run"
+        ? researchReportSchema
+        : validationReportSchema;
+    return {
       executable: "claude",
       versionTokenIndex: 0,
       providerEnvironment: [
@@ -431,29 +390,67 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
           : []),
         "--output-format",
         "json",
-        ...(glm
-          ? []
-          : [
-              "--json-schema",
-              claudeJsonSchema(
-                run.kind === "sealed-native-research-run"
-                  ? researchReportSchema
-                  : validationReportSchema,
-              ),
-            ]),
+        ...(glm ? [] : ["--json-schema", claudeJsonSchema(reportSchema)]),
       ],
       prompt: {
         kind: "stdin",
-        text: glm
-          ? glmPrompt(
-              this.#sandbox.prompt(run),
-              run.kind === "sealed-native-research-run"
-                ? researchReportSchema
-                : validationReportSchema,
-            )
-          : this.#sandbox.prompt(run),
+        text: glm ? glmPrompt(prompt, reportSchema) : prompt,
       },
-    });
+    };
+  }
+
+  async execute(run: SealedAgentRun): Promise<NativeAgentReceipt> {
+    const glm = this.#provider === "zai";
+    if (
+      run.agentRuntimeProfile.kind !==
+        (glm ? "glm-claude-code-native/v1" : "claude-code-native/v1") ||
+      !this.#transportAdmitted ||
+      run.agentRuntimeProfile.executableVersion !==
+        claudeCodeTransportEligibility.executableVersion ||
+      (glm &&
+        (run.agentRuntimeProfile.model !== "glm-5.3" ||
+          run.agentRuntimeProfile.effort !== "max")) ||
+      !this.#sandbox.bindingMatches(run)
+    ) {
+      const now = this.#sandbox.now();
+      return failedNativeRunReceipt(
+        run,
+        "policy-denied",
+        "The sealed run does not match this Agent Runtime binding.",
+        now,
+        now,
+        false,
+      );
+    }
+
+    if (glm) {
+      try {
+        const settings = JSON.parse(
+          await readFile(
+            join(this.#providerConfigDirectory, "settings.json"),
+            "utf8",
+          ),
+        ) as unknown;
+        if (!glmSettingsSchema.safeParse(settings).success) {
+          throw new Error("unsupported GLM settings");
+        }
+      } catch {
+        const now = this.#sandbox.now();
+        return failedNativeRunReceipt(
+          run,
+          "policy-denied",
+          "The GLM provider settings do not match the sealed Z.AI binding.",
+          now,
+          now,
+          false,
+        );
+      }
+    }
+
+    let execution = await this.#sandbox.execute(
+      run,
+      this.#command(run, glm, this.#sandbox.prompt(run)),
+    );
     if (execution.status === "failed") return execution.receipt;
     if (execution.status === "exited-nonzero") {
       const decodedError = claudeErrorResultSchema.safeParse(
@@ -493,39 +490,96 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
           );
     }
 
-    const envelope = resultEnvelope(execution.stdout, this.#provider);
+    const initialStartedAt = execution.startedAt;
+    let envelope = resultEnvelope(execution.stdout, this.#provider);
+    let accountingEnvelopes: SuccessfulEnvelope[] = [];
+    if (envelope === undefined && glm) {
+      const malformed = glmResultSchema.safeParse(parseJson(execution.stdout));
+      const firstWallTime = malformed.success
+        ? wallTimeMs(
+            malformed.data.duration_ms,
+            execution.startedAt,
+            execution.completedAt,
+          )
+        : run.budgetAllowance.maxWallTimeMs;
+      const firstCost = malformed.success
+        ? (malformed.data.total_cost_usd ?? 0)
+        : run.budgetAllowance.maxEstimatedCostUsd;
+      const remainingWallTime =
+        run.budgetAllowance.maxWallTimeMs - firstWallTime;
+      const remainingCost = run.budgetAllowance.maxEstimatedCostUsd - firstCost;
+      if (
+        malformed.success &&
+        run.kind === "sealed-native-research-run" &&
+        execution.checkpoint !== undefined &&
+        !violatesSealedPolicy(malformed.data, run, execution.checkpoint) &&
+        remainingWallTime > 0 &&
+        remainingCost > 0
+      ) {
+        const retryRun = {
+          ...run,
+          budgetAllowance: {
+            maxWallTimeMs: remainingWallTime,
+            maxEstimatedCostUsd: remainingCost,
+          },
+          resumeFrom: execution.checkpoint,
+        };
+        const correction = await this.#sandbox.execute(
+          retryRun,
+          this.#command(retryRun, true, glmFormatCorrectionPrompt()),
+        );
+        if (correction.status === "failed") {
+          return correction.receipt;
+        }
+        if (correction.status === "exited-nonzero") {
+          return failedNativeRunReceipt(
+            run,
+            "provider-failed",
+            "GLM did not complete its bounded format correction.",
+            initialStartedAt,
+            correction.completedAt,
+            true,
+            correction.checkpoint,
+          );
+        }
+        execution = correction;
+        envelope = resultEnvelope(execution.stdout, this.#provider);
+        if (envelope !== undefined) {
+          accountingEnvelopes = [malformed.data, envelope];
+        }
+      }
+    }
     if (envelope === undefined) {
       return failedNativeRunReceipt(
         run,
         "invalid-output",
         "Claude Code returned an unsupported result envelope.",
-        execution.startedAt,
+        initialStartedAt,
         execution.completedAt,
         true,
         execution.checkpoint,
       );
     }
-    const usedModels = Object.values(envelope.modelUsage);
+    if (accountingEnvelopes.length === 0) {
+      accountingEnvelopes = [envelope];
+    }
     if (
-      envelope.permission_denials.length > 0 ||
-      envelope.usage.server_tool_use.web_search_requests !== 0 ||
-      envelope.usage.server_tool_use.web_fetch_requests !== 0 ||
-      (run.kind === "sealed-native-research-run" &&
-        (execution.checkpoint === undefined ||
-          envelope.session_id !== execution.checkpoint.sessionId)) ||
-      !usedModels.some(
-        (usage) => usage.canonicalModel === run.agentRuntimeProfile.model,
+      accountingEnvelopes.some((candidate) =>
+        violatesSealedPolicy(candidate, run, execution.checkpoint),
       )
     ) {
       return failedNativeRunReceipt(
         run,
         "policy-denied",
         "Claude Code violated the sealed model or tool policy.",
-        execution.startedAt,
+        initialStartedAt,
         execution.completedAt,
         true,
       );
     }
+    const usedModels = accountingEnvelopes.flatMap((candidate) =>
+      Object.values(candidate.modelUsage),
+    );
     const report = (
       run.kind === "sealed-native-research-run"
         ? researchReportSchema
@@ -536,23 +590,34 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         run,
         "invalid-output",
         "Claude Code returned an unsupported Agent Report.",
-        execution.startedAt,
+        initialStartedAt,
         execution.completedAt,
         true,
         execution.checkpoint,
       );
     }
+    const reportedCosts = accountingEnvelopes.flatMap((candidate) =>
+      candidate.total_cost_usd === undefined ? [] : [candidate.total_cost_usd],
+    );
+    const reportedSubagents = accountingEnvelopes.flatMap((candidate) =>
+      candidate.subagent_stats === undefined
+        ? []
+        : [candidate.subagent_stats.spawned],
+    );
     const receipt = {
       schemaVersion: 1,
       runId: run.runId,
       runtimeProfileDigest: run.agentRuntimeProfile.digest,
       terminal: "completed",
-      startedAt: execution.startedAt.toISOString(),
+      startedAt: initialStartedAt.toISOString(),
       completedAt: execution.completedAt.toISOString(),
       usage: {
         wallTimeMs: wallTimeMs(
-          envelope.duration_ms,
-          execution.startedAt,
+          accountingEnvelopes.reduce(
+            (total, candidate) => total + candidate.duration_ms,
+            0,
+          ),
+          initialStartedAt,
           execution.completedAt,
         ),
         inputTokens: usedModels.reduce(
@@ -567,12 +632,20 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
           (total, usage) => total + usage.outputTokens,
           0,
         ),
-        ...(envelope.total_cost_usd === undefined
+        ...(reportedCosts.length === 0
           ? {}
-          : { estimatedCostUsd: envelope.total_cost_usd }),
+          : {
+              estimatedCostUsd: reportedCosts.reduce(
+                (total, cost) => total + cost,
+                0,
+              ),
+            }),
       },
       activity: {
-        subagents: envelope.subagent_stats?.spawned ?? null,
+        subagents:
+          reportedSubagents.length === 0
+            ? null
+            : reportedSubagents.reduce((total, spawned) => total + spawned, 0),
         tools: null,
       },
       isolation: {
