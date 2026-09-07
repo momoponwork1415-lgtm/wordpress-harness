@@ -1,4 +1,27 @@
 export { campaignProgressViewV2Schema } from "./campaign-progress-contracts.js";
+export {
+  AgentLedCampaignConflictError,
+  AgentLedCampaignNotFoundError,
+  campaignInterruptionSchema,
+  campaignInputSchema,
+  campaignStatusSchema,
+  nativeRunReceiptSchema,
+  openResearchCampaigns,
+  sealedNativeRunSchema,
+} from "./agent-led/index.js";
+export type {
+  CampaignInput,
+  CampaignInterruption,
+  CampaignOutcomeRef,
+  CampaignQuery,
+  CampaignStatus,
+  NativeAgentRuntime,
+  NativeRunReceipt,
+  OpenResearchCampaignsOptions,
+  ResearchCampaigns,
+  ResearchCampaignView,
+  SealedNativeRun,
+} from "./agent-led/index.js";
 export type {
   CampaignProgressSubjectRef,
   CampaignProgressView,
