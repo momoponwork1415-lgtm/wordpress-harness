@@ -94,7 +94,7 @@ Prompt、runtime、permissionまたはresearch policyの変更は進行中Campai
 
 変更は次を説明できる場合だけ採用する。
 
-- whitebox Brizy Boundary PairのLead/Finding recoveryとnegative controlを保てるか。
+- whitebox Brizy Boundary Pairで同じcausal identityのLead/Finding recoveryとpatched negative controlを保てるか。patched版の無関係なFindingは保持し、既知境界の非昇格判定を失敗させない。
 - prospective Campaignでhigh-impact recallを悪化させないか。
 - Rootとsubagentのpermission継承を実測したか。
 - DiscoveryとIndependent Validationのfreshnessを保てるか。
