@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   openClaudeCodeNativeAgentRuntime,
   openResearchCampaigns,
+  promptTextDigest,
   type CampaignInput,
 } from "../../src/research/index.js";
 
@@ -91,6 +92,10 @@ printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_rea
     );
     await chmod(dockerExecutablePath, 0o700);
 
+    const researchPrompt =
+      "Audit the immutable WordPress plugin source from first principles.";
+    const validationPrompt =
+      "Independently validate one source-bound candidate.";
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 1,
@@ -104,13 +109,11 @@ printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_rea
       },
       promptSet: {
         id: "agent-led-research-v1",
-        digest:
-          "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        digest: promptTextDigest(researchPrompt),
       },
       validationPromptSet: {
         id: "independent-validation-v1",
-        digest:
-          "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        digest: promptTextDigest(validationPrompt),
       },
       agentRuntimeProfile: {
         id: "claude-code-opus-native-v1",
@@ -145,11 +148,11 @@ printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_rea
       scratchRootDirectory,
       promptSet: {
         digest: input.promptSet.digest,
-        text: "Audit the immutable WordPress plugin source from first principles.",
+        text: researchPrompt,
       },
       validationPromptSet: {
         digest: input.validationPromptSet.digest,
-        text: "Independently validate one source-bound candidate.",
+        text: validationPrompt,
       },
       permissionProfileDigest: input.permissionProfile.digest,
       maxOutputBytes: 1_000_000,

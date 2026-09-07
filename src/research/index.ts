@@ -9,6 +9,7 @@ export {
   openClaudeCodeNativeAgentRuntime,
   openGrokNativeAgentRuntime,
   openResearchCampaigns,
+  promptTextDigest,
   researchReportSchema,
   sealedAgentRunSchema,
   sealedNativeRunSchema,

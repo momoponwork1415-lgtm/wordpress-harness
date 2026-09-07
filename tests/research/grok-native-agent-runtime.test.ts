@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   openGrokNativeAgentRuntime,
   openResearchCampaigns,
+  promptTextDigest,
   type CampaignInput,
 } from "../../src/research/index.js";
 
@@ -28,6 +29,29 @@ afterEach(async () => {
 });
 
 describe("Grok Native Agent Runtime", () => {
+  it("refuses prompt text that does not match its sealed digest", () => {
+    expect(() =>
+      openGrokNativeAgentRuntime({
+        dockerExecutablePath: "/usr/bin/docker",
+        image: `sha256:${"f".repeat(64)}`,
+        sourceDirectory: "/source",
+        targetSnapshotDigest: `sha256:${"a".repeat(64)}`,
+        providerConfigDirectory: "/provider",
+        scratchRootDirectory: "/scratch",
+        promptSet: {
+          digest: `sha256:${"b".repeat(64)}`,
+          text: "This is not the sealed prompt.",
+        },
+        validationPromptSet: {
+          digest: promptTextDigest("validation"),
+          text: "validation",
+        },
+        permissionProfileDigest: `sha256:${"d".repeat(64)}`,
+        maxOutputBytes: 1_000_000,
+      }),
+    ).toThrow("Research prompt text does not match its sealed digest");
+  });
+
   it("returns an agent-led report from Grok Build in a pinned runsc sandbox", async () => {
     const directory = await mkdtemp(join(tmpdir(), "grok-native-runtime-"));
     temporaryDirectories.push(directory);
@@ -115,6 +139,10 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
     );
     await chmod(dockerExecutablePath, 0o700);
 
+    const researchPrompt =
+      "Audit the immutable WordPress plugin source from first principles.";
+    const validationPrompt =
+      "Independently validate one source-bound candidate.";
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 1,
@@ -128,13 +156,11 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
       },
       promptSet: {
         id: "agent-led-research-v1",
-        digest:
-          "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        digest: promptTextDigest(researchPrompt),
       },
       validationPromptSet: {
         id: "independent-validation-v1",
-        digest:
-          "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        digest: promptTextDigest(validationPrompt),
       },
       agentRuntimeProfile: {
         id: "grok-build-native-v1",
@@ -169,11 +195,11 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
       scratchRootDirectory,
       promptSet: {
         digest: input.promptSet.digest,
-        text: "Audit the immutable WordPress plugin source from first principles.",
+        text: researchPrompt,
       },
       validationPromptSet: {
         digest: input.validationPromptSet.digest,
-        text: "Independently validate one source-bound candidate.",
+        text: validationPrompt,
       },
       permissionProfileDigest: input.permissionProfile.digest,
       maxOutputBytes: 1_000_000,

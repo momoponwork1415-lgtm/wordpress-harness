@@ -14,7 +14,11 @@ import { isAbsolute, join } from "node:path";
 import { z } from "zod";
 
 import { runNativeModelProcess } from "../model-execution/native-model-process.js";
-import type { NativeAgentReceipt, SealedAgentRun } from "./contracts.js";
+import {
+  promptTextDigest,
+  type NativeAgentReceipt,
+  type SealedAgentRun,
+} from "./contracts.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const pinnedImageSchema = z
@@ -187,8 +191,21 @@ export class GvisorAgentSandbox {
     if (options.promptSet.text.length === 0) {
       throw new Error("Agent Runtime prompt must not be empty");
     }
+    if (promptTextDigest(options.promptSet.text) !== options.promptSet.digest) {
+      throw new Error(
+        "Research prompt text does not match its sealed digest",
+      );
+    }
     if (options.validationPromptSet.text.length === 0) {
       throw new Error("Independent Validation prompt must not be empty");
+    }
+    if (
+      promptTextDigest(options.validationPromptSet.text) !==
+      options.validationPromptSet.digest
+    ) {
+      throw new Error(
+        "Validation prompt text does not match its sealed digest",
+      );
     }
     if (
       !Number.isSafeInteger(options.maxOutputBytes) ||

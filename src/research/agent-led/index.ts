@@ -19,6 +19,7 @@ export {
   validationCandidateSchema,
   validationReportSchema,
   validationRunReceiptSchema,
+  promptTextDigest,
 } from "./contracts.js";
 export type {
   CampaignInput,

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { z } from "zod";
 
 const identifierSchema = z
@@ -7,6 +9,10 @@ const identifierSchema = z
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+
+export function promptTextDigest(text: string): string {
+  return `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
+}
 
 const immutableRefSchema = z.strictObject({
   id: identifierSchema,
