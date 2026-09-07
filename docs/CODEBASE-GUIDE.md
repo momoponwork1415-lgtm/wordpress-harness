@@ -9,7 +9,7 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 | Product stage | Status | Remaining |
 | --- | --- | --- |
 | Target Acquisition / Intake | local directory、WordPress.org archiveを実装済み | premium acquisition |
-| Target selection / approval | Research History、programme / route観測、自律選定、人間のBatch承認を実装済み | Campaign Coverage Receipt、unattended dispatch |
+| Target Proposal / approval | oracle-free Candidate PoolからのAI Proposal、人間のApproved Target Batchを実装済み | production Agent Adapter、Campaign Coverage Receipt、unattended dispatch |
 | Vulnerability Intelligence | Wordfence Intelligence v3のlocal indexとoracle-separated projectionを実装済み | なし（Wordfence-only方針を#102で確定済み） |
 | Agent-led Research migration | `ResearchCampaigns.conduct / inspect`、Claude/Grok gVisor Adapter、fresh Independent Validation、Finding/Coverage分離を新event streamへ実装 | 実provider Acceptance、production接続、旧経路削除（#143–#148） |
 | Semantic Research | v7 initial Wave、Decision@3、conditional Depth実行、`campaign run`入口まで実装済み | Missing-link / Closure |
@@ -25,7 +25,7 @@ ModuleのPurpose、Interface、実装状況、source、Behavior Testを一か所
 
 現在のproduction CLIは`Target Intake -> initial Semantic Wave -> Decision@3 / Approach Family -> conditional Depth / single source Validation -> source-validated Finding + Coverage`のv7経路である。並行してADR 0125の新しい`ResearchCampaigns`が別schema familyと別event tableでAgent-led Research、Independent Validation、Finding/Coverage projectionを実装したが、production Agent RuntimeとCLIには未接続である。Researchの旧Packetはread-only replayに限定する。Human OSには移行前のHuman Review writerとdirect legacy AI writerが残り、物理的な退役は#126 / #129で扱う。
 
-Finding handoffとAI Reproductionのcurrent contractは接続済みであり、Human Verificationは旧Finding gateから移行中である。[ADR 0124](adr/0124-align-campaign-and-finding-lifecycle-with-reference-harnesses.md)ではFinding lifecycleだけを変更し、現行のSemantic Research Waveとpublic seamは維持する。Target Intelligence内の自律選定とBatch承認は実装済みだが、Approved Target BatchからTarget Acquisition / Researchへのdispatchは未接続であり、完成度をpercentでは表さない。進捗表示はcurrent Validation / Findingをv2、旧VerificationだけのCampaignをv1で返す。集計は保存recordから再生成する（[Issue #132](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/132)）。次の有限workと順序は[Issue #124](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/124)と[Issue #86](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/86)を正本とする。
+Finding handoffとAI Reproductionのcurrent contractは接続済みであり、Human Verificationは旧Finding gateから移行中である。[ADR 0124](adr/0124-align-campaign-and-finding-lifecycle-with-reference-harnesses.md)ではFinding lifecycleだけを変更し、現行のSemantic Research Waveとpublic seamは維持する。Target Intelligence内のAI Target Proposalと人間のBatch承認は実装済みだが、Approved Target BatchからTarget Acquisition / Researchへのdispatchは未接続であり、完成度をpercentでは表さない。進捗表示はcurrent Validation / Findingをv2、旧VerificationだけのCampaignをv1で返す。集計は保存recordから再生成する（[Issue #132](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/132)）。次の有限workと順序は[Issue #124](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/124)と[Issue #86](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/86)を正本とする。
 
 ## Target Intelligence
 
@@ -79,25 +79,23 @@ Finding handoffとAI Reproductionのcurrent contractは接続済みであり、H
 - **Status:** Target Intelligence専用SQLite eventからCampaign viewをreplayする。v1 replay migration projectionとv2-only writeを実装。Development Cohort、calibration、意図的な独立反復はkind、run ordinal、理由を固定して許可する。
 - **Code:** [research-history](../src/target-intelligence/research-history)
 
-### Target Selection
+### Target Proposal
 
-- **Purpose:** Target Observation、Programme Eligibility、Disclosure Route、弱いVulnerability History Aggregate、Target Research Historyを一つのprogramme-neutral Candidate Poolとして評価し、有限のSelection Receipt集合を作る。
-- **Interface:** `TargetSelection.select / migrateLegacyAttempt / resolveForApproval`、`TargetSelectionApprovalResolver`
-- **Invariants:** provenance、取得可能性、Target identity、source freshness、Research Historyをdeterministic hard gateにする。operator nominationはApproval verification requestだけから受け付け、operator identity、時刻、列挙理由をCandidateへ固定し、他Candidateと同じhard gateを再評価してSelection-owned verification artifactへdurable receiptとして保存する。nomination-only Batchの親には空の自律Candidate集合、model resultなし、Receipt 0件のdurable Attemptだけを許す。自律Candidateがあるselected AttemptではReceiptが全Candidate IDを重複なく過不足なく覆い、各Receiptのversioned Candidate全体が対応するinput Candidateとcanonicalに一致する。ApprovalはAttemptのprivate storageを読まずresolverだけを使う。callerが渡したAttempt refはdurable Attemptのdigest、policy、profileへ一致し、各Receiptのselection key、revision、request digest、policy、profileは親Attemptへ完全一致しなければならない。v1 Attemptは公開migration seamで一度だけ取込み、自由記述をreason codeへ縮退した読取専用projectionにし、v2 writerと混在させない。Opus Model Profileへはactive installs、更新時刻、公開integration、粗いsource scale、Disclosure Route、diversityだけを渡す。Vulnerability History AggregateはAttempt / Receiptへbindするがmodel inputにせず、単独で採否を変えない。Research Value Bandを先に比較し、同BandでだけProgramme Opportunity Bandをtie-breakerに使い、vendor / family / use case / size / authority / integrationのversioned capで多様性を保つ。ReceiptはCampaignを開始しない。
-- **Failure semantics:** provider failure、budget exhaustion、invalid model result、model実行前にdurable化したAttemptの中断は、空Batchではなく`selection-pending`として保持する。同じselection key / revisionの異なるinput、v1 / v2 writer混在、Attempt ref / policy / profile / Receipt integrityまたは親binding不一致、nomination-only Attemptへのmodel resultまたはReceipt混入、自律Candidate Receiptの欠落・余分・重複または同じIDでのCandidate事実差し替え、nomination operator / 時刻不一致、Plugin Identity・version・Manifest digestが一致するTarget identity重複はerrorにする。同じinputはmodelを再実行せずreplayし、明示的な新revisionだけを再選定する。
-- **Behavior Test:** [Target Selection（nomination-only Attempt / Receipt completeness）](../tests/target-intelligence/target-selection.test.ts)、[Target Batch Approval（nomination handoff）](../tests/target-intelligence/target-batch-approval.test.ts)
-- **Status:** v2 content-bound Attempt / Receipt、nomination-only Batch用のmodel-free empty Attempt、v1 read-only migration projection、Approval resolver、Opus-only profile、stable projection、hard gate、active resume / already-covered / Incomplete follow-up、Research-only保持、diversity、restart / failure replayを実装。
-- **Code:** [target-selection](../src/target-intelligence/target-selection)
+- **Purpose:** programme-neutralなCandidate PoolとSelection Guidanceを一つのTarget Selection Runへ固定し、AIが任意subsetのTarget Proposalを理由と不確実性付きで作る。
+- **Interface:** `TargetProposals.propose / inspect`、true external port `TargetProposalAgent.execute`
+- **Invariants:** Target Selection RunはCandidate Pool、Selection Guidance、Agent Runtime Profile、Permission Profile、Budget Envelopeをdigest bindする。AIは未選択Candidateのrank、receipt、拒否理由、Research Value Band、fixed diversity facetを返さない。選択Targetだけについてpool membership、source取得可能性、Plugin Identity、provenance、Canonical File Manifest、source freshnessを検査する。Programme不適格、Disclosure Route不明、既探索は判断材料でありhard gateにしない。同じselection key / revision / inputはAgentを再実行しない。
+- **Failure semantics:** provider、Budget、policy、output、receipt bindingまたはselected Target hard gateの失敗は`selection-pending`としてRun Receiptとusageを保持し、not-selectedへ丸めない。同じrevisionの異なるinput、Candidate Pool digest / identity重複、保存artifact不整合はerrorにする。
+- **Status:** file-backed Target Selection Run、subset Proposal、Research-only Candidate、failure replay、source hard gateをscripted Agentで実装。production Agent Adapterは未接続。
+- **Code / Behavior Test:** [target-proposal](../src/target-intelligence/target-proposal) · [Target Proposal / Approval](../tests/target-intelligence/target-proposals.test.ts)
 
-### Target Batch Approval
+### Approved Target Batch
 
-- **Purpose:** 一つのSelection Attemptの有限なSelection Receipt集合について、人間の承認、除外、順序変更、operator nominationを一回の判断へまとめ、versioned Approved Target Batchにする。
-- **Interface:** `TargetBatchApproval.migrateLegacyBatch / approve / inspect`（`TargetSelectionApprovalResolver` portを要求）
-- **Invariants:** Target Selectionが検証したdurable Attempt、Selection-owned verification ref / Receipt、Selection Policy、Opus Model Profile、Target Observation、programme / disclosure freshness、Campaign Policy、Batch Budget、execution window、human identity / decision time / 列挙理由を固定する。手動追加はApproval requestのnominationとしてだけ表現し、Selection resolverのhard gateとdurable receiptを必須にする。caller生成Receiptや名称変更をauthorityにしない。v1 Batchは公開migration seamで一度だけ取込み、自由記述を列挙codeへ縮退した読取専用projectionにし、v2 writerと混在させない。承認はResearch、Campaign、外部通信を開始しない。
-- **Failure semantics:** resolverがdurable Attemptを検証できない場合は`selection-attempt-unverified`。resolver結果とAttempt / policy / profile binding、decision集合、approved orderの不一致を拒否する。hard gate不通過は人間でもoverrideできず、Batch Budget超過を拒否する。同じbatch key / revisionの異なるinputは`revision-conflict`、変更は開始前の新revision + `supersedes`だけを許可し、開始後は`execution-started`にする。
-- **Behavior Test:** [Target Batch Approval](../tests/target-intelligence/target-batch-approval.test.ts)
-- **Status:** v2 content-addressed Batch、v1 read-only migration projection、revision index、approval / exclusion / reorder / approval-time nomination、idempotency、restart replay、supersedeのBehavior Testを実装。
-- **Code:** [target-batch-approval](../src/target-intelligence/target-batch-approval)
+- **Purpose:** 一つのTarget Proposalについて、人間の承認、除外、順序変更または同じCandidate Pool内のnominationをversionedなResearch対象範囲へ固定する。
+- **Interface:** `ApprovedTargetBatches.approve / inspect / admitDispatch`（`TargetProposalSource` portを要求）
+- **Invariants:** BatchはProposal ref、Candidate全体、AI理由 / 不確実性、人間identity / 理由、Campaign Policy、Budget、execution windowをbindする。人間はpool外Candidate、取得不能、identity / provenance不明、承認時点でstaleなsourceをoverrideできない。`admitDispatch`は実行直前のTarget identity / version / Manifest、fresh observation、execution windowを再検査し、sourceをsilentに差し替えない。承認とadmissionはResearchや外部通信を開始せず、Batchは`externalAction: not-authorized`を保持する。
+- **Failure semantics:** Proposal / Run / Pool digestまたはCandidate binding不一致、decision集合 / approved order不一致、Budget超過、stale sourceを拒否する。同じbatch key / revision / inputは保存Batchを返し、異なるinputは`revision-conflict`にする。
+- **Status:** content-bound schema v3、human approval、exclude / order / pool nomination、freshness、idempotent replayを実装。旧Selection Receipt、Opus literal、reason enum、legacy migration writerは削除済み。
+- **Code / Behavior Test:** [approved-target-batch](../src/target-intelligence/approved-target-batch) · [Target Proposal / Approval](../tests/target-intelligence/target-proposals.test.ts)
 
 ### Wordfence Vulnerability Intelligence
 
@@ -147,7 +145,7 @@ Finding handoffとAI Reproductionのcurrent contractは接続済みであり、H
 - **Invariants:** 待機Queueとactive Campaignを分け、versionやsourceをsilentに差し替えない。Target固有failureで次Targetを失わせず、承認だけではCampaignを開始しない。
 - **Failure semantics:** systemic failureはcircuit breaker、budget / execution window到達は破棄せずpauseにする。
 - **Behavior Test:** 未実装（[#113](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/113)）
-- **Status:** 未実装。Target SelectionとTarget Batch Approvalはそれぞれの公開Seamで実装済み。
+- **Status:** 未実装。Target ProposalとApproved Target Batchはそれぞれの公開Seamで実装済み。
 
 ## Research
 

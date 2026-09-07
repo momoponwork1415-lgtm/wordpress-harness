@@ -81,7 +81,7 @@ _Avoid_: Score、Complete ranking、Approval
 _Avoid_: Candidate Batch、Model transcript、Campaign run
 
 **Research Value Band**:
-旧Target Selectionがprospectiveな調査価値を`high / medium / low`へ固定分類した出力。新しいTarget Proposalでは理由と不確実性を自由に説明し、このBandを必須にしない。legacy recordのreadだけで元の意味を保つ。
+旧Target Selectionがprospectiveな調査価値を`high / medium / low`へ固定分類したhistorical term。Target Proposalでは理由と不確実性を自由に説明し、このBandを現在の判断またはrecordへ持ち込まない。
 _Avoid_: Current Target Proposal、Vulnerability likelihood、Expected payout
 
 **Candidate Pool**:
