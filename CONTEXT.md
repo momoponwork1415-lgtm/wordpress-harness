@@ -26,6 +26,9 @@ ResearchはTarget選定、source acquisition policy、runtime exploit verificati
 **Research Report**
 : Candidate群と`continue`または`stop`の判断を持つ一回のNative Run出力。
 
+**Agent Checkpoint**
+: Research Rootのprovider-native conversationとscratchを同じsealed bindingで再開するためのprivateなopaque ref。研究上の結論ではなく、Independent Validationやcontext間handoffへ渡さない。
+
 **Next Action**
 : 追加で確認する具体的なquestionとsource pointer。AIがResearch継続を選ぶ根拠であり、Harness-owned queueではない。
 
@@ -48,13 +51,14 @@ ResearchはTarget選定、source acquisition policy、runtime exploit verificati
 : Budget、provider、policyまたはinvalid outputによりCampaignが判断を完了できなかった記録。
 
 **Research Record**
-: Campaign Input、Native Receipt、Validation Receipt、Finding、Coverage、Interruptionのappend-only system of record。agent内部のrole、call順またはscratchはdomain stateにしない。
+: Campaign Input、Native Receipt、Agent Checkpoint ref、Validation Receipt、Finding、Coverage、Interruptionのappend-only system of record。agent内部のrole、call順、transcript本文またはscratch本文はdomain stateにしない。
 
 ## Invariants
 
 - Target sourceをhost上で実行しない。
 - Prompt、Target、Runtime、Permission、BudgetとReceiptをdigest bindする。
 - ResearchとValidationは異なるfresh sessionとscratchを使う。
+- Agent Checkpointは同じTarget、Prompt、Runtime、PermissionへbindされたResearchだけが再開できる。
 - `source-validated`だけがFindingを作る。
 - Findingの有無とCoverage completionを分離する。
 - supporting agent数、到着順、多数決またはconfidenceでcandidateを捨てない。

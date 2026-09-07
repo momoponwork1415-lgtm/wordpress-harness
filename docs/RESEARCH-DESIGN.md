@@ -41,6 +41,8 @@ Programme対象外、Disclosure Route不明、既探索またはAIの低評価�
 
 通常運転はwp2shell / Cycle Double Cover Promptを直接の系譜とする、raw-source-firstの一つの連続loopである。Provider-native Root agentはTarget Snapshot全体を読み、必要に応じてnative subagentを起動し、互いに異なるroute、反証、synthesisまたは追加調査を進める。Harnessはagent数、role、round、探索classまたは読むfileを指定しない。探索評価ではGrokを先に使い、利用不能を別providerへのsilent fallbackで隠さない。
 
+Research Rootのprovider-native conversationとscratchはprivate Agent Checkpointとして継続できる。Harnessは固定checkpoint cadenceや内部tool eventをdomain modelにせず、bindingとintegrityを持つopaque refだけを記録する。budgetまたはprovider interruptionでもCheckpointを保存できなければ`incomplete`であり、resume可能とは扱わない。Independent ValidationへResearch Checkpointを渡さない。
+
 判断は単純である。
 
 ```text

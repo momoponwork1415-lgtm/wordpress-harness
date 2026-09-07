@@ -51,7 +51,7 @@ interface NativeAgentRuntime {
 }
 ```
 
-Grok BuildとClaude Codeのprovider固有CLIはAdapter内へ局所化する。各runはimmutable imageをrunscで起動し、read-only Targetとisolated scratch / provider homeだけをmountする。runtime profileで指定したproviderからsilent fallbackしない。
+Grok BuildとClaude Codeのprovider固有CLIはAdapter内へ局所化する。各runはimmutable imageをrunscで起動し、read-only Targetとisolated scratch / provider homeだけをmountする。Research continuationはprovider-native conversationとscratchをprivate Agent Checkpointから再開し、append-only recordにはopaque refだけを置く。ValidationはCheckpointを共有しない。runtime profileで指定したproviderからsilent fallbackしない。
 
 ### Independent Validation
 

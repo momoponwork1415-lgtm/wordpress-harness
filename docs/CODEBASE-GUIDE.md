@@ -12,7 +12,7 @@ Status: current implementation map, 2026-09-07
 | Programme / disclosure observations | implemented | 全Programmeを一つのCandidate Poolへ組み立てるapplication serviceは未実装 |
 | AI Target Proposal | Grok production Adapterまでimplemented | CLIとCandidate Pool組立serviceが未実装 |
 | human Approved Target Batch | implemented | Research `CampaignInput`への変換が未接続 |
-| agent-led Research loop | implemented、Claude benign smoke完走 | known-positive BrizyはGrok quota failureとClaude budget exhaustionでincomplete。boundary gateは未通過 |
+| agent-led Research loop | structured Reportからのresumeまでimplemented、Claude benign smoke完走 | native conversation / scratch Checkpointは未実装。known-positive BrizyはGrok quota failureとClaude budget exhaustionでincomplete。boundary gateは未通過 |
 | Grok native runtime | implemented and structurally tested | real Brizy runはproviderのHTTP 402で未完了 |
 | Claude Code native runtime | exact imageをreal boundary-probed | admitted image以外は再probeが必要 |
 | fresh Independent Validation | implemented | real targetのpositive / negative pairは未完了 |
