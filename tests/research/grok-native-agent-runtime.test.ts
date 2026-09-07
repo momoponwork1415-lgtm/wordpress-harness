@@ -54,10 +54,12 @@ if [ "\${1:-}" = "image" ]; then
   exit 0
 fi
 has_runsc=0
+has_host_user=0
 is_version_probe=0
 scratch=''
 for argument in "$@"; do
   [ "$argument" != "--runtime=runsc" ] || has_runsc=1
+  [ "$argument" != "--user=$(id -u):$(id -g)" ] || has_host_user=1
   [ "$argument" != "--version" ] || is_version_probe=1
   [ "$argument" != "--no-subagents" ] || exit 91
   case "$argument" in
@@ -65,6 +67,7 @@ for argument in "$@"; do
   esac
 done
 [ "$has_runsc" -eq 1 ] || exit 90
+[ "$has_host_user" -eq 1 ] || exit 94
 if [ "$is_version_probe" -eq 1 ]; then
   printf '%s\n' 'grok 1.0.13 (Grok Build)'
   exit 0

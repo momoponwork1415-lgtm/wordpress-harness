@@ -62,6 +62,21 @@ function processEnvironment(): NodeJS.ProcessEnv {
   return { PATH: path, LANG: "C", LC_ALL: "C", TZ: "UTC" };
 }
 
+function nonRootHostUser(): string {
+  if (
+    typeof process.getuid !== "function" ||
+    typeof process.getgid !== "function"
+  ) {
+    throw new Error("Agent Runtime requires a POSIX host user");
+  }
+  const uid = process.getuid();
+  const gid = process.getgid();
+  if (uid <= 0 || gid <= 0) {
+    throw new Error("Agent Runtime requires a non-root host user");
+  }
+  return `${uid}:${gid}`;
+}
+
 async function directory(path: string, name: string): Promise<string> {
   if (!isAbsolute(path) || path.includes("\0") || path.includes(":")) {
     throw new Error(`${name} must be an absolute container-mountable path`);
@@ -144,6 +159,7 @@ Return only the requested structured Validation Report. Use source-validated onl
 export class GvisorAgentSandbox {
   readonly #options: GvisorAgentRuntimeOptions;
   readonly #clock: () => Date;
+  readonly #containerUser: string;
 
   constructor(options: GvisorAgentRuntimeOptions) {
     if (!isAbsolute(options.dockerExecutablePath)) {
@@ -168,6 +184,7 @@ export class GvisorAgentSandbox {
     }
     this.#options = options;
     this.#clock = options.clock ?? (() => new Date());
+    this.#containerUser = nonRootHostUser();
   }
 
   bindingMatches(run: SealedAgentRun): boolean {
@@ -294,6 +311,7 @@ export class GvisorAgentSandbox {
       "run",
       "--rm",
       "--runtime=runsc",
+      `--user=${this.#containerUser}`,
       "--read-only",
       "--cap-drop=ALL",
       "--security-opt=no-new-privileges",
