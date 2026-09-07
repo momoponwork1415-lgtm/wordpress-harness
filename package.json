@@ -16,7 +16,8 @@
     ]
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node scripts/clean-build-output.mjs && tsc -p tsconfig.build.json && node scripts/check-build-output.mjs",
+    "build:verify": "node scripts/check-build-output.mjs",
     "cli": "node dist/cli.js",
     "check": "pnpm format:check && pnpm typecheck && pnpm test && pnpm build && pnpm docs:check",
     "docs:check": "node scripts/check-docs.mjs",

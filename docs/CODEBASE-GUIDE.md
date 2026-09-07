@@ -118,7 +118,7 @@ Status: current implementation map, 2026-09-07
 
 **Interface:** `wordpress-harness campaign conduct | inspect`。
 
-**Invariants:** provider Adapterはsealed `agentRuntimeProfile.kind`から選び、Prompt本文のdigest一致をruntimeが検査する。
+**Invariants:** provider Adapterはsealed `agentRuntimeProfile.kind`から選び、Prompt本文のdigest一致をruntimeが検査する。production buildは`dist`を先にcleanし、現行`src`に対応しないstale artifactをbuild verifierが拒否する。
 
 **Failure semantics:** unsupported runtime、missing option、invalid inputはnon-zeroで終了する。`inspect`はNative Runを起動しない。
 
