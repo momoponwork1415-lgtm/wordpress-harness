@@ -1,9 +1,0 @@
-{
-  "name": "wordpress-harness-verification-browser",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "playwright": "1.61.1"
-  }
-}

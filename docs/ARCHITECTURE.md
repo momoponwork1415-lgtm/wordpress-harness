@@ -1,127 +1,82 @@
 # Harness Architecture
 
-Status: accepted whole-system view, 2026-09-06
+Status: accepted whole-system view, 2026-09-08
 
-WordPress Targetの自律選定から無人Research、人間のfresh再実行、report承認、Submit直前のstagingまでの全体像を示す。実装状況とModule契約は[Codebase Guide](CODEBASE-GUIDE.md)を正本とする。
+WordPress Targetの選定からagent-led Research、Independent Validation、fresh verification、人間の外部提出判断までのownershipを示す。実装状態は[Codebase Guide](CODEBASE-GUIDE.md)を正本とする。
 
-[Editable draw.io source](architecture.drawio) · [SVG view](architecture.svg) · [Detailed system walkthrough](SYSTEM-WALKTHROUGH.md)
+![スマホ向け全体アーキテクチャ](visuals/system-architecture.svg)
 
-図は採用した設計を示す。実装済みという意味ではなく、現在の接続状況はCodebase Guideで確認する。
+## Architecture rule
 
-![WordPress Semantic Security Research Harnessの全体アーキテクチャ](architecture.svg)
+**Diagnostic core owns evidence and limits; agents own Discovery decisions; Independent Validation owns Findings; humans own external actions.**
 
-## Product and maintenance direction
+診断coreの必須flowは`Target Snapshot + Dependency Snapshots -> Discovery -> Source Validation -> Finding`である。Source Validationは明白なsource矛盾を落とす独立sanity gateに留め、実質的なtrue-positive assuranceは`Finding -> fresh Dynamic AI Reproduction`で得る。Target Intelligenceは前段、Human OSはruntime / human assuranceと外部提出判断を所有する。隔離は各Runtime Adapterの内部安全条件であり、診断結果やpromotionの目的にしない。
 
-6〜12か月の継続利用に向け、3 Contextのmodular monolithと既存の主要ownerを維持し、段階的に構造を整理する。現行Interfaceが旧依存や保存世代の知識をcallerへ要求する箇所を見直す。Module数や行数だけで良し悪しを判断せず、変更と検証のLocality、互換性、失敗時の説明可能性を基準にする。
+短い診断coreだけを見る場合は[スマホ向け診断core図](visuals/diagnosis-architecture.svg)を参照する。
 
-- 初期利用のTarget選定とVerificationは、operatorがClaude Code / Codexとの対話で進める形を許容する。会話の結論は、versionedな承認・証拠・記録を代替しない。
-- 自律ranking、無人Batch dispatch、複数Campaignのcapacity、form automationの完成を初期利用の必須条件にしない。既存のsource identity、隔離、human authorizationは維持する。
-- 正本recordと表示を分け、表示を再生成できるようにする。current writeとlegacy readの意味を分け、旧writerの削除は移行証拠を条件とする。
-- 個別の構造変更はowner、Interface、owned state、failure semantics、Behavior Testを明確にしてから行う。既存Moduleの上へ新しい汎用workflow層を重ねない。
-
-比較の根拠は[reference harness comparison](knowledge/reference-harness-observability.md)。有限workは[Issue #119](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/119)、旧writer退役は[Issue #129](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/129)を正本とする。ADR 0084とADR 0124を維持し、参照Harnessのstage構成への全面置換は採用しない。
+Harnessが固定するのはTarget identity、source provenance、Prompt、Permission、Budget、freshness、record、failure semanticsと人間のauthorizationである。AIがTargetの優先順位、探索方法、native subagent、読む順序、継続、停止、candidateと検証方法を決める。
 
 ## Contexts
 
-`Target Intelligence -> Research -> Human OS`の三Contextで構成する。Context間はversioned handoffだけを渡す。
+Context間は図に示したversioned handoffだけを渡す。Target IntelligenceはFindingやknown routeをResearchへ渡さない。Researchはselection policyを再評価しない。Human OSはResearch storageを直接更新しない。用語と関係の正本は[Context Map](../CONTEXT-MAP.md)に置く。
 
-| Context | Owns | Output |
-| --- | --- | --- |
-| Target Intelligence | observation、自律選定、Human Batch Approval、acquisition、dispatch、Research History | Target Intake Packet |
-| Research | 一TargetのCampaign、conditional Depth、source Validation、Finding、Coverage、model capacity | Finding / Campaign Coverage Receipt |
-| Human OS | AI / human runtime verification、理解支援、report、submission staging | Verification Record / Approved Submission Draft |
+## Deep modules
 
-FinderはFindingを作らず、freshなIndependent Validationだけがsource-validated Findingを生成する。Human OSはResearch LedgerまたはFindingを変更せず、append-only Verification Recordを作る。Model Providerはdecision workerでありsystem of recordではない。
+### Target Proposals
 
-## Research Modules
+`TargetProposals.propose / inspect`は、oracle-freeなCandidate PoolからAI提案を作り、入力、usage、failure、理由と不確実性をdurableにする。Harnessのhard gateはCandidate Pool membership、source acquisition、identity、provenance、freshnessである。全候補rank、固定Bandまたは固定reason codeを要求しない。
 
-| Module | Owns | Interface |
-| --- | --- | --- |
-| [Campaign Control](CODEBASE-GUIDE.md#campaign-control) | lifecycle、budget、wave、replay | Campaign Plan -> terminal decision |
-| [Source Understanding](CODEBASE-GUIDE.md#source-understanding) | source inventory、query、optional Map | Target Snapshot -> source evidence |
-| [Exploration](CODEBASE-GUIDE.md#exploration) | thesis、Hypothesis、frontier、Depth、closure | source evidence -> research decision |
-| [Validation](CODEBASE-GUIDE.md#validation) | fresh source review、dedup、Finding projection | candidate -> disposition / Finding |
-| [Model Execution](CODEBASE-GUIDE.md#model-execution) | provider isolation、tool binding、process lifecycle、Campaign横断capacity | Attempt Plan -> normalized result |
-| Research Record | immutable artifact、append-only event、replay projection | event -> durable read model |
+### Research Campaigns
 
-**Harness owns the process; agents own research decisions; Independent Validation owns Findings; humans own external actions.**
+```ts
+interface ResearchCampaigns {
+  conduct(input: CampaignInput): Promise<CampaignOutcomeRef>;
+  inspect(query: CampaignQuery): Promise<ResearchCampaignView>;
+}
+```
 
-## Operating flow
+`conduct`はsealed input、agent-led research、AIのcontinue / stop、fresh Validation、Finding、Coverage、append-only recordとresumeを隠す。callerはPlanner、Finder、Wave、Depth、role、rubricまたはValidation Queueを知らない。
 
-1. Target Intelligenceがecosystemとprogrammeを観測し、oracle-freeなCandidate Batchを自律選定する。
-2. 人間が理由、欠損、freshness、Research Historyを確認し、Approved Target Batchを一括承認する。
-3. durable queueが実行直前のversionとsourceを確認し、異なるTargetを複数Campaignへdispatchする。
-4. ResearchがSemantic Wave、conditional Depth、Independent Validationを行い、source-validated FindingとCoverageをdurableにする。
-5. Human OSがFindingをfresh gVisor environmentでAI Reproductionし、runtime Verification Recordを作る。人間の別fresh environmentでの再実行はhuman Verification Recordを追加するがFinding生成条件ではない。
-6. FindingからAIがtemplate reportを作り、人間が必要なVerification、PoC、Descriptionを確認する。Programme AdapterはExternal Action Authorizationと完全一致するrevisionだけをSubmit直前まで入力し、最後のSubmitは人間だけが行う。
+### Native Agent Runtime
 
-- 通常運転はraw-source-first。Reconとwhole-target Baselineを並行し、最大4個の独立thesisを保つ。
-- current Campaignは未認証またはsubscriber-equivalentの最低開始権限だけを探索後段へ進め、Contributor以上と`unresolved`をValidation、Finding、Runtime Verificationへ昇格させない。
-- Candidateを支持数、多数決、到着順で捨てない。
-- strong semantic frontierだけをconditional Depthへ送る。
-- Finder自身のcandidateを同じsessionでFindingへ昇格させない。freshなIndependent ValidationだけがFindingを生成する。
-- AI ReproductionはFindingのruntime confirmationを追加する。setup failure、provider failure、曖昧な観測をFinding削除またはnegativeへ丸めない。
-- Human VerificationはFindingのassuranceを追加するがFinding生成条件ではない。必須の人間gateは外部行動に置く。
-- source-to-sinkは人間への説明に使うが、Target選定や探索をsink中心へ変えない。
-- confirmed impactとplausible abuse scenarioを分け、AIの推測をFindingの事実へ昇格しない。
+```ts
+interface NativeAgentRuntime {
+  execute(run: SealedAgentRun): Promise<NativeAgentReceipt>;
+}
+```
 
-| Mode | Start condition | Goal |
-| --- | --- | --- |
-| Semantic Research Wave | 全Campaignの通常運転 | candidate、frontier、または根拠付きstop |
-| Conditional Depth | high-impactへ伸びる具体的frontier | source-bound routeまたは根拠付きstop |
-| Breadth | recall baseline確立後 | recallを維持したcost / throughput改善 |
+Grok BuildとClaude Codeのprovider固有CLIはAdapter内へ局所化する。GLM 5.3はZ.AI endpointへ固定したClaude Code process Adapterを使い、Claude Code自身のagent、subagent、source tool運用を再実装しない。各runはimmutable imageをrunscで起動し、read-only Target、read-only Dependency Snapshots、isolated scratch / provider homeだけをmountする。Dependencyはframework behaviorのauthoritative referenceでありaudit Targetにしない。Research continuationはprovider-native conversationとscratchをprivate Agent Checkpointから再開し、append-only recordにはopaque refだけを置く。ValidationはCheckpointを共有しない。runtime profileで指定したproviderからsilent fallbackしない。
 
-Surface Map、AST、PHP Program Index、Semgrep、CodeQLは補助toolであり探索境界ではない。
+### Independent Validation
 
-## Stable handoffs
+Researchと別のfresh native runがcandidateを同じread-only sourceから再導出し、`source-validated / needs-research / disproven / validation-pending`を返す。固定rubricやclass Adapterをpublic seamへ出さない。最適payloadやruntime reproductionを要求せず、必要条件がsourceで直接反証された時だけ`disproven`にする。`source-validated`だけがFindingを生成する。
 
-| Artifact | Producer -> Consumer | Meaning |
-| --- | --- | --- |
-| Selection Receipt | Target Selection -> Human Batch Approval | oracle-freeな候補、理由、不確実性 |
-| Approved Target Batch | Human -> Target Campaign Dispatch | Target順、policy、Opus profile、budget、execution window |
-| Target Intake Packet | Target Intelligence -> Research | oracle-free identityとsource manifest |
-| Immutable Target Snapshot | Target Intelligence -> Research tools | 実行しないmanifest-bound source |
-| Campaign Coverage Receipt | Research -> Target Intelligence | candidate detailsを除いたlifecycle、resume、terminal state |
-| Research Record / CAS | Research Modules間 | event、artifact、checkpoint、replay source |
-| Finding | Research -> Human OS | source-validatedなcausal claim、premise、broken property、evidence、counterevidence |
-| Verification Record | Human OS内 | fresh environment、Recipe、AI / human observation、Private Evidence Bundle参照 |
-| Vulnerability Understanding Response | Human OS内 | fact、inference、scenarioを分けた人間向け説明 |
-| Approved Submission Draft | Human -> Form Stager | 人間確認済みPoC、Description、report revision |
-| Evidence Request | Human OS -> finite Research work | 不足証拠を新しいworkとして要求 |
+複数Targetは独立したCampaign processを同時起動する。Target間を調整するproduction schedulerは持たず、一CampaignのDiscoveryとValidationはそのCampaignだけで完結する。
 
-## Completion boundaries
+### Human OS
 
-| Boundary | Complete when |
-| --- | --- |
-| Target selection | Selection Receiptと理由がdurable |
-| Batch approval | 人間判断、policy、budget、execution windowがdurable |
-| Batch dispatch | 全Targetがterminal、paused、staleまたは理由付きfailure |
-| Research work | decision、typed failure、または次workがdurable |
-| Research Campaign | ExplorationとIndependent Validationが閉じ、Finding、Coverage、未解決事項、再開条件がdurable |
-| AI Reproduction | `runtime-confirmed / disproved / inconclusive / setup-blocked`のVerification Recordがdurable。claimだけでは完了ではない |
-| Human Verification | 人間が別fresh instanceでRecipeを実行し、FindingへVerification Recordを追加 |
-| Report preparation | immutableなSubmission Draftと根拠がdurable |
-| Research product goal | Independent Validation済みFindingとhonest Coverageまで閉じる |
-| Operating loop | Approved Submission Draftとhuman-ready stagingまで閉じ、提出は人間が行う |
+`HumanOs`はFindingを受け取り、freshなWordPress / MySQL環境でのDynamic AI Reproduction、別fresh environmentでのhuman verification、Submission Draft、exact Draft digestとdestinationへbindしたauthorizationをappend-onlyに記録する。Dynamic AI Reproductionは`runtime-confirmed / disproved / incomplete`を返し、失敗や反証でも元Findingを削除しない。実際の外部送信は所有しない。
 
-`validation-pending`やbudget exhaustionをnegativeへ読み替えない。外部報告・公開はFindingとは別の承認を要する。
+## Research flow
 
-## Scheduling and model policy
+![探索・検証の詳細アーキテクチャ](visuals/discovery-validation-architecture.svg)
 
-- 初期baselineはOpus単一modelとする。Finder間はmodelが同じでもsession、conversation、scratch、thesisを共有しない。
-- Target Campaignのactive目安は5件とする。待機Target数、active Campaign数、active Model Attempt数を別policyで制御する。
-- Validation、Synthesis、terminal処理を新規Finderより優先し、探索だけでcapacityを使い切らない。
-- rate limit、provider unavailable、capacity timeoutをno-findingへ丸めず、Opus以外へsilent fallbackしない。
-- GLM、Grok、Daybreak等のmulti-model化はOpus baselineとのrecall、unique candidate、runtime成立率、cost比較後に判断する。
+一Targetの文章によるwalkthroughは[System Walkthrough](SYSTEM-WALKTHROUGH.md)に分離する。
 
-## Trust rules
+Unauthenticated SQLi、Stored XSS、ATO、PrivEsc、arbitrary file operation、object injection、authorizationやbusiness-logic failureは、RCEへ昇格しなくてもFindingになり得る。
+
+## Invariants
 
 - Target sourceをhost上で実行しない。
-- FinderとValidatorにはmanifest-boundなread-only source toolだけを渡す。
-- Agentへambient shell、network、credential、container socket、MCPを渡さない。
-- AIと人間のruntime確認は互いに異なるfreshな使い捨て隔離環境だけで行う。
-- exact payload、HTTP request、screenshot、runtime logはHuman OSのPrivate Evidence Bundleへ置き、Gitへ入れない。
-- credential、private Target、transcript、PoC、未公開FindingをGitやResearch artifactへ含めない。
-- AIはTarget選定、Finding生成、runtime verification、理解支援、report作成を行えるが、人間のBatch承認、External Action Authorization、Submitを代行しない。
+- TargetとDependency mountはread-only、scratchだけをwriteableにする。
+- Rootとnative subagentへ同じPermission Profileを適用する。
+- ambient shell、network、credential、container socket、host path、plugin、hook、memory、未承認MCPを渡さない。
+- runsc capabilityを確認できないruntimeへfallbackしない。
+- Independent ValidationはResearchのconversation、scratch、verdictを共有しない。
+- Findingの有無とCoverage completionを分離する。
+- provider、budget、tool、source、permission、schema、storage failureをno-findingまたは`disproven`へ丸めない。
+- Dynamic AI Reproductionは実WordPress / MySQLをfresh gVisor environment内だけで動かし、失敗をsource Findingの削除へ読み替えない。
+- exact payload、HTTP request、screenshot、runtime logはPrivate Evidenceへ置く。
+- external actionはhuman-confirmed verificationとexact authorizationを要求する。
 
-現在動く範囲は[Codebase Guide](CODEBASE-GUIDE.md)、research policyは[Research Design](RESEARCH-DESIGN.md)、次の有限workは[GitHub Issues](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues)を参照する。
+旧v7はtag `research-v7-before-native-agent-loop`と旧storageで再現する。現行binaryへlegacy reader、feature flagまたは旧writerを残さない。判断根拠は[ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)、[ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)、[ADR 0129](adr/0129-keep-validation-out-of-active-discovery.md)を参照する。

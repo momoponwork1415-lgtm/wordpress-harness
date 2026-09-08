@@ -34,16 +34,8 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Verify PHP toolchain
-        run: |
-          php -r 'exit(PHP_MAJOR_VERSION === 8 && PHP_MINOR_VERSION === 3 ? 0 : 1);'
-          composer --version
-
       - name: Install Node.js dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Install PHP Program Index dependencies
-        run: composer --working-dir=tools/php-program-index install --no-dev --prefer-dist --no-interaction --no-progress --no-scripts --no-plugins
 
       - name: Run repository check
         run: pnpm check

@@ -4,11 +4,75 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { verifyCanonicalSourceTree } from "../../src/infrastructure/canonical-source-tree.js";
 import { openLocalDirectoryTargetIntake } from "../../src/target-intelligence/index.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 
 describe("LocalDirectoryTargetIntake.intake", () => {
+  it("emits a Target Snapshot manifest accepted by Research source integrity", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "target-handoff-"));
+    const source = join(directory, "source");
+    try {
+      await mkdir(join(source, "admin"), { recursive: true });
+      await writeFile(
+        join(source, "plugin.php"),
+        "<?php\n/*\nPlugin Name: Handoff Plugin\nVersion: 1.0.0\n*/\n",
+      );
+      await writeFile(join(source, "admin.php"), "<?php\n");
+      await writeFile(join(source, "admin", "view.php"), "<?php\n");
+      const intake = openLocalDirectoryTargetIntake({
+        storageDirectory: join(directory, "storage"),
+      });
+
+      const disposition = await intake.intake({
+        kind: "manual-target-intake",
+        schemaVersion: 1,
+        source: { kind: "local-directory", path: source },
+        pluginIdentity: { kind: "wporg", slug: "handoff-plugin" },
+        requestedVersion: "1.0.0",
+        mainPluginFile: "plugin.php",
+        provenance: {
+          kind: "operator-provided",
+          acquisitionRef: { id: "handoff-source", digest: digest("6") },
+        },
+        policy: {
+          kind: "target-intake-policy",
+          schemaVersion: 1,
+          id: "manual-local-v1",
+          digest: digest("2"),
+          limits: {
+            maxEntries: 100,
+            maxFileBytes: 1_000_000,
+            maxTotalBytes: 10_000_000,
+            maxPathBytes: 512,
+            maxDepth: 16,
+          },
+        },
+      });
+      if (disposition.status !== "ready") {
+        throw new Error("Expected a ready Target Intake Packet");
+      }
+      const expected = {
+        digest: disposition.packet.sourceTree.digest,
+        entries: disposition.packet.sourceTree.entries,
+        bytes: disposition.packet.sourceTree.manifest.entries.reduce(
+          (total, file) => total + file.size,
+          0,
+        ),
+      };
+
+      await expect(
+        verifyCanonicalSourceTree(source, expected),
+      ).resolves.toEqual({
+        matches: true,
+        observedDigest: expected.digest,
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("durably creates the same oracle-free packet from the same bytes at different host paths", async () => {
     const directory = await mkdtemp(join(tmpdir(), "target-intake-"));
     const firstSource = join(directory, "first-source");

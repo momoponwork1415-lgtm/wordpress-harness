@@ -15,7 +15,7 @@ Research            -- Finding ---------------------> Human OS
 Research            <-- Evidence Request ----- Human OS
 ```
 
-- **Target Intelligence -> Research**: Target Intelligenceはoracle-freeなSelection Receiptを人間のApproved Target Batchへまとめ、実行直前のfreshness確認と取得後に`Target Intake Packet`だけをdispatchする。Researchは選定policyを再評価しない。
+- **Target Intelligence -> Research**: Target IntelligenceはAIがoracle-freeなTarget Proposalを作り、人間のApproved Target Batchへまとめ、実行直前のfreshness確認と取得後に`Target Intake Packet`だけをdispatchする。Researchは選定理由を再評価しない。
 - **Research -> Target Intelligence**: ResearchはCampaign lifecycleをcandidate detailsやFindingから切り離した`Campaign Coverage Receipt`として返す。Target IntelligenceはResearch Ledgerを直接読まず、重複防止、resume、follow-upにだけ使う。
 - **Research -> Human OS**: ResearchはIndependent Validationを通過したsource claimをimmutableな`Finding`として渡す。Human OSはResearch storageを直接読まず、Findingと公開Evidence参照だけからfresh AI / human verificationを行い、append-only Verification Recordを作る。raw model transcriptまたはwritable worker stateをcontext間handoffにしない。
 - **Human OS -> Research**: 不足証拠は既存Review PacketまたはResearch Ledgerを書き換えず、具体的なproof gapを`Evidence Request`として新しいResearch workへ要求する。

@@ -37,6 +37,7 @@ if (listedFiles.status !== 0) {
 const markdownFiles = listedFiles.stdout
   .split("\0")
   .filter((path) => path.length > 0)
+  .filter((path) => existsSync(resolve(repositoryRoot, path)))
   .sort((left, right) => left.localeCompare(right, "en"));
 
 function firstLinkTarget(rawTarget) {
@@ -115,6 +116,7 @@ if (diagnostics.length > 0) {
   process.exit(1);
 }
 
-console.log(
-  "docs check passed: " + markdownFiles.length + " repository Markdown files",
+writeSync(
+  1,
+  "docs check passed: " + markdownFiles.length + " repository Markdown files\n",
 );

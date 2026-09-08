@@ -1,8 +1,0 @@
-{
-  "attemptId": "attempt:18c4a7cc4364838e180c587a108c8dd2866461cedb167a02c0323905fa1e306c",
-  "kind": "finder-attempt-result",
-  "leaseId": "sha256:dfcdf84b2e23d354c589f91f928ff9017453a7405584cadac89c97be4420cf36",
-  "reason": "provider-exit-1",
-  "schemaVersion": 1,
-  "status": "provider-failed"
-}

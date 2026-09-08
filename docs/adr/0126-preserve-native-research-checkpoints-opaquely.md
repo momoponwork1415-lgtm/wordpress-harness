@@ -1,0 +1,11 @@
+---
+status: accepted
+---
+
+# Preserve native Research checkpoints opaquely
+
+Research Rootのprovider-native conversationとscratchはprivateなAgent Checkpointとしてprovider Adapterに保存させ、Research Recordにはbindingとintegrityを持つopaque refだけをappendする。成功したResearch Reportだけを状態とする方式では、budgetやprovider interruptionで高価な探索内容が全損し、ADR 0125のresumeとprivate transcript refを満たせないためである。
+
+同じTarget、Prompt、Runtime、PermissionへbindされたResearch continuationだけがCheckpointを再開できる。追加Budgetが必要なinterrupted Campaignは、明示的な新しいCampaign inputからCheckpointを参照する。Independent ValidationはCheckpoint、conversation、scratchを一切受け取らず、毎回freshに保つ。credentialはCheckpointへ含めず、transcript本文とscratch本文をResearch Record、Gitまたはcontext間handoffへ展開しない。
+
+provider-neutralなtool event、subagent topology、thesis、roundまたは固定checkpoint cadenceは作らない。公式CLIのsession resumeとprivate scratchをAdapter内に局所化し、再開できないprovider/versionは状態を保存したふりをせずtyped `incomplete`にする。

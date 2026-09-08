@@ -1,8 +1,0 @@
-{
-  "caseId": "sha256:8c03a4fc275b5aa22317273a0012466e03a8d41784e676e7fb0e56e0f254cb96",
-  "event": "promoted",
-  "id": "sha256:9d9391ea12eb0e0c37ed1ba6446fe042b183a284036106533c7c6b54565a36a3",
-  "kind": "current-human-review-schedule-event",
-  "occurredAt": "2026-09-05T10:00:00.000Z",
-  "schemaVersion": 2
-}

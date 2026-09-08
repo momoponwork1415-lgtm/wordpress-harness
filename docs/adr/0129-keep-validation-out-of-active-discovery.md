@@ -1,0 +1,9 @@
+---
+status: accepted
+---
+
+# Keep Independent Validation out of active Discovery
+
+Root Agentが`continue`を返している間はcandidateを蓄積し、Independent Validationを割り込ませない。Rootがactionable frontierなしとして停止した後に、candidateごとのfresh source-only Validationを一度だけ開始する。早いvalidator verdictが探索portfolioと停止判断を狭めず、wp2shell型の連続Researchと独立性を保つためである。
+
+Validationが具体的なproof gapを`needs-research`として返した場合は、結果をRoot Agentへ渡してResearchを再開できる。ただしValidator sessionをResearchへ昇格したりCheckpointを共有したりせず、次の停止後に未検証candidateだけをfreshにValidationする。代償として早期candidateの判定は遅れるが、DiscoveryのrecallとValidationの独立性を優先する。

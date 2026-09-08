@@ -1,9 +1,20 @@
 #!/usr/bin/env node
 
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { decodeNewCampaignInput, openResearch } from "./research/index.js";
+import { campaignInputSchema, type CampaignInput } from "./research/index.js";
+import {
+  openClaudeCodeNativeAgentRuntime,
+  openGlmNativeAgentRuntime,
+} from "./research/agent-led/claude-code-native-agent-runtime.js";
+import { openGrokNativeAgentRuntime } from "./research/agent-led/grok-native-agent-runtime.js";
+import type { NativeAgentRuntime } from "./research/agent-led/contracts.js";
+import { openResearchCampaigns } from "./research/agent-led/research-campaigns.js";
+
+const usage =
+  "Usage: wordpress-harness campaign <conduct|inspect> --database <path> ...";
 
 export interface CliIo {
   stdout(text: string): void;
@@ -28,8 +39,106 @@ function readOption(args: readonly string[], name: string): string {
   return value;
 }
 
+function readOptions(args: readonly string[], name: string): readonly string[] {
+  const values: string[] = [];
+  for (const [index, argument] of args.entries()) {
+    if (argument !== name) continue;
+    const value = args[index + 1];
+    if (value === undefined || value.startsWith("--")) {
+      throw new Error(`Missing value for option: ${name}`);
+    }
+    values.push(value);
+  }
+  return values;
+}
+
+function dependencySources(
+  args: readonly string[],
+  input: CampaignInput,
+): readonly {
+  readonly snapshot: NonNullable<CampaignInput["dependencySnapshots"]>[number];
+  readonly sourceDirectory: string;
+}[] {
+  const paths = new Map<string, string>();
+  for (const binding of readOptions(args, "--dependency-source")) {
+    const separator = binding.indexOf("=");
+    if (separator <= 0 || separator === binding.length - 1) {
+      throw new Error("Dependency source must use <mount-name>=<directory>");
+    }
+    const mountName = binding.slice(0, separator);
+    if (paths.has(mountName)) {
+      throw new Error(`Duplicate Dependency source: ${mountName}`);
+    }
+    paths.set(mountName, binding.slice(separator + 1));
+  }
+  const snapshots = input.dependencySnapshots ?? [];
+  const expectedMounts = new Set(
+    snapshots.map((snapshot) => snapshot.mountName),
+  );
+  for (const mountName of paths.keys()) {
+    if (!expectedMounts.has(mountName)) {
+      throw new Error(`Unbound Dependency source: ${mountName}`);
+    }
+  }
+  return snapshots.map((snapshot) => {
+    const sourceDirectory = paths.get(snapshot.mountName);
+    if (sourceDirectory === undefined) {
+      throw new Error(`Missing Dependency source: ${snapshot.mountName}`);
+    }
+    return { snapshot, sourceDirectory: resolve(sourceDirectory) };
+  });
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
+}
+
+function unavailableInspectionRuntime(): NativeAgentRuntime {
+  return {
+    execute: () =>
+      Promise.reject(new Error("Inspection cannot execute a Native Run")),
+  };
+}
+
+function openNativeRuntime(
+  args: readonly string[],
+  input: CampaignInput,
+  researchPrompt: string,
+  validationPrompt: string,
+): NativeAgentRuntime {
+  const options = {
+    dockerExecutablePath: resolve(readOption(args, "--docker")),
+    image: readOption(args, "--image"),
+    sourceDirectory: resolve(readOption(args, "--source")),
+    targetSnapshotDigest: input.targetSnapshot.digest,
+    sourceTree: input.targetSnapshot.sourceTree,
+    dependencySources: dependencySources(args, input),
+    providerConfigDirectory: resolve(readOption(args, "--provider-config")),
+    scratchRootDirectory: resolve(readOption(args, "--scratch")),
+    promptSet: {
+      digest: input.promptSet.digest,
+      text: researchPrompt,
+    },
+    validationPromptSet: {
+      digest: input.validationPromptSet.digest,
+      text: validationPrompt,
+    },
+    permissionProfileDigest: input.permissionProfile.digest,
+    maxOutputBytes: 8 * 1024 * 1024,
+  };
+
+  if (input.agentRuntimeProfile.kind === "grok-build-native/v1") {
+    return openGrokNativeAgentRuntime(options);
+  }
+  if (input.agentRuntimeProfile.kind === "claude-code-native/v1") {
+    return openClaudeCodeNativeAgentRuntime(options);
+  }
+  if (input.agentRuntimeProfile.kind === "glm-claude-code-native/v1") {
+    return openGlmNativeAgentRuntime(options);
+  }
+  throw new Error(
+    `Unsupported Agent Runtime: ${input.agentRuntimeProfile.kind}`,
+  );
 }
 
 export async function runCli(
@@ -37,38 +146,50 @@ export async function runCli(
   io: CliIo = processIo,
 ): Promise<number> {
   let close: (() => void) | undefined;
-
   try {
     const [context, command] = args;
-    if (context !== "campaign") {
-      throw new Error("Usage: wordpress-harness campaign <prepare|inspect>");
+    if (
+      context !== "campaign" ||
+      (command !== "conduct" && command !== "inspect")
+    ) {
+      throw new Error(usage);
     }
+    const databasePath = resolve(readOption(args, "--database"));
 
-    const databasePath = readOption(args, "--database");
-    const research = openResearch({ databasePath });
-    close = () => research.close();
-
-    if (command === "prepare") {
-      const inputPath = readOption(args, "--input");
-      const inputText = await readFile(inputPath, "utf8");
-      const inputValue: unknown = JSON.parse(inputText);
-      const result = await research.runner.prepare(
-        decodeNewCampaignInput(inputValue),
+    if (command === "conduct") {
+      const inputValue: unknown = JSON.parse(
+        await readFile(readOption(args, "--input"), "utf8"),
       );
-      io.stdout(`${JSON.stringify(result)}\n`);
-      return 0;
-    }
-
-    if (command === "inspect") {
-      const campaignId = readOption(args, "--campaign");
-      const result = await research.reader.inspect(campaignId, {
-        kind: "preparation",
+      const input = campaignInputSchema.parse(inputValue);
+      const [researchPrompt, validationPrompt] = await Promise.all([
+        readFile(readOption(args, "--research-prompt"), "utf8"),
+        readFile(readOption(args, "--validation-prompt"), "utf8"),
+      ]);
+      const campaigns = openResearchCampaigns({
+        databasePath,
+        runtime: openNativeRuntime(
+          args,
+          input,
+          researchPrompt,
+          validationPrompt,
+        ),
       });
-      io.stdout(`${JSON.stringify(result)}\n`);
+      close = () => campaigns.close();
+      const outcome = await campaigns.conduct(input);
+      io.stdout(`${JSON.stringify(outcome)}\n`);
       return 0;
     }
 
-    throw new Error("Usage: wordpress-harness campaign <prepare|inspect>");
+    const campaigns = openResearchCampaigns({
+      databasePath,
+      runtime: unavailableInspectionRuntime(),
+    });
+    close = () => campaigns.close();
+    const view = await campaigns.inspect({
+      campaignId: readOption(args, "--campaign"),
+    });
+    io.stdout(`${JSON.stringify(view)}\n`);
+    return 0;
   } catch (error: unknown) {
     io.stderr(`${errorMessage(error)}\n`);
     return 1;

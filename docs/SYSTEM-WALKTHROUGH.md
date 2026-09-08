@@ -1,33 +1,40 @@
 # System Walkthrough
 
-同じsystemを六つの問いで順に見る。図を選んで拡大できる。実装状況の正本は[Codebase Guide](CODEBASE-GUIDE.md)、設計の正本は[Harness Architecture](ARCHITECTURE.md)とversioned contractである。
+一件のTargetが通る経路を、現在のpublic seamに沿って示す。実装済みと未接続の境界は[Codebase Guide](CODEBASE-GUIDE.md)を正本とする。
 
-図は採用した設計のViewであり、全接続の実装完了を表さない。初期利用はTarget選定・Verificationの対話操作を許容する。自動化の完成を初期利用の前提にしない。
+診断coreはStep 2と3で完結する。Step 1と4は前後に接続できるsupporting workflowであり、診断coreの実行またはpromotionに必須ではない。
 
-現在地を知る場合は先に[Current capability](CODEBASE-GUIDE.md#current-capability)を読む。以下の図は役割と処理を理解するために使い、実装済み・移行中・未接続の判定はCodebase Guide、次の有限workは[Issue #86](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/86)へ戻る。
+## 1. Select and approve
 
-## 1. 誰が何を所有するか
+Target Intelligenceが取得可能性、identity、provenance、freshnessを検査したCandidate Poolを作る。AIは固定rankやreason codeなしにTarget Proposalを返す。人間はProposalの一部または全部をApproved Target Batchとして承認する。
 
-[![Target Intelligence、Research、Human OSと外部actorの所有境界](architecture.svg)](architecture.svg)
+この段階ではCVE、known file、known routeまたはpatch narrativeをResearchへ渡さない。
 
-## 2. 一件のTargetがどう処理されるか
+## 2. Seal and conduct
 
-[![Target選定からResearch、人間の再実行、提出準備までの処理フロー](diagrams/operating-flow.svg)](diagrams/operating-flow.svg)
+ResearchはTarget Snapshot、WordPress core等のDependency Snapshots、Research Prompt、Validation Prompt、Agent Runtime Profile、Permission Profile、Budget Envelopeをdigest bindする。CLIの`campaign conduct`はprofileが指定するGrok Build、Claude Code、またはClaude Code process上のGLM 5.3 Adapterだけを使う。
 
-## 3. 各処理が何を読み、何を残すか
+native agentはrunsc container内でread-only Target / Dependency sourceとwriteable scratchを使う。Dependencyからframework挙動を確認するが、Dependency自体はaudit Targetにしない。AIが具体的な次手を返せば、同じbindingのprivate Agent Checkpointからprovider-native conversationとscratchを再開し、Validation feedbackを次のrunへ渡す。固定WaveやDepthはない。
 
-[![Selection ReceiptからApproved Submission Draftまでのartifact lineage](diagrams/artifact-lineage.svg)](diagrams/artifact-lineage.svg)
+## 3. Validate independently
 
-## 4. 実際の一件では何が起きたか
+Research reportにcandidateがあれば、別provider home、別scratch、fresh sessionのIndependent Validationを一度行う。Validatorは同じTarget / Dependency sourceからcandidateの主張を再導出する。
 
-[![Brizy 2.8.11の実測と現行Human Verification設計への対応](diagrams/brizy-worked-sequence.svg)](diagrams/brizy-worked-sequence.svg)
+- `source-validated`: immutable Findingを作る。
+- `needs-research`: concrete next actionをResearchへ返す。
+- `disproven`: source evidenceによる反証を残す。
+- `validation-pending`: providerやBudget等で判断不能として残す。
 
-Brizyはknown-caseの探索経路を実証したが、未知Targetのprospective recallはまだ実証していない。
+FindingとCoverageは別artifactである。Findingがあっても探索が続けばCoverageはopenであり、FindingがなくてもAIにnext actionがなければ固定条件内でclosedになり得る。
 
-## 5. どこで止まり、何が次の遷移を許すか
+## 4. Verify and prepare submission
 
-[![Target、Research、Validation、Human Reviewの状態遷移](diagrams/lifecycle-states.svg)](diagrams/lifecycle-states.svg)
+Human OSはFindingを受け取り、fresh gVisor environmentでのAI reproduction recordを追記する。人間のverificationは別のfresh environment identityを要求する。反証されてもFindingを削除せず、観測をappendする。
 
-## 6. 何がどこで動き、何を渡してはいけないか
+AIはSubmission Draftを作れる。外部行動はhuman-confirmed verificationに加え、exact Draft digestとdestinationへbindしたauthorizationが必要である。Harnessは最後のSubmitを実行しない。
 
-[![Host、AI Lab、Human Lab、Private Evidenceのruntimeとtrust boundary](diagrams/runtime-trust.svg)](diagrams/runtime-trust.svg)
+## 5. Resume and failure
+
+同じCampaign inputで`conduct`を再実行するとappend-only recordから再開する。入力digestが違えばconflictにする。Budget exhaustion、provider failure、policy denialまたはinvalid outputは`incomplete`として観測でき、no-findingへ変換しない。有効なAgent Checkpointがあれば、同じTarget、Dependency、Prompt、Runtime、Permissionと明示した新BudgetのCampaignから再開できる。Checkpoint本文はSQLiteやValidationへ渡さない。
+
+旧v7へ戻す時は現行databaseを混ぜず、tag `research-v7-before-native-agent-loop`と旧storageを組にする。

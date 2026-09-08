@@ -6,4 +6,4 @@ status: accepted
 
 初期systemは一つのstrict TypeScript deployableとして実装し、Target Intelligence、Research、Human OSをcontext-owned moduleへ分ける。半年から一年の反復開発では単一processと一つのtoolchainが運用・refactorを容易にする一方、context間のversioned contractと一方向の依存で将来の分離可能性を保てるため、初期microservicesまたは言語別servicesは採用しない。
 
-PHP Program Index extractorだけは、target codeを実行しないresource-limited child processとして分離する。同じSQLite databaseを使う場合もcontextごとにrecord ownershipを分け、別contextのtableまたはeventを直接更新しない。CLI、web UI、remote controlは同じapplication interfaceを呼ぶadapterとし、domain policyを置かない。
+同じSQLite databaseを使う場合もcontextごとにrecord ownershipを分け、別contextのtableまたはeventを直接更新しない。CLI、web UI、remote controlは同じapplication interfaceを呼ぶadapterとし、domain policyを置かない。

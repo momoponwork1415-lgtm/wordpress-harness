@@ -1,0 +1,11 @@
+---
+status: accepted
+---
+
+# Make validated Findings the product success criterion
+
+Productの診断coreの成功条件を、oracle-freeなDiscoveryがcandidateを発見し、別のfresh Independent Validationがsource evidenceから`source-validated` Findingを生成できることに置く。既知positiveの評価もcandidateだけでなくこのstageまでを測る。
+
+Target Selection、Dynamic AI Reproduction、Human OS、external submission支援と隔離方式の高度化は前後のsupporting workflowであり、診断coreのpromotion条件にしない。runtime verificationはsubmission confidenceを上げるが、未接続であることをsource-level rediscoveryの失敗へ読み替えない。逆にsource-only Findingをruntime-confirmedまたはsubmission-readyとも呼ばない。
+
+patched controlは必要な比較実験でだけ使い、通常運転へ要求しない。LOC、sandbox機能数、周辺workflowの完成度またはCoverage closureを診断精度の代理指標にせず、既知positive recoveryとprospective Campaignをstage別に記録する。

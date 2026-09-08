@@ -4,4 +4,4 @@ status: accepted
 
 # Keep the CLI as a thin adapter
 
-operator CLIは一つのcommandとsubcommand群で構成し、argv parsing、result rendering、exit status以外のCampaign logicを持たないthin adapterとする。orchestration、validation、Ledger、Workspace、Model Execution、Verificationは同じmodule interfaceをtestと将来UIへ公開し、command fileごとの保存規則またはlifecycle分岐を作らない。
+operator CLIはargv parsing、result rendering、exit statusだけを所有するthin Adapterとする。Campaign lifecycle、保存規則またはprovider選択をcommand fileへ複製せず、Testや将来のUIと同じModule Interfaceを呼ぶ。複数の入口でResearch semanticsが分岐することを防ぐためである。
