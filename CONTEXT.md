@@ -26,6 +26,9 @@ ResearchはTarget選定、source acquisition policy、runtime exploit verificati
 **Root Agent**
 : Target全体から仮説、読む順序、native subagent、candidate、継続と停止を決めるAI actor。固定Finder roleやDepth phaseではない。
 
+**Discovery**
+: Root Agentがsource-boundな仮説とcandidateを更新し、actionable frontierがなくなるまで継続するResearchの探索部分。`continue`中はIndependent Validationを割り込ませない。
+
 **Research Report**
 : Candidate群と`continue`または`stop`の判断を持つ一回のNative Run出力。
 

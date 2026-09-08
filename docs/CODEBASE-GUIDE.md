@@ -1,8 +1,8 @@
 # Codebase Guide
 
-Status: current implementation map, 2026-09-07
+Status: current implementation map, 2026-09-08
 
-現在動くproduction seam、owner、failure semantics、Behavior Testを示す。設計理由は[ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)と[ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)、research policyは[Research Design](RESEARCH-DESIGN.md)を参照する。
+現在動くproduction seam、owner、failure semantics、Behavior Testを示す。設計理由は[ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)、[ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)、[ADR 0129](adr/0129-keep-validation-out-of-active-discovery.md)、research policyは[Research Design](RESEARCH-DESIGN.md)を参照する。
 
 診断coreは`Target Snapshot -> agent-led Research -> Independent Source Validation -> Finding`である。Source Validationは明白なsource矛盾を落とすsanity gateで、実質的なtrue-positive assuranceはHuman OSのfresh Dynamic AI Reproductionが所有する。Target Selectionと隔離方式の高度化はsupporting workflowまたはAdapter内部の関心であり、診断coreのpromotion blockerではない。
 
@@ -14,16 +14,18 @@ Status: current implementation map, 2026-09-07
 | Programme / disclosure observations | implemented | 全Programmeを一つのCandidate Poolへ組み立てるapplication serviceは未実装 |
 | AI Target Proposal | exact Grok transportをadmitするproduction Adapterまでimplemented | CLIとCandidate Pool組立serviceが未実装 |
 | human Approved Target Batch | implemented | Research `CampaignInput`への変換が未接続 |
-| agent-led Research loop | pinned Dependency Snapshotとprivate Agent Checkpointからのresumeまでimplemented、Claude benign smoke / resume probe完走 | GLM 5.3がknown-positive Brizyを再発見しfresh Validation済み。Dependency付きknown-positive corpusは再評価中 |
+| agent-led Research loop | pinned Dependency Snapshotとprivate Agent Checkpointからのresumeまでimplemented。known-positive corpusは4/4でcandidateを回収 | prospectiveなlatest-version Campaignは未評価 |
 | Grok native runtime | exact image / CLI versionをadmitし、structurally tested | real Brizy runはproviderのHTTP 402で未完了 |
 | Claude Code native runtime | exact imageをreal boundary-probed | admitted image以外は再probeが必要 |
-| GLM native runtime | exact Claude Code imageからZ.AI GLM 5.3へ接続し、runscでreal research / native subagent / fresh Validationを実行済み | Brizy boundary pair全体は未完了 |
-| fresh Independent Validation | implemented | Brizy positiveで実測済み。残るknown-positive corpusは未完了 |
+| GLM native runtime | exact Claude Code imageからZ.AI GLM 5.3へ接続し、runscでreal research / native subagent / fresh Validationを実行済み | Grokとの同条件比較は未実施 |
+| fresh Independent Validation | implemented。known-positive corpusは4/4で`source-validated` | うち2件はDynamic AI Reproduction未実施 |
 | Finding / Coverage / failure record | implemented | cross-context Coverage Receipt adapterは未実装 |
 | Human OS append-only records and external gate | implemented | fresh WordPress / MySQL Dynamic AI Reproductionのprovision / executionは未接続 |
 | actual external submission | intentionally absent | 人間が最後のSubmitを行う |
 
 `implemented`はpublic seamからdeterministic Behavior Testを通る意味である。実provider、実Target、prospective recallの実証とは区別する。
+
+known-positive実測のstage別内訳は[2026-09-08 Native Agent evaluation](knowledge/public-known-positive-native-agent-evaluation-2026-09-08.md)に置く。4/4は既知identityのsource-level recoveryであり、未知脆弱性のrecallまたは現行Human OS runtime接続を証明しない。
 
 ## Target acquisition
 

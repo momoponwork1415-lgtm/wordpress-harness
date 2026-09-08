@@ -40,6 +40,6 @@ If the concept you need isn't in the glossary yet, that's a signal — either yo
 
 If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
 
-> _Contradicts ADR 0113 (keep Finder methods free behind an Evidence Shell) — but worth reopening because…_
+> _Contradicts ADR 0125 (put agent decisions behind thin evidence shells) — but worth reopening because…_
 
 This repo supersedes decisions with a new ADR rather than editing the old one, so say which ADR you would supersede.

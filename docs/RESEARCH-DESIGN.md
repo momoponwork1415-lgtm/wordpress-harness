@@ -96,7 +96,7 @@ Prompt、runtime、permissionまたはresearch policyの変更は進行中Campai
 
 変更は次を説明できる場合だけ採用する。
 
-- whitebox Brizy Boundary Pairで同じcausal identityのLead/Finding recoveryとpatched negative controlを保てるか。patched版の無関係なFindingは保持し、既知境界の非昇格判定を失敗させない。
+- public known-positive corpusでcandidateとsource-validated Findingのstage別recoveryを悪化させないか。
 - prospective Campaignでhigh-impact recallを悪化させないか。
 - Rootとsubagentのpermission継承を実測したか。
 - DiscoveryとIndependent Validationのfreshnessを保てるか。
@@ -112,6 +112,7 @@ Cost削減はrecall baseline確立後に一変数ずつablationする。LOCは�
 - [ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)
 - [ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)
 - [ADR 0128](adr/0128-provide-pinned-dependency-source-to-research.md)
+- [ADR 0129](adr/0129-keep-validation-out-of-active-discovery.md)
 - [wp2shell exact prompt](https://www.slcyber.io/research/exploit-brokers-pay-500000-for-a-wordpress-rce-i-found-one-with-gpt5-6#the-story-of-wp2shell)
 - [Cycle Double Cover Prompt](https://cdn.openai.com/pdf/04d1d1e4-bc75-476a-97cf-49055cd98d31/cdc_prompt.pdf)
 - [Reference harness comparison](knowledge/reference-harness-observability.md)

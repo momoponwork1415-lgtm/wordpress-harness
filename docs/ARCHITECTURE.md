@@ -1,8 +1,10 @@
 # Harness Architecture
 
-Status: accepted whole-system view, 2026-09-07
+Status: accepted whole-system view, 2026-09-08
 
 WordPress Targetの選定からagent-led Research、Independent Validation、fresh verification、人間の外部提出判断までのownershipを示す。実装状態は[Codebase Guide](CODEBASE-GUIDE.md)を正本とする。
+
+![スマホ向け全体アーキテクチャ](visuals/system-architecture.svg)
 
 ## Architecture rule
 
@@ -10,27 +12,13 @@ WordPress Targetの選定からagent-led Research、Independent Validation、fre
 
 診断coreの必須flowは`Target Snapshot + Dependency Snapshots -> Discovery -> Source Validation -> Finding`である。Source Validationは明白なsource矛盾を落とす独立sanity gateに留め、実質的なtrue-positive assuranceは`Finding -> fresh Dynamic AI Reproduction`で得る。Target Intelligenceは前段、Human OSはruntime / human assuranceと外部提出判断を所有する。隔離は各Runtime Adapterの内部安全条件であり、診断結果やpromotionの目的にしない。
 
-![スマホ向け診断core図](visuals/diagnosis-architecture.svg)
-
-探索の仮説loop、candidate handoff、Independent Validationの詳細は[探索・検証アーキテクチャ図](visuals/discovery-validation-architecture.svg)に示す。
+短い診断coreだけを見る場合は[スマホ向け診断core図](visuals/diagnosis-architecture.svg)を参照する。
 
 Harnessが固定するのはTarget identity、source provenance、Prompt、Permission、Budget、freshness、record、failure semanticsと人間のauthorizationである。AIがTargetの優先順位、探索方法、native subagent、読む順序、継続、停止、candidateと検証方法を決める。
 
 ## Contexts
 
-```text
-Target Intelligence -- Target Intake Packet --> Research -- Finding --> Human OS
-        ^                                       |                      |
-        +-- Campaign Coverage Receipt ----------+                      +-- human Submit
-```
-
-| Context | Owns | Stable output |
-| --- | --- | --- |
-| Target Intelligence | observation、AI Target Proposal、human Batch Approval、acquisition、dispatch | Target Intake Packet |
-| Research | Campaign、native runtime、Independent Validation、Finding、Coverage、record | Finding / Campaign Coverage Receipt |
-| Human OS | AI / human verification、Draft、external authorization | Verification Record / authorized exact Draft |
-
-Context間はversioned handoffだけを渡す。Target IntelligenceはFindingやknown routeをResearchへ渡さない。Researchはselection policyを再評価しない。Human OSはResearch storageを直接更新しない。
+Context間は図に示したversioned handoffだけを渡す。Target IntelligenceはFindingやknown routeをResearchへ渡さない。Researchはselection policyを再評価しない。Human OSはResearch storageを直接更新しない。用語と関係の正本は[Context Map](../CONTEXT-MAP.md)に置く。
 
 ## Deep modules
 
@@ -69,18 +57,11 @@ Researchと別のfresh native runがcandidateを同じread-only sourceから再�
 
 `HumanOs`はFindingを受け取り、freshなWordPress / MySQL環境でのDynamic AI Reproduction、別fresh environmentでのhuman verification、Submission Draft、exact Draft digestとdestinationへbindしたauthorizationをappend-onlyに記録する。Dynamic AI Reproductionは`runtime-confirmed / disproved / incomplete`を返し、失敗や反証でも元Findingを削除しない。実際の外部送信は所有しない。
 
-## Operating flow
+## Research flow
 
-1. Target Intelligenceがoracle-free Candidate Poolを固定する。
-2. AIがTarget Proposalを作り、人間がApproved Target Batchを承認する。
-3. 実行直前にversion、source、identity、provenanceを再確認する。
-4. ResearchがTarget、Dependency、Prompt、Runtime、Permission、Budgetをsealする。
-5. Provider-native Root agentがsubagentを必要に応じて使い、具体的なsource-bound next actionがある間は続ける。
-6. Candidateをfresh Independent Source Validationへ渡す。明白なsource反証だけを棄却し、具体的なproof gapはRootが続行可否を決める。
-7. AIにactionable frontierがなくpending ValidationもなければCoverageを閉じる。外部制約やBudgetで続行不能なら`incomplete`にする。
-8. Human OSがFindingをfresh Dynamic AI Reproductionへ渡す。実効性を確認できなければ`disproved`、決着不能なら`incomplete`をappendする。
-9. 別fresh environmentで人間が確認し、AIがDraftを支援する。
-10. 人間がexact Draftとdestinationを承認し、最後のSubmitを行う。
+![探索・検証の詳細アーキテクチャ](visuals/discovery-validation-architecture.svg)
+
+一Targetの文章によるwalkthroughは[System Walkthrough](SYSTEM-WALKTHROUGH.md)に分離する。
 
 Unauthenticated SQLi、Stored XSS、ATO、PrivEsc、arbitrary file operation、object injection、authorizationやbusiness-logic failureは、RCEへ昇格しなくてもFindingになり得る。
 
@@ -98,4 +79,4 @@ Unauthenticated SQLi、Stored XSS、ATO、PrivEsc、arbitrary file operation、o
 - exact payload、HTTP request、screenshot、runtime logはPrivate Evidenceへ置く。
 - external actionはhuman-confirmed verificationとexact authorizationを要求する。
 
-旧v7はtag `research-v7-before-native-agent-loop`と旧storageで再現する。現行binaryへlegacy reader、feature flagまたは旧writerを残さない。判断根拠は[ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)と[ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)を参照する。
+旧v7はtag `research-v7-before-native-agent-loop`と旧storageで再現する。現行binaryへlegacy reader、feature flagまたは旧writerを残さない。判断根拠は[ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)、[ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)、[ADR 0129](adr/0129-keep-validation-out-of-active-discovery.md)を参照する。
