@@ -7,10 +7,8 @@ import { describe, expect, it } from "vitest";
 
 import { runCli } from "../../src/cli.js";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
-import {
-  promptTextDigest,
-  type CampaignInput,
-} from "../../src/research/index.js";
+import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
+import type { CampaignInput } from "../../src/research/index.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 

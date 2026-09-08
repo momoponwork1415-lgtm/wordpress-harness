@@ -292,7 +292,7 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
           budgetAllowance: budgetAllowance(input, allReceipts(view)),
           candidate: pendingCandidate,
         };
-        const receipt = await this.#executeValidation(run);
+        const receipt = await this.#execute(run, this.#clock());
         this.#append(input.campaignId, "validation-run.recorded", {
           inputDigest,
           candidateId: pendingCandidate.candidateId,
@@ -336,11 +336,6 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         budgetEnvelope: input.budgetEnvelope,
         budgetAllowance: budgetAllowance(input, allReceipts(view)),
         ...(resumeFrom === undefined ? {} : { resumeFrom }),
-        history: view.nativeRuns.flatMap((receipt) =>
-          receipt.terminal === "completed"
-            ? [{ runId: receipt.runId, report: receipt.report }]
-            : [],
-        ),
         validationFeedback: view.validationRuns.flatMap((record) =>
           record.receipt.terminal === "completed"
             ? [
@@ -354,42 +349,7 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         ),
       };
       const startedAt = this.#clock();
-      let receipt: NativeRunReceipt;
-      try {
-        const returnedReceipt = await this.#runtime.execute(run);
-        const decoded = nativeRunReceiptSchema.safeParse(returnedReceipt);
-        if (decoded.success) {
-          receipt = decoded.data;
-        } else {
-          receipt = failedReceipt(
-            run,
-            startedAt,
-            this.#clock(),
-            "invalid-output",
-            "Native Agent Runtime returned an unsupported output schema.",
-          );
-        }
-      } catch {
-        receipt = failedReceipt(
-          run,
-          startedAt,
-          this.#clock(),
-          "provider-failed",
-          "Native Agent Runtime failed before returning a receipt.",
-        );
-      }
-      if (
-        receipt.runId !== run.runId ||
-        receipt.runtimeProfileDigest !== run.agentRuntimeProfile.digest
-      ) {
-        receipt = failedReceipt(
-          run,
-          startedAt,
-          this.#clock(),
-          "invalid-output",
-          "Native Run Receipt did not match the sealed Campaign binding.",
-        );
-      }
+      let receipt = await this.#execute(run, startedAt);
       if (receipt.terminal === "completed") {
         try {
           candidatesFor([...view.nativeRuns, receipt]);
@@ -423,14 +383,25 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
     this.#database.close();
   }
 
-  async #executeValidation(
+  async #execute(
+    run: SealedNativeRun,
+    startedAt: Date,
+  ): Promise<NativeRunReceipt>;
+  async #execute(
     run: SealedValidationRun,
-  ): Promise<ValidationRunReceipt> {
-    const startedAt = this.#clock();
-    let receipt: ValidationRunReceipt;
+    startedAt: Date,
+  ): Promise<ValidationRunReceipt>;
+  async #execute(
+    run: SealedAgentRun,
+    startedAt: Date,
+  ): Promise<NativeAgentReceipt> {
+    let receipt: NativeAgentReceipt;
     try {
       const returnedReceipt = await this.#runtime.execute(run);
-      const decoded = validationRunReceiptSchema.safeParse(returnedReceipt);
+      const decoded =
+        run.kind === "sealed-native-research-run"
+          ? nativeRunReceiptSchema.safeParse(returnedReceipt)
+          : validationRunReceiptSchema.safeParse(returnedReceipt);
       receipt = decoded.success
         ? decoded.data
         : failedReceipt(
@@ -438,7 +409,9 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
             startedAt,
             this.#clock(),
             "invalid-output",
-            "Native Agent Runtime returned an unsupported Validation output schema.",
+            run.kind === "sealed-native-research-run"
+              ? "Native Agent Runtime returned an unsupported output schema."
+              : "Native Agent Runtime returned an unsupported Validation output schema.",
           );
     } catch {
       receipt = failedReceipt(
@@ -446,21 +419,27 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         startedAt,
         this.#clock(),
         "provider-failed",
-        "Native Agent Runtime failed before returning a Validation receipt.",
+        run.kind === "sealed-native-research-run"
+          ? "Native Agent Runtime failed before returning a receipt."
+          : "Native Agent Runtime failed before returning a Validation receipt.",
       );
     }
-    if (
+    const bindingMismatch =
       receipt.runId !== run.runId ||
       receipt.runtimeProfileDigest !== run.agentRuntimeProfile.digest ||
-      (receipt.terminal === "completed" &&
-        receipt.report.candidateId !== run.candidate.candidateId)
-    ) {
+      (run.kind === "sealed-native-validation-run" &&
+        receipt.terminal === "completed" &&
+        "candidateId" in receipt.report &&
+        receipt.report.candidateId !== run.candidate.candidateId);
+    if (bindingMismatch) {
       return failedReceipt(
         run,
         startedAt,
         this.#clock(),
         "invalid-output",
-        "Validation Run Receipt did not match the sealed Candidate binding.",
+        run.kind === "sealed-native-research-run"
+          ? "Native Run Receipt did not match the sealed Campaign binding."
+          : "Validation Run Receipt did not match the sealed Candidate binding.",
       );
     }
     return receipt;

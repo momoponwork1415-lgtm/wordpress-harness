@@ -5,13 +5,13 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
-import {
-  openResearchCampaigns,
-  type AgentCheckpointRef,
-  type CampaignInput,
-  type NativeAgentRuntime,
-  type SealedAgentRun,
-} from "../../src/research/index.js";
+import type { CampaignInput } from "../../src/research/index.js";
+import type {
+  AgentCheckpointRef,
+  NativeAgentRuntime,
+  SealedAgentRun,
+} from "../../src/research/agent-led/contracts.js";
+import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
 
 const temporaryDirectories: string[] = [];
 const gvisorIsolation = {
@@ -354,6 +354,7 @@ describe("ResearchCampaigns", () => {
         maxNativeRuns: 2,
       },
     };
+    let invocation = 0;
     const campaigns = openResearchCampaigns({
       databasePath: join(directory, "agent-led.sqlite"),
       runtime: {
@@ -361,7 +362,7 @@ describe("ResearchCampaigns", () => {
           if (run.kind !== "sealed-native-research-run") {
             throw new Error("This scenario does not produce a candidate");
           }
-          const invocation = run.history.length + 1;
+          invocation += 1;
           const checkpoint = {
             kind: "agent-checkpoint" as const,
             schemaVersion: 1 as const,

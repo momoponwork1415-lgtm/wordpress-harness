@@ -4,13 +4,13 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  openResearchCampaigns,
-  type CampaignInput,
-  type NativeAgentRuntime,
-  type NativeRunReceipt,
-  type SealedAgentRun,
-} from "../../src/research/index.js";
+import type { CampaignInput } from "../../src/research/index.js";
+import type {
+  NativeAgentRuntime,
+  NativeRunReceipt,
+  SealedAgentRun,
+} from "../../src/research/agent-led/contracts.js";
+import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
 
 const temporaryDirectories: string[] = [];
 const gvisorIsolation = {

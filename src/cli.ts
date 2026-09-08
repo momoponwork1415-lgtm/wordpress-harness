@@ -4,15 +4,14 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { campaignInputSchema, type CampaignInput } from "./research/index.js";
 import {
-  campaignInputSchema,
   openClaudeCodeNativeAgentRuntime,
   openGlmNativeAgentRuntime,
-  openGrokNativeAgentRuntime,
-  openResearchCampaigns,
-  type CampaignInput,
-  type NativeAgentRuntime,
-} from "./research/index.js";
+} from "./research/agent-led/claude-code-native-agent-runtime.js";
+import { openGrokNativeAgentRuntime } from "./research/agent-led/grok-native-agent-runtime.js";
+import type { NativeAgentRuntime } from "./research/agent-led/contracts.js";
+import { openResearchCampaigns } from "./research/agent-led/research-campaigns.js";
 
 const usage =
   "Usage: wordpress-harness campaign <conduct|inspect> --database <path> ...";

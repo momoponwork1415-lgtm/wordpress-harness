@@ -13,12 +13,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
-import {
-  openGrokNativeAgentRuntime,
-  openResearchCampaigns,
-  promptTextDigest,
-  type CampaignInput,
-} from "../../src/research/index.js";
+import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
+import { openGrokNativeAgentRuntime } from "../../src/research/agent-led/grok-native-agent-runtime.js";
+import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
+import type { CampaignInput } from "../../src/research/index.js";
 
 const temporaryDirectories: string[] = [];
 

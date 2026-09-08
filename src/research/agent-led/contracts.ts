@@ -1,9 +1,6 @@
 import { z } from "zod";
 
 import { canonicalDigest } from "../../infrastructure/canonical-json.js";
-import { promptTextDigest } from "../../infrastructure/prompt-text.js";
-
-export { promptTextDigest } from "../../infrastructure/prompt-text.js";
 
 const identifierSchema = z
   .string()
@@ -239,20 +236,16 @@ const agentRunReceiptShape = {
   activity: nativeRunActivitySchema,
 };
 
-const nativeRunReceiptShape = {
-  ...agentRunReceiptShape,
-};
-
 export const nativeRunReceiptSchema = z.discriminatedUnion("terminal", [
   z.strictObject({
-    ...nativeRunReceiptShape,
+    ...agentRunReceiptShape,
     terminal: z.literal("completed"),
     isolation: agentRunIsolationSchema,
     checkpoint: agentCheckpointRefSchema,
     report: researchReportSchema,
   }),
   z.strictObject({
-    ...nativeRunReceiptShape,
+    ...agentRunReceiptShape,
     terminal: z.enum([
       "provider-failed",
       "budget-exhausted",
@@ -299,12 +292,6 @@ export const sealedNativeRunSchema = z.strictObject({
   budgetEnvelope: budgetEnvelopeSchema,
   budgetAllowance: runBudgetAllowanceSchema,
   resumeFrom: agentCheckpointRefSchema.optional(),
-  history: z.array(
-    z.strictObject({
-      runId: identifierSchema,
-      report: researchReportSchema,
-    }),
-  ),
   validationFeedback: z.array(
     z.strictObject({
       runId: identifierSchema,
@@ -330,25 +317,8 @@ export const sealedValidationRunSchema = z.strictObject({
   candidate: validationCandidateSchema,
 });
 
-export const sealedAgentRunSchema = z.discriminatedUnion("kind", [
-  sealedNativeRunSchema,
-  sealedValidationRunSchema,
-]);
-
-export const campaignStatusSchema = z.enum([
-  "research-continues",
-  "validation-pending",
-  "coverage-closed",
-  "incomplete",
-]);
-
 export const campaignInterruptionSchema = z.strictObject({
-  reason: z.enum([
-    "budget-exhausted",
-    "provider-failed",
-    "policy-denied",
-    "invalid-output",
-  ]),
+  reason: z.literal("budget-exhausted"),
   summary: z.string().min(1),
 });
 
@@ -372,13 +342,19 @@ export const sourceValidatedFindingSchema = z.strictObject({
   evidence: z.array(sourceEvidenceSchema).min(1),
 });
 
-export const campaignCoverageSchema = z.strictObject({
-  status: z.enum(["open", "closed", "incomplete"]),
-});
-
 export interface ValidationRunRecord {
   readonly candidateId: string;
   readonly receipt: ValidationRunReceipt;
+}
+
+export type CampaignStatus =
+  | "research-continues"
+  | "validation-pending"
+  | "coverage-closed"
+  | "incomplete";
+
+export interface CampaignCoverage {
+  readonly status: "open" | "closed" | "incomplete";
 }
 
 export interface NativeAgentRuntime {
@@ -422,12 +398,11 @@ export type CampaignInput = z.infer<typeof campaignInputSchema>;
 export type DependencySnapshotRef = z.infer<typeof dependencySnapshotRefSchema>;
 export type AgentCheckpointRef = z.infer<typeof agentCheckpointRefSchema>;
 export type CampaignInterruption = z.infer<typeof campaignInterruptionSchema>;
-export type CampaignStatus = z.infer<typeof campaignStatusSchema>;
 export type NativeRunReceipt = z.infer<typeof nativeRunReceiptSchema>;
 export type ResearchReport = z.infer<typeof researchReportSchema>;
 export type SealedNativeRun = z.infer<typeof sealedNativeRunSchema>;
 export type SealedValidationRun = z.infer<typeof sealedValidationRunSchema>;
-export type SealedAgentRun = z.infer<typeof sealedAgentRunSchema>;
+export type SealedAgentRun = SealedNativeRun | SealedValidationRun;
 export type ValidationCandidate = z.infer<typeof validationCandidateSchema>;
 export type ValidationReport = z.infer<typeof validationReportSchema>;
 export type ValidationRunReceipt = z.infer<typeof validationRunReceiptSchema>;
@@ -435,4 +410,3 @@ export type NativeAgentReceipt = NativeRunReceipt | ValidationRunReceipt;
 export type SourceValidatedFinding = z.infer<
   typeof sourceValidatedFindingSchema
 >;
-export type CampaignCoverage = z.infer<typeof campaignCoverageSchema>;

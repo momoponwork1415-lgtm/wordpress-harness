@@ -49,8 +49,6 @@ const grokResultSchema = z.object({
   structuredOutput: z.unknown(),
 });
 
-export interface OpenGrokNativeAgentRuntimeOptions extends GvisorAgentRuntimeOptions {}
-
 function parseJson(value: string): unknown {
   try {
     return JSON.parse(value) as unknown;
@@ -63,7 +61,7 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
   readonly #sandbox: GvisorAgentSandbox;
   readonly #transportAdmitted: boolean;
 
-  constructor(options: OpenGrokNativeAgentRuntimeOptions) {
+  constructor(options: GvisorAgentRuntimeOptions) {
     this.#sandbox = new GvisorAgentSandbox(options);
     this.#transportAdmitted =
       grokImageDigest(options.image) ===
@@ -259,7 +257,7 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
 }
 
 export function openGrokNativeAgentRuntime(
-  options: OpenGrokNativeAgentRuntimeOptions,
+  options: GvisorAgentRuntimeOptions,
 ): NativeAgentRuntime {
   return new GrokNativeAgentRuntime(options);
 }

@@ -109,9 +109,6 @@ const glmSettingsSchema = z.strictObject({
   }),
 });
 
-export interface OpenClaudeCodeNativeAgentRuntimeOptions extends GvisorAgentRuntimeOptions {}
-export interface OpenGlmNativeAgentRuntimeOptions extends GvisorAgentRuntimeOptions {}
-
 const claudeCodeTransportEligibility = {
   schemaVersion: 1,
   imageDigest:
@@ -310,7 +307,7 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
   readonly #providerConfigDirectory: string;
 
   constructor(
-    options: OpenClaudeCodeNativeAgentRuntimeOptions,
+    options: GvisorAgentRuntimeOptions,
     provider: "anthropic" | "zai",
   ) {
     this.#sandbox = new GvisorAgentSandbox(options);
@@ -755,13 +752,13 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
 }
 
 export function openClaudeCodeNativeAgentRuntime(
-  options: OpenClaudeCodeNativeAgentRuntimeOptions,
+  options: GvisorAgentRuntimeOptions,
 ): NativeAgentRuntime {
   return new ClaudeCodeNativeAgentRuntime(options, "anthropic");
 }
 
 export function openGlmNativeAgentRuntime(
-  options: OpenGlmNativeAgentRuntimeOptions,
+  options: GvisorAgentRuntimeOptions,
 ): NativeAgentRuntime {
   return new ClaudeCodeNativeAgentRuntime(options, "zai");
 }
