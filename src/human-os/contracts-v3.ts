@@ -11,6 +11,7 @@ const boundedTextSchema = z.string().min(1).max(4_000);
 export const isolatedEnvironmentSchema = z.strictObject({
   environmentId: idSchema,
   targetSnapshotDigest: digestSchema,
+  runtimeProfileDigest: digestSchema,
   backend: z.literal("gvisor"),
   runtime: z.literal("runsc"),
   fallbackUsed: z.literal(false),
@@ -26,13 +27,26 @@ const privateEvidenceRefSchema = z.strictObject({
   digest: digestSchema,
 });
 
+export const externalDependencyEvidenceRequestSchema = z.strictObject({
+  kind: z.literal("external-dependency-evidence-request"),
+  schemaVersion: z.literal(1),
+  reason: z.literal("external-dependency-required"),
+  service: z.string().min(1).max(256),
+  humanAction: boundedTextSchema,
+  minimumAccess: boundedTextSchema,
+  verificationGoal: boundedTextSchema,
+});
+
 const aiReproductionIdentitySchema = z.strictObject({
   kind: z.literal("ai-reproduction-record"),
   schemaVersion: z.literal(3),
   findingId: idSchema,
-  environment: isolatedEnvironmentSchema,
+  environment: isolatedEnvironmentSchema.nullable(),
   status: z.enum(["runtime-confirmed", "disproved", "incomplete"]),
   summary: boundedTextSchema,
+  evidenceRequest: externalDependencyEvidenceRequestSchema
+    .nullable()
+    .optional(),
   privateEvidence: z.array(privateEvidenceRefSchema).max(32),
   recordedAt: timestampSchema,
 });
@@ -43,7 +57,11 @@ export const aiReproductionRecordSchema = aiReproductionIdentitySchema
     const { id: _id, ...identity } = record;
     if (
       record.id !== canonicalDigest(identity) ||
-      (record.status !== "incomplete" && record.privateEvidence.length === 0)
+      (record.status !== "incomplete" &&
+        (record.environment === null ||
+          record.privateEvidence.length === 0 ||
+          (record.evidenceRequest !== undefined &&
+            record.evidenceRequest !== null)))
     ) {
       context.addIssue({
         code: "custom",
@@ -147,6 +165,9 @@ export const humanOsFindingViewSchema = z.strictObject({
 });
 
 export type IsolatedEnvironment = z.infer<typeof isolatedEnvironmentSchema>;
+export type ExternalDependencyEvidenceRequest = z.infer<
+  typeof externalDependencyEvidenceRequestSchema
+>;
 export type AIReproductionRecord = z.infer<typeof aiReproductionRecordSchema>;
 export type HumanVerificationRecord = z.infer<
   typeof humanVerificationRecordSchema

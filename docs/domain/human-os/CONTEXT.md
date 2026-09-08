@@ -12,7 +12,7 @@ Human OSはTarget選定、Research探索、source ValidationまたはFinding生�
 : Researchのfresh Independent Validationが生成したimmutable `source-validated-finding`。
 
 **Isolated Environment**
-: FindingのTarget Snapshotへbindしたfresh、disposable、runsc-backed environment identity。host Target execution、ambient credential、arbitrary network、fallbackを許さない。
+: FindingのTarget Snapshotとruntime profile digestへbindしたfresh、disposable、runsc-backed environment identity。host Target execution、ambient credential、arbitrary network、fallbackを許さない。
 
 **AI Reproduction Record**
 : AIが一つのIsolated Environmentで行ったruntime observationとPrivate Evidence reference。source Findingを上書きしない。
@@ -33,7 +33,7 @@ Human OSはTarget選定、Research探索、source ValidationまたはFinding生�
 : human-confirmed verification、Draft存在、exact authorizationの三条件を検査するread decision。実送信ではない。
 
 **Evidence Request**
-: runtime / human確認で見つかった具体的proof gapを新しいResearch workとして要求するhandoff。既存Findingを変更しない。
+: runtime / human確認で見つかった具体的proof gapを要求するhandoff。外部serviceならservice名、sandbox-onlyの最小権限、人間が判断するsetup、検証目標を持つ。既存Findingを変更しない。
 
 ## Invariants
 
@@ -41,6 +41,7 @@ Human OSはTarget選定、Research探索、source ValidationまたはFinding生�
 - AIとhuman verificationは異なるfresh environment identityを使う。
 - human disprovalまたはruntime failureでもFindingを削除しない。
 - provider、setup、Budget、ambiguous observationをdisprovedへ丸めない。
+- AIが次の実験と停止を決め、Harnessはclass別recipeや固定Depthを持たない。
 - Private EvidenceをGit、Finding、Draftへ展開しない。
 - external actionはhuman-confirmed verificationとexact Draft / destination authorizationを要求する。
 - AIは理解とDraftを支援できるが、authorizationと最後のSubmitを代行しない。

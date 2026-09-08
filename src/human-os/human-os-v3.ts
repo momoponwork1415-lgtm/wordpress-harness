@@ -11,6 +11,7 @@ import {
 } from "../research/index.js";
 import {
   aiReproductionRecordSchema,
+  defineAIReproductionRecord,
   externalActionAuthorizationSchema,
   externalActionRequestSchema,
   humanOsFindingViewSchema,
@@ -64,11 +65,18 @@ export type ExternalActionAdmission =
         | "exact-authorization-required";
     };
 
+export interface DynamicReproductionRuntime {
+  execute(input: {
+    readonly finding: SourceValidatedFinding;
+  }): Promise<AIReproductionRecord>;
+}
+
 export interface HumanOs {
   receiveFinding(input: {
     readonly finding: SourceValidatedFinding;
     readonly receivedAt: string;
   }): Promise<HumanOsFindingView>;
+  reproduceFinding(findingId: string): Promise<AIReproductionRecord>;
   recordAIReproduction(record: AIReproductionRecord): Promise<void>;
   recordHumanVerification(record: HumanVerificationRecord): Promise<void>;
   saveSubmissionDraft(draft: SubmissionDraft): Promise<void>;
@@ -84,6 +92,8 @@ export interface HumanOs {
 
 export interface OpenHumanOsOptions {
   readonly databasePath: string;
+  readonly dynamicReproductionRuntime?: DynamicReproductionRuntime;
+  readonly clock?: () => Date;
 }
 
 function encode(value: unknown): string {
@@ -92,8 +102,12 @@ function encode(value: unknown): string {
 
 class SqliteHumanOs implements HumanOs {
   readonly #database: Database.Database;
+  readonly #dynamicReproductionRuntime: DynamicReproductionRuntime | undefined;
+  readonly #clock: () => Date;
 
   constructor(options: OpenHumanOsOptions) {
+    this.#dynamicReproductionRuntime = options.dynamicReproductionRuntime;
+    this.#clock = options.clock ?? (() => new Date());
     this.#database = new Database(options.databasePath);
     this.#database.pragma("journal_mode = WAL");
     this.#database.exec(`
@@ -129,12 +143,45 @@ class SqliteHumanOs implements HumanOs {
     return this.#require(finding.findingId);
   }
 
+  async reproduceFinding(findingId: string): Promise<AIReproductionRecord> {
+    const finding = this.#require(findingId).finding;
+    try {
+      if (this.#dynamicReproductionRuntime === undefined) {
+        throw new Error("Dynamic Reproduction Runtime is unavailable");
+      }
+      const record = aiReproductionRecordSchema.parse(
+        await this.#dynamicReproductionRuntime.execute({ finding }),
+      );
+      if (record.findingId !== finding.findingId) {
+        throw new Error("Dynamic Reproduction Finding binding mismatch");
+      }
+      await this.recordAIReproduction(record);
+      return record;
+    } catch {
+      const incomplete = defineAIReproductionRecord({
+        kind: "ai-reproduction-record",
+        schemaVersion: 3,
+        findingId: finding.findingId,
+        environment: null,
+        status: "incomplete",
+        summary:
+          "Dynamic AI Reproduction could not produce a Finding-bound runtime result.",
+        evidenceRequest: null,
+        privateEvidence: [],
+        recordedAt: this.#clock().toISOString(),
+      });
+      await this.recordAIReproduction(incomplete);
+      return incomplete;
+    }
+  }
+
   async recordAIReproduction(record: AIReproductionRecord): Promise<void> {
     const value = aiReproductionRecordSchema.parse(record);
     const view = this.#require(value.findingId);
     if (
+      value.environment !== null &&
       value.environment.targetSnapshotDigest !==
-      view.finding.targetSnapshot.digest
+        view.finding.targetSnapshot.digest
     ) {
       throw new Error("AI Reproduction Target binding mismatch");
     }
@@ -155,6 +202,7 @@ class SqliteHumanOs implements HumanOs {
     );
     if (
       reproduction === undefined ||
+      reproduction.environment === null ||
       value.environment.targetSnapshotDigest !==
         view.finding.targetSnapshot.digest ||
       value.environment.environmentId === reproduction.environment.environmentId

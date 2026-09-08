@@ -147,8 +147,8 @@
       <text x="114" y="1647" text-anchor="middle" class="card">2 / 4</text>
       <text x="114" y="1668" text-anchor="middle" class="tiny">past dynamic labs</text>
       <rect x="203" y="1623" width="145" height="56" rx="14" fill="#604724"/>
-      <text x="275" y="1647" text-anchor="middle" class="card">未接続</text>
-      <text x="275" y="1668" text-anchor="middle" class="tiny">current provisioner</text>
+      <text x="275" y="1647" text-anchor="middle" class="card">lab実測</text>
+      <text x="275" y="1668" text-anchor="middle" class="tiny">provider pilot pending</text>
     </g>
 
     <!-- Fixed shell -->

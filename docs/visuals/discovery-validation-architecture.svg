@@ -209,13 +209,13 @@
       <text x="43" y="2421" class="body">別のgVisor環境で実WordPress + MySQLを起動</text>
 
       <rect x="43" y="2444" width="302" height="69" rx="14" fill="#3a3225" stroke="#9b7545"/>
-      <text x="61" y="2471" class="cardTitle">AIがbounded recipeを組み立てる</text>
-      <text x="61" y="2496" class="body">SQLi · XSS canary · ATOなどを実interfaceで確認</text>
+      <text x="61" y="2471" class="cardTitle">AIが次の実験 / 停止を選ぶ</text>
+      <text x="61" y="2496" class="body">Node · browser scriptで実interfaceを確認</text>
 
       <rect x="43" y="2530" width="302" height="69" rx="14" fill="#332d24" stroke="#86673f"/>
       <text x="61" y="2555" class="body">runtime-confirmed → TP assuranceをappend</text>
       <text x="61" y="2577" class="body">disproved / incomplete → 根拠をappend</text>
-      <text x="61" y="2594" class="tiny">どの結果でもsource Findingは削除しない</text>
+      <text x="61" y="2594" class="tiny">外部serviceが必要 → Evidence Request</text>
     </g>
 
     <path d="M195 2627V2659" class="flowBlue"/>

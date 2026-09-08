@@ -55,7 +55,7 @@ Researchと別のfresh native runがcandidateを同じread-only sourceから再�
 
 ### Human OS
 
-`HumanOs`はFindingを受け取り、freshなWordPress / MySQL環境でのDynamic AI Reproduction、別fresh environmentでのhuman verification、Submission Draft、exact Draft digestとdestinationへbindしたauthorizationをappend-onlyに記録する。Dynamic AI Reproductionは`runtime-confirmed / disproved / incomplete`を返し、失敗や反証でも元Findingを削除しない。実際の外部送信は所有しない。
+`HumanOs`はFindingを受け取り、freshなWordPress / MySQL環境でのDynamic AI Reproduction、別fresh environmentでのhuman verification、Submission Draft、exact Draft digestとdestinationへbindしたauthorizationをappend-onlyに記録する。Dynamic AI ReproductionではClaude Codeがread-only sourceと直前のruntime observationから次の実験または停止を選び、Harnessはそのscriptをinternal-networkのrunsc workerで実行する。class別recipeや固定Depthは持たない。`runtime-confirmed / disproved / incomplete`を返し、失敗や反証でも元Findingを削除しない。実際の外部送信は所有しない。
 
 ## Research flow
 
