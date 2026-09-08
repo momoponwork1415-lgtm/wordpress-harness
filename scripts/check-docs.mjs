@@ -116,6 +116,7 @@ if (diagnostics.length > 0) {
   process.exit(1);
 }
 
-console.log(
-  "docs check passed: " + markdownFiles.length + " repository Markdown files",
+writeSync(
+  1,
+  "docs check passed: " + markdownFiles.length + " repository Markdown files\n",
 );

@@ -184,7 +184,7 @@ case "$prompt:$is_validation" in
     subagents=0
     ;;
 esac
-node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1],"utf8");process.stdout.write(JSON.stringify({type:"result",subtype:"success",is_error:false,terminal_reason:"completed",session_id:process.argv[2],result,duration_ms:30000,num_turns:3,permission_denials:[],usage:{server_tool_use:{web_search_requests:0,web_fetch_requests:0}},subagent_stats:{spawned:Number(process.argv[3])},modelUsage:{"glm-5.3":{canonicalModel:"glm-5.3",inputTokens:3000,outputTokens:500,cacheReadInputTokens:1000,cacheCreationInputTokens:250}}}));' "$result_path" "$session" "$subagents"
+node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1],"utf8");fs.writeSync(1,JSON.stringify({type:"result",subtype:"success",is_error:false,terminal_reason:"completed",session_id:process.argv[2],result,duration_ms:30000,num_turns:3,permission_denials:[],usage:{server_tool_use:{web_search_requests:0,web_fetch_requests:0}},subagent_stats:{spawned:Number(process.argv[3])},modelUsage:{"glm-5.3":{canonicalModel:"glm-5.3",inputTokens:3000,outputTokens:500,cacheReadInputTokens:1000,cacheCreationInputTokens:250}}}));' "$result_path" "$session" "$subagents"
 `,
       { encoding: "utf8", mode: 0o700 },
     );
