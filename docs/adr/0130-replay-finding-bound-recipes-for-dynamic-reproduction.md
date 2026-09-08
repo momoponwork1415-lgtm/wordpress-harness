@@ -1,0 +1,13 @@
+---
+status: accepted
+---
+
+# Replay Finding-bound recipes for dynamic reproduction
+
+Human OSのDynamic Reproductionは、探索済みFindingをClaude Codeへ再読解させず、Finding ID、Target Snapshot digestとbody digestへbindしたprivate Reproduction Recipeをfresh labで一度だけ実行する。
+
+旧実装はread-only sourceからattack scriptを作り、runtime observationをAIへ戻して追加experimentまたは停止を決めていた。実Targetでは初回読解に13〜18分、事後reviewにも同程度を要した。subagentを外したGLM 5.3 mediumでも2件とも8分でscript生成前にtimeoutした。一方、既存Recipeのfresh replayはTranslatePress 3.3.1 ATOを約18秒でruntime-confirmedした。人間が別fresh environmentで最終再現するため、Human OSで探索を繰り返す費用に見合う追加assuranceはない。
+
+Recipe script自身がmatched preconditions、completed recipe、observed effectを構造化して返し、3条件がすべて真の時だけ`runtime-confirmed`にする。一回の攻撃で効果を観測できなくても脆弱性の反証にはせず、Recipe / fixture不足、実行失敗、曖昧な出力とともに`incomplete`へする。外部sandbox identityが必要なら攻撃を実行せずEvidence Requestを残す。exact Recipe、payload、requestとruntime outputはPrivate Evidenceから公開しない。
+
+これによりDynamic Reproductionの時間とvarianceを減らし、同じRecipeをAIと人間の異なるfresh environmentで比較できる。Research / Independent ValidationからPrivate Recipeを保存するhandoffと、companion pluginやsite contentのfixture resolverは別の未実装seamとして残る。動的検証内のsource再探索、post-experiment AI review、patched control、追加experimentまたはclass別Adapterは現行binaryへ残さない。

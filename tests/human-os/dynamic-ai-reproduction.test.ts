@@ -44,7 +44,7 @@ const finding: SourceValidatedFinding = {
   ],
 };
 
-describe("Dynamic AI Reproduction", () => {
+describe("Dynamic Reproduction", () => {
   it("runs a received Finding and appends the bound runtime result", async () => {
     const directory = await mkdtemp(join(tmpdir(), "dynamic-reproduction-"));
     const record = defineAIReproductionRecord({

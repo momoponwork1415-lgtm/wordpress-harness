@@ -105,17 +105,17 @@ known-positive実測のstage別内訳は[2026-09-08 Native Agent evaluation](kno
 
 ## Human OS
 
-**Purpose:** immutable Findingをfresh Dynamic AI Reproductionへ渡してruntime / human assuranceをappendし、外部行動を人間のexact authorizationでgateする。
+**Purpose:** immutable Findingをfresh Dynamic Reproductionへ渡してruntime / human assuranceをappendし、外部行動を人間のexact authorizationでgateする。
 
-**Interface:** `HumanOs.receiveFinding / reproduceFinding / recordAIReproduction / recordHumanVerification / saveSubmissionDraft / authorizeExternalAction / admitExternalAction / inspect`。production Adapterは`openGvisorWordPressDynamicReproductionRuntime`と`openClaudeCodeDynamicReproductionAgent`。
+**Interface:** `HumanOs.receiveFinding / reproduceFinding / recordAIReproduction / recordHumanVerification / saveSubmissionDraft / authorizeExternalAction / admitExternalAction / inspect`。production Adapterは`openGvisorWordPressDynamicReproductionRuntime`と`openRecipeDynamicReproductionAgent`。
 
 **Owned state:** Finding、AI Reproduction Record、Human Verification Record、Draft、AuthorizationをSQLite v3 eventsへ保存する。exact experiment script、HTTP / browser output、screenshot、runtime logはGit外のcontent-addressed Private Evidenceへ保存し、public Recordにはdigest refだけを置く。
 
-**Invariants:** Target source treeをFindingのcanonical digestへ再照合してから、immutable imageのWordPress / MariaDB / WP-CLI / experiment workerをinternal network上のfresh runsc labだけで動かす。Claude Codeは別runsc processでread-only sourceを調べ、native subagentで反証し、観測に応じて次のNode / browser experimentまたは停止を選ぶ。Harnessはclass別recipe、Depth、Waveを持たず、run / wall-time / costとscript / output sizeだけを安全上限にする。conclusive outcomeはmatched preconditions、completed recipe、private runtime evidence、観測済みcleanupを必須にする。AIとhuman verificationは異なるfresh environment identityを持つ。`runtime-confirmed / disproved / incomplete`のどの結果でもFindingは削除しない。Draft revisionは連続し、authorizationはexact Draft digestとdestinationへbindする。
+**Invariants:** Target source treeをFindingのcanonical digestへ再照合してから、immutable imageのWordPress / MariaDB / WP-CLI / experiment workerをinternal network上のfresh runsc labだけで動かす。Dynamic Reproduction Recipeはversion、body digest、Finding ID、Target Snapshot digestへbindし、Private resolverからだけ取得する。Recipeを一度だけ実行し、attack script自身がmatched preconditions、completed recipe、observed effectを構造化して返した3条件がすべて真の時だけ`runtime-confirmed`にする。動的検証内でsource再探索、AI review、patched controlまたは追加experimentを行わず、効果未観測、Recipe / fixture不足、曖昧な出力または失敗は`disproved`でなく`incomplete`にする。conclusive outcomeはprivate runtime evidenceと観測済みcleanupも必須にする。runtimeとhuman verificationは異なるfresh environment identityを持つ。どの結果でもFindingは削除しない。Draft revisionは連続し、authorizationはexact Draft digestとdestinationへbindする。
 
-**Failure semantics:** source / runsc / image mismatchはlabを起動しない。provision、agent、recipe、Budget、ambiguous observation、cleanupまたはPrivate Evidence failureは`incomplete`としてappendし、途中のprivate transcriptを可能な範囲で残す。Facebook、PayPal等の外部sandbox identityが必要なら`external-dependency-required`のEvidence Requestとしてservice、human setup判断、最小権限、検証目標を残し、`disproved`にしない。矛盾したAgent outcomeはschema境界で`incomplete`へ落とす。Finding不在、Draft不在、human confirmation不在、exact authorization不在はexternal actionを拒否する。Harnessは送信しない。
+**Failure semantics:** source / runsc / image mismatchはlabを起動しない。provision、Recipe解決、attack実行、ambiguous observation、cleanupまたはPrivate Evidence failureは`incomplete`としてappendし、途中のprivate transcriptを可能な範囲で残す。Facebook、PayPal等の外部sandbox identityが必要なら`external-dependency-required`のEvidence Requestとしてservice、human setup判断、最小権限、検証目標を残し、`disproved`にしない。Finding不在、Draft不在、human confirmation不在、exact authorization不在はexternal actionを拒否する。Harnessは送信しない。
 
-**Code / Tests:** [`src/human-os`](../src/human-os) · [`dynamic-ai-reproduction.test.ts`](../tests/human-os/dynamic-ai-reproduction.test.ts) · [`gvisor-wordpress-dynamic-reproduction.test.ts`](../tests/human-os/gvisor-wordpress-dynamic-reproduction.test.ts) · [`claude-code-dynamic-reproduction-agent.test.ts`](../tests/human-os/claude-code-dynamic-reproduction-agent.test.ts) · [`agent-led-human-os.test.ts`](../tests/human-os/agent-led-human-os.test.ts)
+**Code / Tests:** [`src/human-os`](../src/human-os) · [`dynamic-ai-reproduction.test.ts`](../tests/human-os/dynamic-ai-reproduction.test.ts) · [`gvisor-wordpress-dynamic-reproduction.test.ts`](../tests/human-os/gvisor-wordpress-dynamic-reproduction.test.ts) · [`recipe-dynamic-reproduction-agent.test.ts`](../tests/human-os/recipe-dynamic-reproduction-agent.test.ts) · [`agent-led-human-os.test.ts`](../tests/human-os/agent-led-human-os.test.ts)
 
 ## CLI
 

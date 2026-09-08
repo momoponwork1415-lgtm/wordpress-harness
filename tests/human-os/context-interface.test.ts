@@ -8,9 +8,7 @@ describe("Human OS context Interface", () => {
     expect(humanOsContext).toHaveProperty(
       "openGvisorWordPressDynamicReproductionRuntime",
     );
-    expect(humanOsContext).toHaveProperty(
-      "openClaudeCodeDynamicReproductionAgent",
-    );
+    expect(humanOsContext).toHaveProperty("openRecipeDynamicReproductionAgent");
     expect(humanOsContext).toHaveProperty("defineAIReproductionRecord");
     expect(humanOsContext).toHaveProperty("defineHumanVerificationRecord");
     expect(humanOsContext).toHaveProperty("defineSubmissionDraft");

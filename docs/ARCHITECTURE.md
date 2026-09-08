@@ -10,7 +10,7 @@ WordPress Targetの選定からagent-led Research、Independent Validation、fre
 
 **Diagnostic core owns evidence and limits; agents own Discovery decisions; Independent Validation owns Findings; humans own external actions.**
 
-診断coreの必須flowは`Target Snapshot + Dependency Snapshots -> Discovery -> Source Validation -> Finding`である。Source Validationは明白なsource矛盾を落とす独立sanity gateに留め、実質的なtrue-positive assuranceは`Finding -> fresh Dynamic AI Reproduction`で得る。Target Intelligenceは前段、Human OSはruntime / human assuranceと外部提出判断を所有する。隔離は各Runtime Adapterの内部安全条件であり、診断結果やpromotionの目的にしない。
+診断coreの必須flowは`Target Snapshot + Dependency Snapshots -> Discovery -> Source Validation -> Finding`である。Source Validationは明白なsource矛盾を落とす独立sanity gateに留め、実質的なtrue-positive assuranceは`Finding -> fresh Dynamic Reproduction`で得る。Target Intelligenceは前段、Human OSはruntime / human assuranceと外部提出判断を所有する。隔離は各Runtime Adapterの内部安全条件であり、診断結果やpromotionの目的にしない。
 
 短い診断coreだけを見る場合は[スマホ向け診断core図](visuals/diagnosis-architecture.svg)を参照する。
 
@@ -55,7 +55,7 @@ Researchと別のfresh native runがcandidateを同じread-only sourceから再�
 
 ### Human OS
 
-`HumanOs`はFindingを受け取り、freshなWordPress / MySQL環境でのDynamic AI Reproduction、別fresh environmentでのhuman verification、Submission Draft、exact Draft digestとdestinationへbindしたauthorizationをappend-onlyに記録する。Dynamic AI ReproductionではClaude Codeがread-only sourceと直前のruntime observationから次の実験または停止を選び、Harnessはそのscriptをinternal-networkのrunsc workerで実行する。class別recipeや固定Depthは持たない。`runtime-confirmed / disproved / incomplete`を返し、失敗や反証でも元Findingを削除しない。実際の外部送信は所有しない。
+`HumanOs`はFindingを受け取り、freshなWordPress / MySQL環境でのDynamic Reproduction、別fresh environmentでのhuman verification、Submission Draft、exact Draft digestとdestinationへbindしたauthorizationをappend-onlyに記録する。Dynamic ReproductionはFinding ID、Target Snapshot digestとbody digestへbindしたprivate Recipeをinternal-networkのrunsc workerで一度だけ実行する。動的検証内でsource再探索、AI review、追加experimentまたはpatched controlを行わない。matched preconditions、completed recipe、observed effectが揃った時だけ`runtime-confirmed`にし、失敗、効果未観測またはfixture不足は`incomplete`として元Findingを残す。実際の外部送信は所有しない。
 
 ## Research flow
 
@@ -75,8 +75,8 @@ Unauthenticated SQLi、Stored XSS、ATO、PrivEsc、arbitrary file operation、o
 - Independent ValidationはResearchのconversation、scratch、verdictを共有しない。
 - Findingの有無とCoverage completionを分離する。
 - provider、budget、tool、source、permission、schema、storage failureをno-findingまたは`disproven`へ丸めない。
-- Dynamic AI Reproductionは実WordPress / MySQLをfresh gVisor environment内だけで動かし、失敗をsource Findingの削除へ読み替えない。
+- Dynamic Reproductionは実WordPress / MySQLをfresh gVisor environment内だけで動かし、失敗をsource Findingの削除へ読み替えない。
 - exact payload、HTTP request、screenshot、runtime logはPrivate Evidenceへ置く。
 - external actionはhuman-confirmed verificationとexact authorizationを要求する。
 
-旧v7はtag `research-v7-before-native-agent-loop`と旧storageで再現する。現行binaryへlegacy reader、feature flagまたは旧writerを残さない。判断根拠は[ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)、[ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)、[ADR 0129](adr/0129-keep-validation-out-of-active-discovery.md)を参照する。
+旧v7はtag `research-v7-before-native-agent-loop`と旧storageで再現する。現行binaryへlegacy reader、feature flagまたは旧writerを残さない。判断根拠は[ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)、[ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)、[ADR 0129](adr/0129-keep-validation-out-of-active-discovery.md)、[ADR 0130](adr/0130-replay-finding-bound-recipes-for-dynamic-reproduction.md)を参照する。

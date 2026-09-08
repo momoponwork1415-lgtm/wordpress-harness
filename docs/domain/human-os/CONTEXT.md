@@ -11,6 +11,9 @@ Human OSはTarget選定、Research探索、source ValidationまたはFinding生�
 **Finding Handoff**
 : Researchのfresh Independent Validationが生成したimmutable `source-validated-finding`。
 
+**Dynamic Reproduction Recipe**
+: exact Finding IDとTarget Snapshot digestへbindしたversionedなprivate attack script。探索・source Validationで得た手順を再探索せずfresh labで一度だけreplayする。
+
 **Isolated Environment**
 : FindingのTarget Snapshotとruntime profile digestへbindしたfresh、disposable、runsc-backed environment identity。host Target execution、ambient credential、arbitrary network、fallbackを許さない。
 
@@ -41,7 +44,8 @@ Human OSはTarget選定、Research探索、source ValidationまたはFinding生�
 - AIとhuman verificationは異なるfresh environment identityを使う。
 - human disprovalまたはruntime failureでもFindingを削除しない。
 - provider、setup、Budget、ambiguous observationをdisprovedへ丸めない。
-- AIが次の実験と停止を決め、Harnessはclass別recipeや固定Depthを持たない。
+- Dynamic ReproductionはFinding-bound Recipeを一度だけ実行し、source再探索、AI再判断、追加experimentまたはpatched controlを行わない。
+- 効果未観測またはRecipe / fixture不足を`disproved`へ丸めない。
 - Private EvidenceをGit、Finding、Draftへ展開しない。
 - external actionはhuman-confirmed verificationとexact Draft / destination authorizationを要求する。
 - AIは理解とDraftを支援できるが、authorizationと最後のSubmitを代行しない。

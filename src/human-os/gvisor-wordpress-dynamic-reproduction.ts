@@ -160,6 +160,21 @@ function processEnvironment(): NodeJS.ProcessEnv {
   return { PATH: path, LANG: "C", LC_ALL: "C", TZ: "UTC" };
 }
 
+function nonRootHostUser(): string {
+  if (
+    typeof process.getuid !== "function" ||
+    typeof process.getgid !== "function"
+  ) {
+    throw new Error("Dynamic Reproduction requires a POSIX host user");
+  }
+  const uid = process.getuid();
+  const gid = process.getgid();
+  if (uid <= 0 || gid <= 0) {
+    throw new Error("Dynamic Reproduction requires a non-root host user");
+  }
+  return `${uid}:${gid}`;
+}
+
 export function openContainerProcessRunner(
   dockerExecutablePath: string,
   workingDirectory: string,
@@ -233,6 +248,7 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
   readonly #clock: () => Date;
   readonly #healthAttempts: number;
   readonly #maxExperiments: number;
+  readonly #containerUser: string;
 
   constructor(options: GvisorWordPressDynamicReproductionOptions) {
     this.#options = options;
@@ -249,6 +265,7 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
         options.scratchRootDirectory,
       );
     this.#clock = options.clock ?? (() => new Date());
+    this.#containerUser = nonRootHostUser();
     this.#healthAttempts = options.healthAttempts ?? 60;
     this.#maxExperiments = options.maxExperiments ?? 32;
     if (
@@ -425,7 +442,7 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
           ? outcome.summary
           : outcome?.status === "incomplete"
             ? outcome.summary
-            : "Dynamic AI Reproduction did not complete a fully evidenced fresh-lab experiment.";
+            : "Dynamic Reproduction did not complete a fully evidenced fresh-lab experiment.";
       return defineAIReproductionRecord({
         kind: "ai-reproduction-record",
         schemaVersion: 3,
@@ -615,10 +632,34 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
       `${sourceDirectory}/.`,
       `${resources.wordpressContainer}:/var/www/html/wp-content/plugins/${pluginSlug}`,
     ]);
+    await this.#requireDocker([
+      "exec",
+      resources.wordpressContainer,
+      "chmod",
+      "-R",
+      "u=rwX,go=rX",
+      `/var/www/html/wp-content/plugins/${pluginSlug}`,
+    ]);
+    await this.#activatePlugin(resources, databasePassword, pluginSlug);
+  }
+
+  async #activatePlugin(
+    resources: LabResources,
+    databasePassword: string,
+    pluginSlug: string,
+  ): Promise<void> {
+    const conventional = await this.#docker(
+      this.#wpCliArgs(resources, databasePassword, [
+        "plugin",
+        "activate",
+        pluginSlug,
+      ]),
+    );
+    if (conventional.exitCode === 0) return;
     await this.#wpCli(resources, databasePassword, [
       "plugin",
       "activate",
-      pluginSlug,
+      `${pluginSlug}/index.php`,
     ]);
   }
 
@@ -719,6 +760,7 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
         "--rm",
         "--interactive",
         "--runtime=runsc",
+        `--user=${this.#containerUser}`,
         "--network",
         resources.network,
         "--add-host",

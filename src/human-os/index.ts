@@ -43,5 +43,14 @@ export type {
   DynamicReproductionSourceResolver,
   GvisorWordPressDynamicReproductionOptions,
 } from "./gvisor-wordpress-dynamic-reproduction.js";
-export { openClaudeCodeDynamicReproductionAgent } from "./claude-code-dynamic-reproduction-agent.js";
-export type { ClaudeCodeDynamicReproductionAgentOptions } from "./claude-code-dynamic-reproduction-agent.js";
+export {
+  dynamicReproductionRecipeResolutionSchema,
+  dynamicReproductionRecipeSchema,
+  openRecipeDynamicReproductionAgent,
+} from "./recipe-dynamic-reproduction-agent.js";
+export type {
+  DynamicReproductionRecipe,
+  DynamicReproductionRecipeResolution,
+  DynamicReproductionRecipeResolver,
+  RecipeDynamicReproductionAgentOptions,
+} from "./recipe-dynamic-reproduction-agent.js";

@@ -165,7 +165,7 @@ class SqliteHumanOs implements HumanOs {
         environment: null,
         status: "incomplete",
         summary:
-          "Dynamic AI Reproduction could not produce a Finding-bound runtime result.",
+          "Dynamic Reproduction could not produce a Finding-bound runtime result.",
         evidenceRequest: null,
         privateEvidence: [],
         recordedAt: this.#clock().toISOString(),

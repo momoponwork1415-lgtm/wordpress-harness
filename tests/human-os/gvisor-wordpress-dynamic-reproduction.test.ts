@@ -110,6 +110,13 @@ describe("gVisor WordPress Dynamic Reproduction", () => {
           );
           return { exitCode: 0, stdout: "effect-observed", stderr: "" };
         }
+        if (
+          request.args.includes("plugin") &&
+          request.args.includes("activate") &&
+          request.args.includes("example")
+        ) {
+          return { exitCode: 1, stdout: "", stderr: "plugin not found" };
+        }
         return { exitCode: 0, stdout: "ok", stderr: "" };
       },
     };
@@ -203,6 +210,17 @@ describe("gVisor WordPress Dynamic Reproduction", () => {
             request.args.includes("--internal"),
         ),
       ).toBe(true);
+      expect(
+        requests.some((request) => request.args.includes("example/index.php")),
+      ).toBe(true);
+      expect(
+        requests.some(
+          (request) =>
+            request.args[0] === "exec" &&
+            request.args.includes("chmod") &&
+            request.args.includes("u=rwX,go=rX"),
+        ),
+      ).toBe(true);
       const containerRuns = requests.filter(
         (request) => request.args[0] === "run",
       );
@@ -211,6 +229,15 @@ describe("gVisor WordPress Dynamic Reproduction", () => {
         containerRuns.every((request) =>
           request.args.includes("--runtime=runsc"),
         ),
+      ).toBe(true);
+      expect(
+        containerRuns
+          .filter((request) =>
+            request.args.includes("worker.invalid/reproduction@" + digest("4")),
+          )
+          .every((request) =>
+            request.args.some((argument) => argument.startsWith("--user=")),
+          ),
       ).toBe(true);
       expect(
         requests.some(
