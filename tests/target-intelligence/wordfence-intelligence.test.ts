@@ -21,7 +21,7 @@ import {
   openWordfenceIntelligence,
   wordfenceIntelligenceFailureSchema,
   type WordfenceIntelligenceV3Adapter,
-} from "../../src/target-intelligence/index.js";
+} from "../../src/target-intelligence/wordfence-intelligence/index.js";
 
 const fixturePath = join(
   import.meta.dirname,

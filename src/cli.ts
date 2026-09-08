@@ -12,9 +12,14 @@ import {
 import { openGrokNativeAgentRuntime } from "./research/agent-led/grok-native-agent-runtime.js";
 import type { NativeAgentRuntime } from "./research/agent-led/contracts.js";
 import { openResearchCampaigns } from "./research/agent-led/research-campaigns.js";
+import {
+  approvedTargetCampaignRequestSchema,
+  openApprovedTargetCampaigns,
+} from "./target-intelligence/approved-target-campaign/index.js";
+import { admitApprovedTargetCampaign } from "./target-intelligence/approved-target-campaign/approved-target-campaigns.js";
 
 const usage =
-  "Usage: wordpress-harness campaign <conduct|inspect> --database <path> ...";
+  "Usage: wordpress-harness campaign <conduct|conduct-approved|inspect> --database <path> ...";
 
 export interface CliIo {
   stdout(text: string): void;
@@ -150,17 +155,26 @@ export async function runCli(
     const [context, command] = args;
     if (
       context !== "campaign" ||
-      (command !== "conduct" && command !== "inspect")
+      (command !== "conduct" &&
+        command !== "conduct-approved" &&
+        command !== "inspect")
     ) {
       throw new Error(usage);
     }
     const databasePath = resolve(readOption(args, "--database"));
 
-    if (command === "conduct") {
+    if (command === "conduct" || command === "conduct-approved") {
       const inputValue: unknown = JSON.parse(
         await readFile(readOption(args, "--input"), "utf8"),
       );
-      const input = campaignInputSchema.parse(inputValue);
+      const approvedRequest =
+        command === "conduct-approved"
+          ? approvedTargetCampaignRequestSchema.parse(inputValue)
+          : undefined;
+      const input =
+        approvedRequest === undefined
+          ? campaignInputSchema.parse(inputValue)
+          : admitApprovedTargetCampaign(approvedRequest);
       const [researchPrompt, validationPrompt] = await Promise.all([
         readFile(readOption(args, "--research-prompt"), "utf8"),
         readFile(readOption(args, "--validation-prompt"), "utf8"),
@@ -175,7 +189,12 @@ export async function runCli(
         ),
       });
       close = () => campaigns.close();
-      const outcome = await campaigns.conduct(input);
+      const outcome =
+        approvedRequest === undefined
+          ? await campaigns.conduct(input)
+          : await openApprovedTargetCampaigns({ campaigns }).conduct(
+              approvedRequest,
+            );
       io.stdout(`${JSON.stringify(outcome)}\n`);
       return 0;
     }

@@ -52,6 +52,7 @@ function environment(id: string): IsolatedEnvironment {
   return {
     environmentId: id,
     targetSnapshotDigest: finding.targetSnapshot.digest,
+    runtimeProfileDigest: digest("8"),
     backend: "gvisor",
     runtime: "runsc",
     fallbackUsed: false,

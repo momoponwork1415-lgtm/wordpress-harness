@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="390" height="2880" viewBox="0 0 390 2880" role="img" aria-labelledby="title desc" style="width:100%;max-width:390px;height:auto">
   <title id="title">Discovery and Independent Validation architecture</title>
-  <desc id="desc">複数WordPress pluginを独立Campaignとして並列探索し、Root Agentが候補を蓄積しながら敵対的に検証する。探索停止後のfreshなsource sanity validationからFindingを作り、別のfresh gVisor WordPressとMySQL環境でAIが動的に再現してtrue-positive assuranceを追加する詳細アーキテクチャ。</desc>
+  <desc id="desc">複数WordPress pluginを独立Campaignとして並列探索し、Root Agentが候補を蓄積しながら敵対的に検証する。探索停止後のfreshなsource sanity validationからFindingを作り、Finding-boundなprivate Recipeを別のfresh gVisor WordPressとMySQL環境で一度だけ実行してtrue-positive assuranceを追加する詳細アーキテクチャ。</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#06101d"/>
@@ -205,17 +205,17 @@
       <rect x="22" y="2315" width="346" height="310" rx="22" fill="#2b281f" stroke="#c99652" stroke-width="1.5"/>
       <rect x="43" y="2336" width="108" height="25" rx="12" fill="#5b4225"/>
       <text x="56" y="2353" class="mono tiny" fill="#ffe0ad">FRESH RUNTIME</text>
-      <text x="43" y="2394" class="sectionTitle">3. Dynamic AI Reproduction</text>
+      <text x="43" y="2394" class="sectionTitle">3. Dynamic Reproduction</text>
       <text x="43" y="2421" class="body">別のgVisor環境で実WordPress + MySQLを起動</text>
 
       <rect x="43" y="2444" width="302" height="69" rx="14" fill="#3a3225" stroke="#9b7545"/>
-      <text x="61" y="2471" class="cardTitle">AIがbounded recipeを組み立てる</text>
-      <text x="61" y="2496" class="body">SQLi · XSS canary · ATOなどを実interfaceで確認</text>
+      <text x="61" y="2471" class="cardTitle">Finding-bound Recipeを1回replay</text>
+      <text x="61" y="2496" class="body">再探索せずNode · browserで実効性を確認</text>
 
       <rect x="43" y="2530" width="302" height="69" rx="14" fill="#332d24" stroke="#86673f"/>
-      <text x="61" y="2555" class="body">runtime-confirmed → TP assuranceをappend</text>
-      <text x="61" y="2577" class="body">disproved / incomplete → 根拠をappend</text>
-      <text x="61" y="2594" class="tiny">どの結果でもsource Findingは削除しない</text>
+      <text x="61" y="2555" class="body">3条件を観測 → runtime-confirmedをappend</text>
+      <text x="61" y="2577" class="body">未観測 / fixture不足 → incompleteをappend</text>
+      <text x="61" y="2594" class="tiny">外部serviceが必要 → Evidence Request</text>
     </g>
 
     <path d="M195 2627V2659" class="flowBlue"/>
@@ -233,7 +233,7 @@
     <g>
       <rect x="22" y="2820" width="346" height="30" rx="15" fill="#151e2d" stroke="#35465c"/>
       <circle cx="40" cy="2835" r="4" fill="#68d8a2"/>
-      <text x="51" y="2839" class="tiny">AI: 調査・再現</text>
+      <text x="51" y="2839" class="tiny">AI: 探索・反証</text>
       <circle cx="151" cy="2835" r="4" fill="#78aaff"/>
       <text x="162" y="2839" class="tiny">Harness: 隔離・記録</text>
       <circle cx="282" cy="2835" r="4" fill="#b39aff"/>

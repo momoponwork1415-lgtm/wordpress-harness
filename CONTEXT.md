@@ -4,7 +4,7 @@ Researchは一つのimmutable Target Snapshotをagent-ledに調査し、fresh In
 
 ## Boundary
 
-ResearchはTarget選定、source acquisition policy、runtime exploit verification、提出先または外部送信を所有しない。Target Intelligenceからversioned Target Intake Packetを受け、Human OSへsource-validated Findingだけを渡す。
+ResearchはTarget選定、source acquisition policy、runtime exploit verification、提出先または外部送信を所有しない。Target Intelligenceがadmitしたversioned Campaign Inputを受け、Human OSへsource-validated Findingだけを渡す。
 
 ## Ubiquitous language
 
@@ -12,7 +12,10 @@ ResearchはTarget選定、source acquisition policy、runtime exploit verificati
 : 一つのsealed Target、Dependency群、Prompt、Agent Runtime、Permission、Budgetを持つ継続可能な調査単位。
 
 **Campaign Input**
-: Campaign identityと五つのimmutable bindingを持つversioned command。同じCampaign IDへ異なるinputを使えない。
+: Campaign identity、Target / Dependency Snapshots、Prompt、Agent Runtime、Permission、Budgetと任意のCampaign Threat Contextを持つversioned command。同じCampaign IDへ異なるinputを使えない。
+
+**Campaign Threat Context**
+: Target選定で観測したordinary configuration、attacker position、security objective、trust boundary、high-value transition、Dependency roleと不確実性をRootへ渡すdigest-bound planning data。既知脆弱性、固定routeまたは探索手順ではなく、off-model Findingを許す。
 
 **Target Snapshot**
 : plugin identity、version、canonical manifest digestで固定したread-only source。Research中に更新しない。

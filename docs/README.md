@@ -14,6 +14,7 @@
 | domain language | [Context Map](../CONTEXT-MAP.md) |
 | agent-led移行と診断coreの成功条件 | [ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md) · [ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md) |
 | DiscoveryとValidationを分ける理由 | [ADR 0129](adr/0129-keep-validation-out-of-active-discovery.md) |
+| Dynamic ReproductionをRecipe replayにする理由 | [ADR 0130](adr/0130-replay-finding-bound-recipes-for-dynamic-reproduction.md) |
 | native探索状態の保存判断 | [ADR 0126](adr/0126-preserve-native-research-checkpoints-opaquely.md) |
 | framework依存sourceを探索へ渡す判断 | [ADR 0128](adr/0128-provide-pinned-dependency-source-to-research.md) |
 | known-positiveの現在の実測 | [Evaluation SVG](visuals/known-positive-evaluation.svg) · [evidence note](knowledge/public-known-positive-native-agent-evaluation-2026-09-08.md) |

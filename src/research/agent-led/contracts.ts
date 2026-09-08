@@ -39,7 +39,7 @@ export const dependencySnapshotRefSchema = z.strictObject({
   }),
 });
 
-const dependencySnapshotsSchema = z
+export const dependencySnapshotsSchema = z
   .array(dependencySnapshotRefSchema)
   .max(16)
   .superRefine((snapshots, context) => {
@@ -65,6 +65,60 @@ const dependencySnapshotsSchema = z
     }
   });
 
+const threatContextTextSchema = z.string().min(1).max(1_200);
+const threatContextListSchema = z.array(threatContextTextSchema).min(1).max(16);
+
+export const campaignThreatContextDependencyRoleSchema = z.strictObject({
+  mountName: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
+  role: z.enum([
+    "wordpress-core",
+    "required-companion",
+    "active-companion",
+    "runtime-library",
+    "protocol-reference",
+  ]),
+  relevance: threatContextTextSchema,
+});
+
+const campaignThreatContextBodySchema = z.strictObject({
+  kind: z.literal("campaign-threat-context"),
+  schemaVersion: z.literal(1),
+  id: identifierSchema,
+  whyThisTarget: threatContextTextSchema,
+  ordinaryConfiguration: threatContextTextSchema,
+  attackerPositions: threatContextListSchema,
+  securityObjectives: threatContextListSchema,
+  trustBoundaries: threatContextListSchema,
+  highValueTransitions: threatContextListSchema,
+  dependencyRoles: z.array(campaignThreatContextDependencyRoleSchema).max(16),
+  uncertainties: z.array(threatContextTextSchema).max(16),
+  explorationFreedom: z.literal("off-model-findings-allowed"),
+});
+
+export const campaignThreatContextSchema = campaignThreatContextBodySchema
+  .extend({ digest: digestSchema })
+  .superRefine((threatContext, context) => {
+    const { digest, ...body } = threatContext;
+    if (digest !== canonicalDigest(body)) {
+      context.addIssue({
+        code: "custom",
+        path: ["digest"],
+        message: "Campaign Threat Context digest must bind its exact body",
+      });
+    }
+    const mountNames = new Set<string>();
+    for (const [index, dependency] of threatContext.dependencyRoles.entries()) {
+      if (mountNames.has(dependency.mountName)) {
+        context.addIssue({
+          code: "custom",
+          path: ["dependencyRoles", index, "mountName"],
+          message: "Campaign Threat Context dependency mounts must be unique",
+        });
+      }
+      mountNames.add(dependency.mountName);
+    }
+  });
+
 const agentRuntimeProfileSchema = z.strictObject({
   id: identifierSchema,
   kind: z.string().min(1).max(128),
@@ -81,6 +135,30 @@ const budgetEnvelopeSchema = z.strictObject({
   maxEstimatedCostUsd: z.number().positive(),
   digest: digestSchema,
 });
+
+const researchCampaignPolicyBodySchema = z.strictObject({
+  kind: z.literal("research-campaign-policy"),
+  schemaVersion: z.literal(1),
+  id: identifierSchema,
+  promptSet: immutableRefSchema,
+  validationPromptSet: immutableRefSchema,
+  agentRuntimeProfile: agentRuntimeProfileSchema,
+  permissionProfile: immutableRefSchema,
+  budgetEnvelope: budgetEnvelopeSchema,
+});
+
+export const researchCampaignPolicySchema = researchCampaignPolicyBodySchema
+  .extend({ digest: digestSchema })
+  .superRefine((policy, context) => {
+    const { digest, ...body } = policy;
+    if (digest !== canonicalDigest(body)) {
+      context.addIssue({
+        code: "custom",
+        path: ["digest"],
+        message: "Research Campaign Policy digest must bind its exact body",
+      });
+    }
+  });
 
 const runBudgetAllowanceSchema = z.strictObject({
   maxWallTimeMs: z.number().int().positive(),
@@ -100,6 +178,7 @@ export const agentCheckpointRefSchema = z.strictObject({
   runtimeProfileDigest: digestSchema,
   permissionProfileDigest: digestSchema,
   dependencySnapshotsDigest: digestSchema.optional(),
+  threatContextDigest: digestSchema.optional(),
 });
 
 export const campaignInputSchema = z
@@ -109,6 +188,7 @@ export const campaignInputSchema = z
     campaignId: identifierSchema,
     targetSnapshot: targetSnapshotRefSchema,
     dependencySnapshots: dependencySnapshotsSchema.optional(),
+    threatContext: campaignThreatContextSchema.optional(),
     promptSet: immutableRefSchema,
     validationPromptSet: immutableRefSchema,
     agentRuntimeProfile: agentRuntimeProfileSchema,
@@ -117,6 +197,29 @@ export const campaignInputSchema = z
     resumeFrom: agentCheckpointRefSchema.optional(),
   })
   .superRefine((input, context) => {
+    if (input.threatContext !== undefined) {
+      const snapshotMounts = new Set(
+        (input.dependencySnapshots ?? []).map(
+          (dependency) => dependency.mountName,
+        ),
+      );
+      const contextMounts = new Set(
+        input.threatContext.dependencyRoles.map(
+          (dependency) => dependency.mountName,
+        ),
+      );
+      if (
+        snapshotMounts.size !== contextMounts.size ||
+        [...snapshotMounts].some((mountName) => !contextMounts.has(mountName))
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Campaign Threat Context must describe every Dependency Snapshot exactly once",
+          path: ["threatContext", "dependencyRoles"],
+        });
+      }
+    }
     const checkpoint = input.resumeFrom;
     if (checkpoint === undefined) return;
     const dependencySnapshots = input.dependencySnapshots ?? [];
@@ -129,7 +232,8 @@ export const campaignInputSchema = z
       checkpoint.promptSetDigest !== input.promptSet.digest ||
       checkpoint.runtimeProfileDigest !== input.agentRuntimeProfile.digest ||
       checkpoint.permissionProfileDigest !== input.permissionProfile.digest ||
-      checkpoint.dependencySnapshotsDigest !== dependencySnapshotsDigest
+      checkpoint.dependencySnapshotsDigest !== dependencySnapshotsDigest ||
+      checkpoint.threatContextDigest !== input.threatContext?.digest
     ) {
       context.addIssue({
         code: "custom",
@@ -286,6 +390,7 @@ export const sealedNativeRunSchema = z.strictObject({
   campaignInputDigest: digestSchema,
   targetSnapshot: targetSnapshotRefSchema,
   dependencySnapshots: dependencySnapshotsSchema.optional(),
+  threatContext: campaignThreatContextSchema.optional(),
   promptSet: immutableRefSchema,
   agentRuntimeProfile: agentRuntimeProfileSchema,
   permissionProfile: immutableRefSchema,
@@ -395,16 +500,18 @@ export interface OpenResearchCampaignsOptions {
 }
 
 export type CampaignInput = z.infer<typeof campaignInputSchema>;
+export type CampaignThreatContext = z.infer<typeof campaignThreatContextSchema>;
+export type ResearchCampaignPolicy = z.infer<
+  typeof researchCampaignPolicySchema
+>;
 export type DependencySnapshotRef = z.infer<typeof dependencySnapshotRefSchema>;
 export type AgentCheckpointRef = z.infer<typeof agentCheckpointRefSchema>;
 export type CampaignInterruption = z.infer<typeof campaignInterruptionSchema>;
 export type NativeRunReceipt = z.infer<typeof nativeRunReceiptSchema>;
-export type ResearchReport = z.infer<typeof researchReportSchema>;
 export type SealedNativeRun = z.infer<typeof sealedNativeRunSchema>;
 export type SealedValidationRun = z.infer<typeof sealedValidationRunSchema>;
 export type SealedAgentRun = SealedNativeRun | SealedValidationRun;
 export type ValidationCandidate = z.infer<typeof validationCandidateSchema>;
-export type ValidationReport = z.infer<typeof validationReportSchema>;
 export type ValidationRunReceipt = z.infer<typeof validationRunReceiptSchema>;
 export type NativeAgentReceipt = NativeRunReceipt | ValidationRunReceipt;
 export type SourceValidatedFinding = z.infer<

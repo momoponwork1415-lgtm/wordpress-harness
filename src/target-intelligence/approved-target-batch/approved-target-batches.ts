@@ -55,6 +55,60 @@ function targetIsFresh(candidate: TargetCandidate, decidedAt: number): boolean {
   );
 }
 
+export function admitTargetDispatch(
+  batchValue: ApprovedTargetBatch,
+  requestValue: TargetDispatchAdmissionRequest,
+) {
+  const batch = approvedTargetBatchSchema.parse(batchValue);
+  const request = targetDispatchAdmissionRequestSchema.parse(requestValue);
+  const { id: _id, digest: _digest, ...batchBody } = batch;
+  if (
+    batch.digest !== canonicalDigest(batchBody) ||
+    request.batchRef.id !== batch.id ||
+    request.batchRef.digest !== batch.digest ||
+    request.batchRef.batchKey !== batch.batchKey ||
+    request.batchRef.revision !== batch.revision
+  ) {
+    throw new ApprovedTargetBatchError("binding-mismatch");
+  }
+  const approved = batch.approvedTargets.find(
+    (target) => target.candidateId === request.candidateId,
+  );
+  if (
+    approved === undefined ||
+    canonicalJson(approved.candidate.target) !== canonicalJson(request.target)
+  ) {
+    throw new ApprovedTargetBatchError("binding-mismatch");
+  }
+  const checkedAt = Date.parse(request.checkedAt);
+  if (
+    checkedAt < Date.parse(batch.executionWindow.startsAt) ||
+    checkedAt > Date.parse(batch.executionWindow.endsAt) ||
+    Date.parse(request.targetObservation.retrievedAt) > checkedAt ||
+    request.targetObservation.acquisition !== "available" ||
+    request.targetObservation.provenance !== "verified" ||
+    request.targetObservation.identity !== "verified" ||
+    Date.parse(request.targetObservation.currentUntil) < checkedAt
+  ) {
+    throw new ApprovedTargetBatchError("hard-gate-failed");
+  }
+  const body = {
+    kind: "target-dispatch-admission" as const,
+    schemaVersion: 1 as const,
+    batchRef: request.batchRef,
+    candidateId: request.candidateId,
+    target: request.target,
+    targetObservation: request.targetObservation,
+    checkedAt: request.checkedAt,
+  };
+  const digest = canonicalDigest(body);
+  return targetDispatchAdmissionSchema.parse({
+    ...body,
+    id: `target-dispatch:${digest.slice(7, 31)}`,
+    digest,
+  });
+}
+
 class FileApprovedTargetBatches implements ApprovedTargetBatches {
   readonly #options: OpenApprovedTargetBatchesOptions;
   readonly #clock: () => Date;
@@ -308,42 +362,7 @@ class FileApprovedTargetBatches implements ApprovedTargetBatches {
   async admitDispatch(requestValue: TargetDispatchAdmissionRequest) {
     const request = targetDispatchAdmissionRequestSchema.parse(requestValue);
     const batch = await this.inspect(request.batchRef);
-    const approved = batch.approvedTargets.find(
-      (target) => target.candidateId === request.candidateId,
-    );
-    if (
-      approved === undefined ||
-      canonicalJson(approved.candidate.target) !== canonicalJson(request.target)
-    ) {
-      throw new ApprovedTargetBatchError("binding-mismatch");
-    }
-    const checkedAt = Date.parse(request.checkedAt);
-    if (
-      checkedAt < Date.parse(batch.executionWindow.startsAt) ||
-      checkedAt > Date.parse(batch.executionWindow.endsAt) ||
-      Date.parse(request.targetObservation.retrievedAt) > checkedAt ||
-      request.targetObservation.acquisition !== "available" ||
-      request.targetObservation.provenance !== "verified" ||
-      request.targetObservation.identity !== "verified" ||
-      Date.parse(request.targetObservation.currentUntil) < checkedAt
-    ) {
-      throw new ApprovedTargetBatchError("hard-gate-failed");
-    }
-    const body = {
-      kind: "target-dispatch-admission" as const,
-      schemaVersion: 1 as const,
-      batchRef: request.batchRef,
-      candidateId: request.candidateId,
-      target: request.target,
-      targetObservation: request.targetObservation,
-      checkedAt: request.checkedAt,
-    };
-    const digest = canonicalDigest(body);
-    return targetDispatchAdmissionSchema.parse({
-      ...body,
-      id: `target-dispatch:${digest.slice(7, 31)}`,
-      digest,
-    });
+    return admitTargetDispatch(batch, request);
   }
 
   #ref(batch: ApprovedTargetBatch): ApprovedTargetBatchRef {

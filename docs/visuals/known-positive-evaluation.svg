@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="390" height="1080" viewBox="0 0 390 1080" role="img" aria-labelledby="title desc" style="width:100%;max-width:390px;height:auto">
   <title id="title">Known-positive 4件の評価結果</title>
-  <desc id="desc">Discoveryは4件中4件、Independent Source Validationは4件中4件、Dynamic AI Reproductionは4件中2件、prospective latest-version Campaignは未実施であることを示すスマートフォン向けの図。</desc>
+  <desc id="desc">Discoveryは4件中4件、Independent Source Validationは4件中4件、Dynamic Reproductionは4件中3件、prospective latest-version Campaignは未実施であることを示すスマートフォン向けの図。</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#07111f"/>
@@ -73,15 +73,15 @@
     <!-- Dynamic -->
     <g filter="url(#shadow)">
       <rect x="22" y="640" width="346" height="190" rx="20" fill="#392f22" stroke="#c99652" stroke-width="1.5"/>
-      <text x="42" y="670" class="mono eyebrow" fill="#f0bd78">3 · DYNAMIC AI REPRODUCTION</text>
-      <text x="42" y="711" class="number">2 / 4</text>
+      <text x="42" y="670" class="mono eyebrow" fill="#f0bd78">3 · DYNAMIC REPRODUCTION</text>
+      <text x="42" y="711" class="number">3 / 4</text>
       <text x="42" y="742" class="card">Runtime effect observed</text>
       <circle cx="52" cy="778" r="8" fill="#e6aa68"/>
       <circle cx="82" cy="778" r="8" fill="#e6aa68"/>
-      <circle cx="112" cy="778" r="8" fill="none" stroke="#8b7355" stroke-width="2"/>
+      <circle cx="112" cy="778" r="8" fill="#e6aa68"/>
       <circle cx="142" cy="778" r="8" fill="none" stroke="#8b7355" stroke-width="2"/>
-      <text x="174" y="777" class="small">Brizy / SSA：past gVisor lab</text>
-      <text x="174" y="798" class="tiny">現行Human OS provisionerは未接続</text>
+      <text x="174" y="777" class="small">Brizy / SSA + TranslatePress ATO</text>
+      <text x="174" y="798" class="tiny">ATOは現行Recipe Adapterでfresh確認</text>
     </g>
 
     <!-- Prospective -->
@@ -94,7 +94,7 @@
       <text x="138" y="966" class="tiny">ここから新規発見能力を測る</text>
     </g>
 
-    <text x="195" y="1032" text-anchor="middle" class="small">Discovery 4/4 → Source 4/4 → Dynamic 2/4</text>
+    <text x="195" y="1032" text-anchor="middle" class="small">Discovery 4/4 → Source 4/4 → Dynamic 3/4</text>
     <text x="195" y="1054" text-anchor="middle" class="tiny">各stageは別のassurance。合算して「4件確認済み」と呼ばない。</text>
   </g>
 </svg>

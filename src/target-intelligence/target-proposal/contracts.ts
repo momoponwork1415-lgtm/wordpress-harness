@@ -372,7 +372,6 @@ export type TargetCandidatePool = z.infer<typeof targetCandidatePoolSchema>;
 export type TargetSelectionRunInput = z.infer<
   typeof targetSelectionRunInputSchema
 >;
-export type TargetProposalReport = z.infer<typeof targetProposalReportSchema>;
 export type TargetProposalRunReceipt = z.infer<
   typeof targetProposalRunReceiptSchema
 >;

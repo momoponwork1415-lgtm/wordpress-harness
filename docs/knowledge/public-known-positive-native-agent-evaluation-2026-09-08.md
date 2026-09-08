@@ -6,7 +6,7 @@ wp2shell型Prompt、pinned WordPress source、provider-native Root / subagentを
 
 ![Known-positive 4件のstage別評価](../visuals/known-positive-evaluation.svg)
 
-現行production Human OSにはWordPress / MySQL labのprovision / executionがまだ接続されていない。したがって2/4のruntime observationは診断coreの再発見結果を補強する過去実測であり、現在の`ResearchCampaigns`からDynamic AI ReproductionまでのE2E接続を示さない。
+現行production Human OSにはFinding-bound Private Recipeのsingle replayとWordPress / MySQL labが接続されている。TranslatePress 3.3.1 ATOはfresh labでruntime-confirmedした。ResearchからRecipe保存への自動handoffと、companion plugin / site-content fixture解決は未接続であるため、全4件のE2E接続を示すものではない。
 
 ## Public cases
 
@@ -14,6 +14,6 @@ wp2shell型Prompt、pinned WordPress source、provider-native Root / subagentを
 | --- | --- | --- | --- |
 | Brizy 2.8.11 Stored XSS | [CVE-2026-5324](https://www.cve.org/CVERecord?id=CVE-2026-5324) | passed | browser canary observed |
 | Simply Schedule Appointments 1.6.9.29 SQLi | [CVE-2026-3658](https://www.cve.org/CVERecord?id=CVE-2026-3658) | passed | database readback canary observed |
-| TranslatePress 3.3.1 ATO | [CVE-2026-19632](https://www.cve.org/CVERecord?id=CVE-2026-19632) | passed | not run |
+| TranslatePress 3.3.1 ATO | [CVE-2026-19632](https://www.cve.org/CVERecord?id=CVE-2026-19632) | passed | fresh Recipe replayでaccount control observed |
 
 残る一件は対応するpublic CVE recordを確認できていないため、[ADR 0115](../adr/0115-publish-only-public-cve-experiment-results.md)に従いTarget、version、mechanismをGitへ記録しない。探索中に得た既知identity以外のcandidateも、新規性、runtime effect、最新版での残存を確認するまでこの評価へ含めない。
