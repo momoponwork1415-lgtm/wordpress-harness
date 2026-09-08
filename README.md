@@ -17,12 +17,13 @@ pnpm install
 pnpm check
 pnpm build
 
-node dist/cli.js campaign conduct \
+node dist/cli.js campaign conduct-approved \
   --database .private/research.sqlite \
-  --input .private/campaign.json \
+  --input .private/approved-target-campaign-request.json \
   --docker /usr/bin/docker \
   --image sha256:<immutable-image-id> \
   --source /absolute/path/to/read-only/source \
+  --dependency-source wordpress=/absolute/path/to/read-only/wordpress-core \
   --provider-config /absolute/path/to/provider-config \
   --scratch .private/scratch \
   --research-prompt .private/research-prompt.md \
@@ -33,7 +34,7 @@ node dist/cli.js campaign inspect \
   --campaign <campaign-id>
 ```
 
-`campaign.json`のschemaとprompt digest helperは[`src/research/agent-led/contracts.ts`](src/research/agent-led/contracts.ts)にあります。runtimeはsealed `agentRuntimeProfile.kind`から選ばれます。探索試験ではGrokを優先し、利用不能時はCampaignを`incomplete`として残します。
+この通常経路は、人間が承認したTarget、実行直前のobservation、Target Intake、Campaign Policy、WordPress core等のDependency Snapshots、Campaign Threat Contextを一つのrequestへbindします。request schemaは[`src/target-intelligence/approved-target-campaign/contracts.ts`](src/target-intelligence/approved-target-campaign/contracts.ts)、Research schemaとprompt digest helperは[`src/research/agent-led/contracts.ts`](src/research/agent-led/contracts.ts)にあります。`--dependency-source`のmount名はrequestと一致させます。runtimeはsealed `agentRuntimeProfile.kind`から選ばれます。探索試験ではGrokを優先し、利用不能時はCampaignを`incomplete`として残します。
 
 private Target source、prompt、provider output、credential、payload、transcript、未公開FindingはGit外へ置きます。Targetのautoload、Composer script、WordPress bootstrapをhost上で実行しません。
 

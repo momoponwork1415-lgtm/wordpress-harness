@@ -330,6 +330,9 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         ...(input.dependencySnapshots === undefined
           ? {}
           : { dependencySnapshots: input.dependencySnapshots }),
+        ...(input.threatContext === undefined
+          ? {}
+          : { threatContext: input.threatContext }),
         promptSet: input.promptSet,
         agentRuntimeProfile: input.agentRuntimeProfile,
         permissionProfile: input.permissionProfile,

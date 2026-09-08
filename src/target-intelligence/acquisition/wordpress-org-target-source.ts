@@ -17,7 +17,6 @@ import {
   type WordPressOrgAcquisitionFailure,
   type WordPressOrgFetchAdapterOptions,
   type WordPressOrgAcquireRequest,
-  type WordPressOrgAcquisitionOriginal,
   type WordPressOrgAcquisitionResult,
   type WordPressOrgObservationResult,
   type WordPressOrgObservationFailure,

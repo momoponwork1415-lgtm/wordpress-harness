@@ -9,7 +9,7 @@ import {
   openDisclosureRoute,
   programmeAssignmentRouteBindingSchema,
   type DisclosureRouteSourceAdapter,
-} from "../../src/target-intelligence/index.js";
+} from "../../src/target-intelligence/disclosure-route/index.js";
 
 const fixtureDirectory = join(
   import.meta.dirname,

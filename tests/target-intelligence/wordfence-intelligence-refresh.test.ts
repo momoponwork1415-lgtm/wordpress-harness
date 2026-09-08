@@ -128,7 +128,7 @@ import {
   wordfenceStoredPluginRecordSchema,
   type HostPrivateCredentialBroker,
   type WordfenceSecretRef,
-} from "../../src/target-intelligence/index.js";
+} from "../../src/target-intelligence/wordfence-intelligence/index.js";
 
 const sourceUrl =
   "https://www.wordfence.com/api/intelligence/v3/vulnerabilities/production";

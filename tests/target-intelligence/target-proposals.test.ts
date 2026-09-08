@@ -6,16 +6,18 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   defineTargetCandidatePool,
-  openApprovedTargetBatches,
   openTargetProposals,
-  type ApprovedTargetBatchRequest,
   type SealedTargetSelectionRun,
   type TargetCandidate,
   type TargetProposalAgent,
   type TargetProposalRunReceipt,
   type TargetSelectionRunInput,
+} from "../../src/target-intelligence/target-proposal/index.js";
+import {
+  openApprovedTargetBatches,
+  type ApprovedTargetBatchRequest,
   type TargetDispatchAdmissionRequest,
-} from "../../src/target-intelligence/index.js";
+} from "../../src/target-intelligence/approved-target-batch/index.js";
 
 const temporaryDirectories: string[] = [];
 

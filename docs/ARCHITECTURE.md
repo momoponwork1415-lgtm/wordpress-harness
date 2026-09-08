@@ -18,13 +18,23 @@ Harnessが固定するのはTarget identity、source provenance、Prompt、Permi
 
 ## Contexts
 
-Context間は図に示したversioned handoffだけを渡す。Target IntelligenceはFindingやknown routeをResearchへ渡さない。Researchはselection policyを再評価しない。Human OSはResearch storageを直接更新しない。用語と関係の正本は[Context Map](../CONTEXT-MAP.md)に置く。
+Context間は図に示したversioned handoffだけを渡す。Target Intelligenceはadmit済みCampaign InputへTarget / Dependency SnapshotsとcompactなCampaign Threat Contextをbindするが、Finding、既知脆弱性、patch、固定routeまたは探索手順をResearchへ渡さない。Researchはselection policyを再評価しない。Human OSはResearch storageを直接更新しない。用語と関係の正本は[Context Map](../CONTEXT-MAP.md)に置く。
 
 ## Deep modules
 
 ### Target Proposals
 
 `TargetProposals.propose / inspect`は、oracle-freeなCandidate PoolからAI提案を作り、入力、usage、failure、理由と不確実性をdurableにする。Harnessのhard gateはCandidate Pool membership、source acquisition、identity、provenance、freshnessである。全候補rank、固定Bandまたは固定reason codeを要求しない。
+
+### Approved Target Campaigns
+
+```ts
+interface ApprovedTargetCampaigns {
+  conduct(request: ApprovedTargetCampaignRequest): Promise<CampaignOutcomeRef>;
+}
+```
+
+`conduct`は人間のApproved Target Batch、fresh Target Observation、Target Intake、Campaign Policy、Dependency SnapshotsとCampaign Threat Contextの一致を検査し、admit済みCampaign Inputを既存Researchへ渡す。Campaign Threat Contextはordinary configuration、attacker position、security objective、trust boundary、high-value transitionと不確実性をRootのplanning dataとして渡すが、脆弱性class、読む順序、agent role、停止quotaまたは網羅的仮説を命令しない。中央schedulerや別のResearch Ledgerを作らない。
 
 ### Research Campaigns
 

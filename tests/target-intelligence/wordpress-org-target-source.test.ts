@@ -9,7 +9,7 @@ import {
   createWordPressOrgFetchAdapter,
   openWordPressOrgTargetSource,
   type WordPressOrgSourceAdapter,
-} from "../../src/target-intelligence/index.js";
+} from "../../src/target-intelligence/acquisition/index.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 

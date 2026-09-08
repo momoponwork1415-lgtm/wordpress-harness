@@ -4,7 +4,7 @@ Target IntelligenceはWordPress ecosystemを観測し、oracle-freeなCandidate 
 
 ## Boundary
 
-Target IntelligenceはResearch仮説、candidate、Finding、runtime verificationまたはsubmissionを所有しない。CVE、known route、patch narrativeをTarget Intake Packetへ含めない。
+Target IntelligenceはResearch仮説、candidate、Finding、runtime verificationまたはsubmissionを所有しない。CVE、known route、patch narrativeをTarget Intake PacketまたはCampaign Threat Contextへ含めない。
 
 ## Ubiquitous language
 
@@ -36,7 +36,13 @@ Target IntelligenceはResearch仮説、candidate、Finding、runtime verificatio
 : Batchと現在のTarget Observationを照合し、実行直前のidentity、version、manifest digest、freshnessが一致するかを返す判断。
 
 **Target Intake Packet**
-: Researchへ渡すversioned handoff。Target identity、source manifest、provenanceを持ち、selection reasoningやknown vulnerabilityをResearch inputにしない。
+: Approved Target Campaignのadmissionに使うversioned source artifact。Target identity、source manifest、provenanceを持ち、known vulnerabilityや探索手順を含めない。
+
+**Campaign Threat Context**
+: Target ProposalからResearch価値に関係するordinary configuration、attacker position、security objective、trust boundary、high-value transition、Dependency roleと不確実性だけを抽出したversioned planning artifact。Rootへfocusとmotivationを渡すが、既知脆弱性、固定route、脆弱性class、読む順序、agent roleまたは停止quotaを命令しない。
+
+**Approved Target Campaign Request**
+: Approved Target Batchの一Target、fresh Target Observation、Target Intake Packet、Campaign Policy、Dependency Snapshots、Campaign Threat Contextをbindし、一Campaignのadmissionと開始を要求するversioned command。
 
 **Campaign Coverage Receipt**
 : Researchから戻るTarget-level lifecycle handoff。Finding内容とは別に、closed、incomplete、resume条件をTarget Intelligenceへ伝える。
@@ -48,6 +54,8 @@ Target IntelligenceはResearch仮説、candidate、Finding、runtime verificatio
 - fixed rank、Research Value Band、reason code、diversity facetをAI判断の代用にしない。
 - 人間のApproved Target BatchなしにResearchへdispatchしない。
 - dispatch直前にsourceとversionのfreshnessを再確認する。
+- exactly oneのWordPress coreを含むDependency source closureとCampaign Threat Contextの全roleを一致させる。
+- Campaign Threat Contextからoff-model Findingを禁止しない。
 - Programme対象外、Disclosure Route不明、既探索だけを技術的Researchの決定的拒否条件にしない。
 - Target package script、autoload、WordPress bootstrapをhost上で実行しない。
 

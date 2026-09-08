@@ -213,7 +213,7 @@ exit 90
 
     expect(exit).toBe(1);
     expect(errors.join("")).toContain(
-      "Usage: wordpress-harness campaign <conduct|inspect>",
+      "Usage: wordpress-harness campaign <conduct|conduct-approved|inspect>",
     );
   });
 });

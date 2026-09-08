@@ -4,23 +4,24 @@ Status: current implementation map, 2026-09-08
 
 現在動くproduction seam、owner、failure semantics、Behavior Testを示す。設計理由は[ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)、[ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)、[ADR 0129](adr/0129-keep-validation-out-of-active-discovery.md)、research policyは[Research Design](RESEARCH-DESIGN.md)を参照する。
 
-診断coreは`Target Snapshot -> agent-led Research -> Independent Source Validation -> Finding`である。Source Validationは明白なsource矛盾を落とすsanity gateで、実質的なtrue-positive assuranceはHuman OSのfresh Dynamic AI Reproductionが所有する。Target Selectionと隔離方式の高度化はsupporting workflowまたはAdapter内部の関心であり、診断coreのpromotion blockerではない。
+診断coreは`Target Snapshot -> agent-led Research -> Independent Source Validation -> Finding`である。Source Validationは明白なsource矛盾を落とすsanity gateで、実質的なtrue-positive assuranceはHuman OSのfresh Dynamic Reproductionが所有する。Target Selectionと隔離方式の高度化はsupporting workflowまたはAdapter内部の関心であり、診断coreのpromotion blockerではない。
 
 ## Current capability
 
 | Capability | State | Important gap |
 | --- | --- | --- |
-| local / WordPress.org source acquisition | implemented | Approved Batchからの自動dispatchは未接続 |
+| local / WordPress.org source acquisition | implemented | Candidate Pool組立serviceは未実装 |
 | Programme / disclosure observations | implemented | 全Programmeを一つのCandidate Poolへ組み立てるapplication serviceは未実装 |
 | AI Target Proposal | exact Grok transportをadmitするproduction Adapterまでimplemented | CLIとCandidate Pool組立serviceが未実装 |
-| human Approved Target Batch | implemented | Research `CampaignInput`への変換が未接続 |
+| human Approved Target Batch | implemented | Target Selection全体のCLIは未実装 |
+| approved Target Campaign dispatch | fresh observation、Target Intake、Campaign Policy、WordPress core、Threat Contextをsealして一Campaignを`conduct`まで接続 | 複数Targetの中央schedulerは意図的に持たない |
 | agent-led Research loop | pinned Dependency Snapshotとprivate Agent Checkpointからのresumeまでimplemented。known-positive corpusは4/4でcandidateを回収 | prospectiveなlatest-version Campaignは未評価 |
 | Grok native runtime | exact image / CLI versionをadmitし、structurally tested | real Brizy runはproviderのHTTP 402で未完了 |
 | Claude Code native runtime | exact imageをreal boundary-probed | admitted image以外は再probeが必要 |
 | GLM native runtime | exact Claude Code imageからZ.AI GLM 5.3へ接続し、runscでreal research / native subagent / fresh Validationを実行済み | Grokとの同条件比較は未実施 |
-| fresh Independent Validation | implemented。known-positive corpusは4/4で`source-validated` | うち2件はDynamic AI Reproduction未実施 |
+| fresh Independent Validation | implemented。known-positive corpusは4/4で`source-validated` | GLM malformed-output補正のsecond model executionがsingle-fresh-run policyと未整合（#144） |
 | Finding / Coverage / failure record | implemented | cross-context Coverage Receipt adapterは未実装 |
-| Human OS Dynamic AI Reproduction / append-only records / external gate | pinned-image runsc lab、Claude CodeのAI継続判断、Private Evidence CASまでimplemented。synthetic pluginでlab / HTTP / cleanupをlive smoke済み | 実provider + 実Targetのruntime pilotは未実施 |
+| Human OS Dynamic Reproduction / append-only records / external gate | Finding-bound Recipeのsingle replay、pinned-image runsc lab、Private Evidence CASまでimplemented。TranslatePress ATOをfresh labでruntime-confirmed | ResearchからPrivate Recipe保存への自動handoffとcompanion plugin / site-content fixture resolverは未実装 |
 | actual external submission | intentionally absent | 人間が最後のSubmitを行う |
 
 `implemented`はpublic seamからdeterministic Behavior Testを通る意味である。実provider、実Target、prospective recallの実証とは区別する。
@@ -77,6 +78,20 @@ known-positive実測のstage別内訳は[2026-09-08 Native Agent evaluation](kno
 
 **Code / Tests:** [`approved-target-batch`](../src/target-intelligence/approved-target-batch) · [`target-proposals.test.ts`](../tests/target-intelligence/target-proposals.test.ts)
 
+## Approved Target Campaigns
+
+**Purpose:** Approved Target Batchの一Targetを実行直前にadmitし、Target Intake、Campaign Policy、WordPress coreを含むDependency Snapshots、compactなCampaign Threat ContextからResearch `CampaignInput`を作って、そのまま一Campaignを開始する。
+
+**Interface:** `ApprovedTargetCampaigns.conduct`。CLIは`wordpress-harness campaign conduct-approved`で同じInterfaceを使う。
+
+**Owned state:** 新しいQueueやLedgerを持たない。Approved BatchとResearch Campaignの既存durable stateを使い、同じCampaign ID / inputの再実行はResearch側のresume semanticsへ委ねる。
+
+**Invariants:** Batch digest、human-approved Target、execution window、fresh observation、Plugin Identity、version、Canonical File Manifest、Target Snapshot、Campaign Policy digestを一致させる。source closureはexactly oneのWordPress coreを必須とし、Dependency mountとThreat Contextのroleを一対一にする。Threat ContextはTarget選定理由、ordinary configuration、attacker position、security objective、trust boundary、high-value transition、不確実性だけを持つplanning dataであり、脆弱性class、file順、role、Waveまたは停止quotaをResearchへ命令しない。Research Rootはoff-model Findingを報告できる。
+
+**Failure semantics:** approval、freshness、Intake manifest、Campaign Policyまたはsource closureの不一致ではResearchを開始しない。Target versionをsilentに差し替えず、中央scheduler、固定並列数、Target自動補充またはprovider fallbackを行わない。
+
+**Code / Tests:** [`approved-target-campaign`](../src/target-intelligence/approved-target-campaign) · [`approved-target-campaigns.test.ts`](../tests/target-intelligence/approved-target-campaigns.test.ts) · [`campaign-threat-context.test.ts`](../tests/research/campaign-threat-context.test.ts)
+
 ## Research Campaigns
 
 **Purpose:** AI主導のresearch / validation loopを、authority、record、Budget、terminal semanticsのbehindに隠す。
@@ -85,7 +100,7 @@ known-positive実測のstage別内訳は[2026-09-08 Native Agent evaluation](kno
 
 **Owned state:** Target / Dependency Snapshotsを含むCampaign input、Native Run Receipt、private Agent Checkpoint ref、Validation Receipt、Finding、Coverage、interruptionをSQLite append-only eventsへ記録する。provider conversationとscratch本文はprivate content-addressed stateに置く。
 
-**Invariants:** candidateは到着順や支持数で捨てない。Research decisionが`continue`である間はcandidateを蓄積してRootの連続Researchを優先し、Rootが停止した後にだけ各candidateを一つのfresh Validationへ渡す。ResearchとValidationへ同じread-only Dependency Snapshotsを渡し、Agent CheckpointとFindingにもdependency digest / refsを残す。複数Targetは別Campaign processとして並列実行し、Campaign間でstateを共有しない。completed Research / Validation Receiptはrunsc上のgVisor実行とfallback不使用の証跡を必須とする。各runへ累積使用量を引いた残りのwall time / costだけを渡し、超過したterminal reportでCoverageを閉じない。`source-validated`だけがFindingを生成する。FindingとCoverageを分離する。
+**Invariants:** candidateは到着順や支持数で捨てない。Research decisionが`continue`である間はcandidateを蓄積してRootの連続Researchを優先し、Rootが停止した後にだけ各candidateを一つのfresh Validationへ渡す。Research RootへCampaign Threat Contextがある場合はCampaign inputとCheckpointへdigest-bindしてplanning dataとして渡し、探索手順にはしない。ResearchとValidationへ同じread-only Dependency Snapshotsを渡し、Agent CheckpointとFindingにもdependency digest / refsを残す。複数Targetは別Campaign processとして並列実行し、Campaign間でstateを共有しない。completed Research / Validation Receiptはrunsc上のgVisor実行とfallback不使用の証跡を必須とする。各runへ累積使用量を引いた残りのwall time / costだけを渡し、超過したterminal reportでCoverageを閉じない。`source-validated`だけがFindingを生成する。FindingとCoverageを分離する。
 
 **Failure semantics:** provider、Budget、policy、invalid outputは`incomplete`または`validation-pending`にする。同じCampaign IDへの異なるinputはconflictにする。再実行はdurable stateからresumeする。
 
@@ -99,7 +114,7 @@ known-positive実測のstage別内訳は[2026-09-08 Native Agent evaluation](kno
 
 **Invariants:** immutable image、exact CLI version、non-root UID、read-only root / Target / Dependencies、dropped capabilities、no-new-privileges、Prompt / Target / Dependency / Permission binding、ResearchとValidationの別scratchを要求する。Researchのprovider-native conversationとscratchはcredentialを除外したprivate Checkpointとしてcontent-addressed保存し、同じbindingだけが再開できる。ValidationはCheckpointをmountしない。sanitized provider homeはworkspace mount外へ分離し、agentのRead / Grepをdenyする。Grokは`read_file / grep / list_dir / task`だけを公開する探索試験の優先runtimeで、別providerへsilent fallbackしない。GLM 5.3はZ.AI endpoint、固定model mapping、token等の必要なenvだけを持つstrictな一時`settings.json`をClaude Codeへ渡す。hook、plugin、追加設定はsandbox起動前に拒否し、settingsはCheckpoint確定前に除外する。Grokは共通のexact image digestと1.0.13、Claude / GLMは実測済みimage digestと2.1.220だけをadmitする。
 
-**Failure semantics:** runsc、image、unprobed version、Target / Dependency bindingとsource tree、Checkpoint integrity、policy、providerまたはschema failureをtyped terminal receiptへする。timeoutとproviderのbudget error envelopeは`budget-exhausted`である。providerがnon-zero exitしても、対応するerror envelopeのusage、costと有効なCheckpoint refを失わず、wall timeはprovider値とhost観測値の大きい方を記録する。GLMのouter envelopeが正常でinner JSONまたはReport shapeだけ不正な場合は、Researchは同じCheckpoint、Validationは新しい使い捨てscratchで同一Reportの再符号化を一度だけ要求し、両attemptのusageを合算する。補正後も不正なら`invalid-output`を維持する。
+**Failure semantics:** runsc、image、unprobed version、Target / Dependency bindingとsource tree、Checkpoint integrity、policy、providerまたはschema failureをtyped terminal receiptへする。timeoutとproviderのbudget error envelopeは`budget-exhausted`である。providerがnon-zero exitしても、対応するerror envelopeのusage、costと有効なCheckpoint refを失わず、wall timeはprovider値とhost観測値の大きい方を記録する。現実装はGLMのouter envelopeが正常でinner JSONまたはReport shapeだけ不正な場合、Researchでは同じCheckpoint、Validationでは新しい使い捨てscratchから同一Reportの再符号化を一度だけ要求し、両attemptのusageを合算する。Validation側のsecond model executionは「candidateごとに一つのfresh source-only run」というpolicyと未整合であり、#144の判断が必要である。補正後も不正なら`invalid-output`を維持する。
 
 **Code / Tests:** [`gvisor-agent-sandbox.ts`](../src/research/agent-led/gvisor-agent-sandbox.ts) · [`grok-native-agent-runtime.ts`](../src/research/agent-led/grok-native-agent-runtime.ts) · [`claude-code-native-agent-runtime.ts`](../src/research/agent-led/claude-code-native-agent-runtime.ts) · [`grok-native-agent-runtime.test.ts`](../tests/research/grok-native-agent-runtime.test.ts) · [`claude-code-native-agent-runtime.test.ts`](../tests/research/claude-code-native-agent-runtime.test.ts) · [`glm-native-agent-runtime.test.ts`](../tests/research/glm-native-agent-runtime.test.ts)
 
@@ -121,7 +136,7 @@ known-positive実測のstage別内訳は[2026-09-08 Native Agent evaluation](kno
 
 **Purpose:** local Campaignのconductとread-only inspectionだけを公開する。
 
-**Interface:** `wordpress-harness campaign conduct | inspect`。
+**Interface:** `wordpress-harness campaign conduct | conduct-approved | inspect`。
 
 **Invariants:** provider Adapterはsealed `agentRuntimeProfile.kind`から選び、Prompt本文のdigest一致をruntimeが検査する。`--dependency-source <mount>=<directory>`はCampaignにsealされた全Dependencyと過不足なく対応する。production buildは`dist`を先にcleanし、現行`src`に対応しないstale artifactをbuild verifierが拒否する。
 

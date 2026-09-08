@@ -73,12 +73,12 @@
       <text x="59" y="463" class="small">version・sourceを実行直前に再確認</text>
 
       <rect x="42" y="483" width="306" height="19" rx="9" fill="#604724"/>
-      <text x="195" y="496" text-anchor="middle" class="tiny" fill="#ffe0ad">GAP：Batch → Campaign dispatchは未接続</text>
+      <text x="195" y="496" text-anchor="middle" class="tiny" fill="#ffe0ad">Approved Campaign admission</text>
     </g>
 
     <path d="M195 514V548" class="flow"/>
     <rect x="79" y="526" width="232" height="28" rx="14" fill="#142d4a" stroke="#315b8d"/>
-    <text x="195" y="544" text-anchor="middle" class="tiny">Target Intake Packet</text>
+    <text x="195" y="544" text-anchor="middle" class="tiny">Admitted Campaign Input</text>
 
     <!-- Research -->
     <g filter="url(#shadow)">
@@ -105,12 +105,12 @@
       <text x="59" y="952" class="small">source-validatedだけをimmutableに生成</text>
 
       <line x1="42" y1="993" x2="348" y2="993" class="divider"/>
-      <text x="42" y="1021" class="mono eyebrow" fill="#68d8a2">CURRENT EVIDENCE</text>
+      <text x="42" y="1021" class="mono eyebrow" fill="#68d8a2">RESEARCH OUTPUT</text>
       <rect x="42" y="1038" width="145" height="62" rx="14" fill="#174438"/>
-      <text x="114" y="1064" text-anchor="middle" class="card">4 / 4</text>
-      <text x="114" y="1087" text-anchor="middle" class="tiny">known candidates</text>
+      <text x="114" y="1064" text-anchor="middle" class="card">Candidate</text>
+      <text x="114" y="1087" text-anchor="middle" class="tiny">source claim</text>
       <rect x="203" y="1038" width="145" height="62" rx="14" fill="#332b5b"/>
-      <text x="275" y="1064" text-anchor="middle" class="card">4 / 4</text>
+      <text x="275" y="1064" text-anchor="middle" class="card">Finding</text>
       <text x="275" y="1087" text-anchor="middle" class="tiny">source-validated</text>
 
       <text x="42" y="1132" class="body">Grok優先。Claude Code / GLMは独立Adapter。</text>
@@ -144,11 +144,11 @@
       <text x="59" y="1599" class="small">exact Draft + destinationへの明示承認</text>
 
       <rect x="42" y="1623" width="145" height="56" rx="14" fill="#604724"/>
-      <text x="114" y="1647" text-anchor="middle" class="card">3 / 4</text>
-      <text x="114" y="1668" text-anchor="middle" class="tiny">runtime effects</text>
+      <text x="114" y="1647" text-anchor="middle" class="card">Runtime</text>
+      <text x="114" y="1668" text-anchor="middle" class="tiny">assurance record</text>
       <rect x="203" y="1623" width="145" height="56" rx="14" fill="#604724"/>
-      <text x="275" y="1647" text-anchor="middle" class="card">ATO確認</text>
-      <text x="275" y="1668" text-anchor="middle" class="tiny">Recipe replay · 18秒</text>
+      <text x="275" y="1647" text-anchor="middle" class="card">Human</text>
+      <text x="275" y="1668" text-anchor="middle" class="tiny">verification record</text>
     </g>
 
     <!-- Fixed shell -->

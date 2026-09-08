@@ -182,12 +182,6 @@ export const programmeAssignmentRouteStalenessSchema =
 export type DisclosureRouteSourceKind = z.infer<
   typeof disclosureRouteSourceKindSchema
 >;
-export type DisclosureRouteSourceDocument = z.infer<
-  typeof disclosureRouteSourceDocumentSchema
->;
-export type DisclosureRouteSourceClaim = z.infer<
-  typeof disclosureRouteSourceClaimSchema
->;
 export type DisclosureRouteObserveRequest = z.infer<
   typeof disclosureRouteObserveRequestSchema
 >;
@@ -199,9 +193,6 @@ export type DisclosureRouteObservation = z.infer<
 >;
 export type DisclosureRouteObservationRef = z.infer<
   typeof disclosureRouteObservationRefSchema
->;
-export type ProgrammeAssignmentRouteBinding = z.infer<
-  typeof programmeAssignmentRouteBindingSchema
 >;
 export type ProgrammeAssignmentRouteBindingRef = z.infer<
   typeof programmeAssignmentRouteBindingRefSchema

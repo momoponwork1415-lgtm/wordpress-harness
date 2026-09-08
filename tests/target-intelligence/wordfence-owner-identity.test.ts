@@ -14,7 +14,7 @@ import {
   openSqliteHostPrivateCredentialBroker,
   openWordfenceIntelligenceRefresh,
   type HostPrivateCredentialBroker,
-} from "../../src/target-intelligence/index.js";
+} from "../../src/target-intelligence/wordfence-intelligence/index.js";
 
 describe("Wordfence owner identity", () => {
   it.each(["run", "inspect"] as const)(

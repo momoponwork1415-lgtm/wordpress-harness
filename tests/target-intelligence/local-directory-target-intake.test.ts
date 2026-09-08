@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { verifyCanonicalSourceTree } from "../../src/infrastructure/canonical-source-tree.js";
-import { openLocalDirectoryTargetIntake } from "../../src/target-intelligence/index.js";
+import { openLocalDirectoryTargetIntake } from "../../src/target-intelligence/acquisition/index.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 

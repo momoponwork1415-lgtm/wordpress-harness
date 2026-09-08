@@ -6,9 +6,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   createPatchstackProgrammeAdapters,
-  openProgrammeIntelligence,
   type PatchstackProgrammePageAdapter,
-} from "../../src/target-intelligence/index.js";
+} from "../../src/target-intelligence/patchstack-programme/index.js";
+import { openProgrammeIntelligence } from "../../src/target-intelligence/programme-intelligence/index.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 const fixtureDirectory = join(

@@ -12,7 +12,7 @@ import {
   openTargetProposals,
   type TargetCandidate,
   type TargetSelectionRunInput,
-} from "../../src/target-intelligence/index.js";
+} from "../../src/target-intelligence/target-proposal/index.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 
