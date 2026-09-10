@@ -4,11 +4,18 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { campaignInputSchema, type CampaignInput } from "./research/index.js";
+import {
+  campaignInputSchema,
+  humanCandidateReviewSchema,
+  humanResearchContinuationReviewSchema,
+  humanValidationRetrySchema,
+  type CampaignInput,
+} from "./research/index.js";
 import {
   openClaudeCodeNativeAgentRuntime,
   openGlmNativeAgentRuntime,
 } from "./research/agent-led/claude-code-native-agent-runtime.js";
+import { openCodexNativeAgentRuntime } from "./research/agent-led/codex-native-agent-runtime.js";
 import { openGrokNativeAgentRuntime } from "./research/agent-led/grok-native-agent-runtime.js";
 import type { NativeAgentRuntime } from "./research/agent-led/contracts.js";
 import { openResearchCampaigns } from "./research/agent-led/research-campaigns.js";
@@ -19,7 +26,7 @@ import {
 import { admitApprovedTargetCampaign } from "./target-intelligence/approved-target-campaign/approved-target-campaigns.js";
 
 const usage =
-  "Usage: wordpress-harness campaign <conduct|conduct-approved|inspect> --database <path> ...";
+  "Usage: wordpress-harness campaign <conduct|conduct-approved|review-research|review-candidates|retry-validation|inspect> --database <path> ...";
 
 export interface CliIo {
   stdout(text: string): void;
@@ -141,6 +148,9 @@ function openNativeRuntime(
   if (input.agentRuntimeProfile.kind === "glm-claude-code-native/v1") {
     return openGlmNativeAgentRuntime(options);
   }
+  if (input.agentRuntimeProfile.kind === "codex-native/v1") {
+    return openCodexNativeAgentRuntime(options);
+  }
   throw new Error(
     `Unsupported Agent Runtime: ${input.agentRuntimeProfile.kind}`,
   );
@@ -157,11 +167,61 @@ export async function runCli(
       context !== "campaign" ||
       (command !== "conduct" &&
         command !== "conduct-approved" &&
+        command !== "review-research" &&
+        command !== "review-candidates" &&
+        command !== "retry-validation" &&
         command !== "inspect")
     ) {
       throw new Error(usage);
     }
     const databasePath = resolve(readOption(args, "--database"));
+
+    if (
+      command === "review-research" ||
+      command === "review-candidates" ||
+      command === "retry-validation"
+    ) {
+      const reviewValue = JSON.parse(
+        await readFile(
+          readOption(
+            args,
+            command === "retry-validation" ? "--retry" : "--review",
+          ),
+          "utf8",
+        ),
+      ) as unknown;
+      const review =
+        command === "review-research"
+          ? humanResearchContinuationReviewSchema.parse(reviewValue)
+          : command === "review-candidates"
+            ? humanCandidateReviewSchema.parse(reviewValue)
+            : humanValidationRetrySchema.parse(reviewValue);
+      const inspection = openResearchCampaigns({
+        databasePath,
+        runtime: unavailableInspectionRuntime(),
+      });
+      const input = (
+        await inspection.inspect({ campaignId: review.campaignId })
+      ).input;
+      inspection.close();
+      const [researchPrompt, validationPrompt] = await Promise.all([
+        readFile(readOption(args, "--research-prompt"), "utf8"),
+        readFile(readOption(args, "--validation-prompt"), "utf8"),
+      ]);
+      const campaigns = openResearchCampaigns({
+        databasePath,
+        runtime: openNativeRuntime(
+          args,
+          input,
+          researchPrompt,
+          validationPrompt,
+        ),
+      });
+      close = () => campaigns.close();
+      const outcome = await campaigns.conduct(review);
+      io.stdout(`${JSON.stringify(outcome)}\n`);
+      return 0;
+    }
 
     if (command === "conduct" || command === "conduct-approved") {
       const inputValue: unknown = JSON.parse(

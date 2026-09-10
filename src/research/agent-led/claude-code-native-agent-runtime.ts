@@ -15,6 +15,8 @@ import {
   validationReportSchema,
   validationRunReceiptSchema,
   type AgentCheckpointRef,
+  type AgentRunDiagnosticRef,
+  type AgentRunFailureStage,
   type NativeAgentRuntime,
   type NativeAgentReceipt,
   type SealedAgentRun,
@@ -143,10 +145,103 @@ function parseJson(value: string): unknown {
   }
 }
 
+const providerObjectUnionSchema = z.object({
+  oneOf: z
+    .array(
+      z.object({
+        type: z.literal("object"),
+        properties: z.record(z.string(), z.unknown()),
+        required: z.array(z.string()),
+        additionalProperties: z.literal(false),
+      }),
+    )
+    .min(1),
+});
+const providerDispositionSchema = z.object({
+  type: z.literal("string"),
+  const: z.string().min(1),
+});
+const providerArraySchema = z.looseObject({
+  type: z.literal("array"),
+  items: z.unknown(),
+  minItems: z.number().int().nonnegative().optional(),
+});
+
+function flattenValidationProviderSchema(providerSchema: unknown): unknown {
+  const decoded = providerObjectUnionSchema.parse(providerSchema);
+  const firstBranch = decoded.oneOf[0];
+  if (firstBranch === undefined) {
+    throw new Error("Validation provider schema has no union branches.");
+  }
+  const properties = { ...firstBranch.properties };
+  const dispositions: string[] = [];
+  let weakestEvidence: z.infer<typeof providerArraySchema> | undefined;
+  let nextActions: unknown;
+  for (const branch of decoded.oneOf) {
+    const disposition = providerDispositionSchema.parse(
+      branch.properties.disposition,
+    );
+    dispositions.push(disposition.const);
+    const evidence = providerArraySchema.parse(branch.properties.evidence);
+    if (
+      weakestEvidence === undefined ||
+      (weakestEvidence.minItems !== undefined &&
+        evidence.minItems === undefined)
+    ) {
+      weakestEvidence = evidence;
+    }
+    if (branch.properties.nextActions !== undefined) {
+      nextActions = branch.properties.nextActions;
+    }
+  }
+  if (weakestEvidence === undefined) {
+    throw new Error("Validation provider schema has no evidence property.");
+  }
+  properties.disposition = { type: "string", enum: dispositions };
+  properties.evidence = weakestEvidence;
+  if (nextActions !== undefined) properties.nextActions = nextActions;
+  return {
+    type: "object",
+    properties,
+    required: firstBranch.required.filter((name) =>
+      decoded.oneOf.every((branch) => branch.required.includes(name)),
+    ),
+    additionalProperties: false,
+  };
+}
+
+function normalizeValidationTransportReport(report: unknown): unknown {
+  const decoded = z.record(z.string(), z.unknown()).safeParse(report);
+  if (
+    !decoded.success ||
+    decoded.data.disposition === "needs-research" ||
+    decoded.data.nextActions === undefined
+  ) {
+    return report;
+  }
+  const { nextActions: _transportOnlyNextActions, ...normalized } =
+    decoded.data;
+  return normalized;
+}
+
+function reportIssueSummary(error: z.ZodError): string {
+  return error.issues
+    .slice(0, 3)
+    .map(
+      (issue) =>
+        `${issue.code}@${issue.path.length === 0 ? "$" : issue.path.join(".")}`,
+    )
+    .join(", ");
+}
+
 function claudeJsonSchema(schema: z.ZodType): string {
   const providerSchema = { ...z.toJSONSchema(schema) };
   delete providerSchema.$schema;
-  return JSON.stringify(providerSchema);
+  return JSON.stringify(
+    schema === validationReportSchema
+      ? flattenValidationProviderSchema(providerSchema)
+      : providerSchema,
+  );
 }
 
 function terminalJson(value: string): unknown | undefined {
@@ -242,6 +337,8 @@ function errorReceipt(
   startedAt: Date,
   completedAt: Date,
   checkpoint: AgentCheckpointRef | undefined,
+  diagnostic: AgentRunDiagnosticRef | undefined,
+  failureStage: AgentRunFailureStage,
 ): NativeAgentReceipt {
   const usedModels = Object.values(envelope.modelUsage);
   const violatedPolicy =
@@ -293,7 +390,11 @@ function errorReceipt(
     ...(run.kind === "sealed-native-research-run" && checkpoint !== undefined
       ? { checkpoint }
       : {}),
-    failure: { summary },
+    failure: {
+      summary,
+      stage: failureStage,
+      ...(diagnostic === undefined ? {} : { diagnostic }),
+    },
   };
   return run.kind === "sealed-native-research-run"
     ? nativeRunReceiptSchema.parse(receipt)
@@ -331,6 +432,8 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
       versionTokenIndex: 0,
       providerEnvironment: [
         "--env=CLAUDE_CONFIG_DIR=/provider",
+        "--env=CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=3",
+        "--env=CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1",
         "--env=HOME=/tmp/home",
       ],
       ephemeralProviderCredentialFiles: [
@@ -360,12 +463,6 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         glm ? "opus" : run.agentRuntimeProfile.model,
         "--effort",
         run.agentRuntimeProfile.effort,
-        ...(glm
-          ? []
-          : [
-              "--max-budget-usd",
-              String(run.budgetAllowance.maxEstimatedCostUsd),
-            ]),
         "--strict-mcp-config",
         "--safe-mode",
         "--disable-slash-commands",
@@ -474,6 +571,9 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
           execution.startedAt,
           execution.completedAt,
           true,
+          undefined,
+          execution.diagnostic,
+          execution.failureStage,
         );
       }
       return decodedError.success
@@ -483,6 +583,8 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
             execution.startedAt,
             execution.completedAt,
             execution.checkpoint,
+            execution.diagnostic,
+            execution.failureStage,
           )
         : failedNativeRunReceipt(
             run,
@@ -492,6 +594,8 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
             execution.completedAt,
             true,
             execution.checkpoint,
+            execution.diagnostic,
+            execution.failureStage,
           );
     }
 
@@ -507,12 +611,8 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
             execution.completedAt,
           )
         : run.budgetAllowance.maxWallTimeMs;
-      const firstCost = malformed.success
-        ? (malformed.data.total_cost_usd ?? 0)
-        : run.budgetAllowance.maxEstimatedCostUsd;
       const remainingWallTime =
         run.budgetAllowance.maxWallTimeMs - firstWallTime;
-      const remainingCost = run.budgetAllowance.maxEstimatedCostUsd - firstCost;
       const canCorrectFormat =
         run.kind === "sealed-native-validation-run" ||
         execution.checkpoint !== undefined;
@@ -520,12 +620,10 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         malformed.success &&
         canCorrectFormat &&
         !violatesSealedPolicy(malformed.data, run, execution.checkpoint) &&
-        remainingWallTime > 0 &&
-        remainingCost > 0
+        remainingWallTime > 0
       ) {
         const budgetAllowance = {
           maxWallTimeMs: remainingWallTime,
-          maxEstimatedCostUsd: remainingCost,
         };
         const retryRun = {
           ...run,
@@ -555,6 +653,8 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
             correction.completedAt,
             true,
             correction.checkpoint,
+            correction.diagnostic,
+            correction.failureStage,
           );
         }
         execution = correction;
@@ -597,28 +697,26 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
       run.kind === "sealed-native-research-run"
         ? researchReportSchema
         : validationReportSchema
-    ).safeParse(envelope.structured_output);
+    ).safeParse(
+      run.kind === "sealed-native-validation-run"
+        ? normalizeValidationTransportReport(envelope.structured_output)
+        : envelope.structured_output,
+    );
     if (!report.success && glm) {
       const usedWallTime = accountingEnvelopes.reduce(
         (total, candidate) => total + candidate.duration_ms,
         0,
       );
-      const usedCost = accountingEnvelopes.reduce(
-        (total, candidate) => total + (candidate.total_cost_usd ?? 0),
-        0,
-      );
       const remainingWallTime =
         run.budgetAllowance.maxWallTimeMs - usedWallTime;
-      const remainingCost = run.budgetAllowance.maxEstimatedCostUsd - usedCost;
       const canCorrectSchema =
         run.kind === "sealed-native-validation-run" ||
         execution.checkpoint !== undefined;
-      if (canCorrectSchema && remainingWallTime > 0 && remainingCost > 0) {
+      if (canCorrectSchema && remainingWallTime > 0) {
         const retryRun = {
           ...run,
           budgetAllowance: {
             maxWallTimeMs: remainingWallTime,
-            maxEstimatedCostUsd: remainingCost,
           },
           ...(run.kind === "sealed-native-research-run" &&
           execution.checkpoint !== undefined
@@ -643,6 +741,8 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
             correction.completedAt,
             true,
             correction.checkpoint,
+            correction.diagnostic,
+            correction.failureStage,
           );
         }
         const rawCorrection = glmResultSchema.safeParse(
@@ -664,7 +764,11 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
             run.kind === "sealed-native-research-run"
               ? researchReportSchema
               : validationReportSchema
-          ).safeParse(envelope.structured_output);
+          ).safeParse(
+            run.kind === "sealed-native-validation-run"
+              ? normalizeValidationTransportReport(envelope.structured_output)
+              : envelope.structured_output,
+          );
         }
       }
     }
@@ -672,7 +776,7 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
       return failedNativeRunReceipt(
         run,
         "invalid-output",
-        "Claude Code returned an unsupported Agent Report.",
+        `Claude Code returned an unsupported Agent Report (${reportIssueSummary(report.error)}).`,
         initialStartedAt,
         execution.completedAt,
         true,

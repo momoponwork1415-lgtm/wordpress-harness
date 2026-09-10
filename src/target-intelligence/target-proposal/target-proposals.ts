@@ -220,11 +220,7 @@ class FileTargetProposals implements TargetProposals {
         receipt,
       );
     }
-    if (
-      receipt.usage.wallTimeMs > input.budgetEnvelope.maxWallTimeMs ||
-      (receipt.usage.estimatedCostUsd ?? 0) >
-        input.budgetEnvelope.maxEstimatedCostUsd
-    ) {
+    if (receipt.usage.wallTimeMs > input.budgetEnvelope.maxWallTimeMs) {
       receipt = failedReceipt(
         sealedRun,
         "budget-exhausted",

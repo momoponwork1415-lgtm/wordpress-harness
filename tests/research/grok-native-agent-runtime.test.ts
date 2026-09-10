@@ -17,6 +17,7 @@ import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import { openGrokNativeAgentRuntime } from "../../src/research/agent-led/grok-native-agent-runtime.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
 import type { CampaignInput } from "../../src/research/index.js";
+import { conductWithHumanAdvance } from "./support/candidate-review.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -126,7 +127,11 @@ has_host_user=0
 has_outer_owned_sandbox=0
 has_memory_disabled=0
 has_ephemeral_provider_home=0
+has_subagent_concurrency_limit=0
+has_subagent_depth_limit=0
+has_subagent_fail_limit=0
 has_read_only_tools=0
+has_json_output=0
 has_dependency_mount=0
 denies_provider_read=0
 denies_provider_grep=0
@@ -140,14 +145,19 @@ previous=''
 for argument in "$@"; do
   if [ "$previous" = "--session-id" ]; then new_session="$argument"; fi
   if [ "$previous" = "--resume" ]; then resume_session="$argument"; fi
+  if [ "$previous" = "--output-format" ] && [ "$argument" = "json" ]; then has_json_output=1; fi
   [ "$argument" != "--runtime=runsc" ] || has_runsc=1
   [ "$argument" != "--user=$(id -u):$(id -g)" ] || has_host_user=1
   [ "$argument" != "off" ] || has_outer_owned_sandbox=1
   [ "$argument" != "--no-memory" ] || has_memory_disabled=1
   [ "$argument" != "--env=GROK_HOME=/provider" ] || has_ephemeral_provider_home=1
+  [ "$argument" != "--env=GROK_MAX_CONCURRENT_SUBAGENTS=3" ] || has_subagent_concurrency_limit=1
+  [ "$argument" != "--env=GROK_SUBAGENTS_MAX_DEPTH=1" ] || has_subagent_depth_limit=1
+  [ "$argument" != "--env=GROK_SUBAGENT_LIMIT_BEHAVIOR=fail" ] || has_subagent_fail_limit=1
   [ "$argument" != "read_file,grep,list_dir,task" ] || has_read_only_tools=1
   [ "$argument" != "Read(/provider/**)" ] || denies_provider_read=1
   [ "$argument" != "Grep(/provider/**)" ] || denies_provider_grep=1
+  [ "$argument" != "--json-schema" ] || exit 110
   [ "$argument" != "--volume" ] || volume_count=$((volume_count + 1))
   case "$argument" in
     *:/provider:rw) provider_mount="\${argument%:/provider:rw}" ;;
@@ -171,11 +181,17 @@ fi
 [ "$has_outer_owned_sandbox" -eq 1 ] || exit 95
 [ "$has_memory_disabled" -eq 1 ] || exit 96
 [ "$has_ephemeral_provider_home" -eq 1 ] || exit 97
+[ "$has_subagent_concurrency_limit" -eq 1 ] || exit 112
+[ "$has_subagent_depth_limit" -eq 1 ] || exit 113
+[ "$has_subagent_fail_limit" -eq 1 ] || exit 114
 [ "$has_read_only_tools" -eq 1 ] || exit 101
+[ "$has_json_output" -eq 1 ] || exit 111
 [ "$denies_provider_read" -eq 1 ] || exit 102
 [ "$denies_provider_grep" -eq 1 ] || exit 103
 [ -n "$scratch" ] || exit 92
 grep -F 'wordpress-core-7.1' "$scratch/prompt.txt" >/dev/null
+grep -F 'Grok final' "$scratch/prompt.txt" >/dev/null
+grep -F 'JSON Schema:' "$scratch/prompt.txt" >/dev/null
 [ -n "$provider_mount" ] || exit 104
 case "$provider_mount" in
   "$scratch"/*) exit 105 ;;
@@ -205,7 +221,7 @@ if [ "$invocation" -eq 1 ]; then
 fi
 if [ "$invocation" -eq 2 ]; then
   [ -n "$resume_session" ] || exit 108
-  printf '{"text":"","stopReason":"end_turn","sessionId":"%s","requestId":"request-3","usage":{"input_tokens":3000,"cache_read_input_tokens":500,"cache_creation_input_tokens":250,"output_tokens":500,"reasoning_tokens":200,"total_tokens":4250},"num_turns":3,"total_cost_usd":0.3,"modelUsage":{"grok-4.6-build":{"inputTokens":3000,"outputTokens":500,"cacheReadInputTokens":500,"cacheCreationInputTokens":250,"modelCalls":3,"costUSD":0.3}},"structuredOutput":{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"The remaining frontier was resolved."}}}' "$active_session"
+  printf '{"text":"{\\"schemaVersion\\":1,\\"candidates\\":[],\\"decision\\":{\\"kind\\":\\"stop\\",\\"basis\\":\\"The remaining frontier was resolved.\\"}}","stopReason":"end_turn","sessionId":"%s","requestId":"request-3","usage":{"input_tokens":3000,"cache_read_input_tokens":500,"cache_creation_input_tokens":250,"output_tokens":500,"reasoning_tokens":200,"total_tokens":4250},"num_turns":3,"total_cost_usd":0.3,"modelUsage":{"grok-4.6-build":{"inputTokens":3000,"outputTokens":500,"cacheReadInputTokens":500,"cacheCreationInputTokens":250,"modelCalls":3,"costUSD":0.3}}}' "$active_session"
   exit 0
 fi
 grep -F 'This is one fresh Independent Validation.' "$scratch/prompt.txt" >/dev/null
@@ -274,7 +290,7 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
         id: "agent-led-budget-v1",
         maxNativeRuns: 3,
         maxWallTimeMs: 600_000,
-        maxEstimatedCostUsd: 5,
+        researchGrantWallTimeMs: 600_000,
         digest:
           "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       },
@@ -333,7 +349,9 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
       runtime,
     });
 
-    await expect(campaigns.conduct(input)).resolves.toMatchObject({
+    await expect(
+      conductWithHumanAdvance(campaigns, input),
+    ).resolves.toMatchObject({
       status: "coverage-closed",
     });
     await expect(

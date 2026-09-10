@@ -1,6 +1,7 @@
 import {
   campaignThreatContextSchema,
   dependencySnapshotsSchema,
+  programmeResearchBoundarySchema,
   researchCampaignPolicySchema,
   type CampaignOutcomeRef,
   type ResearchCampaignPolicy,
@@ -29,6 +30,7 @@ export const approvedTargetCampaignRequestSchema = z.strictObject({
   campaignPolicy: researchCampaignPolicySchema,
   dependencySnapshots: dependencySnapshotsSchema,
   threatContext: campaignThreatContextSchema,
+  programmeBoundary: programmeResearchBoundarySchema,
 });
 
 export interface ApprovedTargetCampaigns {

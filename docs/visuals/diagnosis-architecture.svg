@@ -1,132 +1,148 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="390" height="1500" viewBox="0 0 390 1500" role="img" aria-labelledby="title desc" style="width:100%;max-width:390px;height:auto">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc" style="width:100%;max-width:1200px;height:auto">
   <title id="title">WordPress Harness 診断コア</title>
-  <desc id="desc">Target sourceをAIが自由に探索し、候補を別のAIが独立検証する縦一列のモバイル向けアーキテクチャ図。Finding、反証、未完了をHarnessが記録し、隔離は実行Adapter内部の安全条件として扱う。</desc>
+  <desc id="desc">Target sourceをAIがResearch Grant単位で探索し、人間のResearch継続判断とCandidate admissionを経て、別のAIがfreshなsourceだけから独立検証する現在の診断コア。Finding、反証、未完了をHarnessが記録する。</desc>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#07111f"/>
-      <stop offset="1" stop-color="#101827"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#06101d"/>
+      <stop offset="1" stop-color="#111827"/>
     </linearGradient>
-    <linearGradient id="discovery" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="research" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#123f38"/>
-      <stop offset="1" stop-color="#102d31"/>
+      <stop offset="1" stop-color="#102b31"/>
     </linearGradient>
     <linearGradient id="validation" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#33265c"/>
+      <stop offset="0" stop-color="#35275f"/>
       <stop offset="1" stop-color="#211f45"/>
     </linearGradient>
     <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%">
-      <feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#000" flood-opacity="0.28"/>
+      <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#000" flood-opacity=".28"/>
     </filter>
-    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
       <path d="M0 0L10 5L0 10Z" fill="#78aaff"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#68d8a2"/>
     </marker>
     <style>
       .sans{font-family:Inter,"Noto Sans JP",system-ui,-apple-system,"Segoe UI",sans-serif}
       .mono{font-family:"SFMono-Regular",Consolas,monospace}
-      .title{fill:#f7f9fc;font-size:30px;font-weight:760;letter-spacing:-.8px}
-      .subtitle{fill:#a9b9ce;font-size:15px}
-      .eyebrow{font-size:11px;font-weight:760;letter-spacing:1.1px}
-      .cardTitle{fill:#f7f9fc;font-size:20px;font-weight:730}
+      .title{fill:#f7f9fc;font-size:38px;font-weight:760;letter-spacing:-1px}
+      .subtitle{fill:#adbbce;font-size:17px}
+      .eyebrow{font-size:12px;font-weight:760;letter-spacing:1.2px}
+      .step{fill:#f7f9fc;font-size:21px;font-weight:730}
       .body{fill:#c8d4e3;font-size:14px}
-      .small{fill:#a6b5c8;font-size:12px}
+      .small{fill:#a9b7c9;font-size:12px}
       .tiny{fill:#91a2b8;font-size:11px}
-      .outline{fill:#111d30;stroke:#36516f;stroke-width:1.3}
-      .flow{fill:none;stroke:#78aaff;stroke-width:2.4;marker-end:url(#arrow)}
+      .panel{fill:#101d30;stroke:#36516f;stroke-width:1.4}
+      .flow{fill:none;stroke:#78aaff;stroke-width:2.5;marker-end:url(#arrowBlue)}
+      .loop{fill:none;stroke:#68d8a2;stroke-width:2.3;stroke-dasharray:7 6;marker-end:url(#arrowGreen)}
     </style>
   </defs>
 
-  <rect width="390" height="1500" fill="url(#bg)"/>
-  <circle cx="345" cy="45" r="105" fill="#17345c" opacity=".34"/>
-  <circle cx="34" cy="1415" r="120" fill="#123f38" opacity=".18"/>
+  <rect width="1200" height="760" fill="url(#bg)"/>
+  <circle cx="1110" cy="20" r="220" fill="#17345c" opacity=".28"/>
+  <circle cx="45" cy="720" r="175" fill="#123f38" opacity=".18"/>
 
   <g class="sans">
-    <text x="24" y="42" class="mono eyebrow" fill="#78aaff">CURRENT DESIGN · MOBILE</text>
-    <text x="24" y="79" class="title">診断コア</text>
-    <text x="24" y="107" class="subtitle">発見して、別のAIが検証する。</text>
-    <rect x="24" y="124" width="342" height="34" rx="17" fill="#142d4a" stroke="#315b8d"/>
-    <circle cx="43" cy="141" r="5" fill="#78aaff"/>
-    <text x="56" y="146" class="small">成功条件 = oracleなしの発見 + 独立Validation</text>
+    <text x="48" y="48" class="mono eyebrow" fill="#78aaff">CURRENT DIAGNOSTIC CORE · DESKTOP</text>
+    <text x="48" y="94" class="title">診断コア</text>
+    <text x="48" y="124" class="subtitle">AIが研究判断を行い、人間が次のGrantとValidation admissionを明示する。</text>
+
+    <rect x="48" y="148" width="1104" height="42" rx="21" fill="#142d4a" stroke="#315b8d"/>
+    <circle cx="72" cy="169" r="5" fill="#78aaff"/>
+    <text x="88" y="175" class="body">成功条件 = oracleなしのCandidate発見 + fresh Independent Validation</text>
+    <text x="1120" y="175" text-anchor="end" class="small">FindingとCoverageは別artifact</text>
 
     <g filter="url(#shadow)">
-      <rect x="24" y="190" width="342" height="102" rx="18" class="outline"/>
-      <text x="46" y="220" class="mono eyebrow" fill="#78aaff">INPUT</text>
-      <text x="46" y="250" class="cardTitle">Target Snapshot</text>
-      <text x="46" y="274" class="body">Plugin A / B / Cを独立Campaignで並列実行</text>
+      <rect x="48" y="236" width="190" height="190" rx="22" class="panel"/>
+      <text x="70" y="268" class="mono eyebrow" fill="#78aaff">SEALED INPUT</text>
+      <text x="70" y="307" class="step">Target Snapshot</text>
+      <text x="70" y="334" class="body">Dependency Snapshots</text>
+      <text x="70" y="358" class="body">Prompt · Runtime</text>
+      <text x="70" y="382" class="body">Permission · Budget</text>
+      <text x="70" y="408" class="small">digest-bound / read-only</text>
     </g>
 
-    <path d="M195 294V326" class="flow"/>
+    <path d="M240 331H278" class="flow"/>
 
     <g filter="url(#shadow)">
-      <rect x="24" y="330" width="342" height="238" rx="20" fill="url(#discovery)" stroke="#328669" stroke-width="1.5"/>
-      <rect x="44" y="350" width="77" height="25" rx="12" fill="#1e5a45"/>
-      <text x="58" y="367" class="mono tiny" fill="#b8f2d4">AI OWNS</text>
-      <text x="44" y="408" class="cardTitle">1. Discovery</text>
-      <text x="44" y="438" class="body">Root agentがsource全体を調査</text>
-      <text x="44" y="465" class="body">読む順序・仮説・subagentを自由に判断</text>
-      <text x="44" y="492" class="body">怪しいrouteがあれば継続</text>
-      <text x="44" y="519" class="body">有望な次手がなければ停止</text>
-      <text x="44" y="548" class="small">固定Depth / Wave / CWE checklistなし</text>
+      <rect x="282" y="218" width="238" height="226" rx="22" fill="url(#research)" stroke="#328669" stroke-width="1.5"/>
+      <rect x="304" y="240" width="78" height="26" rx="13" fill="#1f5a45"/>
+      <text x="319" y="258" class="mono tiny" fill="#b8f2d4">AI OWNS</text>
+      <text x="304" y="300" class="step">Research Grant</text>
+      <text x="304" y="328" class="body">source全体を最大1時間調査</text>
+      <text x="304" y="353" class="body">仮説・読む順序・subagentを判断</text>
+      <text x="304" y="378" class="body">Candidate / Parked Leadを保存</text>
+      <text x="304" y="407" class="small">continue / stopを提案</text>
+      <text x="304" y="426" class="tiny">最大4 active agents（Root込み）</text>
     </g>
 
-    <path d="M195 570V602" class="flow"/>
+    <path d="M522 331H560" class="flow"/>
 
     <g filter="url(#shadow)">
-      <rect x="44" y="606" width="302" height="76" rx="17" fill="#112d28" stroke="#328669"/>
-      <text x="64" y="636" class="mono eyebrow" fill="#68d8a2">OUTPUT</text>
-      <text x="64" y="655" class="body">具体的な主張 + attacker premise</text>
-      <text x="64" y="675" class="small">source evidence</text>
+      <rect x="564" y="236" width="196" height="190" rx="22" fill="#392f22" stroke="#c99652" stroke-width="1.5"/>
+      <text x="586" y="268" class="mono eyebrow" fill="#f0bd78">HUMAN GATE 1</text>
+      <text x="586" y="307" class="step">Research Review</text>
+      <text x="586" y="337" class="body">continue-research</text>
+      <text x="586" y="362" class="body">proceed-to-</text>
+      <text x="586" y="384" class="body">candidate-review</text>
+      <text x="586" y="404" class="tiny">exact run / Checkpoint /</text>
+      <text x="586" y="420" class="tiny">next actionへbind</text>
     </g>
 
-    <path d="M195 684V716" class="flow"/>
+    <path d="M662 428V480H402V448" class="loop"/>
+    <rect x="495" y="466" width="106" height="24" rx="12" fill="#174438"/>
+    <text x="548" y="482" text-anchor="middle" class="tiny" fill="#9ae7bf">CONTINUE</text>
+
+    <path d="M762 331H800" class="flow"/>
 
     <g filter="url(#shadow)">
-      <rect x="24" y="720" width="342" height="218" rx="20" fill="url(#validation)" stroke="#816bd1" stroke-width="1.5"/>
-      <rect x="44" y="740" width="77" height="25" rx="12" fill="#4a367e"/>
-      <text x="58" y="757" class="mono tiny" fill="#ded6ff">AI OWNS</text>
-      <text x="44" y="798" class="cardTitle">2. Independent Validation</text>
-      <text x="44" y="828" class="body">候補を別contextで独立検証</text>
-      <text x="44" y="855" class="body">Discoveryの結論を信用しない</text>
-      <text x="44" y="882" class="body">到達性・防御・impact・反証を確認</text>
-      <text x="44" y="916" class="small">RCEへの昇格は不要</text>
+      <rect x="804" y="236" width="176" height="190" rx="22" fill="#392f22" stroke="#c99652" stroke-width="1.5"/>
+      <text x="826" y="268" class="mono eyebrow" fill="#f0bd78">HUMAN GATE 2</text>
+      <text x="826" y="306" class="step">Candidate</text>
+      <text x="826" y="331" class="step">Review</text>
+      <text x="826" y="361" class="body">advance</text>
+      <text x="826" y="384" class="body">return / park / hold</text>
+      <text x="826" y="411" class="small">exact Candidate setへbind</text>
     </g>
 
-    <path d="M195 940V972" class="flow"/>
+    <path d="M982 331H1020" class="flow"/>
 
     <g filter="url(#shadow)">
-      <rect x="24" y="976" width="342" height="180" rx="20" class="outline"/>
-      <text x="44" y="1007" class="mono eyebrow" fill="#78aaff">RESULT</text>
-      <rect x="44" y="1024" width="302" height="34" rx="10" fill="#153b30"/>
-      <circle cx="61" cy="1041" r="5" fill="#68d8a2"/>
-      <text x="75" y="1046" class="body">Finding — 独立に支持できた</text>
-      <rect x="44" y="1067" width="302" height="34" rx="10" fill="#2b2b3e"/>
-      <circle cx="61" cy="1084" r="5" fill="#b39aff"/>
-      <text x="75" y="1089" class="body">Disproved — 必要条件を反証</text>
-      <rect x="44" y="1110" width="302" height="34" rx="10" fill="#302a25"/>
-      <circle cx="61" cy="1127" r="5" fill="#e6aa68"/>
-      <text x="75" y="1132" class="body">Incomplete — 外部制約で未決</text>
+      <rect x="1024" y="218" width="128" height="226" rx="22" fill="url(#validation)" stroke="#826bd2" stroke-width="1.5"/>
+      <rect x="1044" y="240" width="86" height="26" rx="13" fill="#4b367f"/>
+      <text x="1057" y="258" class="mono tiny" fill="#ded6ff">FRESH AI</text>
+      <text x="1044" y="299" class="step">Independent</text>
+      <text x="1044" y="325" class="step">Validation</text>
+      <text x="1044" y="356" class="body">sourceから</text>
+      <text x="1044" y="379" class="body">独立再導出</text>
+      <text x="1044" y="407" class="small">1 fresh run</text>
+      <text x="1044" y="426" class="tiny">Boundary非共有</text>
     </g>
-
-    <path d="M195 1158V1190" class="flow"/>
 
     <g filter="url(#shadow)">
-      <rect x="24" y="1194" width="342" height="126" rx="20" fill="#13243a" stroke="#3d6590" stroke-width="1.4"/>
-      <text x="44" y="1225" class="mono eyebrow" fill="#78aaff">HARNESS RECORDS</text>
-      <text x="44" y="1254" class="body">Target / Prompt · Checkpoint · Usage / Failure</text>
-      <text x="44" y="1281" class="body">Candidate · Validation result · Finding</text>
-      <text x="44" y="1305" class="small">判断手順は記録schemaで縛らない</text>
+      <rect x="48" y="548" width="716" height="142" rx="22" class="panel"/>
+      <text x="70" y="580" class="mono eyebrow" fill="#78aaff">APPEND-ONLY RESEARCH RECORD</text>
+      <text x="70" y="611" class="body">Campaign Input · Native Receipt · Checkpoint ref · Human Reviews · Validation Receipt</text>
+      <text x="70" y="638" class="body">Candidate · Parked Programme Lead · Finding · Coverage · Interruption</text>
+      <text x="70" y="669" class="small">provider / budget / policy / output failureを「脆弱性なし」へ丸めない</text>
     </g>
 
-    <g>
-      <rect x="24" y="1348" width="342" height="54" rx="16" fill="#151e2d" stroke="#35465c"/>
-      <text x="44" y="1372" class="small">Native Agent Adapter: Grok / GLM 5.3</text>
-      <text x="44" y="1391" class="tiny">既存gVisorは内部の安全手段。診断の目的ではない。</text>
+    <g filter="url(#shadow)">
+      <rect x="788" y="548" width="364" height="142" rx="22" class="panel"/>
+      <text x="810" y="580" class="mono eyebrow" fill="#78aaff">VALIDATION DISPOSITION</text>
+      <circle cx="816" cy="610" r="5" fill="#68d8a2"/>
+      <text x="830" y="615" class="body">source-validated</text>
+      <circle cx="1010" cy="610" r="5" fill="#b39aff"/>
+      <text x="1024" y="615" class="body">disproven</text>
+      <circle cx="816" cy="643" r="5" fill="#71b8ec"/>
+      <text x="830" y="648" class="body">needs-research</text>
+      <circle cx="1010" cy="643" r="5" fill="#e6aa68"/>
+      <text x="1024" y="648" class="body">pending</text>
+      <text x="810" y="675" class="tiny">source-validated → Finding。runtime assurance → Human OS。</text>
     </g>
 
-    <g opacity=".86">
-      <text x="24" y="1434" class="mono eyebrow" fill="#91a2b8">NOT REQUIRED FOR DIAGNOSIS</text>
-      <text x="24" y="1458" class="tiny">Target選定自動化 · patched/control</text>
-      <text x="24" y="1477" class="tiny">Human OS · Coverage closure</text>
-    </g>
+    <text x="600" y="730" text-anchor="middle" class="small">AIが研究判断 · Harnessがauthority / evidence / limitsを所有 · Humanが継続とadmissionを所有</text>
   </g>
 </svg>

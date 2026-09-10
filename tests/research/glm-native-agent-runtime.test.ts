@@ -18,6 +18,7 @@ import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import { openGlmNativeAgentRuntime } from "../../src/research/agent-led/claude-code-native-agent-runtime.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
 import type { CampaignInput } from "../../src/research/index.js";
+import { conductWithHumanAdvance } from "./support/candidate-review.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -116,6 +117,8 @@ if [ "\${1:-}" = "image" ]; then exit 0; fi
 has_runsc=0
 has_interactive=0
 has_provider_env=0
+has_subagent_concurrency_limit=0
+has_subagent_depth_limit=0
 has_json_schema=0
 has_cost_cap=0
 has_alias=0
@@ -134,6 +137,8 @@ for argument in "$@"; do
   [ "$argument" != "--runtime=runsc" ] || has_runsc=1
   [ "$argument" != "--interactive" ] || has_interactive=1
   [ "$argument" != "--env=CLAUDE_CONFIG_DIR=/provider" ] || has_provider_env=1
+  [ "$argument" != "--env=CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=3" ] || has_subagent_concurrency_limit=1
+  [ "$argument" != "--env=CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1" ] || has_subagent_depth_limit=1
   [ "$argument" != "--json-schema" ] || has_json_schema=1
   [ "$argument" != "--max-budget-usd" ] || has_cost_cap=1
   [ "$argument" != "--version" ] || is_version_probe=1
@@ -152,6 +157,8 @@ if [ "$is_version_probe" -eq 1 ]; then
   exit 0
 fi
 [ "$has_provider_env" -eq 1 ] || exit 92
+[ "$has_subagent_concurrency_limit" -eq 1 ] || exit 88
+[ "$has_subagent_depth_limit" -eq 1 ] || exit 87
 [ "$has_json_schema" -eq 0 ] || exit 93
 [ "$has_cost_cap" -eq 0 ] || exit 94
 [ "$has_alias" -eq 1 ] || exit 95
@@ -228,7 +235,7 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
         id: "agent-led-budget-v1",
         maxNativeRuns: 2,
         maxWallTimeMs: 600_000,
-        maxEstimatedCostUsd: 5,
+        researchGrantWallTimeMs: 600_000,
         digest:
           "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       },
@@ -280,7 +287,9 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
       runtime,
     });
 
-    await expect(campaigns.conduct(input)).resolves.toMatchObject({
+    await expect(
+      conductWithHumanAdvance(campaigns, input),
+    ).resolves.toMatchObject({
       status: "coverage-closed",
     });
     await expect(

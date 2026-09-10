@@ -9,6 +9,7 @@ export type NativeModelProcessResult =
     }
   | {
       readonly kind: "timed-out" | "output-limit-exceeded";
+      readonly stdout: string;
       readonly stderr: string;
     };
 
@@ -103,18 +104,19 @@ export function runNativeModelProcess(
     child.once("close", (exitCode) => {
       clearTimeout(timeout);
       const redact = options.redact ?? ((text: string) => text);
+      const stdoutText = redact(Buffer.concat(stdout).toString("utf8"));
       const stderrText = redact(Buffer.concat(stderr).toString("utf8"));
       if (terminalKind !== undefined) {
         signalProcessTree(child, "SIGKILL");
         if (killTimer !== undefined) clearTimeout(killTimer);
-        resolve({ kind: terminalKind, stderr: stderrText });
+        resolve({ kind: terminalKind, stdout: stdoutText, stderr: stderrText });
         return;
       }
       if (killTimer !== undefined) clearTimeout(killTimer);
       resolve({
         kind: "exited",
         exitCode: exitCode ?? -1,
-        stdout: redact(Buffer.concat(stdout).toString("utf8")),
+        stdout: stdoutText,
         stderr: stderrText,
       });
     });

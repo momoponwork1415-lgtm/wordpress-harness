@@ -73,7 +73,7 @@ function policy(): ResearchCampaignPolicy {
       id: "research-budget-v1",
       maxNativeRuns: 4,
       maxWallTimeMs: 1_800_000,
-      maxEstimatedCostUsd: 25,
+      researchGrantWallTimeMs: 1_800_000,
       digest: digest("3"),
     },
   };
@@ -192,6 +192,26 @@ function request(): ApprovedTargetCampaignRequest {
     ],
     explorationFreedom: "off-model-findings-allowed" as const,
   };
+  const programmeBoundaryBody = {
+    kind: "programme-research-boundary" as const,
+    schemaVersion: 1 as const,
+    id: "wordfence-1337-example-v1",
+    programmeIdentity: "programme:wordfence",
+    checkedAt: "2026-09-08T00:58:00.000Z",
+    eligibleAttackerPositions: [
+      "Unauthenticated visitor, Subscriber, or customer.",
+    ],
+    priorityImpacts: ["High-impact broken security semantics."],
+    explicitExclusions: ["Business logic bugs."],
+    excludedAssets: ["WordPress core."],
+    sourceRefs: [{ id: "wordfence-scope-snapshot", digest: digest("d") }],
+    uncertainties: [],
+    handling: {
+      sourceProvenExcluded: "park" as const,
+      concreteEligibleEscalation: "continue" as const,
+      scopeAmbiguity: "human-challenge" as const,
+    },
+  };
   return {
     kind: "approved-target-campaign-request",
     schemaVersion: 1,
@@ -251,6 +271,10 @@ function request(): ApprovedTargetCampaignRequest {
       ...threatContextBody,
       digest: canonicalDigest(threatContextBody),
     },
+    programmeBoundary: {
+      ...programmeBoundaryBody,
+      digest: canonicalDigest(programmeBoundaryBody),
+    },
   };
 }
 
@@ -261,6 +285,11 @@ describe("ApprovedTargetCampaigns", () => {
     const campaigns = openApprovedTargetCampaigns({
       campaigns: {
         async conduct(input) {
+          if (input.kind !== "agent-led-campaign") {
+            throw new Error(
+              "Approved Target dispatch must conduct a Campaign input",
+            );
+          }
           received = input;
           return {
             kind: "agent-led-campaign-outcome",
@@ -286,6 +315,7 @@ describe("ApprovedTargetCampaigns", () => {
       },
       dependencySnapshots: approvedRequest.dependencySnapshots,
       threatContext: approvedRequest.threatContext,
+      programmeBoundary: approvedRequest.programmeBoundary,
       promptSet: approvedRequest.campaignPolicy.promptSet,
       agentRuntimeProfile: approvedRequest.campaignPolicy.agentRuntimeProfile,
     });

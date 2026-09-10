@@ -4,7 +4,7 @@ Target IntelligenceはWordPress ecosystemを観測し、oracle-freeなCandidate 
 
 ## Boundary
 
-Target IntelligenceはResearch仮説、candidate、Finding、runtime verificationまたはsubmissionを所有しない。CVE、known route、patch narrativeをTarget Intake PacketまたはCampaign Threat Contextへ含めない。
+Target IntelligenceはResearch仮説、candidate、Finding、runtime verificationまたはsubmissionを所有しない。CVE、known route、patch narrative、known affected file / functionをTarget Intake Packet、Campaign Threat ContextまたはProgramme Research Boundaryへ含めない。
 
 ## Ubiquitous language
 
@@ -21,7 +21,10 @@ Target IntelligenceはResearch仮説、candidate、Finding、runtime verificatio
 : 一つのSelection Runへ渡すoracle-free Target Candidateのdigest-bound集合。Candidateはsource identity、selection facts、Programme、Disclosure Route、公開脆弱性のaggregate、Research History Factを持ち得る。
 
 **Research History Fact**
-: Targetがnew、active、coverage-closed、incompleteのどれかを示す入力fact。再投入を決定的に拒否せず、AIの判断材料にする。
+: same versionまたはprior versionの既探索有無を示す入力fact。再投入を決定的に拒否せず、AIの判断材料にする。
+
+**Research History Snapshot**
+: same versionとprior versionを区別するため、既探索のplugin identityとversionの組だけを保持するdigest-boundなprivate artifact。legacy importerは元workspaceのsource identity、旧設計、探索結果、提出結果または脆弱性本文を再利用しない。
 
 **Selection Run**
 : Candidate Pool、guidance、Agent Runtime、Permission、BudgetをsealしてAI proposalを得る一回のversioned run。
@@ -41,8 +44,11 @@ Target IntelligenceはResearch仮説、candidate、Finding、runtime verificatio
 **Campaign Threat Context**
 : Target ProposalからResearch価値に関係するordinary configuration、attacker position、security objective、trust boundary、high-value transition、Dependency roleと不確実性だけを抽出したversioned planning artifact。Rootへfocusとmotivationを渡すが、既知脆弱性、固定route、脆弱性class、読む順序、agent roleまたは停止quotaを命令しない。
 
+**Programme Research Boundary**
+: 公式Programme source、eligible attacker position、priority impact、短い除外category、excluded asset、scope uncertaintyとhandlingをexact bodyへdigest-bindしたversioned artifact。Research effortとCandidate preservationを制約するが、researcher tier、install threshold等のTarget eligibility、脆弱性仮説または既知脆弱性oracleを与えず、Independent Validationへは渡さない。
+
 **Approved Target Campaign Request**
-: Approved Target Batchの一Target、fresh Target Observation、Target Intake Packet、Campaign Policy、Dependency Snapshots、Campaign Threat Contextをbindし、一Campaignのadmissionと開始を要求するversioned command。
+: Approved Target Batchの一Target、fresh Target Observation、Target Intake Packet、Campaign Policy、Dependency Snapshots、Campaign Threat Context、Programme Research Boundaryをbindし、一Campaignのadmissionと開始を要求するversioned command。
 
 **Campaign Coverage Receipt**
 : Researchから戻るTarget-level lifecycle handoff。Finding内容とは別に、closed、incomplete、resume条件をTarget Intelligenceへ伝える。
@@ -52,11 +58,14 @@ Target IntelligenceはResearch仮説、candidate、Finding、runtime verificatio
 - Candidate PoolとProposalのinputをdigest bindする。
 - AIはpool外またはhard gate不合格のTargetをProposalへ入れられない。
 - fixed rank、Research Value Band、reason code、diversity facetをAI判断の代用にしない。
+- Research History Snapshotへsource identity、source receipt、Campaign coverage、Finding、Case status、submission、outcome、CVE、脆弱性class、claim、route、affected file / function、PoC、patchまたはreport本文を保存せず、Researchへ渡さない。履歴取得不能を未探索へ丸めない。
 - 人間のApproved Target BatchなしにResearchへdispatchしない。
 - dispatch直前にsourceとversionのfreshnessを再確認する。
 - exactly oneのWordPress coreを含むDependency source closureとCampaign Threat Contextの全roleを一致させる。
 - Campaign Threat Contextからoff-model Findingを禁止しない。
-- Programme対象外、Disclosure Route不明、既探索だけを技術的Researchの決定的拒否条件にしない。
+- Programme Research Boundaryのsource refとexact body digestを検証し、Campaign input、sealed Research run、Checkpointを同じdigestへbindする。
+- sourceで最大効果まで明確にProgramme対象外と示された経路だけをparkし、eligible impactへの具体的なsource-bound escalationが残る経路は継続する。scopeが実質的に曖昧なCandidateは人間とのchallenge用に保存する。
+- Target-levelのProgramme対象外、Disclosure Route不明、既探索だけを汎用的な技術Researchの決定的拒否条件にしない。Programme指定CampaignではProgramme Research BoundaryがResearch effortを制約する。
 - Target package script、autoload、WordPress bootstrapをhost上で実行しない。
 
 現在の実装と未接続箇所は[Codebase Guide](../../CODEBASE-GUIDE.md)、Context間の関係は[Context Map](../../../CONTEXT-MAP.md)を参照する。

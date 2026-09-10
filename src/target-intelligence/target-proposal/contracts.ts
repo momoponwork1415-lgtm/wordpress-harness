@@ -167,7 +167,6 @@ const agentRuntimeProfileSchema = z.strictObject({
 const budgetEnvelopeSchema = z.strictObject({
   id: identifierSchema,
   maxWallTimeMs: z.number().int().positive(),
-  maxEstimatedCostUsd: z.number().positive(),
   digest: digestSchema,
 });
 

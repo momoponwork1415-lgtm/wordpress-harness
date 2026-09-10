@@ -1,10 +1,10 @@
 # Codebase Guide
 
-Status: current implementation map, 2026-09-08
+Status: current implementation map, 2026-09-10
 
-現在動くproduction seam、owner、failure semantics、Behavior Testを示す。設計理由は[ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)、[ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)、[ADR 0129](adr/0129-keep-validation-out-of-active-discovery.md)、research policyは[Research Design](RESEARCH-DESIGN.md)を参照する。
+現在動くproduction seam、owner、failure semantics、Behavior Testを示す。設計理由は[ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)、[ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)、[ADR 0131](adr/0131-place-human-reviews-between-research-and-validation.md)、[ADR 0132](adr/0132-treat-provider-cost-as-observational-telemetry.md)、research policyは[Research Design](RESEARCH-DESIGN.md)を参照する。
 
-診断coreは`Target Snapshot -> agent-led Research -> Independent Source Validation -> Finding`である。Source Validationは明白なsource矛盾を落とすsanity gateで、実質的なtrue-positive assuranceはHuman OSのfresh Dynamic Reproductionが所有する。Target Selectionと隔離方式の高度化はsupporting workflowまたはAdapter内部の関心であり、診断coreのpromotion blockerではない。
+診断coreは`Target Snapshot -> Research Grant -> Human Research Review -> Human Candidate Review -> Independent Source Validation -> Finding`である。Source Validationは明白なsource矛盾を落とすsanity gateで、実質的なtrue-positive assuranceはHuman OSのfresh Dynamic Reproductionが所有する。Target Selectionと隔離方式の高度化はsupporting workflowまたはAdapter内部の関心であり、診断coreのpromotion blockerではない。
 
 ## Current capability
 
@@ -12,14 +12,17 @@ Status: current implementation map, 2026-09-08
 | --- | --- | --- |
 | local / WordPress.org source acquisition | implemented | Candidate Pool組立serviceは未実装 |
 | Programme / disclosure observations | implemented | 全Programmeを一つのCandidate Poolへ組み立てるapplication serviceは未実装 |
+| Target Research History | 二つのlegacy research workspaceの既探索plugin/versionを最小のimmutable Snapshotへ正規化し、same version / prior versionをinspect可能 | 現行Campaign履歴の自動取込とCandidate Pool組立serviceへの接続は未実装 |
 | AI Target Proposal | exact Grok transportをadmitするproduction Adapterまでimplemented | CLIとCandidate Pool組立serviceが未実装 |
 | human Approved Target Batch | implemented | Target Selection全体のCLIは未実装 |
 | approved Target Campaign dispatch | fresh observation、Target Intake、Campaign Policy、WordPress core、Threat Contextをsealして一Campaignを`conduct`まで接続 | 複数Targetの中央schedulerは意図的に持たない |
-| agent-led Research loop | pinned Dependency Snapshotとprivate Agent Checkpointからのresumeまでimplemented。known-positive corpusは4/4でcandidateを回収 | prospectiveなlatest-version Campaignは未評価 |
+| wp2shell-derived Research Prompt v2 | positive oracle、RCE / `/flag`到達の強制と最低6時間を除く全研究要素をPromptへ反映 | 反復roundとadversarial double-checkの実Target再評価は未実施 |
+| agent-led Research loop | 最大1時間のResearch Grant、人間の継続review、pinned Dependency Snapshot、private Agent Checkpoint resume、parked Programme Leadまでimplemented。known-positive corpusは4/4でcandidateを回収 | prospectiveなlatest-version Campaignは未評価 |
 | Grok native runtime | exact image / CLI versionをadmitし、structurally tested | real Brizy runはproviderのHTTP 402で未完了 |
 | Claude Code native runtime | exact imageをreal boundary-probed | admitted image以外は再probeが必要 |
 | GLM native runtime | exact Claude Code imageからZ.AI GLM 5.3へ接続し、runscでreal research / native subagent / fresh Validationを実行済み | Grokとの同条件比較は未実施 |
-| fresh Independent Validation | implemented。known-positive corpusは4/4で`source-validated` | GLM malformed-output補正のsecond model executionがsingle-fresh-run policyと未整合（#144） |
+| Codex Daybreak native runtime | exact image / CLI version、managed configuration、read-only source readerとnative subagent上限をimplemented | prospective Campaignの評価結果はResearch History / Candidate Poolへ未接続 |
+| Human Candidate Review + fresh Independent Validation | exact Candidate setのhuman admissionとfresh Validationをimplemented。known-positive corpusは4/4で`source-validated` | GLM malformed-output補正のsecond model executionがsingle-fresh-run policyと未整合（#144） |
 | Finding / Coverage / failure record | implemented | cross-context Coverage Receipt adapterは未実装 |
 | Human OS Dynamic Reproduction / append-only records / external gate | Finding-bound Recipeのsingle replay、pinned-image runsc lab、Private Evidence CASまでimplemented。TranslatePress ATOをfresh labでruntime-confirmed | ResearchからPrivate Recipe保存への自動handoffとcompanion plugin / site-content fixture resolverは未実装 |
 | actual external submission | intentionally absent | 人間が最後のSubmitを行う |
@@ -52,6 +55,20 @@ known-positive実測のstage別内訳は[2026-09-08 Native Agent evaluation](kno
 
 **Code / Tests:** [`src/target-intelligence`](../src/target-intelligence) · [`programme-intelligence.test.ts`](../tests/target-intelligence/programme-intelligence.test.ts) · [`wordfence-intelligence.test.ts`](../tests/target-intelligence/wordfence-intelligence.test.ts) · [`disclosure-route.test.ts`](../tests/target-intelligence/disclosure-route.test.ts)
 
+## Target Research History
+
+**Purpose:** 既探索Targetを新規Targetと誤認しないよう、旧harnessからplugin identityとversionだけを現行Target Intelligenceの語彙へ一方向に正規化する。旧設計と探索・提出結果は再利用しない。
+
+**Interface:** `TargetResearchHistories.buildFromLegacyData / inspect`。
+
+**Owned state:** plugin identityとversionの組だけを持つdigest-boundなprivate Research History Snapshot。same versionとprior versionを混同しない。正本はrepository配下の`.private/target-intelligence/research-history`に置く。二つのlegacy research workspaceは一度きりのimport sourceとし、元データ、source identityまたはsource receiptを複製しない。
+
+**Invariants:** source identity、source receipt、Campaign coverage、Finding、Case status、submission、outcome、CVE、脆弱性class、claim、route、affected file / function、PoC、patch、report本文をSnapshotへ保存しない。同じplugin identityとversionは一件へ正規化する。入力欠損を未探索へ丸めない。
+
+**Failure semantics:** source root欠落、symlink、unsupported schema、identity衝突、digest不一致または同じSnapshot IDへの異なるinputを拒否する。既存Snapshotは置換しない。
+
+**Code / Tests:** [`research-history`](../src/target-intelligence/research-history) · [`research-history.test.ts`](../tests/target-intelligence/research-history.test.ts)
+
 ## Target Proposals
 
 **Purpose:** oracle-free Candidate PoolからAIが調査Target、理由、不確実性を提案する。
@@ -80,43 +97,43 @@ known-positive実測のstage別内訳は[2026-09-08 Native Agent evaluation](kno
 
 ## Approved Target Campaigns
 
-**Purpose:** Approved Target Batchの一Targetを実行直前にadmitし、Target Intake、Campaign Policy、WordPress coreを含むDependency Snapshots、compactなCampaign Threat ContextからResearch `CampaignInput`を作って、そのまま一Campaignを開始する。
+**Purpose:** Approved Target Batchの一Targetを実行直前にadmitし、Target Intake、Campaign Policy、WordPress coreを含むDependency Snapshots、compactなCampaign Threat Context、source-boundなProgramme Research BoundaryからResearch `CampaignInput`を作って、そのまま一Campaignを開始する。
 
 **Interface:** `ApprovedTargetCampaigns.conduct`。CLIは`wordpress-harness campaign conduct-approved`で同じInterfaceを使う。
 
 **Owned state:** 新しいQueueやLedgerを持たない。Approved BatchとResearch Campaignの既存durable stateを使い、同じCampaign ID / inputの再実行はResearch側のresume semanticsへ委ねる。
 
-**Invariants:** Batch digest、human-approved Target、execution window、fresh observation、Plugin Identity、version、Canonical File Manifest、Target Snapshot、Campaign Policy digestを一致させる。source closureはexactly oneのWordPress coreを必須とし、Dependency mountとThreat Contextのroleを一対一にする。Threat ContextはTarget選定理由、ordinary configuration、attacker position、security objective、trust boundary、high-value transition、不確実性だけを持つplanning dataであり、脆弱性class、file順、role、Waveまたは停止quotaをResearchへ命令しない。Research Rootはoff-model Findingを報告できる。
+**Invariants:** Batch digest、human-approved Target、execution window、fresh observation、Plugin Identity、version、Canonical File Manifest、Target Snapshot、Campaign Policy digestを一致させる。source closureはexactly oneのWordPress coreを必須とし、Dependency mountとThreat Contextのroleを一対一にする。Threat ContextはTarget選定理由、ordinary configuration、attacker position、security objective、trust boundary、high-value transition、不確実性だけを持つplanning dataであり、脆弱性class、file順、role、Waveまたは停止quotaをResearchへ命令しない。Programme Research Boundaryは公式source ref、eligible attacker position、priority impact、短い除外category、excluded asset、scope uncertaintyとhandlingをexact bodyへdigest-bindする。researcher tierとinstall threshold等のTarget eligibilityはTarget Intelligenceのadmissionに閉じ、Research inputへ複製しない。既知脆弱性、PoC、patch、affected file / functionをoracleとして含めない。Research Rootはoff-model Findingを報告できる。
 
-**Failure semantics:** approval、freshness、Intake manifest、Campaign Policyまたはsource closureの不一致ではResearchを開始しない。Target versionをsilentに差し替えず、中央scheduler、固定並列数、Target自動補充またはprovider fallbackを行わない。
+**Failure semantics:** approval、freshness、Intake manifest、Campaign Policy、source closureまたはProgramme Research Boundaryの欠落・不正・digest不一致ではResearchを開始しない。Target versionをsilentに差し替えず、中央scheduler、固定並列数、Target自動補充またはprovider fallbackを行わない。
 
 **Code / Tests:** [`approved-target-campaign`](../src/target-intelligence/approved-target-campaign) · [`approved-target-campaigns.test.ts`](../tests/target-intelligence/approved-target-campaigns.test.ts) · [`campaign-threat-context.test.ts`](../tests/research/campaign-threat-context.test.ts)
 
 ## Research Campaigns
 
-**Purpose:** AI主導のresearch / validation loopを、authority、record、Budget、terminal semanticsのbehindに隠す。
+**Purpose:** AI主導のresearch / validation loopを、authority、最大1時間のResearch Grant、両Human Review、record、Budget、terminal semanticsのbehindに隠す。
 
-**Interface:** `ResearchCampaigns.conduct / inspect`。
+**Interface:** `ResearchCampaigns.conduct / inspect`。CLIは`campaign conduct | conduct-approved | review-research | review-candidates | retry-validation | inspect`を公開し、`retry-validation`はexact failed Validation run集合へbindしたHuman Validation Retryを受ける。
 
-**Owned state:** Target / Dependency Snapshotsを含むCampaign input、Native Run Receipt、private Agent Checkpoint ref、Validation Receipt、Finding、Coverage、interruptionをSQLite append-only eventsへ記録する。provider conversationとscratch本文はprivate content-addressed stateに置く。
+**Owned state:** Target / Dependency Snapshotsを含むCampaign input、Native Run Receipt、private Agent Checkpoint / Agent Run Diagnostic ref、parked Programme Lead、Human Research Continuation Review、Human Candidate Review、Human Validation Retry、Validation Receipt、Finding、Coverage、interruptionをSQLite append-only eventsへ記録する。provider conversation、scratch本文とcredential-redacted診断本文はprivate content-addressed stateに置く。
 
-**Invariants:** candidateは到着順や支持数で捨てない。Research decisionが`continue`である間はcandidateを蓄積してRootの連続Researchを優先し、Rootが停止した後にだけ各candidateを一つのfresh Validationへ渡す。Research RootへCampaign Threat Contextがある場合はCampaign inputとCheckpointへdigest-bindしてplanning dataとして渡し、探索手順にはしない。ResearchとValidationへ同じread-only Dependency Snapshotsを渡し、Agent CheckpointとFindingにもdependency digest / refsを残す。複数Targetは別Campaign processとして並列実行し、Campaign間でstateを共有しない。completed Research / Validation Receiptはrunsc上のgVisor実行とfallback不使用の証跡を必須とする。各runへ累積使用量を引いた残りのwall time / costだけを渡し、超過したterminal reportでCoverageを閉じない。`source-validated`だけがFindingを生成する。FindingとCoverageを分離する。
+**Invariants:** Candidateは到着順や支持数で捨てない。[WordPress Plugin Research v2](../prompts/wordpress-plugin-research-v2.md)はwp2shell promptの研究手法を保持し、positive oracle、RCE / `/flag`到達の強制と最低6時間だけを除外する。一つのResearch Native RunへCampaign残wall timeと最大1時間の小さい方だけを与える。AIが`continue`を返すと`research-review-pending`で停止し、exact input、run、Checkpoint、Candidate、parked Programme Leadとnext actionへbindした`continue-research` reviewだけが、承認済みnext actionを同じCheckpointからの次Grantへ渡して開始する。Researchを区切ってCandidateがあれば`candidate-review-pending`で停止し、exact Candidate setで`advance-to-independent-validation`されたCandidateだけを一つのfresh Validationへ渡す。`return-to-research`があればValidationより先にResearchへ戻す。外部制約でValidationが判断前に失敗または`validation-pending`になった場合だけ、人間はcurrent latest failed runの完全な集合へbindしたHuman Validation Retryでfresh attemptを追記できる。成功済み、`source-validated`、`disproven`または`needs-research`のValidationは再試行できず、過去Receiptを置換しない。Research RootへCampaign Threat Contextがある場合はCampaign inputとCheckpointへdigest-bindしてplanning dataとして渡し、探索手順にはしない。Programme Research BoundaryもCampaign input、sealed Research runとCheckpointへdigest-bindする。eligible impactへの具体的なsource edgeがないOOS primitiveは最小限のParked Programme Leadとして保存し、subagent adversarial review、Candidate Review、ValidationまたはFindingへ流さない。Programme Research BoundaryをIndependent Validationへ渡さない。ResearchとValidationへ同じread-only Dependency Snapshotsを渡し、Agent CheckpointとFindingにもdependency digest / refsを残す。completed Research / Validation Receiptはrunsc上のgVisor実行とfallback不使用の証跡を必須とする。推定costはReceiptへ保存するが停止条件にせず、Campaign run数とwall timeだけをhard limitにする。`source-validated`だけがFindingを生成し、FindingとCoverageを分離する。
 
-**Failure semantics:** provider、Budget、policy、invalid outputは`incomplete`または`validation-pending`にする。同じCampaign IDへの異なるinputはconflictにする。再実行はdurable stateからresumeする。
+**Failure semantics:** review未提出はpendingのままNative Runを開始しない。stale input / run / Checkpoint / Candidate / parked Lead digest、partial Candidate Review、Candidateなしのproceed、stale / partial Validation Retryはatomic conflictにする。provider、run数 / wall-time Budget、policy、invalid outputは`incomplete`または`validation-pending`にする。同じCampaign IDへの異なるinputはconflictにする。Researchの`provider-failed`が有効なCheckpointを残した場合、通常の再実行は失敗Receiptを置換せずにそのdurable stateから一回だけresumeする。Agent実行前の固定runsc / image availability failureはReceiptに`retryable: true`を記録し、通常の再実行で同じsealed Grantを一回ずつ再試行できる。Target / Dependency source integrity、Checkpoint integrityその他のpolicy denialはretryableにせず、terminalなValidation infrastructure failureも新しいHuman Validation Retryなしに再実行しない。
 
-**Code / Tests:** [`research-campaigns.ts`](../src/research/agent-led/research-campaigns.ts) · [`research-campaigns.test.ts`](../tests/research/research-campaigns.test.ts) · [`independent-validation.test.ts`](../tests/research/independent-validation.test.ts)
+**Code / Tests:** [`research-campaigns.ts`](../src/research/agent-led/research-campaigns.ts) · [`research-campaigns.test.ts`](../tests/research/research-campaigns.test.ts) · [`human-research-continuation-review.test.ts`](../tests/research/human-research-continuation-review.test.ts) · [`human-candidate-review.test.ts`](../tests/research/human-candidate-review.test.ts) · [`parked-programme-leads.test.ts`](../tests/research/parked-programme-leads.test.ts) · [`independent-validation.test.ts`](../tests/research/independent-validation.test.ts) · [`agent-led-campaign-cli.test.ts`](../tests/cli/agent-led-campaign-cli.test.ts)
 
 ## gVisor Native Agent Runtimes
 
 **Purpose:** provider-native agentとsubagentをrunsc内で動かし、AI判断をproviderの既存機能へ任せる。
 
-**Interface:** `NativeAgentRuntime.execute`、`openGrokNativeAgentRuntime`、`openClaudeCodeNativeAgentRuntime`、`openGlmNativeAgentRuntime`。
+**Interface:** `NativeAgentRuntime.execute`、`openGrokNativeAgentRuntime`、`openClaudeCodeNativeAgentRuntime`、`openGlmNativeAgentRuntime`、`openCodexNativeAgentRuntime`。
 
-**Invariants:** immutable image、exact CLI version、non-root UID、read-only root / Target / Dependencies、dropped capabilities、no-new-privileges、Prompt / Target / Dependency / Permission binding、ResearchとValidationの別scratchを要求する。Researchのprovider-native conversationとscratchはcredentialを除外したprivate Checkpointとしてcontent-addressed保存し、同じbindingだけが再開できる。ValidationはCheckpointをmountしない。sanitized provider homeはworkspace mount外へ分離し、agentのRead / Grepをdenyする。Grokは`read_file / grep / list_dir / task`だけを公開する探索試験の優先runtimeで、別providerへsilent fallbackしない。GLM 5.3はZ.AI endpoint、固定model mapping、token等の必要なenvだけを持つstrictな一時`settings.json`をClaude Codeへ渡す。hook、plugin、追加設定はsandbox起動前に拒否し、settingsはCheckpoint確定前に除外する。Grokは共通のexact image digestと1.0.13、Claude / GLMは実測済みimage digestと2.1.220だけをadmitする。
+**Invariants:** immutable image、exact CLI version、non-root UID、read-only root / Target / Dependencies、dropped capabilities、no-new-privileges、Prompt / Target / Dependency / Permission binding、ResearchとValidationの別scratchを要求する。全providerでRootを含む同時active agentを最大4体にし、Rootだけが最大3体のsubagentを起動する。Claude Code / GLMは同時上限3とspawn depth 1、Grokは同時上限3、spawn depth 1、超過時fail、Codexはprimaryを除く同時thread上限3を実行前に設定する。Researchのprovider-native conversationとscratchはcredentialを除外したprivate Checkpointとしてcontent-addressed保存し、同じbindingだけが再開できる。ValidationはCheckpointをmountしない。sanitized provider homeはworkspace mount外へ分離し、agentのRead / Grepをdenyする。Grokは`read_file / grep / list_dir / task`だけを公開する探索試験の優先runtimeで、別providerへsilent fallbackしない。GrokのReport schemaはprompt本文へ渡し、providerのstructured-output制約でtool loopを抑止せず、最終response textをAdapterがschema検査する。GLM 5.3はZ.AI endpoint、固定model mapping、token等の必要なenvだけを持つstrictな一時`settings.json`をClaude Codeへ渡す。Codex Daybreakはshell、web、apps、pluginsを無効化したmanaged configurationとharness-ownedな`list_files / read_text / search_text`だけのread-only source readerを使い、providerが生成したthread identityをCheckpointへbindする。hook、plugin、追加設定はsandbox起動前に拒否し、settingsはCheckpoint確定前に除外する。新規Codex Daybreak Campaignは`xhigh`を使い、既存のimmutable Campaignを完走させるため`max` bindingも引き続きadmitする。runtimeはsealed profileのeffortをCodex CLIへそのままbindする。Grokは共通のexact image digestと1.0.13、Claude / GLMは実測済みimage digestと2.1.220、Codex Daybreakは実測済みimage digestと0.146.0だけをadmitする。
 
-**Failure semantics:** runsc、image、unprobed version、Target / Dependency bindingとsource tree、Checkpoint integrity、policy、providerまたはschema failureをtyped terminal receiptへする。timeoutとproviderのbudget error envelopeは`budget-exhausted`である。providerがnon-zero exitしても、対応するerror envelopeのusage、costと有効なCheckpoint refを失わず、wall timeはprovider値とhost観測値の大きい方を記録する。現実装はGLMのouter envelopeが正常でinner JSONまたはReport shapeだけ不正な場合、Researchでは同じCheckpoint、Validationでは新しい使い捨てscratchから同一Reportの再符号化を一度だけ要求し、両attemptのusageを合算する。Validation側のsecond model executionは「candidateごとに一つのfresh source-only run」というpolicyと未整合であり、#144の判断が必要である。補正後も不正なら`invalid-output`を維持する。
+**Failure semantics:** runsc、image、unprobed version、Target / Dependency bindingとsource tree、Checkpoint integrity、policy、providerまたはschema failureをtyped terminal receiptへする。固定runscまたは固定imageをAgent実行前に確認できない場合だけ`retryable: true`を付け、source / dependency / checkpoint integrity failureには付けない。timeoutとproviderのbudget error envelopeは`budget-exhausted`であり、Checkpoint finalizationやcleanupの失敗で元のterminal分類を上書きしない。失敗Receiptにはstageと、credential-redacted stdout / stderr / errorおよびCheckpointとしてadmitできない隔離stateを保持するprivate Agent Run Diagnosticへのintegrity-bound opaque refだけを記録する。絶対path、credential、transcript本文またはsource本文はResearch Recordへ入れない。有効なAgent Checkpointだけをresumeに使い、診断用の隔離stateを自動resumeしない。providerがnon-zero exitしても、対応するerror envelopeのusage、costと有効なCheckpoint refを失わず、wall timeはprovider値とhost観測値の大きい方を記録する。現実装はGLMのouter envelopeが正常でinner JSONまたはReport shapeだけ不正な場合、Researchでは同じCheckpoint、Validationでは新しい使い捨てscratchから同一Reportの再符号化を一度だけ要求し、両attemptのusageを合算する。Validation側のsecond model executionは「candidateごとに一つのfresh source-only run」というpolicyと未整合であり、#144の判断が必要である。補正後も不正なら`invalid-output`を維持する。
 
-**Code / Tests:** [`gvisor-agent-sandbox.ts`](../src/research/agent-led/gvisor-agent-sandbox.ts) · [`grok-native-agent-runtime.ts`](../src/research/agent-led/grok-native-agent-runtime.ts) · [`claude-code-native-agent-runtime.ts`](../src/research/agent-led/claude-code-native-agent-runtime.ts) · [`grok-native-agent-runtime.test.ts`](../tests/research/grok-native-agent-runtime.test.ts) · [`claude-code-native-agent-runtime.test.ts`](../tests/research/claude-code-native-agent-runtime.test.ts) · [`glm-native-agent-runtime.test.ts`](../tests/research/glm-native-agent-runtime.test.ts)
+**Code / Tests:** [`gvisor-agent-sandbox.ts`](../src/research/agent-led/gvisor-agent-sandbox.ts) · [`grok-native-agent-runtime.ts`](../src/research/agent-led/grok-native-agent-runtime.ts) · [`claude-code-native-agent-runtime.ts`](../src/research/agent-led/claude-code-native-agent-runtime.ts) · [`codex-native-agent-runtime.ts`](../src/research/agent-led/codex-native-agent-runtime.ts) · [`codex-source-reader.ts`](../src/research/agent-led/codex-source-reader.ts) · [`grok-native-agent-runtime.test.ts`](../tests/research/grok-native-agent-runtime.test.ts) · [`claude-code-native-agent-runtime.test.ts`](../tests/research/claude-code-native-agent-runtime.test.ts) · [`glm-native-agent-runtime.test.ts`](../tests/research/glm-native-agent-runtime.test.ts) · [`codex-native-agent-runtime.test.ts`](../tests/research/codex-native-agent-runtime.test.ts)
 
 ## Human OS
 
@@ -134,9 +151,9 @@ known-positive実測のstage別内訳は[2026-09-08 Native Agent evaluation](kno
 
 ## CLI
 
-**Purpose:** local Campaignのconductとread-only inspectionだけを公開する。
+**Purpose:** Codex / Claude Code等の対話control planeからlocal Campaignのconduct、両Human Reviewとread-only inspectionを公開する。
 
-**Interface:** `wordpress-harness campaign conduct | conduct-approved | inspect`。
+**Interface:** `wordpress-harness campaign conduct | conduct-approved | review-research | review-candidates | retry-validation | inspect`。
 
 **Invariants:** provider Adapterはsealed `agentRuntimeProfile.kind`から選び、Prompt本文のdigest一致をruntimeが検査する。`--dependency-source <mount>=<directory>`はCampaignにsealされた全Dependencyと過不足なく対応する。production buildは`dist`を先にcleanし、現行`src`に対応しないstale artifactをbuild verifierが拒否する。
 

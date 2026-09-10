@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 
 const repositoryRoot = process.cwd();
 const diagnostics = [];
+const markdownByPath = new Map();
 
 const listedFiles = spawnSync(
   "git",
@@ -106,10 +107,76 @@ function checkRelativeLinks(markdownPath, markdown) {
   }
 }
 
+function checkPublicPaths(markdownPath, markdown) {
+  const withoutFencedCode = markdown.replace(/```[\s\S]*?```/g, "");
+  const localPathPattern =
+    /(?:\b[A-Za-z]:\\[^\s`]+|\/(?:home|Users)\/[^/\s`]+\/[^\s`]*)/g;
+
+  for (const match of withoutFencedCode.matchAll(localPathPattern)) {
+    diagnostics.push(
+      markdownPath +
+        ": public documentation contains a local absolute path: " +
+        match[0],
+    );
+  }
+}
+
+function checkSupersededAdrs() {
+  const adrPaths = [...markdownByPath.keys()].filter((path) =>
+    path.startsWith("docs/adr/"),
+  );
+
+  for (const adrPath of adrPaths) {
+    const markdown = markdownByPath.get(adrPath);
+    const supersedes = markdown?.match(/^supersedes:\s+(\d{4})\s*$/m)?.[1];
+    if (supersedes === undefined) continue;
+
+    const retained = adrPaths.find((path) =>
+      path.startsWith("docs/adr/" + supersedes + "-"),
+    );
+    if (retained !== undefined) {
+      diagnostics.push(
+        adrPath +
+          ": superseded ADR remains in the current documentation set: " +
+          retained,
+      );
+    }
+  }
+}
+
+function checkCliDocumentation() {
+  const cliPath = resolve(repositoryRoot, "src/cli.ts");
+  const guidePath = "docs/CODEBASE-GUIDE.md";
+  const guide = markdownByPath.get(guidePath);
+  if (!existsSync(cliPath) || guide === undefined) return;
+
+  const cli = readFileSync(cliPath, "utf8");
+  const commands = cli.match(
+    /Usage: wordpress-harness campaign <([^>]+)>/,
+  )?.[1];
+  if (commands === undefined) {
+    diagnostics.push("src/cli.ts: campaign usage command list is missing");
+    return;
+  }
+
+  const documented =
+    "`wordpress-harness campaign " + commands.replaceAll("|", " | ") + "`";
+  if (!guide.includes(documented)) {
+    diagnostics.push(
+      guidePath + ": CLI command list does not match src/cli.ts: " + documented,
+    );
+  }
+}
+
 for (const markdownPath of markdownFiles) {
   const markdown = readFileSync(resolve(repositoryRoot, markdownPath), "utf8");
+  markdownByPath.set(markdownPath, markdown);
   checkRelativeLinks(markdownPath, markdown);
+  checkPublicPaths(markdownPath, markdown);
 }
+
+checkSupersededAdrs();
+checkCliDocumentation();
 
 if (diagnostics.length > 0) {
   writeSync(2, diagnostics.sort().join("\n") + "\n");

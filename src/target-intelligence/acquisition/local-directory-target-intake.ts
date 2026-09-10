@@ -253,9 +253,9 @@ function readPluginHeader(bytes: Buffer): PluginHeader | undefined {
     }
     const key = line.slice(0, separator).trim().toLowerCase();
     const value = line.slice(separator + 1).trim();
-    if (key === "plugin name" && value.length > 0) {
+    if (key === "plugin name" && value.length > 0 && pluginName === undefined) {
       pluginName = value;
-    } else if (key === "version" && value.length > 0) {
+    } else if (key === "version" && value.length > 0 && version === undefined) {
       version = value;
     }
   }

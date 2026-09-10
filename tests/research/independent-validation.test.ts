@@ -4,10 +4,12 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import type { CampaignInput } from "../../src/research/index.js";
 import type {
   NativeAgentRuntime,
   NativeRunReceipt,
+  ResearchCampaigns,
   SealedAgentRun,
 } from "../../src/research/agent-led/contracts.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
@@ -73,7 +75,7 @@ function campaignInput(campaignId: string, maxNativeRuns = 2): CampaignInput {
       id: "campaign-budget-v1",
       maxNativeRuns,
       maxWallTimeMs: 600_000,
-      maxEstimatedCostUsd: 10,
+      researchGrantWallTimeMs: 600_000,
       digest:
         "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
     },
@@ -148,6 +150,76 @@ function researchReceipt(
   };
 }
 
+async function conductWithHumanAdvance(
+  campaigns: ResearchCampaigns,
+  input: CampaignInput,
+) {
+  let outcome = await campaigns.conduct(input);
+  while (
+    outcome.status === "research-review-pending" ||
+    outcome.status === "candidate-review-pending"
+  ) {
+    const view = await campaigns.inspect({ campaignId: input.campaignId });
+    if (outcome.status === "research-review-pending") {
+      const request = view.pendingResearchContinuationReview;
+      if (request === undefined) {
+        throw new Error("missing Research continuation review request");
+      }
+      const reviewBody = {
+        kind: "human-research-continuation-review" as const,
+        schemaVersion: 1 as const,
+        reviewId: `research-review:${request.researchRunId}`,
+        campaignId: input.campaignId,
+        campaignInputDigest: request.campaignInputDigest,
+        researchRunId: request.researchRunId,
+        checkpointId: request.checkpoint.checkpointId,
+        checkpointStateDigest: request.checkpoint.stateDigest,
+        candidateSetDigest: request.candidateSetDigest,
+        parkedProgrammeLeadSetDigest: request.parkedProgrammeLeadSetDigest,
+        researchContinuationReviewRequestDigest: request.digest,
+        operator: {
+          identity: "test-human-reviewer",
+          decidedAt: "2026-09-09T00:00:00.000Z",
+        },
+        decision: "continue-research" as const,
+        reason: "The source-bound next actions warrant another Research Grant.",
+      };
+      outcome = await campaigns.conduct({
+        ...reviewBody,
+        digest: canonicalDigest(reviewBody),
+      });
+      continue;
+    }
+    const request = view.pendingCandidateReview;
+    if (request === undefined)
+      throw new Error("missing Candidate review request");
+    const reviewBody = {
+      kind: "human-candidate-review" as const,
+      schemaVersion: 1 as const,
+      reviewId: `review:${request.terminalResearchRunId}`,
+      campaignId: input.campaignId,
+      campaignInputDigest: request.campaignInputDigest,
+      terminalResearchRunId: request.terminalResearchRunId,
+      candidateSetDigest: request.candidateSetDigest,
+      candidateReviewRequestDigest: request.digest,
+      operator: {
+        identity: "test-human-reviewer",
+        decidedAt: "2026-09-09T00:00:00.000Z",
+      },
+      decisions: request.candidates.map((candidate) => ({
+        candidateId: candidate.candidateId,
+        disposition: "advance-to-independent-validation" as const,
+        reason: "The Candidate warrants fresh independent source validation.",
+      })),
+    };
+    outcome = await campaigns.conduct({
+      ...reviewBody,
+      digest: canonicalDigest(reviewBody),
+    });
+  }
+  return outcome;
+}
+
 describe("Independent Validation", () => {
   it("finishes actionable Research before validating accumulated Candidates", async () => {
     const directory = await mkdtemp(
@@ -195,7 +267,9 @@ describe("Independent Validation", () => {
       },
     });
 
-    await expect(campaigns.conduct(input)).resolves.toMatchObject({
+    await expect(
+      conductWithHumanAdvance(campaigns, input),
+    ).resolves.toMatchObject({
       status: "coverage-closed",
     });
     expect(runKinds).toEqual([
@@ -247,7 +321,7 @@ describe("Independent Validation", () => {
       },
     });
 
-    await campaigns.conduct(input);
+    await conductWithHumanAdvance(campaigns, input);
     await expect(
       campaigns.inspect({ campaignId: input.campaignId }),
     ).resolves.toMatchObject({
@@ -275,7 +349,7 @@ describe("Independent Validation", () => {
       clock: () => new Date("2026-09-07T13:00:00.000Z"),
     });
 
-    await campaigns.conduct(input);
+    await conductWithHumanAdvance(campaigns, input);
     await expect(
       campaigns.inspect({ campaignId: input.campaignId }),
     ).resolves.toMatchObject({
@@ -294,6 +368,121 @@ describe("Independent Validation", () => {
       ],
       findings: [],
     });
+    campaigns.close();
+  });
+
+  it("retries only the exact failed Validation runs after a human command", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "validation-retry-"));
+    temporaryDirectories.push(directory);
+    const input = campaignInput("campaign-validation-retry-1", 3);
+    let validatorAvailable = false;
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "agent-led.sqlite"),
+      runtime: {
+        async execute(run) {
+          if (run.kind === "sealed-native-research-run") {
+            return researchReceipt(run, "stop");
+          }
+          if (!validatorAvailable) throw new Error("synthetic auth expiry");
+          return {
+            schemaVersion: 1,
+            runId: run.runId,
+            runtimeProfileDigest: run.agentRuntimeProfile.digest,
+            terminal: "completed" as const,
+            startedAt: "2026-09-09T01:05:00.000Z",
+            completedAt: "2026-09-09T01:06:00.000Z",
+            usage: { wallTimeMs: 60_000 },
+            activity: { subagents: 0, tools: ["source.read"] },
+            isolation: gvisorIsolation,
+            report: {
+              schemaVersion: 1 as const,
+              candidateId: run.candidate.candidateId,
+              disposition: "source-validated" as const,
+              reason: "Fresh source evidence supports the reviewed claim.",
+              evidence: [
+                {
+                  path: "admin/view.php",
+                  location: "render_value:88",
+                  observation: "Emits the persisted value without escaping.",
+                },
+              ],
+            },
+          };
+        },
+      },
+      clock: () => new Date("2026-09-09T01:00:00.000Z"),
+    });
+
+    await expect(
+      conductWithHumanAdvance(campaigns, input),
+    ).resolves.toMatchObject({ status: "incomplete" });
+    const failed = await campaigns.inspect({ campaignId: input.campaignId });
+    const failedValidationRunIds = failed.validationRuns.map(
+      (record) => record.receipt.runId,
+    );
+    const retryBody = {
+      kind: "human-validation-retry" as const,
+      schemaVersion: 1 as const,
+      retryId: "validation-retry-1",
+      campaignId: input.campaignId,
+      campaignInputDigest: failed.inputDigest,
+      failedValidationRunIds,
+      operator: {
+        identity: "test-human-reviewer",
+        decidedAt: "2026-09-09T01:04:00.000Z",
+      },
+      reason: "Authentication is restored; retry the exact failed run fresh.",
+    };
+    const staleRetryBody = {
+      ...retryBody,
+      retryId: "validation-retry-stale-1",
+      failedValidationRunIds: [`${failedValidationRunIds[0]}:stale`],
+    };
+    await expect(
+      campaigns.conduct({
+        ...staleRetryBody,
+        digest: canonicalDigest(staleRetryBody),
+      }),
+    ).rejects.toThrow("Human Validation Retry does not match");
+    validatorAvailable = true;
+
+    await expect(
+      campaigns.conduct({
+        ...retryBody,
+        digest: canonicalDigest(retryBody),
+      }),
+    ).resolves.toMatchObject({ status: "coverage-closed" });
+    await expect(
+      campaigns.inspect({ campaignId: input.campaignId }),
+    ).resolves.toMatchObject({
+      validationRuns: [
+        { receipt: { terminal: "provider-failed" } },
+        {
+          receipt: {
+            terminal: "completed",
+            report: { disposition: "source-validated" },
+          },
+        },
+      ],
+      validationRetries: [
+        {
+          retryId: "validation-retry-1",
+          failedValidationRunIds,
+        },
+      ],
+      findings: [{ candidateId: "candidate-public-output-1" }],
+      coverage: { status: "closed" },
+    });
+    const conclusiveRetryBody = {
+      ...retryBody,
+      retryId: "validation-retry-conclusive-1",
+    };
+    await expect(
+      campaigns.conduct({
+        ...conclusiveRetryBody,
+        digest: canonicalDigest(conclusiveRetryBody),
+      }),
+    ).rejects.toThrow("Human Validation Retry does not match");
     campaigns.close();
   });
 
@@ -335,7 +524,9 @@ describe("Independent Validation", () => {
       },
     });
 
-    await expect(campaigns.conduct(input)).resolves.toMatchObject({
+    await expect(
+      conductWithHumanAdvance(campaigns, input),
+    ).resolves.toMatchObject({
       status: "incomplete",
     });
     await expect(
@@ -388,7 +579,7 @@ describe("Independent Validation", () => {
       },
     });
 
-    await campaigns.conduct(input);
+    await conductWithHumanAdvance(campaigns, input);
     await expect(
       campaigns.inspect({ campaignId: input.campaignId }),
     ).resolves.toMatchObject({
@@ -467,7 +658,9 @@ describe("Independent Validation", () => {
       },
     });
 
-    await expect(campaigns.conduct(input)).resolves.toMatchObject({
+    await expect(
+      conductWithHumanAdvance(campaigns, input),
+    ).resolves.toMatchObject({
       status: "incomplete",
     });
     await expect(

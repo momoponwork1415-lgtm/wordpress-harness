@@ -119,6 +119,57 @@ export const campaignThreatContextSchema = campaignThreatContextBodySchema
     }
   });
 
+const programmeBoundaryTextSchema = z.string().min(1).max(1_200);
+const programmeBoundaryListSchema = z
+  .array(programmeBoundaryTextSchema)
+  .min(1)
+  .max(64);
+
+const programmeResearchBoundaryBodySchema = z.strictObject({
+  kind: z.literal("programme-research-boundary"),
+  schemaVersion: z.literal(1),
+  id: identifierSchema,
+  programmeIdentity: identifierSchema,
+  checkedAt: z.iso.datetime(),
+  eligibleAttackerPositions: programmeBoundaryListSchema,
+  priorityImpacts: programmeBoundaryListSchema,
+  explicitExclusions: z.array(programmeBoundaryTextSchema).max(64),
+  excludedAssets: z.array(programmeBoundaryTextSchema).max(64),
+  sourceRefs: z.array(immutableRefSchema).min(1).max(16),
+  uncertainties: z.array(programmeBoundaryTextSchema).max(16),
+  handling: z.strictObject({
+    sourceProvenExcluded: z.literal("park"),
+    concreteEligibleEscalation: z.literal("continue"),
+    scopeAmbiguity: z.literal("human-challenge"),
+  }),
+});
+
+export const programmeResearchBoundarySchema =
+  programmeResearchBoundaryBodySchema
+    .extend({ digest: digestSchema })
+    .superRefine((boundary, context) => {
+      const { digest, ...body } = boundary;
+      if (digest !== canonicalDigest(body)) {
+        context.addIssue({
+          code: "custom",
+          path: ["digest"],
+          message:
+            "Programme Research Boundary digest must bind its exact body",
+        });
+      }
+      const sourceIds = new Set<string>();
+      for (const [index, source] of boundary.sourceRefs.entries()) {
+        if (sourceIds.has(source.id)) {
+          context.addIssue({
+            code: "custom",
+            path: ["sourceRefs", index, "id"],
+            message: "Programme Research Boundary source ids must be unique",
+          });
+        }
+        sourceIds.add(source.id);
+      }
+    });
+
 const agentRuntimeProfileSchema = z.strictObject({
   id: identifierSchema,
   kind: z.string().min(1).max(128),
@@ -128,13 +179,18 @@ const agentRuntimeProfileSchema = z.strictObject({
   digest: digestSchema,
 });
 
-const budgetEnvelopeSchema = z.strictObject({
-  id: identifierSchema,
-  maxNativeRuns: z.number().int().positive(),
-  maxWallTimeMs: z.number().int().positive(),
-  maxEstimatedCostUsd: z.number().positive(),
-  digest: digestSchema,
-});
+const budgetEnvelopeSchema = z
+  .strictObject({
+    id: identifierSchema,
+    maxNativeRuns: z.number().int().positive(),
+    maxWallTimeMs: z.number().int().positive(),
+    researchGrantWallTimeMs: z.number().int().positive().max(3_600_000),
+    digest: digestSchema,
+  })
+  .refine((budget) => budget.researchGrantWallTimeMs <= budget.maxWallTimeMs, {
+    path: ["researchGrantWallTimeMs"],
+    message: "Research Grant cannot exceed the Campaign wall-time limit",
+  });
 
 const researchCampaignPolicyBodySchema = z.strictObject({
   kind: z.literal("research-campaign-policy"),
@@ -162,7 +218,6 @@ export const researchCampaignPolicySchema = researchCampaignPolicyBodySchema
 
 const runBudgetAllowanceSchema = z.strictObject({
   maxWallTimeMs: z.number().int().positive(),
-  maxEstimatedCostUsd: z.number().positive(),
 });
 
 export const agentCheckpointRefSchema = z.strictObject({
@@ -179,6 +234,7 @@ export const agentCheckpointRefSchema = z.strictObject({
   permissionProfileDigest: digestSchema,
   dependencySnapshotsDigest: digestSchema.optional(),
   threatContextDigest: digestSchema.optional(),
+  programmeBoundaryDigest: digestSchema.optional(),
 });
 
 export const campaignInputSchema = z
@@ -189,6 +245,7 @@ export const campaignInputSchema = z
     targetSnapshot: targetSnapshotRefSchema,
     dependencySnapshots: dependencySnapshotsSchema.optional(),
     threatContext: campaignThreatContextSchema.optional(),
+    programmeBoundary: programmeResearchBoundarySchema.optional(),
     promptSet: immutableRefSchema,
     validationPromptSet: immutableRefSchema,
     agentRuntimeProfile: agentRuntimeProfileSchema,
@@ -233,7 +290,8 @@ export const campaignInputSchema = z
       checkpoint.runtimeProfileDigest !== input.agentRuntimeProfile.digest ||
       checkpoint.permissionProfileDigest !== input.permissionProfile.digest ||
       checkpoint.dependencySnapshotsDigest !== dependencySnapshotsDigest ||
-      checkpoint.threatContextDigest !== input.threatContext?.digest
+      checkpoint.threatContextDigest !== input.threatContext?.digest ||
+      checkpoint.programmeBoundaryDigest !== input.programmeBoundary?.digest
     ) {
       context.addIssue({
         code: "custom",
@@ -249,6 +307,15 @@ const sourceEvidenceSchema = z.strictObject({
   observation: z.string().min(1),
 });
 
+export const parkedProgrammeLeadSchema = z.strictObject({
+  leadId: identifierSchema,
+  attackerPremise: z.string().min(1),
+  primitive: z.string().min(1),
+  maximumSourceSupportedEffect: z.string().min(1),
+  eligibleEscalationAssessment: z.literal("no-concrete-source-bound-path"),
+  evidence: z.array(sourceEvidenceSchema).min(1),
+});
+
 export const validationCandidateSchema = z.strictObject({
   candidateId: identifierSchema,
   attackerPremise: z.string().min(1),
@@ -257,10 +324,246 @@ export const validationCandidateSchema = z.strictObject({
   evidence: z.array(sourceEvidenceSchema).min(1),
 });
 
+export const candidateReviewRequestSchema = z
+  .strictObject({
+    kind: z.literal("candidate-review-request"),
+    schemaVersion: z.literal(1),
+    campaignId: identifierSchema,
+    campaignInputDigest: digestSchema,
+    terminalResearchRunId: identifierSchema,
+    candidateSetDigest: digestSchema,
+    candidates: z.array(validationCandidateSchema).min(1),
+    digest: digestSchema,
+  })
+  .superRefine((request, context) => {
+    const { digest, candidateSetDigest, candidates, ...body } = request;
+    if (candidateSetDigest !== canonicalDigest(candidates)) {
+      context.addIssue({
+        code: "custom",
+        path: ["candidateSetDigest"],
+        message: "Candidate review request must bind the exact Candidate set",
+      });
+    }
+    if (
+      digest !== canonicalDigest({ ...body, candidateSetDigest, candidates })
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["digest"],
+        message: "Candidate review request digest must bind its exact body",
+      });
+    }
+  });
+
 const nextActionSchema = z.strictObject({
   question: z.string().min(1),
   sourcePointers: z.array(z.string().min(1)),
 });
+
+export const researchContinuationReviewRequestSchema = z
+  .strictObject({
+    kind: z.literal("research-continuation-review-request"),
+    schemaVersion: z.literal(1),
+    campaignId: identifierSchema,
+    campaignInputDigest: digestSchema,
+    researchRunId: identifierSchema,
+    checkpoint: agentCheckpointRefSchema,
+    candidateSetDigest: digestSchema,
+    candidates: z.array(validationCandidateSchema),
+    parkedProgrammeLeadSetDigest: digestSchema,
+    parkedProgrammeLeads: z.array(parkedProgrammeLeadSchema),
+    nextActions: z.array(nextActionSchema).min(1),
+    digest: digestSchema,
+  })
+  .superRefine((request, context) => {
+    const {
+      digest,
+      candidateSetDigest,
+      candidates,
+      parkedProgrammeLeadSetDigest,
+      parkedProgrammeLeads,
+      ...body
+    } = request;
+    if (candidateSetDigest !== canonicalDigest(candidates)) {
+      context.addIssue({
+        code: "custom",
+        path: ["candidateSetDigest"],
+        message:
+          "Research continuation review request must bind the exact Candidate set",
+      });
+    }
+    if (
+      parkedProgrammeLeadSetDigest !== canonicalDigest(parkedProgrammeLeads)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["parkedProgrammeLeadSetDigest"],
+        message:
+          "Research continuation review request must bind the exact parked Programme Lead set",
+      });
+    }
+    if (
+      digest !==
+      canonicalDigest({
+        ...body,
+        candidateSetDigest,
+        candidates,
+        parkedProgrammeLeadSetDigest,
+        parkedProgrammeLeads,
+      })
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["digest"],
+        message:
+          "Research continuation review request digest must bind its exact body",
+      });
+    }
+  });
+
+const humanCandidateReviewDecisionSchema = z.discriminatedUnion("disposition", [
+  z.strictObject({
+    candidateId: identifierSchema,
+    disposition: z.literal("advance-to-independent-validation"),
+    reason: z.string().min(1).max(4_000),
+  }),
+  z.strictObject({
+    candidateId: identifierSchema,
+    disposition: z.literal("return-to-research"),
+    reason: z.string().min(1).max(4_000),
+    nextActions: z.array(nextActionSchema).min(1).max(32),
+  }),
+  z.strictObject({
+    candidateId: identifierSchema,
+    disposition: z.literal("park-programme-oos"),
+    reason: z.string().min(1).max(4_000),
+  }),
+  z.strictObject({
+    candidateId: identifierSchema,
+    disposition: z.literal("hold-scope-ambiguous"),
+    reason: z.string().min(1).max(4_000),
+  }),
+]);
+
+const humanCandidateReviewBodySchema = z.strictObject({
+  kind: z.literal("human-candidate-review"),
+  schemaVersion: z.literal(1),
+  reviewId: identifierSchema,
+  campaignId: identifierSchema,
+  campaignInputDigest: digestSchema,
+  terminalResearchRunId: identifierSchema,
+  candidateSetDigest: digestSchema,
+  candidateReviewRequestDigest: digestSchema,
+  operator: z.strictObject({
+    identity: identifierSchema,
+    decidedAt: z.iso.datetime(),
+  }),
+  decisions: z.array(humanCandidateReviewDecisionSchema).min(1),
+});
+
+export const humanCandidateReviewSchema = humanCandidateReviewBodySchema
+  .extend({ digest: digestSchema })
+  .superRefine((review, context) => {
+    const { digest, ...body } = review;
+    if (digest !== canonicalDigest(body)) {
+      context.addIssue({
+        code: "custom",
+        path: ["digest"],
+        message: "Human Candidate Review digest must bind its exact body",
+      });
+    }
+    const candidateIds = new Set<string>();
+    for (const [index, decision] of review.decisions.entries()) {
+      if (candidateIds.has(decision.candidateId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["decisions", index, "candidateId"],
+          message: "Human Candidate Review decisions must be unique",
+        });
+      }
+      candidateIds.add(decision.candidateId);
+    }
+  });
+
+const humanResearchContinuationReviewBodySchema = z.strictObject({
+  kind: z.literal("human-research-continuation-review"),
+  schemaVersion: z.literal(1),
+  reviewId: identifierSchema,
+  campaignId: identifierSchema,
+  campaignInputDigest: digestSchema,
+  researchRunId: identifierSchema,
+  checkpointId: identifierSchema,
+  checkpointStateDigest: digestSchema,
+  candidateSetDigest: digestSchema,
+  parkedProgrammeLeadSetDigest: digestSchema,
+  researchContinuationReviewRequestDigest: digestSchema,
+  operator: z.strictObject({
+    identity: identifierSchema,
+    decidedAt: z.iso.datetime(),
+  }),
+  decision: z.enum(["continue-research", "proceed-to-candidate-review"]),
+  reason: z.string().min(1).max(4_000),
+});
+
+export const humanResearchContinuationReviewSchema =
+  humanResearchContinuationReviewBodySchema
+    .extend({ digest: digestSchema })
+    .superRefine((review, context) => {
+      const { digest, ...body } = review;
+      if (digest !== canonicalDigest(body)) {
+        context.addIssue({
+          code: "custom",
+          path: ["digest"],
+          message:
+            "Human Research Continuation Review digest must bind its exact body",
+        });
+      }
+    });
+
+const humanValidationRetryBodySchema = z.strictObject({
+  kind: z.literal("human-validation-retry"),
+  schemaVersion: z.literal(1),
+  retryId: identifierSchema,
+  campaignId: identifierSchema,
+  campaignInputDigest: digestSchema,
+  failedValidationRunIds: z.array(identifierSchema).min(1).max(64),
+  operator: z.strictObject({
+    identity: identifierSchema,
+    decidedAt: z.iso.datetime(),
+  }),
+  reason: z.string().min(1).max(4_000),
+});
+
+export const humanValidationRetrySchema = humanValidationRetryBodySchema
+  .extend({ digest: digestSchema })
+  .superRefine((retry, context) => {
+    const { digest, ...body } = retry;
+    if (digest !== canonicalDigest(body)) {
+      context.addIssue({
+        code: "custom",
+        path: ["digest"],
+        message: "Human Validation Retry digest must bind its exact body",
+      });
+    }
+    const runIds = new Set<string>();
+    for (const [index, runId] of retry.failedValidationRunIds.entries()) {
+      if (runIds.has(runId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["failedValidationRunIds", index],
+          message: "Human Validation Retry run ids must be unique",
+        });
+      }
+      runIds.add(runId);
+    }
+  });
+
+export const campaignCommandSchema = z.discriminatedUnion("kind", [
+  campaignInputSchema,
+  humanCandidateReviewSchema,
+  humanResearchContinuationReviewSchema,
+  humanValidationRetrySchema,
+]);
 
 const researchDecisionSchema = z.discriminatedUnion("kind", [
   z.strictObject({
@@ -277,6 +580,7 @@ const researchDecisionSchema = z.discriminatedUnion("kind", [
 export const researchReportSchema = z.strictObject({
   schemaVersion: z.literal(1),
   candidates: z.array(validationCandidateSchema),
+  parkedProgrammeLeads: z.array(parkedProgrammeLeadSchema).optional(),
   decision: researchDecisionSchema,
 });
 
@@ -330,6 +634,30 @@ const agentRunIsolationSchema = z.strictObject({
   fallbackUsed: z.literal(false),
 });
 
+const agentRunFailureStageSchema = z.enum([
+  "sandbox-preflight",
+  "provider-version",
+  "provider-execution",
+  "checkpoint-finalization",
+  "sandbox-cleanup",
+  "runtime-adapter",
+]);
+
+export const agentRunDiagnosticRefSchema = z.strictObject({
+  kind: z.literal("agent-run-diagnostic"),
+  schemaVersion: z.literal(1),
+  diagnosticId: identifierSchema,
+  digest: digestSchema,
+  bytes: z.number().int().nonnegative(),
+});
+
+const agentRunFailureSchema = z.strictObject({
+  summary: z.string().min(1),
+  stage: agentRunFailureStageSchema.optional(),
+  retryable: z.literal(true).optional(),
+  diagnostic: agentRunDiagnosticRefSchema.optional(),
+});
+
 const agentRunReceiptShape = {
   schemaVersion: z.literal(1),
   runId: identifierSchema,
@@ -358,7 +686,7 @@ export const nativeRunReceiptSchema = z.discriminatedUnion("terminal", [
     ]),
     isolation: agentRunIsolationSchema.optional(),
     checkpoint: agentCheckpointRefSchema.optional(),
-    failure: z.strictObject({ summary: z.string().min(1) }),
+    failure: agentRunFailureSchema,
   }),
 ]);
 
@@ -378,7 +706,7 @@ export const validationRunReceiptSchema = z.discriminatedUnion("terminal", [
       "invalid-output",
     ]),
     isolation: agentRunIsolationSchema.optional(),
-    failure: z.strictObject({ summary: z.string().min(1) }),
+    failure: agentRunFailureSchema,
   }),
 ]);
 
@@ -391,12 +719,18 @@ export const sealedNativeRunSchema = z.strictObject({
   targetSnapshot: targetSnapshotRefSchema,
   dependencySnapshots: dependencySnapshotsSchema.optional(),
   threatContext: campaignThreatContextSchema.optional(),
+  programmeBoundary: programmeResearchBoundarySchema.optional(),
   promptSet: immutableRefSchema,
   agentRuntimeProfile: agentRuntimeProfileSchema,
   permissionProfile: immutableRefSchema,
   budgetEnvelope: budgetEnvelopeSchema,
   budgetAllowance: runBudgetAllowanceSchema,
   resumeFrom: agentCheckpointRefSchema.optional(),
+  researchContinuationNextActions: z
+    .array(nextActionSchema)
+    .min(1)
+    .max(32)
+    .optional(),
   validationFeedback: z.array(
     z.strictObject({
       runId: identifierSchema,
@@ -404,6 +738,15 @@ export const sealedNativeRunSchema = z.strictObject({
       report: validationReportSchema,
     }),
   ),
+  candidateReviewNextActions: z
+    .array(
+      z.strictObject({
+        candidateId: identifierSchema,
+        nextActions: z.array(nextActionSchema).min(1).max(32),
+      }),
+    )
+    .min(1)
+    .optional(),
 });
 
 export const sealedValidationRunSchema = z.strictObject({
@@ -454,6 +797,8 @@ export interface ValidationRunRecord {
 
 export type CampaignStatus =
   | "research-continues"
+  | "research-review-pending"
+  | "candidate-review-pending"
   | "validation-pending"
   | "coverage-closed"
   | "incomplete";
@@ -467,7 +812,7 @@ export interface NativeAgentRuntime {
 }
 
 export interface ResearchCampaigns {
-  conduct(input: CampaignInput): Promise<CampaignOutcomeRef>;
+  conduct(command: CampaignCommand): Promise<CampaignOutcomeRef>;
   inspect(query: CampaignQuery): Promise<ResearchCampaignView>;
   close(): void;
 }
@@ -488,8 +833,14 @@ export interface ResearchCampaignView extends CampaignOutcomeRef {
   readonly input: CampaignInput;
   readonly nativeRuns: readonly NativeRunReceipt[];
   readonly validationRuns: readonly ValidationRunRecord[];
+  readonly candidateReviews: readonly HumanCandidateReview[];
+  readonly researchContinuationReviews: readonly HumanResearchContinuationReview[];
+  readonly validationRetries?: readonly HumanValidationRetry[];
+  readonly parkedProgrammeLeads: readonly ParkedProgrammeLead[];
   readonly findings: readonly SourceValidatedFinding[];
   readonly coverage: CampaignCoverage;
+  readonly pendingCandidateReview?: CandidateReviewRequest;
+  readonly pendingResearchContinuationReview?: ResearchContinuationReviewRequest;
   readonly interruption?: CampaignInterruption;
 }
 
@@ -500,18 +851,36 @@ export interface OpenResearchCampaignsOptions {
 }
 
 export type CampaignInput = z.infer<typeof campaignInputSchema>;
+export type CampaignCommand = z.infer<typeof campaignCommandSchema>;
 export type CampaignThreatContext = z.infer<typeof campaignThreatContextSchema>;
+export type ProgrammeResearchBoundary = z.infer<
+  typeof programmeResearchBoundarySchema
+>;
 export type ResearchCampaignPolicy = z.infer<
   typeof researchCampaignPolicySchema
 >;
 export type DependencySnapshotRef = z.infer<typeof dependencySnapshotRefSchema>;
 export type AgentCheckpointRef = z.infer<typeof agentCheckpointRefSchema>;
+export type AgentRunDiagnosticRef = z.infer<typeof agentRunDiagnosticRefSchema>;
+export type AgentRunFailureStage = z.infer<typeof agentRunFailureStageSchema>;
 export type CampaignInterruption = z.infer<typeof campaignInterruptionSchema>;
 export type NativeRunReceipt = z.infer<typeof nativeRunReceiptSchema>;
+export type ParkedProgrammeLead = z.infer<typeof parkedProgrammeLeadSchema>;
 export type SealedNativeRun = z.infer<typeof sealedNativeRunSchema>;
 export type SealedValidationRun = z.infer<typeof sealedValidationRunSchema>;
 export type SealedAgentRun = SealedNativeRun | SealedValidationRun;
 export type ValidationCandidate = z.infer<typeof validationCandidateSchema>;
+export type CandidateReviewRequest = z.infer<
+  typeof candidateReviewRequestSchema
+>;
+export type HumanCandidateReview = z.infer<typeof humanCandidateReviewSchema>;
+export type HumanResearchContinuationReview = z.infer<
+  typeof humanResearchContinuationReviewSchema
+>;
+export type HumanValidationRetry = z.infer<typeof humanValidationRetrySchema>;
+export type ResearchContinuationReviewRequest = z.infer<
+  typeof researchContinuationReviewRequestSchema
+>;
 export type ValidationRunReceipt = z.infer<typeof validationRunReceiptSchema>;
 export type NativeAgentReceipt = NativeRunReceipt | ValidationRunReceipt;
 export type SourceValidatedFinding = z.infer<

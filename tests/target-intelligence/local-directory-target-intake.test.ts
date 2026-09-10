@@ -149,6 +149,68 @@ add_action('init', static function (): void {});
     }
   });
 
+  it("keeps the first plugin header version when later source text has a version key", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "target-intake-header-body-"),
+    );
+    const source = join(directory, "source");
+    try {
+      await mkdir(source, { recursive: true });
+      await writeFile(
+        join(source, "plugin.php"),
+        `<?php
+/*
+Plugin Name: Header Before Body
+Version: 4.0.1
+*/
+$state = [
+  'script' => <<<'JS'
+const status = {
+  version: 'not_configured',
+};
+JS,
+];
+`,
+      );
+      const intake = openLocalDirectoryTargetIntake({
+        storageDirectory: join(directory, "storage"),
+      });
+
+      await expect(
+        intake.intake({
+          kind: "manual-target-intake",
+          schemaVersion: 1,
+          source: { kind: "local-directory", path: source },
+          pluginIdentity: { kind: "wporg", slug: "header-before-body" },
+          requestedVersion: "4.0.1",
+          mainPluginFile: "plugin.php",
+          provenance: {
+            kind: "operator-provided",
+            acquisitionRef: { id: "header-before-body", digest: digest("7") },
+          },
+          policy: {
+            kind: "target-intake-policy",
+            schemaVersion: 1,
+            id: "manual-local-v1",
+            digest: digest("2"),
+            limits: {
+              maxEntries: 100,
+              maxFileBytes: 1_000_000,
+              maxTotalBytes: 10_000_000,
+              maxPathBytes: 512,
+              maxDepth: 16,
+            },
+          },
+        }),
+      ).resolves.toMatchObject({
+        status: "ready",
+        packet: { version: "4.0.1", mainPluginFile: "plugin.php" },
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("rejects links and version mismatches without publishing a packet", async () => {
     const directory = await mkdtemp(join(tmpdir(), "target-intake-reject-"));
     const source = join(directory, "source");

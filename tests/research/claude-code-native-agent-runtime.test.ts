@@ -18,6 +18,7 @@ import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import { openClaudeCodeNativeAgentRuntime } from "../../src/research/agent-led/claude-code-native-agent-runtime.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
 import type { CampaignInput } from "../../src/research/index.js";
+import { conductWithHumanAdvance } from "./support/candidate-review.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -80,6 +81,8 @@ fi
 has_runsc=0
 has_interactive=0
 has_ephemeral_provider_home=0
+has_subagent_concurrency_limit=0
+has_subagent_depth_limit=0
 denies_provider_read=0
 denies_provider_glob=0
 denies_provider_grep=0
@@ -98,12 +101,21 @@ for argument in "$@"; do
     case "$argument" in
       *'"$schema"'*) exit 84 ;;
     esac
+    case "$argument" in
+      *'"type":"object"'*) ;;
+      *) exit 75 ;;
+    esac
+    case "$argument" in
+      '{"oneOf":'*) exit 74 ;;
+    esac
   fi
   if [ "$previous" = "--session-id" ]; then new_session="$argument"; fi
   if [ "$previous" = "--resume" ]; then resume_session="$argument"; fi
   [ "$argument" != "--runtime=runsc" ] || has_runsc=1
   [ "$argument" != "--interactive" ] || has_interactive=1
   [ "$argument" != "--env=CLAUDE_CONFIG_DIR=/provider" ] || has_ephemeral_provider_home=1
+  [ "$argument" != "--env=CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=3" ] || has_subagent_concurrency_limit=1
+  [ "$argument" != "--env=CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1" ] || has_subagent_depth_limit=1
   [ "$argument" != 'Read(//provider/**)' ] || denies_provider_read=1
   [ "$argument" != 'Glob(//provider/**)' ] || denies_provider_glob=1
   [ "$argument" != 'Grep(//provider/**)' ] || denies_provider_grep=1
@@ -135,6 +147,8 @@ fi
 [ "$denies_provider_glob" -eq 1 ] || exit 86
 [ "$denies_provider_grep" -eq 1 ] || exit 85
 [ "$has_ephemeral_provider_home" -eq 1 ] || exit 96
+[ "$has_subagent_concurrency_limit" -eq 1 ] || exit 72
+[ "$has_subagent_depth_limit" -eq 1 ] || exit 71
 case "$provider_mount" in
   "$scratch"/*) exit 94 ;;
 esac
@@ -185,7 +199,7 @@ printf '%s' "$prompt" | grep -F 'Candidate:' >/dev/null
 if printf '%s' "$prompt" | grep -F 'Prior source-bound reports:' >/dev/null; then
   exit 93
 fi
-printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_reason":"completed","session_id":"11111111-1111-4111-8111-111111111111","structured_output":{"schemaVersion":1,"candidateId":"candidate-claude-stored-xss-1","disposition":"source-validated","reason":"The public write and privileged unescaped output are independently supported.","evidence":[{"path":"admin/view.php","location":"render_value:88","observation":"Emits the persisted value without escaping."}]},"total_cost_usd":0.5,"duration_ms":60000,"num_turns":5,"permission_denials":[],"usage":{"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}},"modelUsage":{"claude-opus-4-1":{"canonicalModel":"claude-opus-4-1","inputTokens":6000,"outputTokens":900,"cacheReadInputTokens":500,"cacheCreationInputTokens":250}}}'
+printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_reason":"completed","session_id":"11111111-1111-4111-8111-111111111111","structured_output":{"schemaVersion":1,"candidateId":"candidate-claude-stored-xss-1","disposition":"source-validated","reason":"The public write and privileged unescaped output are independently supported.","evidence":[{"path":"admin/view.php","location":"render_value:88","observation":"Emits the persisted value without escaping."}],"nextActions":[{"question":"Transport-only extra action.","sourcePointers":["admin/view.php"]}]},"total_cost_usd":0.5,"duration_ms":60000,"num_turns":5,"permission_denials":[],"usage":{"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}},"modelUsage":{"claude-opus-4-1":{"canonicalModel":"claude-opus-4-1","inputTokens":6000,"outputTokens":900,"cacheReadInputTokens":500,"cacheCreationInputTokens":250}}}'
 `,
       { encoding: "utf8", mode: 0o700 },
     );
@@ -233,7 +247,7 @@ printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_rea
         id: "agent-led-budget-v1",
         maxNativeRuns: 3,
         maxWallTimeMs: 600_000,
-        maxEstimatedCostUsd: 5,
+        researchGrantWallTimeMs: 600_000,
         digest:
           "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       },
@@ -287,7 +301,9 @@ printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_rea
       runtime,
     });
 
-    await expect(campaigns.conduct(input)).resolves.toMatchObject({
+    await expect(
+      conductWithHumanAdvance(campaigns, input),
+    ).resolves.toMatchObject({
       status: "coverage-closed",
     });
     await expect(
@@ -383,7 +399,6 @@ printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_rea
       campaignId: "campaign-claude-provider-budget-1",
       budgetEnvelope: {
         ...input.budgetEnvelope,
-        maxEstimatedCostUsd: 0.1,
         digest:
           "sha256:abababababababababababababababababababababababababababababababab",
       },

@@ -154,6 +154,7 @@ export function admitApprovedTargetCampaign(
     },
     dependencySnapshots: request.dependencySnapshots,
     threatContext: request.threatContext,
+    programmeBoundary: request.programmeBoundary,
     promptSet: policy.promptSet,
     validationPromptSet: policy.validationPromptSet,
     agentRuntimeProfile: policy.agentRuntimeProfile,

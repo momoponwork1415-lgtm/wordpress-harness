@@ -1,6 +1,6 @@
 # Knowledge: reference harness comparison
 
-Status: official-source comparison, checked 2026-09-07
+Status: official-source comparison, checked 2026-09-10
 
 ## Conclusion
 
@@ -59,7 +59,7 @@ Status: official-source comparison, checked 2026-09-07
 | Agent loop | 最初の長時間runがpre-auth SQLiを出した後、人間がstock WordPressでadmin email読取を試させた。その後、人間がRCEへ昇格できるかを追加で質問し、約4時間後にchainが完成した。最初のpromptだけで最後まで無人だったわけではない。 |
 | Validation | 人間がremoteのstock installでSQLi effectを確認し、翌日にchainを解読してreportを準備した。公開された約10時間 / 約USD 25は一成功例で、複数target、negative control、miss、run varianceはない。 |
 
-**Inference:** 直接再利用できるのはraw source、history禁止、dependency source、最大4 native subagentという同時実行上限、rootによる反復統合、途中primitiveを次の具体的gapへつなぐ考え方である。4体の固定起動や固定roleにはせず、Rootが上限内で実数と再投入を決める。positive oracle、`/flag`、6時間の固定下限、typed approach registryをHarness stateへ移すと、prospective recallを測れず、RCE以外の重大Findingを歪める。
+**Inference:** wp2shell promptの研究手法は[WordPress Plugin Research v2](../../prompts/wordpress-plugin-research-v2.md)へすべて取り入れる。最大4 native agentは固定起動や固定roleではなくresource ceilingとし、Approach Family RegistryはRootのscratchへ置く。持ち込まないのはtask固有のpositive oracle、RCE / `/flag`到達の強制と最低6時間の指定だけである。
 
 ## Public agentic harnesses
 
@@ -87,13 +87,13 @@ Status: official-source comparison, checked 2026-09-07
 | P0 | oracleをagentから隔離したWordPress boundary corpusで、同じTarget / Prompt / Runtime / Permissionを当面3 fresh Campaignずつ実行し、single-run recovery、3-run union、3 / 3 consistency、Validation rejection / pending、patched negativeを記録する。 | Aikidoが直接示したrecall改善はfresh-run union。3は初期比較条件であってproduction Campaignの固定round数ではない。 |
 | P0 | source-validated Finding後、外部提出候補へ上げる直前にofficial latest releaseをfresh取得し、同じcausal issueが残るかを別のlatest-source checkで確認する。残存時だけsubmission candidateとし、消失時も元Findingを削除せず`not-present-in-latest`観測をappendする。 | ユーザーの提出条件に対応する。Cloudflare VVSもfresh production contextと[latest mainのsourceを再確認](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#contextual-judgment)してapplicabilityを判定する。WordPressではGit mainではなく、配布対象のofficial latest packageを正本にする。Discovery oracleへは戻さない。 |
 | P0 | short-hop Findingを保持したまま、source-boundなchain gapが残れば同じRootが継続できることをknown-positiveで確認する。RCEへ伸びなくてもSQLi / Stored XSS等は独立成功とする。 | wp2shell / Argusは途中primitiveを長いchainへつなぐ価値を示す。現行`candidate + nextActions + continue`で表現でき、新しいDepth subsystemは不要。 |
-| P1 | wp2shellのdiverse approach、stalled route、root synthesisというprompt要素だけを一変数ずつablationする。 | 成功例はあるが因果証拠がない。typed registry、固定agent数、固定roundへせず、P0 corpusのrecall差が出た要素だけ採用する。 |
+| P1 | wp2shellの全研究要素を持つv2 Promptをknown-positiveとprospective Campaignで評価し、diverse approach、stalled route、adversarial check、root synthesisと追加roundが実際に起きたかを観測する。必要なら評価専用ablationで因果を調べる。 | production Promptから要素を落とす選別には使わない。Approach RegistryはRoot scratch、最大4体はresource ceilingであり、Harness-owned fixed round / roleへしない。 |
 | P1 | Grok / GLM等を同一Campaign内で混ぜず、同じ凍結caseの別Runtime Profile Campaignとして比較し、評価側だけでunionする。 | AikidoとNOVAはrun / model complementarityを示す。現行のno-silent-fallbackとFinding provenanceを保つ。 |
 | P1 | source Findingとは別にfresh runtime reproductionをHuman OSへ接続し、提出判断のassuranceを増やす。 | wp2shell、Anthropic、Cloudflare、Wordfence、NOVAはruntime witnessを重視する。ただしResearch / Independent ValidationでTarget codeを実行せず、source Findingの成立条件にも戻さない。 |
 
 ### Do not import now
 
-- positive RCE oracle、`/flag`、CVE / patch / history、4体の固定起動、6時間の固定下限を通常Promptへ入れない。最大4 native subagentという同時実行上限だけをPromptへ置く。
+- positive RCE oracle、`/flag`到達の強制と6時間の固定下限を通常Promptへ入れない。CVE / patch / historyはoracleとして使わない。Rootを含む最大4 native agentという同時実行上限と、その他のwp2shell研究要素はPromptへ置く。
 - PRISMの固定class specialist、AVDHのwaterfall / Confidence Filter、Cloudflareのarea × attack-class cell、NOVAのranking / gatekeeperをHarness-owned research decisionへしない。
 - multi-agent voteや支持数でminority candidateを落とさない。Independent Validation一回とcandidateごとのcounterevidenceを維持する。
 - cross-repo scheduler、fleet queue、Feedback prompt rewrite、patch生成、virtual protection、publication gateを診断coreへ入れない。
@@ -104,11 +104,11 @@ Status: official-source comparison, checked 2026-09-07
 
 | Concern | Current behavior | Evidence |
 | --- | --- | --- |
-| Search space | Agentはimmutable Target全体をreadでき、Promptはfile、CWE、手順を固定しない。 | [`gvisor-agent-sandbox.ts`](../../src/research/agent-led/gvisor-agent-sandbox.ts) |
-| Iteration | Reportが具体的next action付き`continue`ならprivate Agent Checkpointからprovider session / scratchを再開し、`stop`ならpending candidateをValidation後に終了する。 | [`research-campaigns.ts`](../../src/research/agent-led/research-campaigns.ts) · [`research-campaigns.test.ts`](../../tests/research/research-campaigns.test.ts) |
-| Native agents | Grok BuildとClaude Codeをprovider固有Adapterで実行し、Grok evaluationからClaudeへfallbackしない。 | [`grok-native-agent-runtime.ts`](../../src/research/agent-led/grok-native-agent-runtime.ts) · [`claude-code-native-agent-runtime.ts`](../../src/research/agent-led/claude-code-native-agent-runtime.ts) |
+| Search space | Agentはimmutable Target全体をreadでき、v2 Promptはwp2shell由来のidea promptsと探索heuristicsを与えるが、担当file、CWE、固定roleまたは固定roundを割り当てない。 | [`wordpress-plugin-research-v2.md`](../../prompts/wordpress-plugin-research-v2.md) · [`gvisor-agent-sandbox.ts`](../../src/research/agent-led/gvisor-agent-sandbox.ts) |
+| Iteration | Reportが具体的next action付き`continue`でもHuman Research Continuation Reviewまで停止し、承認後だけprivate Agent Checkpointからprovider session / scratchを再開する。terminal CandidateもHuman Candidate ReviewでadmitされたものだけをValidationする。 | [`research-campaigns.ts`](../../src/research/agent-led/research-campaigns.ts) · [`human-research-continuation-review.test.ts`](../../tests/research/human-research-continuation-review.test.ts) · [`human-candidate-review.test.ts`](../../tests/research/human-candidate-review.test.ts) |
+| Native agents | Grok Build、Claude Code、Claude Code process上のGLM 5.3、managed read-only source readerを持つCodex Daybreakをprovider固有Adapterで実行し、別profileへsilent fallbackしない。 | [`grok-native-agent-runtime.ts`](../../src/research/agent-led/grok-native-agent-runtime.ts) · [`claude-code-native-agent-runtime.ts`](../../src/research/agent-led/claude-code-native-agent-runtime.ts) · [`codex-native-agent-runtime.ts`](../../src/research/agent-led/codex-native-agent-runtime.ts) |
 | Evidence shell | Target / source tree / Prompt / Runtime / Permission / Budgetをbindし、runsc、non-root、read-only source、credential-free private Checkpointを要求する。 | [`contracts.ts`](../../src/research/agent-led/contracts.ts) · [`gvisor-agent-sandbox.ts`](../../src/research/agent-led/gvisor-agent-sandbox.ts) |
-| Validation | Researchとは別scratch / sessionでcandidateを一度再導出する。 | [`independent-validation.test.ts`](../../tests/research/independent-validation.test.ts) |
+| Validation | 人間がadmitしたCandidateをResearchとは別scratch / sessionで一度再導出し、外部制約で未決のrunだけをHuman Validation Retryでfreshに再試行する。 | [`independent-validation.test.ts`](../../tests/research/independent-validation.test.ts) |
 | Finding / Coverage | `source-validated`だけがFindingを作り、Coverageとfailureを別々に復元する。 | [`research-campaigns.test.ts`](../../tests/research/research-campaigns.test.ts) |
 
 Claudeのexact imageでは、Root / native subagent双方についてprovider read、Target write、shell、Webの拒否とscratch writeを実測し、public Campaign smokeも完走した。さらに同じprivate Checkpointとsession IDを使う`continue -> resume -> stop`を実processで確認した。Grok Target Proposal Adapterもproduction seamへ接続し、Approved Target BatchからCampaignへのadmissionは`ApprovedTargetCampaigns.conduct`へ接続した。Human OSはFinding-bound Private Recipeのsingle replayとfresh runsc WordPress / MySQL labを持つ。現在の弱点は、Grokのcompleted capability / resume probeがprovider HTTP 402で未完了なこと、GLM Validationのformat補正再実行がsingle-fresh-run policyと未整合なこと、Research FindingからPrivate Recipeへの自動handoffが未接続なことである。構造が小さくなったこと自体は探索性能の証明ではない。
