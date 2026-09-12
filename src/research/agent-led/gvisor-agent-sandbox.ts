@@ -270,6 +270,7 @@ export type SandboxedAgentResult =
       readonly completedAt: Date;
       readonly checkpoint?: AgentCheckpointRef;
       readonly diagnostic?: AgentRunDiagnosticRef;
+      readonly preserveDiagnostic: PreserveAdapterDiagnostic;
     }
   | {
       readonly status: "exited-nonzero";
@@ -279,8 +280,18 @@ export type SandboxedAgentResult =
       readonly checkpoint?: AgentCheckpointRef;
       readonly diagnostic?: AgentRunDiagnosticRef;
       readonly failureStage: AgentRunFailureStage;
+      readonly preserveDiagnostic: PreserveAdapterDiagnostic;
     }
   | { readonly status: "failed"; readonly receipt: FailedReceipt };
+
+/**
+ * Preserves the credential-redacted provider output of an otherwise clean run
+ * that the Runtime Adapter refused, so a policy denial or an unsupported
+ * output keeps private evidence instead of discarding it.
+ */
+export type PreserveAdapterDiagnostic = (
+  reason: string,
+) => Promise<AgentRunDiagnosticRef | undefined>;
 
 function processEnvironment(): NodeJS.ProcessEnv {
   const path = process.env.PATH;
@@ -354,6 +365,38 @@ export function failedNativeRunReceipt(
       ...(diagnostic === undefined ? {} : { diagnostic }),
     },
   };
+}
+
+export async function refusedNativeRunReceipt(
+  run: SealedAgentRun,
+  execution: Extract<SandboxedAgentResult, { status: "completed" }>,
+  terminal: "policy-denied" | "invalid-output",
+  summary: string,
+  checkpoint: AgentCheckpointRef | undefined,
+  startedAt: Date = execution.startedAt,
+): Promise<FailedReceipt> {
+  const diagnostic = await execution.preserveDiagnostic(summary);
+  if (diagnostic === undefined) {
+    return failedNativeRunReceipt(
+      run,
+      "provider-failed",
+      "The Runtime Adapter refused provider output, but its private diagnostic could not be preserved.",
+      startedAt,
+      execution.completedAt,
+      true,
+      checkpoint,
+    );
+  }
+  return failedNativeRunReceipt(
+    run,
+    terminal,
+    summary,
+    startedAt,
+    execution.completedAt,
+    true,
+    checkpoint,
+    diagnostic,
+  );
 }
 
 export function agentResearchPrompt(
@@ -1137,6 +1180,15 @@ export class GvisorAgentSandbox {
       } catch (error: unknown) {
         checkpointError = error;
       }
+      const adapterDiagnostic: PreserveAdapterDiagnostic = (reason) =>
+        preserveAgentRunDiagnostic({
+          scratchRootDirectory,
+          run,
+          stage: "runtime-adapter",
+          secrets,
+          process: result,
+          error: new Error(reason),
+        });
       const failureDiagnostic = async (
         stage: AgentRunFailureStage,
         error?: unknown,
@@ -1204,6 +1256,7 @@ export class GvisorAgentSandbox {
             checkpointError === undefined
               ? "provider-execution"
               : "checkpoint-finalization",
+          preserveDiagnostic: adapterDiagnostic,
           ...(checkpoint === undefined ? {} : { checkpoint }),
           ...(diagnostic === undefined ? {} : { diagnostic }),
         };
@@ -1236,15 +1289,8 @@ export class GvisorAgentSandbox {
         };
       }
       const completedAt = this.#clock();
-      if (
-        checkpointError !== undefined ||
-        (run.kind === "sealed-native-research-run" && checkpoint === undefined)
-      ) {
-        const missingCheckpointError =
-          checkpointError ??
-          new Error(
-            "The provider did not expose a resumable Research session identity.",
-          );
+      if (checkpointError !== undefined) {
+        const missingCheckpointError = checkpointError;
         const diagnostic = await failureDiagnostic(
           "checkpoint-finalization",
           missingCheckpointError,
@@ -1264,11 +1310,37 @@ export class GvisorAgentSandbox {
           ),
         };
       }
+      if (
+        run.kind === "sealed-native-research-run" &&
+        checkpoint === undefined
+      ) {
+        const summary =
+          "The sandboxed Agent Runtime returned an unbound Research session.";
+        const diagnostic = await failureDiagnostic(
+          "checkpoint-finalization",
+          new Error(summary),
+        );
+        return {
+          status: "failed",
+          receipt: failedNativeRunReceipt(
+            run,
+            "policy-denied",
+            summary,
+            startedAt,
+            completedAt,
+            true,
+            undefined,
+            diagnostic,
+            "checkpoint-finalization",
+          ),
+        };
+      }
       return {
         status: "completed",
         stdout: result.stdout,
         startedAt,
         completedAt,
+        preserveDiagnostic: adapterDiagnostic,
         ...(checkpoint === undefined ? {} : { checkpoint }),
       };
     } catch (error: unknown) {

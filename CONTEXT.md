@@ -45,7 +45,7 @@ ResearchはTarget選定、source acquisition policy、runtime exploit verificati
 : Research Rootのprovider-native conversationとscratchを同じsealed bindingで再開するためのprivateなopaque ref。研究上の結論ではなく、Independent Validationやcontext間handoffへ渡さない。
 
 **Agent Run Diagnostic**
-: Native Run失敗時のstage、credential-redacted process observationと、Checkpointとしてadmitできなかった隔離stateを保持するprivate capsuleへのintegrity-bound opaque ref。Researchの結論ではなく、自動resumeには使わない。
+: Native Run失敗時のstage、credential-redacted process observationと、Checkpointとしてadmitできなかった隔離stateを保持するprivate capsuleへのintegrity-bound opaque ref。Runtime Adapterがpolicy denialまたはinvalid outputとして退けた正常終了runのoutputも同じcapsuleへ残す。Researchの結論ではなく、自動resumeには使わない。
 
 **Next Action**
 : 追加で確認する具体的なquestionとsource pointer。AIがResearch継続を選ぶ根拠であり、Harness-owned queueではない。

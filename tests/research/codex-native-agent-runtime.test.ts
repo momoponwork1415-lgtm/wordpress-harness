@@ -448,4 +448,234 @@ sleep 60
     ).not.toContain("auth.json");
     campaigns.close();
   });
+
+  it("records a refused tool call as an auditable policy denial", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "codex-native-denied-"));
+    temporaryDirectories.push(directory);
+    const sourceDirectory = join(directory, "source");
+    const providerConfigDirectory = join(directory, "provider-config");
+    const scratchRootDirectory = join(directory, "scratch");
+    await Promise.all([
+      mkdir(sourceDirectory),
+      mkdir(providerConfigDirectory),
+      mkdir(scratchRootDirectory),
+    ]);
+    await Promise.all([
+      writeFile(join(sourceDirectory, "plugin.php"), "<?php\n", "utf8"),
+      writeFile(
+        join(providerConfigDirectory, "auth.json"),
+        '{"access_token":"denied-secret-token"}',
+        { encoding: "utf8", mode: 0o600 },
+      ),
+    ]);
+    const sourceTreeDigest = canonicalDigest({
+      kind: "canonical-file-manifest",
+      schemaVersion: 1,
+      entries: [
+        {
+          path: "plugin.php",
+          digest: `sha256:${createHash("sha256").update("<?php\n").digest("hex")}`,
+          size: 6,
+        },
+      ],
+    });
+    const dockerExecutablePath = join(directory, "fake-docker");
+    const omitSessionPath = join(directory, "omit-session");
+    await writeFile(
+      dockerExecutablePath,
+      `#!/bin/sh
+set -eu
+if [ "\${1:-}" = "info" ]; then
+  printf '%s' '{"runsc":{"path":"/usr/bin/runsc"}}'
+  exit 0
+fi
+if [ "\${1:-}" = "image" ]; then exit 0; fi
+is_version=0
+provider=''
+for argument in "$@"; do
+  case "$argument" in
+    *:/provider:rw) provider="\${argument%:/provider:rw}" ;;
+  esac
+  [ "$argument" != "--version" ] || is_version=1
+done
+if [ "$is_version" -eq 1 ]; then
+  printf '%s\n' 'codex-cli 0.146.0'
+  exit 0
+fi
+printf '%s' 'session state' > "$provider/thread.jsonl"
+if [ ! -f '${omitSessionPath}' ]; then
+  printf '%s\n' '{"type":"thread.started","thread_id":"11111111-1111-4111-8111-111111111111"}'
+fi
+printf '%s\n' '{"type":"turn.started"}'
+printf '%s\n' '{"type":"item.completed","item":{"id":"item-1","type":"mcp_tool_call","server":"ambient_shell","tool":"run","arguments":{},"result":null,"error":null,"status":"completed"}}'
+printf '%s\n' '{"type":"item.completed","item":{"id":"item-2","type":"agent_message","text":"{\\"schemaVersion\\":1,\\"candidates\\":[],\\"decision\\":{\\"kind\\":\\"stop\\",\\"basis\\":\\"No actionable frontier remains.\\"}}"}}'
+printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":200,"cache_write_input_tokens":300,"output_tokens":100,"reasoning_output_tokens":50}}'
+`,
+      { encoding: "utf8", mode: 0o700 },
+    );
+    await chmod(dockerExecutablePath, 0o700);
+
+    const researchPrompt = "Research broken security semantics from source.";
+    const validationPrompt = "Independently validate from source.";
+    const input: CampaignInput = {
+      kind: "agent-led-campaign",
+      schemaVersion: 1,
+      campaignId: "campaign-codex-policy-denied",
+      targetSnapshot: {
+        id: "target-plugin-1.0.0",
+        pluginSlug: "target-plugin",
+        version: "1.0.0",
+        digest:
+          "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
+      },
+      promptSet: {
+        id: "agent-led-research-v1",
+        digest: promptTextDigest(researchPrompt),
+      },
+      validationPromptSet: {
+        id: "independent-validation-v1",
+        digest: promptTextDigest(validationPrompt),
+      },
+      agentRuntimeProfile: {
+        id: "codex-daybreak-blue-native-v1",
+        kind: "codex-native/v1",
+        executableVersion: "0.146.0",
+        model: "gpt-daybreak-blue-latest",
+        effort: "max",
+        digest:
+          "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      },
+      permissionProfile: {
+        id: "gvisor-source-research-v1",
+        digest:
+          "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      },
+      budgetEnvelope: {
+        id: "agent-led-budget-v1",
+        maxNativeRuns: 1,
+        maxWallTimeMs: 600_000,
+        researchGrantWallTimeMs: 600_000,
+        digest:
+          "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      },
+    };
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "campaign.sqlite"),
+      runtime: openCodexNativeAgentRuntime({
+        dockerExecutablePath,
+        image:
+          "wp-discovery-codex:0.146.0@sha256:44342fc7bc7d6e6dd6c7445ebf23d0d6f414fc22c61fab69e158ab0fa7ba5a73",
+        sourceDirectory,
+        targetSnapshotDigest: input.targetSnapshot.digest,
+        sourceTree: input.targetSnapshot.sourceTree,
+        providerConfigDirectory,
+        scratchRootDirectory,
+        promptSet: { digest: input.promptSet.digest, text: researchPrompt },
+        validationPromptSet: {
+          digest: input.validationPromptSet.digest,
+          text: validationPrompt,
+        },
+        permissionProfileDigest: input.permissionProfile.digest,
+        maxOutputBytes: 1_000_000,
+        sourceReaderScript: "process.exit(0);\n",
+      }),
+    });
+
+    await expect(campaigns.conduct(input)).resolves.toMatchObject({
+      status: "incomplete",
+    });
+    const inspection = await campaigns.inspect({
+      campaignId: input.campaignId,
+    });
+    expect(inspection).toMatchObject({
+      nativeRuns: [
+        {
+          terminal: "policy-denied",
+          failure: {
+            summary: "Codex violated the sealed model or tool policy.",
+            stage: "runtime-adapter",
+            diagnostic: { kind: "agent-run-diagnostic" },
+          },
+        },
+      ],
+    });
+    const nativeRun = inspection.nativeRuns[0];
+    if (
+      nativeRun === undefined ||
+      nativeRun.terminal === "completed" ||
+      nativeRun.failure.diagnostic === undefined
+    ) {
+      throw new Error("Expected a policy denial with a private diagnostic");
+    }
+    const diagnostic = await readFile(
+      join(
+        scratchRootDirectory,
+        "agent-diagnostics",
+        nativeRun.failure.diagnostic.diagnosticId,
+        "diagnostic.json",
+      ),
+      "utf8",
+    );
+    expect(diagnostic).not.toContain("denied-secret-token");
+    expect(JSON.parse(diagnostic)).toMatchObject({
+      stage: "runtime-adapter",
+      statePreserved: false,
+      error: {
+        message: "Codex violated the sealed model or tool policy.",
+      },
+    });
+    expect(diagnostic).toContain("ambient_shell");
+
+    await writeFile(omitSessionPath, "omit", "utf8");
+    const unboundInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-codex-unbound-session",
+    };
+    await expect(campaigns.conduct(unboundInput)).resolves.toMatchObject({
+      status: "incomplete",
+    });
+    await expect(
+      campaigns.inspect({ campaignId: unboundInput.campaignId }),
+    ).resolves.toMatchObject({
+      nativeRuns: [
+        {
+          terminal: "policy-denied",
+          failure: {
+            summary:
+              "The sandboxed Agent Runtime returned an unbound Research session.",
+            stage: "checkpoint-finalization",
+            diagnostic: { kind: "agent-run-diagnostic" },
+          },
+        },
+      ],
+    });
+
+    await rm(omitSessionPath);
+    const diagnosticDirectory = join(scratchRootDirectory, "agent-diagnostics");
+    await rm(diagnosticDirectory, { recursive: true });
+    await writeFile(diagnosticDirectory, "blocked", "utf8");
+    const unavailableDiagnosticInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-codex-diagnostic-unavailable",
+    };
+    await expect(
+      campaigns.conduct(unavailableDiagnosticInput),
+    ).resolves.toMatchObject({ status: "incomplete" });
+    await expect(
+      campaigns.inspect({ campaignId: unavailableDiagnosticInput.campaignId }),
+    ).resolves.toMatchObject({
+      nativeRuns: [
+        {
+          terminal: "provider-failed",
+          failure: {
+            summary:
+              "The Runtime Adapter refused provider output, but its private diagnostic could not be preserved.",
+            stage: "runtime-adapter",
+          },
+        },
+      ],
+    });
+    campaigns.close();
+  });
 });

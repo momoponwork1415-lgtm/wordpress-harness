@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   failedNativeRunReceipt,
   GvisorAgentSandbox,
+  refusedNativeRunReceipt,
   type GvisorAgentRuntimeOptions,
   type SandboxedAgentCommand,
 } from "./gvisor-agent-sandbox.js";
@@ -526,29 +527,37 @@ class CodexNativeAgentRuntime implements NativeAgentRuntime {
     }
     const decoded = transcript(execution.stdout);
     if (decoded === undefined) {
-      return failedNativeRunReceipt(
+      const summary = "Codex returned an unsupported event transcript.";
+      return refusedNativeRunReceipt(
         run,
+        execution,
         "invalid-output",
-        "Codex returned an unsupported event transcript.",
-        execution.startedAt,
-        execution.completedAt,
-        true,
+        summary,
         execution.checkpoint,
       );
     }
     if (
-      decoded.policyViolation ||
-      (run.kind === "sealed-native-research-run" &&
-        (execution.checkpoint === undefined ||
-          execution.checkpoint.sessionId !== decoded.sessionId))
+      run.kind === "sealed-native-research-run" &&
+      (execution.checkpoint === undefined ||
+        execution.checkpoint.sessionId !== decoded.sessionId)
     ) {
-      return failedNativeRunReceipt(
+      const summary = "Codex returned an unbound Research session.";
+      return refusedNativeRunReceipt(
         run,
+        execution,
         "policy-denied",
-        "Codex violated the sealed model, session, or tool policy.",
-        execution.startedAt,
-        execution.completedAt,
-        true,
+        summary,
+        undefined,
+      );
+    }
+    if (decoded.policyViolation) {
+      const summary = "Codex violated the sealed model or tool policy.";
+      return refusedNativeRunReceipt(
+        run,
+        execution,
+        "policy-denied",
+        summary,
+        undefined,
       );
     }
     let normalizedReport: unknown;
@@ -559,13 +568,12 @@ class CodexNativeAgentRuntime implements NativeAgentRuntime {
     }
     const report = schemaFor(run).safeParse(normalizedReport);
     if (!report.success) {
-      return failedNativeRunReceipt(
+      const summary = "Codex returned an unsupported Agent Report.";
+      return refusedNativeRunReceipt(
         run,
+        execution,
         "invalid-output",
-        "Codex returned an unsupported Agent Report.",
-        execution.startedAt,
-        execution.completedAt,
-        true,
+        summary,
         execution.checkpoint,
       );
     }
