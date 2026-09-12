@@ -6,8 +6,10 @@ import { z } from "zod";
 import {
   failedNativeRunReceipt,
   GvisorAgentSandbox,
+  refusedNativeRunReceipt,
   type GvisorAgentRuntimeOptions,
   type SandboxedAgentCommand,
+  type SandboxedAgentResult,
 } from "./gvisor-agent-sandbox.js";
 import {
   nativeRunReceiptSchema,
@@ -61,6 +63,8 @@ const claudeErrorResultSchema = z.object({
   subtype: z.string().min(1),
   is_error: z.literal(true),
   terminal_reason: z.string().nullable(),
+  api_error_status: z.number().int().nullable().optional(),
+  result: z.string().optional(),
   total_cost_usd: z.number().finite().nonnegative().optional(),
   duration_ms: z.number().int().nonnegative(),
   num_turns: z.number().int().nonnegative(),
@@ -300,23 +304,77 @@ function glmSchemaCorrectionPrompt(invalidReport: unknown): string {
 type SuccessfulEnvelope =
   z.infer<typeof claudeResultSchema> | z.infer<typeof glmResultSchema>;
 
-function violatesSealedPolicy(
+function violatesSealedToolPolicy(
   envelope: SuccessfulEnvelope,
   run: SealedAgentRun,
-  checkpoint: AgentCheckpointRef | undefined,
 ): boolean {
   const usedModels = Object.values(envelope.modelUsage);
   return (
     envelope.permission_denials.length > 0 ||
     envelope.usage.server_tool_use.web_search_requests !== 0 ||
     envelope.usage.server_tool_use.web_fetch_requests !== 0 ||
-    (run.kind === "sealed-native-research-run" &&
-      (checkpoint === undefined ||
-        envelope.session_id !== checkpoint.sessionId)) ||
     !usedModels.some(
       (usage) => usage.canonicalModel === run.agentRuntimeProfile.model,
     )
   );
+}
+
+function returnsUnboundResearchSession(
+  envelope: SuccessfulEnvelope,
+  run: SealedAgentRun,
+  checkpoint: AgentCheckpointRef | undefined,
+): boolean {
+  return (
+    run.kind === "sealed-native-research-run" &&
+    (checkpoint === undefined || envelope.session_id !== checkpoint.sessionId)
+  );
+}
+
+function violatesSealedPolicy(
+  envelope: SuccessfulEnvelope,
+  run: SealedAgentRun,
+  checkpoint: AgentCheckpointRef | undefined,
+): boolean {
+  return (
+    violatesSealedToolPolicy(envelope, run) ||
+    returnsUnboundResearchSession(envelope, run, checkpoint)
+  );
+}
+
+/**
+ * Separates a provider account condition from a provider defect. A usage limit
+ * and an unusable credential are environment states the Campaign can resume
+ * from, so they must not be recorded as an unexplained provider failure.
+ */
+function providerAccountTerminal(
+  envelope: z.infer<typeof claudeErrorResultSchema>,
+): "provider-quota-exhausted" | "provider-unauthenticated" | undefined {
+  const message = envelope.result ?? "";
+  if (
+    envelope.api_error_status === 429 &&
+    /usage limit|quota (?:is )?(?:reached|exhausted|exceeded)|credits? exhausted/i.test(
+      message,
+    )
+  ) {
+    return "provider-quota-exhausted";
+  }
+  const performedModelWork =
+    Object.values(envelope.modelUsage).some(
+      (usage) =>
+        usage.inputTokens > 0 ||
+        usage.outputTokens > 0 ||
+        usage.cacheReadInputTokens > 0 ||
+        usage.cacheCreationInputTokens > 0,
+    ) || (envelope.total_cost_usd ?? 0) > 0;
+  const authenticationFailure =
+    envelope.api_error_status === 401 ||
+    envelope.api_error_status === 403 ||
+    /failed to authenticate|authentication failed|oauth session|unauthorized|credential.+(?:expired|invalid)/i.test(
+      message,
+    );
+  return !performedModelWork && authenticationFailure
+    ? "provider-unauthenticated"
+    : undefined;
 }
 
 function wallTimeMs(
@@ -345,17 +403,25 @@ function errorReceipt(
     envelope.permission_denials.length > 0 ||
     envelope.usage.server_tool_use.web_search_requests !== 0 ||
     envelope.usage.server_tool_use.web_fetch_requests !== 0;
+  const accountTerminal = violatedPolicy
+    ? undefined
+    : providerAccountTerminal(envelope);
   const terminal = violatedPolicy
     ? ("policy-denied" as const)
-    : envelope.terminal_reason === "budget_exhausted" ||
-        envelope.subtype === "error_max_budget_usd"
-      ? ("budget-exhausted" as const)
-      : ("provider-failed" as const);
+    : (accountTerminal ??
+      (envelope.terminal_reason === "budget_exhausted" ||
+      envelope.subtype === "error_max_budget_usd"
+        ? ("budget-exhausted" as const)
+        : ("provider-failed" as const)));
   const summary = violatedPolicy
     ? "Claude Code violated the sealed tool policy."
-    : terminal === "budget-exhausted"
-      ? "Claude Code exhausted the provider cost budget."
-      : "Claude Code exited without a completed result.";
+    : terminal === "provider-quota-exhausted"
+      ? "Claude Code reached the provider usage limit."
+      : terminal === "provider-unauthenticated"
+        ? "Claude Code could not authenticate with the provider."
+        : terminal === "budget-exhausted"
+          ? "Claude Code exhausted the provider cost budget."
+          : "Claude Code exited without a completed result.";
   const receipt = {
     schemaVersion: 1,
     runId: run.runId,
@@ -393,12 +459,64 @@ function errorReceipt(
     failure: {
       summary,
       stage: failureStage,
+      ...(terminal === "provider-unauthenticated"
+        ? { retryable: true as const }
+        : {}),
       ...(diagnostic === undefined ? {} : { diagnostic }),
     },
   };
   return run.kind === "sealed-native-research-run"
     ? nativeRunReceiptSchema.parse(receipt)
     : validationRunReceiptSchema.parse(receipt);
+}
+
+function nonzeroReceipt(
+  run: SealedAgentRun,
+  execution: Extract<SandboxedAgentResult, { status: "exited-nonzero" }>,
+  startedAt: Date = execution.startedAt,
+): NativeAgentReceipt {
+  const decodedError = claudeErrorResultSchema.safeParse(
+    parseJson(execution.stdout),
+  );
+  if (
+    decodedError.success &&
+    run.kind === "sealed-native-research-run" &&
+    (execution.checkpoint === undefined ||
+      decodedError.data.session_id !== execution.checkpoint.sessionId)
+  ) {
+    return failedNativeRunReceipt(
+      run,
+      "policy-denied",
+      "Claude Code returned an unbound Research session.",
+      startedAt,
+      execution.completedAt,
+      true,
+      undefined,
+      execution.diagnostic,
+      execution.failureStage,
+    );
+  }
+  return decodedError.success
+    ? errorReceipt(
+        run,
+        decodedError.data,
+        startedAt,
+        execution.completedAt,
+        execution.checkpoint,
+        execution.diagnostic,
+        execution.failureStage,
+      )
+    : failedNativeRunReceipt(
+        run,
+        "provider-failed",
+        "Claude Code exited without a supported failure envelope.",
+        startedAt,
+        execution.completedAt,
+        true,
+        execution.checkpoint,
+        execution.diagnostic,
+        execution.failureStage,
+      );
 }
 
 class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
@@ -555,48 +673,7 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
     );
     if (execution.status === "failed") return execution.receipt;
     if (execution.status === "exited-nonzero") {
-      const decodedError = claudeErrorResultSchema.safeParse(
-        parseJson(execution.stdout),
-      );
-      if (
-        decodedError.success &&
-        run.kind === "sealed-native-research-run" &&
-        (execution.checkpoint === undefined ||
-          decodedError.data.session_id !== execution.checkpoint.sessionId)
-      ) {
-        return failedNativeRunReceipt(
-          run,
-          "policy-denied",
-          "Claude Code returned an unbound Research session.",
-          execution.startedAt,
-          execution.completedAt,
-          true,
-          undefined,
-          execution.diagnostic,
-          execution.failureStage,
-        );
-      }
-      return decodedError.success
-        ? errorReceipt(
-            run,
-            decodedError.data,
-            execution.startedAt,
-            execution.completedAt,
-            execution.checkpoint,
-            execution.diagnostic,
-            execution.failureStage,
-          )
-        : failedNativeRunReceipt(
-            run,
-            "provider-failed",
-            "Claude Code exited without a supported failure envelope.",
-            execution.startedAt,
-            execution.completedAt,
-            true,
-            execution.checkpoint,
-            execution.diagnostic,
-            execution.failureStage,
-          );
+      return nonzeroReceipt(run, execution);
     }
 
     const initialStartedAt = execution.startedAt;
@@ -645,17 +722,7 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
           return correction.receipt;
         }
         if (correction.status === "exited-nonzero") {
-          return failedNativeRunReceipt(
-            run,
-            "provider-failed",
-            "GLM did not complete its bounded format correction.",
-            initialStartedAt,
-            correction.completedAt,
-            true,
-            correction.checkpoint,
-            correction.diagnostic,
-            correction.failureStage,
-          );
+          return nonzeroReceipt(run, correction, initialStartedAt);
         }
         execution = correction;
         envelope = resultEnvelope(execution.stdout, this.#provider);
@@ -665,14 +732,14 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
       }
     }
     if (envelope === undefined) {
-      return failedNativeRunReceipt(
+      const summary = "Claude Code returned an unsupported result envelope.";
+      return refusedNativeRunReceipt(
         run,
+        execution,
         "invalid-output",
-        "Claude Code returned an unsupported result envelope.",
-        initialStartedAt,
-        execution.completedAt,
-        true,
+        summary,
         execution.checkpoint,
+        initialStartedAt,
       );
     }
     if (accountingEnvelopes.length === 0) {
@@ -681,16 +748,32 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
     const policyCheckpoint = execution.checkpoint;
     if (
       accountingEnvelopes.some((candidate) =>
-        violatesSealedPolicy(candidate, run, policyCheckpoint),
+        returnsUnboundResearchSession(candidate, run, policyCheckpoint),
       )
     ) {
-      return failedNativeRunReceipt(
+      const summary = "Claude Code returned an unbound Research session.";
+      return refusedNativeRunReceipt(
         run,
+        execution,
         "policy-denied",
-        "Claude Code violated the sealed model or tool policy.",
+        summary,
+        undefined,
         initialStartedAt,
-        execution.completedAt,
-        true,
+      );
+    }
+    if (
+      accountingEnvelopes.some((candidate) =>
+        violatesSealedToolPolicy(candidate, run),
+      )
+    ) {
+      const summary = "Claude Code violated the sealed model or tool policy.";
+      return refusedNativeRunReceipt(
+        run,
+        execution,
+        "policy-denied",
+        summary,
+        undefined,
+        initialStartedAt,
       );
     }
     let report = (
@@ -733,17 +816,7 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         );
         if (correction.status === "failed") return correction.receipt;
         if (correction.status === "exited-nonzero") {
-          return failedNativeRunReceipt(
-            run,
-            "provider-failed",
-            "GLM did not complete its bounded schema correction.",
-            initialStartedAt,
-            correction.completedAt,
-            true,
-            correction.checkpoint,
-            correction.diagnostic,
-            correction.failureStage,
-          );
+          return nonzeroReceipt(run, correction, initialStartedAt);
         }
         const rawCorrection = glmResultSchema.safeParse(
           parseJson(correction.stdout),
@@ -773,14 +846,14 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
       }
     }
     if (!report.success) {
-      return failedNativeRunReceipt(
+      const summary = `Claude Code returned an unsupported Agent Report (${reportIssueSummary(report.error)}).`;
+      return refusedNativeRunReceipt(
         run,
+        execution,
         "invalid-output",
-        `Claude Code returned an unsupported Agent Report (${reportIssueSummary(report.error)}).`,
-        initialStartedAt,
-        execution.completedAt,
-        true,
+        summary,
         execution.checkpoint,
+        initialStartedAt,
       );
     }
     const usedModels = accountingEnvelopes.flatMap((candidate) =>

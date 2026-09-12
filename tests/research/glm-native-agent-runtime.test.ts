@@ -67,6 +67,7 @@ describe("GLM Native Agent Runtime", () => {
       directory,
       "corrected-validation-result.txt",
     );
+    const correctionErrorPath = join(directory, "correction-error");
     await writeFile(providerResultPath, missingClosuresResult, "utf8");
     await writeFile(correctedProviderResultPath, validCandidateResult, "utf8");
     await writeFile(validationResultPath, malformedValidation, "utf8");
@@ -181,6 +182,10 @@ if [ "$is_validation" -eq 1 ]; then
 fi
 case "$prompt:$is_validation" in
   *'The prior response was invalid'*:0)
+    if [ -f '${correctionErrorPath}' ]; then
+      node -e 'const body={type:"result",subtype:"success",is_error:true,terminal_reason:"api_error",api_error_status:429,result:"API Error: Usage limit reached for 5 hour.",session_id:process.argv[1],duration_ms:1000,num_turns:0,permission_denials:[],usage:{server_tool_use:{web_search_requests:0,web_fetch_requests:0}},modelUsage:{}};process.stdout.write(JSON.stringify(body));' "$session"
+      exit 1
+    fi
     result_path='${correctedProviderResultPath}'
     subagents=0
     ;;
@@ -366,6 +371,19 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
     ).resolves.toMatchObject({
       nativeRuns: [{ terminal: "invalid-output" }],
     });
+    await writeFile(correctionErrorPath, "quota", "utf8");
+    await expect(
+      campaigns.conduct({
+        ...input,
+        campaignId: "campaign-glm-correction-quota-1",
+      }),
+    ).resolves.toMatchObject({ status: "incomplete" });
+    await expect(
+      campaigns.inspect({ campaignId: "campaign-glm-correction-quota-1" }),
+    ).resolves.toMatchObject({
+      nativeRuns: [{ terminal: "provider-quota-exhausted" }],
+    });
+    await rm(correctionErrorPath);
     await writeFile(providerResultPath, ambiguousStop, "utf8");
     await writeFile(correctedProviderResultPath, validStop, "utf8");
     await expect(

@@ -680,6 +680,8 @@ export const nativeRunReceiptSchema = z.discriminatedUnion("terminal", [
     ...agentRunReceiptShape,
     terminal: z.enum([
       "provider-failed",
+      "provider-unauthenticated",
+      "provider-quota-exhausted",
       "budget-exhausted",
       "policy-denied",
       "invalid-output",
@@ -701,6 +703,8 @@ export const validationRunReceiptSchema = z.discriminatedUnion("terminal", [
     ...agentRunReceiptShape,
     terminal: z.enum([
       "provider-failed",
+      "provider-unauthenticated",
+      "provider-quota-exhausted",
       "budget-exhausted",
       "policy-denied",
       "invalid-output",

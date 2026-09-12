@@ -7,4 +7,4 @@ supersedes: 0051
 
 Campaign Inputから推定US dollar cost ceilingを除去する。providerが返した`estimatedCostUsd`はNative Receiptへ観測値として保存するが、Harnessは`$25`等の閾値でResearch、Human ReviewまたはIndependent Validationを停止しない。停止の外部hard limitはNative Run数とwall timeだけとし、各Research Grantには独立したwall-time allowanceを与える。
 
-Provider自身がquotaまたはbudget errorを返した場合は、そのterminal分類を失わず`budget-exhausted`として記録する。これはHarnessがcost ceilingを設定したことを意味しない。代償としてHarness単独では請求額の上限を保証しないため、costは運用telemetryとprovider側controlで監視する。high-impact recallを下げるcost最適化は、baseline後のablationでのみ採用する。
+Provider自身がbudget errorを返した場合は、そのterminal分類を失わず`budget-exhausted`として記録する。usage limitは[ADR 0133](0133-separate-provider-account-conditions-from-provider-defects.md)に従い`provider-quota-exhausted`として区別する。これはHarnessがcost ceilingを設定したことを意味しない。代償としてHarness単独では請求額の上限を保証しないため、costは運用telemetryとprovider側controlで監視する。high-impact recallを下げるcost最適化は、baseline後のablationでのみ採用する。
