@@ -58,7 +58,7 @@ describe("Grok Native Agent Runtime", () => {
     ).toThrow("Research prompt text does not match its sealed digest");
   });
 
-  it("returns an agent-led report from Grok Build in a pinned runsc sandbox", async () => {
+  it("accepts a trailing response-text report when structured output is stale", async () => {
     const directory = await mkdtemp(join(tmpdir(), "grok-native-runtime-"));
     temporaryDirectories.push(directory);
     const sourceDirectory = join(directory, "source");
@@ -216,7 +216,7 @@ if [ -f "$0.count" ]; then
 fi
 printf '%s' "$invocation" > "$0.count"
 if [ "$invocation" -eq 1 ]; then
-  printf '{"text":"","stopReason":"end_turn","sessionId":"%s","requestId":"request-1","usage":{"input_tokens":7000,"cache_read_input_tokens":1000,"cache_creation_input_tokens":500,"output_tokens":1250,"reasoning_tokens":400,"total_tokens":9750},"num_turns":7,"total_cost_usd":0.5,"modelUsage":{"grok-4.6-build":{"inputTokens":7000,"outputTokens":1250,"cacheReadInputTokens":1000,"cacheCreationInputTokens":500,"modelCalls":7,"costUSD":0.5}},"structuredOutput":{"schemaVersion":1,"candidates":[{"candidateId":"candidate-grok-stored-xss-1","attackerPremise":"An unauthenticated visitor can submit the public form.","brokenSecurityProperty":"Persisted attacker input must be inert in privileged output.","claim":"A public form value is stored and rendered to an administrator without escaping.","evidence":[{"path":"public/save.php","location":"save_value:44","observation":"Persists the public value."}]}],"decision":{"kind":"continue","reason":"A separate source-bound frontier remains.","nextActions":[{"question":"Does the adjacent handler cross another trust boundary?","sourcePointers":["public/next.php"]}]}}}' "$active_session"
+  printf '{"text":"Research complete. {\\"schemaVersion\\":1,\\"candidates\\":[{\\"candidateId\\":\\"candidate-grok-stored-xss-1\\",\\"attackerPremise\\":\\"An unauthenticated visitor can submit the public form.\\",\\"brokenSecurityProperty\\":\\"Persisted attacker input must be inert in privileged output.\\",\\"claim\\":\\"A public form value is stored and rendered to an administrator without escaping.\\",\\"evidence\\":[{\\"path\\":\\"public/save.php\\",\\"location\\":\\"save_value:44\\",\\"observation\\":\\"Persists the public value.\\"}]}],\\"decision\\":{\\"kind\\":\\"continue\\",\\"reason\\":\\"A separate source-bound frontier remains.\\",\\"nextActions\\":[{\\"question\\":\\"Does the adjacent handler cross another trust boundary?\\",\\"sourcePointers\\":[\\"public/next.php\\"]}]}}","stopReason":"end_turn","sessionId":"%s","requestId":"request-1","usage":{"input_tokens":7000,"cache_read_input_tokens":1000,"cache_creation_input_tokens":500,"output_tokens":1250,"reasoning_tokens":400,"total_tokens":9750},"num_turns":7,"total_cost_usd":0.5,"modelUsage":{"grok-4.6-build":{"inputTokens":7000,"outputTokens":1250,"cacheReadInputTokens":1000,"cacheCreationInputTokens":500,"modelCalls":7,"costUSD":0.5}},"structuredOutput":{"schemaVersion":2}}' "$active_session"
   exit 0
 fi
 if [ "$invocation" -eq 2 ]; then

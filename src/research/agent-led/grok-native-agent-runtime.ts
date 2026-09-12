@@ -57,6 +57,41 @@ function parseJson(value: string): unknown {
   }
 }
 
+function parseJsonOrTrailingObject(value: string): unknown {
+  const whole = parseJson(value);
+  if (whole !== undefined) return whole;
+
+  const text = value.trim();
+  if (!text.endsWith("}")) return undefined;
+  let depth = 0;
+  let insideString = false;
+  for (let index = text.length - 1; index >= 0; index -= 1) {
+    const character = text[index];
+    if (character === '"') {
+      let precedingBackslashes = 0;
+      for (
+        let escapeIndex = index - 1;
+        escapeIndex >= 0 && text[escapeIndex] === "\\";
+        escapeIndex -= 1
+      ) {
+        precedingBackslashes += 1;
+      }
+      if (precedingBackslashes % 2 === 0) insideString = !insideString;
+      continue;
+    }
+    if (insideString) continue;
+    if (character === "}") {
+      depth += 1;
+      continue;
+    }
+    if (character !== "{") continue;
+    depth -= 1;
+    if (depth === 0) return parseJson(text.slice(index));
+    if (depth < 0) return undefined;
+  }
+  return undefined;
+}
+
 function grokPrompt(run: SealedAgentRun, sandboxPrompt: string): string {
   const reportSchema =
     run.kind === "sealed-native-research-run"
@@ -220,15 +255,16 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         true,
       );
     }
-    const reportValue =
-      envelope.structuredOutput === undefined
-        ? parseJson(envelope.text)
-        : envelope.structuredOutput;
-    const report = (
+    const reportSchema =
       run.kind === "sealed-native-research-run"
         ? researchReportSchema
-        : validationReportSchema
-    ).safeParse(reportValue);
+        : validationReportSchema;
+    const textReport = reportSchema.safeParse(
+      parseJsonOrTrailingObject(envelope.text),
+    );
+    const report = textReport.success
+      ? textReport
+      : reportSchema.safeParse(envelope.structuredOutput);
     if (!report.success) {
       return failedNativeRunReceipt(
         run,
