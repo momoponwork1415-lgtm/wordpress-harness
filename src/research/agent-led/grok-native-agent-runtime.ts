@@ -7,6 +7,7 @@ import {
 import {
   failedNativeRunReceipt,
   GvisorAgentSandbox,
+  refusedNativeRunReceipt,
   type GvisorAgentRuntimeOptions,
 } from "./gvisor-agent-sandbox.js";
 import {
@@ -216,18 +217,31 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
       parseJson(execution.stdout),
     );
     if (!decodedEnvelope.success) {
-      return failedNativeRunReceipt(
+      const summary = "Grok Build returned an unsupported result envelope.";
+      return refusedNativeRunReceipt(
         run,
+        execution,
         "invalid-output",
-        "Grok Build returned an unsupported result envelope.",
-        execution.startedAt,
-        execution.completedAt,
-        true,
+        summary,
         execution.checkpoint,
       );
     }
     const envelope = decodedEnvelope.data;
     const modelUsage = envelope.modelUsage["grok-4.6-build"];
+    if (
+      run.kind === "sealed-native-research-run" &&
+      (execution.checkpoint === undefined ||
+        envelope.sessionId !== execution.checkpoint.sessionId)
+    ) {
+      const summary = "Grok Build returned an unbound Research session.";
+      return refusedNativeRunReceipt(
+        run,
+        execution,
+        "policy-denied",
+        summary,
+        undefined,
+      );
+    }
     if (
       Object.keys(envelope.modelUsage).length !== 1 ||
       modelUsage === undefined ||
@@ -241,18 +255,15 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         modelUsage.inputTokens +
           modelUsage.cacheReadInputTokens +
           modelUsage.cacheCreationInputTokens +
-          modelUsage.outputTokens ||
-      (run.kind === "sealed-native-research-run" &&
-        (execution.checkpoint === undefined ||
-          envelope.sessionId !== execution.checkpoint.sessionId))
+          modelUsage.outputTokens
     ) {
-      return failedNativeRunReceipt(
+      const summary = "Grok Build violated the sealed model or usage binding.";
+      return refusedNativeRunReceipt(
         run,
+        execution,
         "policy-denied",
-        "Grok Build violated the sealed model or usage binding.",
-        execution.startedAt,
-        execution.completedAt,
-        true,
+        summary,
+        undefined,
       );
     }
     const reportSchema =
@@ -266,13 +277,12 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
       ? textReport
       : reportSchema.safeParse(envelope.structuredOutput);
     if (!report.success) {
-      return failedNativeRunReceipt(
+      const summary = "Grok Build returned an unsupported Agent Report.";
+      return refusedNativeRunReceipt(
         run,
+        execution,
         "invalid-output",
-        "Grok Build returned an unsupported Agent Report.",
-        execution.startedAt,
-        execution.completedAt,
-        true,
+        summary,
         execution.checkpoint,
       );
     }

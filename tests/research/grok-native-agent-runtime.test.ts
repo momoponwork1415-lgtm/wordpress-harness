@@ -483,4 +483,187 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
     });
     campaigns.close();
   });
+
+  it("records a broken usage binding as an auditable policy denial", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "grok-native-denied-"));
+    temporaryDirectories.push(directory);
+    const sourceDirectory = join(directory, "source");
+    const providerConfigDirectory = join(directory, "provider-config");
+    const scratchRootDirectory = join(directory, "scratch");
+    await Promise.all([
+      mkdir(sourceDirectory),
+      mkdir(providerConfigDirectory),
+      mkdir(scratchRootDirectory),
+    ]);
+    await writeFile(join(sourceDirectory, "plugin.php"), "<?php\n", "utf8");
+    await Promise.all([
+      writeFile(
+        join(providerConfigDirectory, "auth.json"),
+        '{"token":"grok-denied-secret"}',
+        { encoding: "utf8", mode: 0o600 },
+      ),
+      writeFile(join(providerConfigDirectory, "agent_id"), "agent-1", {
+        encoding: "utf8",
+        mode: 0o600,
+      }),
+    ]);
+    const sourceTreeDigest = canonicalDigest({
+      kind: "canonical-file-manifest",
+      schemaVersion: 1,
+      entries: [
+        {
+          path: "plugin.php",
+          digest: `sha256:${createHash("sha256").update("<?php\n").digest("hex")}`,
+          size: 6,
+        },
+      ],
+    });
+    const dockerExecutablePath = join(directory, "fake-docker");
+    await writeFile(
+      dockerExecutablePath,
+      `#!/bin/sh
+set -eu
+if [ "\${1:-}" = "info" ]; then
+  printf '%s' '{"runsc":{"path":"/usr/bin/runsc"}}'
+  exit 0
+fi
+if [ "\${1:-}" = "image" ]; then exit 0; fi
+is_version_probe=0
+provider_mount=''
+scratch=''
+session=''
+previous=''
+for argument in "$@"; do
+  if [ "$previous" = "--session-id" ]; then session="$argument"; fi
+  if [ "$previous" = "--resume" ]; then session="$argument"; fi
+  [ "$argument" != "--version" ] || is_version_probe=1
+  case "$argument" in
+    *:/provider:rw) provider_mount="\${argument%:/provider:rw}" ;;
+    *:/workspace/research:rw) scratch="\${argument%:/workspace/research:rw}" ;;
+  esac
+  previous="$argument"
+done
+if [ "$is_version_probe" -eq 1 ]; then
+  printf '%s\n' 'grok 1.0.13 (Grok Build)'
+  exit 0
+fi
+[ -n "$session" ] || exit 100
+printf '%s' '{"checkpoint":true}' > "$provider_mount/session-$session.jsonl"
+printf '%s' 'durable research notes' > "$scratch/state.md"
+printf '{"text":"{\\"schemaVersion\\":1,\\"candidates\\":[],\\"decision\\":{\\"kind\\":\\"stop\\",\\"basis\\":\\"No actionable frontier remains.\\"}}","stopReason":"end_turn","sessionId":"%s","requestId":"request-1","usage":{"input_tokens":3000,"cache_read_input_tokens":500,"cache_creation_input_tokens":250,"output_tokens":500,"reasoning_tokens":200,"total_tokens":99},"num_turns":3,"total_cost_usd":0.3,"modelUsage":{"grok-4.6-build":{"inputTokens":3000,"outputTokens":500,"cacheReadInputTokens":500,"cacheCreationInputTokens":250,"modelCalls":3,"costUSD":0.3}}}' "$session"
+`,
+      { encoding: "utf8", mode: 0o700 },
+    );
+    await chmod(dockerExecutablePath, 0o700);
+
+    const researchPrompt = "Audit the immutable plugin source.";
+    const validationPrompt = "Independently validate one source claim.";
+    const input: CampaignInput = {
+      kind: "agent-led-campaign",
+      schemaVersion: 1,
+      campaignId: "campaign-grok-usage-denied-1",
+      targetSnapshot: {
+        id: "target-plugin-1.0.0",
+        pluginSlug: "target-plugin",
+        version: "1.0.0",
+        digest:
+          "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
+      },
+      promptSet: {
+        id: "agent-led-research-v1",
+        digest: promptTextDigest(researchPrompt),
+      },
+      validationPromptSet: {
+        id: "independent-validation-v1",
+        digest: promptTextDigest(validationPrompt),
+      },
+      agentRuntimeProfile: {
+        id: "grok-build-native-v1",
+        kind: "grok-build-native/v1",
+        executableVersion: "1.0.13",
+        model: "grok-4.6",
+        effort: "xhigh",
+        digest:
+          "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      },
+      permissionProfile: {
+        id: "gvisor-source-research-v1",
+        digest:
+          "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      },
+      budgetEnvelope: {
+        id: "agent-led-budget-v1",
+        maxNativeRuns: 1,
+        maxWallTimeMs: 600_000,
+        researchGrantWallTimeMs: 600_000,
+        digest:
+          "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      },
+    };
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "agent-led.sqlite"),
+      runtime: openGrokNativeAgentRuntime({
+        dockerExecutablePath,
+        image:
+          "sha256:0390e43156357c08aab4ddc3f002ac11763789e90f0fac09f2fa2e73b8105267",
+        sourceDirectory,
+        targetSnapshotDigest: input.targetSnapshot.digest,
+        sourceTree: input.targetSnapshot.sourceTree,
+        providerConfigDirectory,
+        scratchRootDirectory,
+        promptSet: { digest: input.promptSet.digest, text: researchPrompt },
+        validationPromptSet: {
+          digest: input.validationPromptSet.digest,
+          text: validationPrompt,
+        },
+        permissionProfileDigest: input.permissionProfile.digest,
+        maxOutputBytes: 1_000_000,
+      }),
+    });
+
+    await expect(campaigns.conduct(input)).resolves.toMatchObject({
+      status: "incomplete",
+    });
+    const inspection = await campaigns.inspect({
+      campaignId: input.campaignId,
+    });
+    expect(inspection).toMatchObject({
+      nativeRuns: [
+        {
+          terminal: "policy-denied",
+          failure: {
+            summary: "Grok Build violated the sealed model or usage binding.",
+            stage: "runtime-adapter",
+            diagnostic: { kind: "agent-run-diagnostic" },
+          },
+        },
+      ],
+    });
+    const nativeRun = inspection.nativeRuns[0];
+    if (
+      nativeRun === undefined ||
+      nativeRun.terminal === "completed" ||
+      nativeRun.failure.diagnostic === undefined
+    ) {
+      throw new Error("Expected a policy denial with a private diagnostic");
+    }
+    const diagnostic = await readFile(
+      join(
+        scratchRootDirectory,
+        "agent-diagnostics",
+        nativeRun.failure.diagnostic.diagnosticId,
+        "diagnostic.json",
+      ),
+      "utf8",
+    );
+    expect(diagnostic).not.toContain("grok-denied-secret");
+    expect(JSON.parse(diagnostic)).toMatchObject({
+      stage: "runtime-adapter",
+      error: {
+        message: "Grok Build violated the sealed model or usage binding.",
+      },
+    });
+    campaigns.close();
+  });
 });
