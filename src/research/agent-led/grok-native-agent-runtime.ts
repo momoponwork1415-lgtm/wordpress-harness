@@ -50,6 +50,16 @@ const grokResultSchema = z.object({
   structuredOutput: z.unknown().optional(),
 });
 
+const grokManagedConfig = `[subagents.models]
+general-purpose = "grok-4.6"
+explore = "grok-4.6"
+plan = "grok-4.6"
+`;
+
+const grokRequirements = `[models]
+allowed_models = ["grok-4.6"]
+`;
+
 function parseJson(value: string): unknown {
   try {
     return JSON.parse(value) as unknown;
@@ -151,6 +161,18 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         "--env=GROK_SUBAGENTS_MAX_DEPTH=1",
         "--env=GROK_SUBAGENT_LIMIT_BEHAVIOR=fail",
         "--env=HOME=/tmp/home",
+      ],
+      supportFiles: [
+        {
+          filename: "grok-managed-config.toml",
+          text: grokManagedConfig,
+          containerMountPath: "/etc/grok/managed_config.toml",
+        },
+        {
+          filename: "grok-requirements.toml",
+          text: grokRequirements,
+          containerMountPath: "/etc/grok/requirements.toml",
+        },
       ],
       ephemeralProviderCredentialFiles: ["auth.json", "agent_id"],
       ephemeralProviderHomeMount: { path: "/provider", mode: "rw" },

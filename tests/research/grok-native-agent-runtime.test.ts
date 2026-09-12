@@ -139,6 +139,8 @@ volume_count=0
 is_version_probe=0
 scratch=''
 provider_mount=''
+managed_config=''
+requirements_config=''
 new_session=''
 resume_session=''
 previous=''
@@ -162,6 +164,8 @@ for argument in "$@"; do
   case "$argument" in
     *:/provider:rw) provider_mount="\${argument%:/provider:rw}" ;;
     *:/workspace/dependencies/wordpress:ro) has_dependency_mount=1 ;;
+    *:/etc/grok/managed_config.toml:ro) managed_config="\${argument%:/etc/grok/managed_config.toml:ro}" ;;
+    *:/etc/grok/requirements.toml:ro) requirements_config="\${argument%:/etc/grok/requirements.toml:ro}" ;;
   esac
   [ "$argument" != "--version" ] || is_version_probe=1
   [ "$argument" != "--no-subagents" ] || exit 91
@@ -172,8 +176,14 @@ for argument in "$@"; do
 done
 [ "$has_runsc" -eq 1 ] || exit 90
 [ "$has_host_user" -eq 1 ] || exit 94
-[ "$volume_count" -eq 4 ] || exit 100
+[ "$volume_count" -eq 6 ] || exit 100
 [ "$has_dependency_mount" -eq 1 ] || exit 109
+[ -n "$managed_config" ] || exit 115
+grep -F 'general-purpose = "grok-4.6"' "$managed_config" >/dev/null
+grep -F 'explore = "grok-4.6"' "$managed_config" >/dev/null
+grep -F 'plan = "grok-4.6"' "$managed_config" >/dev/null
+[ -n "$requirements_config" ] || exit 116
+grep -F 'allowed_models = ["grok-4.6"]' "$requirements_config" >/dev/null
 if [ "$is_version_probe" -eq 1 ]; then
   printf '%s\n' 'grok 1.0.13 (Grok Build)'
   exit 0
