@@ -1,6 +1,6 @@
 # Codebase Guide
 
-Status: current implementation map, 2026-09-10
+Status: current implementation map, 2026-09-12
 
 現在動くproduction seam、owner、failure semantics、Behavior Testを示す。設計理由は[ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)、[ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)、[ADR 0131](adr/0131-place-human-reviews-between-research-and-validation.md)、[ADR 0132](adr/0132-treat-provider-cost-as-observational-telemetry.md)、research policyは[Research Design](RESEARCH-DESIGN.md)を参照する。
 
@@ -24,7 +24,7 @@ Status: current implementation map, 2026-09-10
 | Codex Daybreak native runtime | exact image / CLI version、managed configuration、read-only source readerとnative subagent上限をimplemented | prospective Campaignの評価結果はResearch History / Candidate Poolへ未接続 |
 | Human Candidate Review + fresh Independent Validation | exact Candidate setのhuman admissionとfresh Validationをimplemented。known-positive corpusは4/4で`source-validated` | GLM malformed-output補正のsecond model executionがsingle-fresh-run policyと未整合（#144） |
 | Finding / Coverage / failure record | implemented | cross-context Coverage Receipt adapterは未実装 |
-| Human OS Dynamic Reproduction / append-only records / external gate | Finding-bound Recipeのsingle replay、pinned-image runsc lab、Private Evidence CASまでimplemented。TranslatePress ATOをfresh labでruntime-confirmed | ResearchからPrivate Recipe保存への自動handoffとcompanion plugin / site-content fixture resolverは未実装 |
+| Human OS Dynamic Reproduction / append-only records / external gate | Finding-bound Recipeのsingle replay、pinned-image runsc lab、Private Evidence CASまでimplemented。TranslatePress ATOをfresh labでruntime-confirmed | Runtimeはcompanion pluginとordinary configurationを受け取れるが、それを供給するresolverとResearchからPrivate Recipe保存への自動handoffは未実装 |
 | actual external submission | intentionally absent | 人間が最後のSubmitを行う |
 
 `implemented`はpublic seamからdeterministic Behavior Testを通る意味である。実provider、実Target、prospective recallの実証とは区別する。
@@ -143,9 +143,9 @@ known-positive実測のstage別内訳は[2026-09-08 Native Agent evaluation](kno
 
 **Owned state:** Finding、AI Reproduction Record、Human Verification Record、Draft、AuthorizationをSQLite v3 eventsへ保存する。exact experiment script、HTTP / browser output、screenshot、runtime logはGit外のcontent-addressed Private Evidenceへ保存し、public Recordにはdigest refだけを置く。
 
-**Invariants:** Target source treeをFindingのcanonical digestへ再照合してから、immutable imageのWordPress / MariaDB / WP-CLI / experiment workerをinternal network上のfresh runsc labだけで動かす。Dynamic Reproduction Recipeはversion、body digest、Finding ID、Target Snapshot digestへbindし、Private resolverからだけ取得する。Recipeを一度だけ実行し、attack script自身がmatched preconditions、completed recipe、observed effectを構造化して返した3条件がすべて真の時だけ`runtime-confirmed`にする。動的検証内でsource再探索、AI review、patched controlまたは追加experimentを行わず、効果未観測、Recipe / fixture不足、曖昧な出力または失敗は`disproved`でなく`incomplete`にする。conclusive outcomeはprivate runtime evidenceと観測済みcleanupも必須にする。runtimeとhuman verificationは異なるfresh environment identityを持つ。どの結果でもFindingは削除しない。Draft revisionは連続し、authorizationはexact Draft digestとdestinationへbindする。
+**Invariants:** Target source treeをFindingのcanonical digestへ再照合してから、immutable imageのWordPress / MariaDB / WP-CLI / experiment workerをinternal network上のfresh runsc labだけで動かす。Targetが単体で動かないplugin（WooCommerce前提のadd-on等）は、FindingにbindされたDependency Snapshotからcompanion pluginを解決し、そのcanonical source treeを必ず再照合してTargetより先にinstall / activateする。site ownerが管理画面で行う程度のordinary configurationはFinding ID、Target digest、Dependency Snapshot集合へbindしたversioned Dynamic Reproduction Lab Setupとして全plugin有効化後に一度`wp eval`で適用し、attackerへordinary構成が与えない権限を与えない。Dynamic Reproduction Recipeはversion、body digest、Finding ID、Target Snapshot digestへbindし、Private resolverからだけ取得する。Recipeを一度だけ実行し、attack script自身がmatched preconditions、completed recipe、observed effectを構造化して返した3条件がすべて真の時だけ`runtime-confirmed`にする。動的検証内でsource再探索、AI review、patched controlまたは追加experimentを行わず、効果未観測、Recipe / fixture不足、曖昧な出力または失敗は`disproved`でなく`incomplete`にする。conclusive outcomeはprivate runtime evidenceと観測済みcleanupも必須にする。runtimeとhuman verificationは異なるfresh environment identityを持つ。どの結果でもFindingは削除しない。Draft revisionは連続し、authorizationはexact Draft digestとdestinationへbindする。
 
-**Failure semantics:** source / runsc / image mismatchはlabを起動しない。provision、Recipe解決、attack実行、ambiguous observation、cleanupまたはPrivate Evidence failureは`incomplete`としてappendし、途中のprivate transcriptを可能な範囲で残す。Facebook、PayPal等の外部sandbox identityが必要なら`external-dependency-required`のEvidence Requestとしてservice、human setup判断、最小権限、検証目標を残し、`disproved`にしない。Finding不在、Draft不在、human confirmation不在、exact authorization不在はexternal actionを拒否する。Harnessは送信しない。
+**Failure semantics:** Target / Dependencyのsource / runsc / image mismatchはlabを起動しない。provision、Recipe解決、attack実行、ambiguous observation、cleanupまたはPrivate Evidence failureは`incomplete`としてappendし、途中のprivate transcriptを可能な範囲で残す。Facebook、PayPal等の外部sandbox identityが必要なら`external-dependency-required`のEvidence Requestとしてservice、human setup判断、最小権限、検証目標を残し、`disproved`にしない。Finding不在、Draft不在、human confirmation不在、exact authorization不在はexternal actionを拒否する。Harnessは送信しない。
 
 **Code / Tests:** [`src/human-os`](../src/human-os) · [`dynamic-ai-reproduction.test.ts`](../tests/human-os/dynamic-ai-reproduction.test.ts) · [`gvisor-wordpress-dynamic-reproduction.test.ts`](../tests/human-os/gvisor-wordpress-dynamic-reproduction.test.ts) · [`recipe-dynamic-reproduction-agent.test.ts`](../tests/human-os/recipe-dynamic-reproduction-agent.test.ts) · [`agent-led-human-os.test.ts`](../tests/human-os/agent-led-human-os.test.ts)
 
