@@ -468,6 +468,7 @@ function retryAuthorized(
 
 function hasRetryableResearchRun(view: ResearchCampaignView): boolean {
   const latest = view.nativeRuns.at(-1);
+  const previous = view.nativeRuns.at(-2);
   const isLegacyRetryableSandboxFailure =
     latest?.terminal === "policy-denied" &&
     latest.failure.stage === "sandbox-preflight" &&
@@ -477,7 +478,9 @@ function hasRetryableResearchRun(view: ResearchCampaignView): boolean {
     view.interruption === undefined &&
     latest !== undefined &&
     latest.terminal !== "completed" &&
-    ((latest.terminal === "provider-failed" &&
+    (previous === undefined || previous.terminal === "completed") &&
+    (((latest.terminal === "provider-failed" ||
+      latest.terminal === "provider-quota-exhausted") &&
       latest.checkpoint !== undefined) ||
       latest.failure.retryable === true ||
       isLegacyRetryableSandboxFailure)

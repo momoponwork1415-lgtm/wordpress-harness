@@ -93,7 +93,8 @@ ResearchはTarget選定、source acquisition policy、runtime exploit verificati
 - Native Agent RuntimeはRootを含む同時active agentを最大4体に制限し、Rootだけが最大3体のsubagentを起動する。実数、役割、再投入とwaveはRootが決める。
 - SQLiやStored XSSをRCEへ伸ばさないことだけで未完成扱いしない。
 - provider、Budget、tool、source、permission、schema failureをno-findingまたはsafeへ丸めない。
-- Agent実行前に固定runscまたはimageが一時的に利用不能だったReceiptだけは、runtimeの明示したretryable markerに基づき同じsealed Grantを通常の再実行で一回ずつ再試行できる。Target / Dependency integrity failure等のpolicy denialは再試行しない。
+- Agent実行前に固定runscまたはimageが一時的に利用不能だったReceiptと、model workが発生しないままproviderへ認証できなかったReceiptだけは、runtimeの明示したretryable markerに基づき同じsealed Grantを通常の再実行で一度だけ再試行できる。再試行後の連続failureは自動で繰り返さない。Target / Dependency integrity failure等のpolicy denialは再試行しない。
+- provider accountのusage limitは`provider-quota-exhausted`として記録し、retryable markerを付けない。reset時刻はdomain stateにせずAgent Run Diagnosticへ残す。
 - provider報告costはReceiptへ保存するがHarnessの停止条件にしない。
 
 ## Terms not used

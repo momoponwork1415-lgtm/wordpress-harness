@@ -356,6 +356,115 @@ describe("ResearchCampaigns", () => {
     campaigns.close();
   });
 
+  it("resumes a Campaign whose provider authentication failed before any model work", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "research-unauthenticated-"),
+    );
+    temporaryDirectories.push(directory);
+    const unauthenticatedInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-unauthenticated-1",
+      budgetEnvelope: {
+        ...input.budgetEnvelope,
+        maxNativeRuns: 3,
+      },
+    };
+    let invocations = 0;
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "agent-led.sqlite"),
+      runtime: {
+        async execute(run) {
+          invocations += 1;
+          return {
+            schemaVersion: 1,
+            runId: run.runId,
+            runtimeProfileDigest: run.agentRuntimeProfile.digest,
+            terminal: "provider-unauthenticated",
+            startedAt: "2026-09-07T02:00:00.000Z",
+            completedAt: "2026-09-07T02:00:01.000Z",
+            usage: { wallTimeMs: 1_000 },
+            activity: { subagents: null, tools: null },
+            isolation: gvisorIsolation,
+            failure: {
+              summary: "Claude Code could not authenticate with the provider.",
+              stage: "provider-execution",
+              retryable: true,
+            },
+          };
+        },
+      },
+    });
+
+    await expect(
+      campaigns.conduct(unauthenticatedInput),
+    ).resolves.toMatchObject({ status: "incomplete" });
+    await expect(
+      campaigns.conduct(unauthenticatedInput),
+    ).resolves.toMatchObject({ status: "incomplete" });
+    await expect(
+      campaigns.conduct(unauthenticatedInput),
+    ).resolves.toMatchObject({ status: "incomplete" });
+    expect(invocations).toBe(2);
+    campaigns.close();
+  });
+
+  it("does not repeat a Research Grant into an exhausted provider quota", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "research-quota-"));
+    temporaryDirectories.push(directory);
+    const quotaInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-quota-exhausted-1",
+      budgetEnvelope: {
+        ...input.budgetEnvelope,
+        maxNativeRuns: 2,
+      },
+    };
+    let invocations = 0;
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "agent-led.sqlite"),
+      runtime: {
+        async execute(run) {
+          invocations += 1;
+          return {
+            schemaVersion: 1,
+            runId: run.runId,
+            runtimeProfileDigest: run.agentRuntimeProfile.digest,
+            terminal: "provider-quota-exhausted",
+            startedAt: "2026-09-07T02:00:00.000Z",
+            completedAt: "2026-09-07T02:20:00.000Z",
+            usage: { wallTimeMs: 1_200_000, estimatedCostUsd: 6.5 },
+            activity: { subagents: null, tools: null },
+            isolation: gvisorIsolation,
+            failure: {
+              summary: "Claude Code reached the provider usage limit.",
+              stage: "provider-execution",
+            },
+          };
+        },
+      },
+    });
+
+    await expect(campaigns.conduct(quotaInput)).resolves.toMatchObject({
+      status: "incomplete",
+    });
+    await expect(campaigns.conduct(quotaInput)).resolves.toMatchObject({
+      status: "incomplete",
+    });
+    expect(invocations).toBe(1);
+    await expect(
+      campaigns.inspect({ campaignId: "campaign-quota-exhausted-1" }),
+    ).resolves.toMatchObject({
+      status: "incomplete",
+      nativeRuns: [
+        {
+          terminal: "provider-quota-exhausted",
+          usage: { estimatedCostUsd: 6.5 },
+        },
+      ],
+    });
+    campaigns.close();
+  });
+
   it("records invalid provider output as an incomplete Campaign", async () => {
     const directory = await mkdtemp(join(tmpdir(), "research-invalid-output-"));
     temporaryDirectories.push(directory);
