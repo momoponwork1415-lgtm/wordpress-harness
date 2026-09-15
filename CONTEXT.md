@@ -1,104 +1,52 @@
-# Research Context
+# Research — 調査と独立検証
 
-Researchは一つのimmutable Target Snapshotをagent-ledに調査し、fresh Independent ValidationだけからFindingを作り、FindingとCoverageを別々に記録するBounded Contextである。
+固定したソースを調査し、独立検証を通った主張をFindingとして残す領域。**発見した内容と、調査がどこまで終わったかを別々に記録する。**
 
-## Boundary
+## 担当する範囲
 
-ResearchはTarget選定、source acquisition policy、runtime exploit verification、提出先または外部送信を所有しない。Target Intelligenceがadmitしたversioned Campaign Inputを受け、Human OSへsource-validated Findingだけを渡す。
+Target Intelligenceが受け渡した入力を受け取り、調査、継続の人間判断、候補の人間審査、独立検証、結果の記録を担当する。対象選定、ソースの取得方針、実環境での再現、提出先の決定、外部送信は担当しない。
 
-## Ubiquitous language
+## 用語
 
-**Campaign**
-: 一つのsealed Target、Dependency群、Prompt、Agent Runtime、Permission、Budgetを持つ継続可能な調査単位。
+英語名はコードと照合するための正式な名前。説明はこの領域での意味を示す。
 
-**Campaign Input**
-: Campaign identity、Target / Dependency Snapshots、Prompt、Agent Runtime、Permission、Budgetと任意のCampaign Threat Contextを持つversioned command。同じCampaign IDへ異なるinputを使えない。
+| 用語 | 意味 |
+| --- | --- |
+| **Campaign** | 対象、依存ソース、指示文、実行方式、権限、予算を固定した、再開可能な一件の調査。 |
+| **Campaign Input** | 調査を開始するための版付き入力。同じ調査IDに異なる入力は使えない。 |
+| **Campaign Threat Context** | 対象選定時に把握した通常構成、攻撃者の立場、守る性質、信頼の境界、重要な状態変化、依存関係、不確実性。調査の判断材料であり、想定外の発見を禁止しない。 |
+| **Target Snapshot** | プラグインの識別情報、版、ファイル一覧のハッシュで固定した読み取り専用ソース。調査中に更新しない。 |
+| **Dependency Snapshot** | WordPress本体などの挙動を確認するため、識別情報、版、ファイル一覧のハッシュで固定した参照用ソース。それ自体は調査対象にしない。 |
+| **Native Agent Runtime** | 固定した条件で提供元のエージェントを実行し、結果と失敗の種別を返すModule。研究上の判断は所有しない。 |
+| **Root Agent** | 対象全体を見て、仮説、読む順序、補助エージェント、候補を決め、継続や停止を提案するAI。 |
+| **Discovery** | ソースに基づく仮説、候補、保留中の手がかりを更新する探索部分。継続提案で次の実行を自動開始せず、途中に独立検証を割り込ませない。 |
+| **Research Grant** | 一回の調査実行に与える時間枠。最大1時間で、終了時に報告と再開用の記録を回収する。回収不能なら失敗として残す。 |
+| **Research Report** | 一回の実行が返す候補、保留中の手がかり、継続または停止の提案。 |
+| **Human Research Continuation Review** | 継続提案に対する人間の判断。対象の入力・実行・再開記録・候補・保留記録・次の作業をハッシュで結び付ける。`continue-research`だけが次の時間枠を開始し、候補がある場合は`proceed-to-candidate-review`を選べる。 |
+| **Agent Checkpoint** | 同じ条件で会話と作業メモを再開するための非公開記録への参照。研究上の結論ではなく、独立検証や他の領域へ渡さない。 |
+| **Agent Run Diagnostic** | 失敗箇所、認証情報を除いた出力、再開用に受理できなかった隔離状態を保持する非公開の診断記録への参照。正常終了でも出力を拒否した場合は残す。自動再開には使わない。 |
+| **Next Action** | 次に確かめる具体的な問いとソースの位置。AIが継続を提案する根拠であり、Harnessが割り当てる作業キューではない。 |
+| **Validation Candidate** | 攻撃者の前提、破られる安全上の性質、主張、初期のソース証拠を持つ独立検証の候補。対象とする影響の範囲は[Research Design](docs/RESEARCH-DESIGN.md#goal)で定める。 |
+| **Parked Programme Lead** | 現時点のソースでは制度の対象となる影響への具体的なつながりが示せない手がかり。前提、できること、影響の上限、証拠だけを残し、補助エージェントによる反証、人間の候補審査、独立検証、Finding生成へ進めない。 |
+| **Human Candidate Review** | 探索を区切った時点の候補集合に対する人間の判断。候補ごとに独立検証へ進める、調査へ戻す、制度対象外として保留する、範囲不明として保留する、のいずれかを指定する。 |
+| **Independent Validation** | 探索側の会話・作業メモ・結論を共有せず、新しい実行環境でソースだけから候補の主張を導き直す検証。 |
+| **Validation Disposition** | `source-validated`（ソースで確認）、`needs-research`（追加調査）、`disproven`（反証）、`validation-pending`（判断保留）のいずれか。外部制約による失敗を反証にしない。 |
+| **Finding** | `source-validated`からだけ生成する、変更しないソース上の主張。実環境や人間による確認結果は後段で追記する。 |
+| **Coverage** | 固定した調査条件の中で、具体的に調べる余地が残るかを表す記録。発見件数や対象の安全性を意味しない。 |
+| **Interruption** | 予算、提供元、権限、不正な出力などにより、判断を完了できなかった記録。 |
+| **Research Record** | 入力、実行結果、非公開記録への参照、両方の人間判断、検証結果、Finding、Coverage、中断を追記する正本。会話本文や作業メモ、内部の呼び出し順を業務上の状態にしない。 |
 
-**Campaign Threat Context**
-: Target選定で観測したordinary configuration、attacker position、security objective、trust boundary、high-value transition、Dependency roleと不確実性をRootへ渡すdigest-bound planning data。既知脆弱性、固定routeまたは探索手順ではなく、off-model Findingを許す。
+## 守るべき区別
 
-**Target Snapshot**
-: plugin identity、version、canonical manifest digestで固定したread-only source。Research中に更新しない。
+- 調査の継続提案と、人間による次の実行の承認を分ける。
+- 候補の発見、人間による候補審査、独立した技術検証を分ける。
+- Finding、Coverage、実行失敗を混同しない。
+- 再開可能な記録と、診断専用の記録を分ける。
 
-**Dependency Snapshot**
-: WordPress core等のauthoritative behaviorをmemoryではなくsourceから解決するため、identity、version、canonical manifest digestで固定したread-only reference source。audit Targetではない。
+権限・隔離・予算・失敗時の設計原則は[Research Design](docs/RESEARCH-DESIGN.md#trust-and-versioning)、現在のInterfaceと回帰テストは[Codebase Guide](docs/CODEBASE-GUIDE.md#research-campaigns)を参照する。
 
-**Native Agent Runtime**
-: sealed ResearchまたはValidation Runをprovider-native agentへ渡し、typed Receiptを返す外部dependency。AIの研究判断を所有しない。
+## 使わない用語
 
-**Root Agent**
-: Target全体から仮説、読む順序、native subagent、candidateを決め、継続と停止を提案するAI actor。固定Finder roleやDepth phaseではない。
+Finder Wave、Depth Campaign、Depth Admission、Harness-owned Approach Family Registry、Work Lease、Root Synthesis、Validation Queue、fixed rubricは現在の業務モデルに含めない。Approach Family RegistryはRoot Agentが内部の作業メモとして使うもので、Harnessの状態や領域間の受け渡し形式にはしない。
 
-**Discovery**
-: Root Agentがsource-boundな仮説、Candidateとparked Programme Leadを更新するResearchの探索部分。AIの`continue`は次のGrantの提案であり、自動実行ではない。Independent Validationを割り込ませない。
-
-**Research Grant**
-: 一つのwall-time allowanceで区切った一回のResearch Native Run。allowanceは最大1時間で、終了時に必ずResearch ReportとCheckpointを回収する。
-
-**Research Report**
-: Candidate群、parked Programme Lead群と`continue`または`stop`の判断を持つ一回のNative Run出力。
-
-**Human Research Continuation Review**
-: `continue`を返したGrantのCampaign input、run、Checkpoint、Candidate、parked Programme Leadとnext actionへdigest-bindした人間の判断。`continue-research`だけが次のGrantを開始し、Candidateがある時だけ`proceed-to-candidate-review`を選べる。
-
-**Agent Checkpoint**
-: Research Rootのprovider-native conversationとscratchを同じsealed bindingで再開するためのprivateなopaque ref。研究上の結論ではなく、Independent Validationやcontext間handoffへ渡さない。
-
-**Agent Run Diagnostic**
-: Native Run失敗時のstage、credential-redacted process observationと、Checkpointとしてadmitできなかった隔離stateを保持するprivate capsuleへのintegrity-bound opaque ref。Runtime Adapterがpolicy denialまたはinvalid outputとして退けた正常終了runのoutputも同じcapsuleへ残す。Researchの結論ではなく、自動resumeには使わない。
-
-**Next Action**
-: 追加で確認する具体的なquestionとsource pointer。AIがResearch継続を選ぶ根拠であり、Harness-owned queueではない。
-
-**Validation Candidate**
-: unauthenticatedまたはSubscriber / Customerからprogramme-eligible impactへ至るattacker premise、broken security property、claim、初期source evidenceを持つ独立検証対象。eligible impactにはArbitrary PHP File Upload / Read / Deletion、Arbitrary Options Update、RCE、Authentication Bypass / Privilege Escalation to Administrator、Stored XSS、SQL Injectionとprogramme上criticalなunauthorized data alteration / readを含む。
-
-**Parked Programme Lead**
-: Programme Research Boundary上で、現時点のsourceがeligible impactへの具体的なedgeを支持しないprimitiveの軽量記録。attacker premise、primitive、最大source-supported effectとevidenceを残すが、subagentによる敵対的検証、Human Candidate Review、Independent ValidationまたはFindingへ進めない。
-
-**Human Candidate Review**
-: terminal Researchのexact Candidate setへdigest-bindした人間の判断。`advance-to-independent-validation`、`return-to-research`、`park-programme-oos`、`hold-scope-ambiguous`をCandidateごとに一度だけ指定する。
-
-**Independent Validation**
-: Research conversation、scratch、verdictを共有しないfresh source-only Native Run。candidateを自身で再導出する。
-
-**Validation Disposition**
-: `source-validated`、`needs-research`、`disproven`、`validation-pending`のいずれか。外部制約は`disproven`にしない。
-
-**Finding**
-: `source-validated`だけから生成されるimmutable source claim。runtime / human observationは後段でappendされる。
-
-**Coverage**
-: 固定Campaign条件内でactionable frontierが残るかを表す独立artifact。Findingの数やTargetの安全性を意味しない。
-
-**Interruption**
-: Budget、provider、policyまたはinvalid outputによりCampaignが判断を完了できなかった記録。
-
-**Research Record**
-: Campaign Input、Native Receipt、Agent Checkpoint ref、Agent Run Diagnostic ref、parked Programme Lead、両Human Review、Validation Receipt、Finding、Coverage、Interruptionのappend-only system of record。agent内部のrole、call順、transcript本文、scratch本文またはabsolute pathはdomain stateにしない。
-
-## Invariants
-
-- Target sourceをhost上で実行しない。
-- Prompt、Target、Dependency、Runtime、Permission、BudgetとReceiptをdigest bindする。
-- ResearchとValidationは異なるfresh sessionとscratchを使う。
-- 一つのResearch Grantは`researchGrantWallTimeMs`を超えず、AIの`continue`だけで次のGrantを開始しない。
-- terminal ResearchのCandidateはHuman Candidate Reviewで明示的にadvanceされるまでValidationしない。
-- Parked Programme Leadはexact evidenceを保持するがCandidate、ValidationまたはFindingへ暗黙昇格しない。
-- Agent Checkpointは同じTarget、Dependency、Prompt、Runtime、PermissionへbindされたResearchだけが再開できる。
-- timeout後も元のterminal分類を維持し、有効なAgent Checkpointだけをresumeに使う。Checkpoint化できないstateはcredentialを除外してAgent Run Diagnosticへ隔離する。
-- `source-validated`だけがFindingを作る。
-- Findingの有無とCoverage completionを分離する。
-- supporting agent数、到着順、多数決またはconfidenceでcandidateを捨てない。
-- Native Agent RuntimeはRootを含む同時active agentを最大4体に制限し、Rootだけが最大3体のsubagentを起動する。実数、役割、再投入とwaveはRootが決める。
-- SQLiやStored XSSをRCEへ伸ばさないことだけで未完成扱いしない。
-- provider、Budget、tool、source、permission、schema failureをno-findingまたはsafeへ丸めない。
-- Agent実行前に固定runscまたはimageが一時的に利用不能だったReceiptと、model workが発生しないままproviderへ認証できなかったReceiptだけは、runtimeの明示したretryable markerに基づき同じsealed Grantを通常の再実行で一度だけ再試行できる。再試行後の連続failureは自動で繰り返さない。Target / Dependency integrity failure等のpolicy denialは再試行しない。
-- provider accountのusage limitは`provider-quota-exhausted`として記録し、retryable markerを付けない。reset時刻はdomain stateにせずAgent Run Diagnosticへ残す。
-- provider報告costはReceiptへ保存するがHarnessの停止条件にしない。
-
-## Terms not used
-
-Finder Wave、Depth Campaign、Depth Admission、Harness-owned Approach Family Registry、Work Lease、Root Synthesis、Validation Queue、fixed rubricは現行domain modelに含めない。RootはResearch中のscratchとしてApproach Family Registryを使うが、versioned handoffやHarness stateにはしない。他の語は過去記録を読む時だけhistorical termとして扱う。
-
-Context間の関係は[Context Map](CONTEXT-MAP.md)、現在のcodeは[Codebase Guide](docs/CODEBASE-GUIDE.md)を参照する。
+領域間の関係は[Context Map](CONTEXT-MAP.md)を参照する。

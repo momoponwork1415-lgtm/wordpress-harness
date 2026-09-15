@@ -1,38 +1,33 @@
 # Documentation
 
-全docを通読しない。目的に合う入口から読み、実装変更ではCodebase GuideのownerとBehavior Testへ進む。
+**コードを変更するなら、[Codebase Guide](CODEBASE-GUIDE.md)で担当Moduleを選び、そのInterfaceとBehavior Testへ進む。** 全文書の通読は不要。
 
-| Question | Canonical document |
+## 読む目的から選ぶ
+
+| 知りたいこと | 入口 |
 | --- | --- |
-| 初見の人へ1枚で共有する | [One-page Overview SVG](visuals/wordpress-security-research-overview.svg) |
-| Contextとhandoffを詳しく図で見る | [System Architecture SVG](visuals/system-architecture.svg) |
-| 診断coreだけを見る | [Diagnosis Core SVG](visuals/diagnosis-architecture.svg) |
-| 探索・検証loopを詳しく見る | [Discovery + Validation SVG](visuals/discovery-validation-architecture.svg) |
-| 現在どこが動き、どこが未接続か | [Codebase Guide](CODEBASE-GUIDE.md) |
-| systemのownershipとhandoff | [Architecture](ARCHITECTURE.md) |
-| 一件のTargetの処理順 | [System Walkthrough](SYSTEM-WALKTHROUGH.md) |
-| 探索Agentへ何を渡すかと具体例 | [System Walkthrough: 探索Agentへ渡す情報](SYSTEM-WALKTHROUGH.md#探索agentへ渡す情報) |
-| 探索、停止、Validationの原則 | [Research Design](RESEARCH-DESIGN.md) |
-| domain language | [Context Map](../CONTEXT-MAP.md) |
-| agent-led移行と診断coreの成功条件 | [ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md) · [ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md) |
-| Research GrantとCandidateにhuman reviewを置く理由 | [ADR 0131](adr/0131-place-human-reviews-between-research-and-validation.md) |
-| provider costを停止条件にしない理由 | [ADR 0132](adr/0132-treat-provider-cost-as-observational-telemetry.md) |
-| provider account failureと診断証跡 | [ADR 0133](adr/0133-separate-provider-account-conditions-from-provider-defects.md) · [ADR 0134](adr/0134-preserve-refused-provider-output-as-a-private-diagnostic.md) |
-| Dynamic ReproductionをRecipe replayにする理由 | [ADR 0130](adr/0130-replay-finding-bound-recipes-for-dynamic-reproduction.md) |
-| native探索状態の保存判断 | [ADR 0126](adr/0126-preserve-native-research-checkpoints-opaquely.md) |
-| framework依存sourceを探索へ渡す判断 | [ADR 0128](adr/0128-provide-pinned-dependency-source-to-research.md) |
-| known-positiveの現在の実測 | [Evaluation SVG](visuals/known-positive-evaluation.svg) · [evidence note](knowledge/public-known-positive-native-agent-evaluation-2026-09-08.md) |
+| 全体の責務と受け渡し | [Architecture](ARCHITECTURE.md) — 3 contextの関係を1枚で見る |
+| 一件の処理順と人間の判断点 | [System Walkthrough](SYSTEM-WALKTHROUGH.md) |
+| 変更箇所・契約・テスト・未接続箇所 | [Codebase Guide](CODEBASE-GUIDE.md) |
+| 探索・停止・Validationの設計原則 | [Research Design](RESEARCH-DESIGN.md) |
+| 用語の意味 | [Context Map](../CONTEXT-MAP.md)から担当contextの用語集へ |
 | 次の有限workと受入条件 | [GitHub Issues](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues) |
 
-## Source of truth
+## 情報の正本
 
-| Information | Location |
-| --- | --- |
-| mission / research policy | [Research Design](RESEARCH-DESIGN.md) |
-| context / Module ownership | [Architecture](ARCHITECTURE.md) |
-| current implementation / seam / test / gap | [Codebase Guide](CODEBASE-GUIDE.md) |
-| hard-to-reverse decision | `adr/` |
-| public experiment / external comparison | `knowledge/` |
-| executable behavior | Behavior Tests |
+SSoTは「すべてを一文書へ集めること」ではなく、**同じ事実の更新先を一つにすること**。
 
-実装状態をArchitecture、ADR、Knowledgeへ複製しない。完了計画、旧設計、superseded ADRはGit履歴から読む。private Target、payload、transcript、未公開Findingはdocumentationへ入れない。
+| 更新する情報 | 正本 | 他の場所での扱い |
+| --- | --- | --- |
+| 開発規則 | [AGENTS.md](../AGENTS.md) | 規則を複製せず参照する |
+| contextの責務・handoff・用語 | [Context Map](../CONTEXT-MAP.md)と各用語集 | Architectureは関係を図示する |
+| mission・研究方針・security invariant | [Research Design](RESEARCH-DESIGN.md) | Guideは担当Moduleと回帰テストへ案内する |
+| 現在のModule・Interface・実装状態・source・Behavior Test対応 | [Codebase Guide](CODEBASE-GUIDE.md) | 概要図やWalkthroughへ実装状況を書かない |
+| schemaの正確なfield・定数・実行可能なbehavior | Guideから辿るsourceとBehavior Tests | 型定義やprovider設定値を文章へ転記しない |
+| hard-to-reverseな判断の理由 | 対応する[ADR](adr/) | 必要な設計節からだけ参照する |
+| 実測・外部資料の調査 | [Knowledge](knowledge/) | 通常のReading pathから外す |
+| 未完了work・受入条件 | GitHub Issues | 図に「次に作るもの」を並べない |
+
+図は正本から導く説明用のview。全体図は責務とhandoff、処理順の図は人間の判断点と戻り先だけを示す。契約の詳細はGuideへ進む。
+
+完了計画、旧設計、過去snapshotはGit履歴から読む。private Target、payload、transcript、credential、未公開Findingはdocumentationへ入れない。

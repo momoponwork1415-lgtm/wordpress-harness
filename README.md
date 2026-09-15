@@ -40,10 +40,6 @@ private Target source、prompt、provider output、credential、payload、transc
 
 ## Docs
 
-- [One-page Overview](docs/visuals/wordpress-security-research-overview.svg) — 友人への共有と全体把握用の1枚図
-- [Documentation](docs/README.md) — 目的別の入口
-- [Architecture](docs/ARCHITECTURE.md) — ownershipとhandoff
-- [Research Design](docs/RESEARCH-DESIGN.md) — 探索・停止・Validationの原則
-- [Codebase Guide](docs/CODEBASE-GUIDE.md) — 現在動く範囲、gap、source、Behavior Test
-- [System Walkthrough](docs/SYSTEM-WALKTHROUGH.md) — 一件の流れ
-- [Development Rules](AGENTS.md) — repository規則
+- [Documentation](docs/README.md) — 全体図、処理順、用語、設計の入口
+- [Codebase Guide](docs/CODEBASE-GUIDE.md) — 変更箇所、Interface、Behavior Test
+- [Development Rules](AGENTS.md) — repositoryの開発規則
