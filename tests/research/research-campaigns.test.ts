@@ -10,7 +10,7 @@ import type {
   AgentCheckpointRef,
   NativeAgentRuntime,
   ResearchCampaigns,
-  SealedAgentRun,
+  SealedNativeRun,
 } from "../../src/research/agent-led/contracts.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
 
@@ -51,11 +51,6 @@ const input: CampaignInput = {
     digest:
       "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   },
-  validationPromptSet: {
-    id: "prompt-independent-validation-v1",
-    digest:
-      "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-  },
   agentRuntimeProfile: {
     id: "runtime-scripted-v1",
     kind: "scripted-native-agent/v1",
@@ -80,7 +75,7 @@ const input: CampaignInput = {
   },
 };
 
-function checkpointFor(run: SealedAgentRun): AgentCheckpointRef {
+function checkpointFor(run: SealedNativeRun): AgentCheckpointRef {
   const dependencySnapshots = run.dependencySnapshots ?? [];
   return {
     kind: "agent-checkpoint",
@@ -161,8 +156,8 @@ async function conductWithHumanAdvance(
       },
       decisions: request.candidates.map((candidate) => ({
         candidateId: candidate.candidateId,
-        disposition: "advance-to-independent-validation" as const,
-        reason: "The Candidate warrants fresh independent source validation.",
+        disposition: "advance-to-candidate-verification" as const,
+        reason: "The Candidate warrants fresh runtime verification.",
       })),
     };
     outcome = await campaigns.conduct({
@@ -916,7 +911,7 @@ describe("ResearchCampaigns", () => {
         researchGrantWallTimeMs: 100_000,
       },
     };
-    const seenRuns: SealedAgentRun[] = [];
+    const seenRuns: SealedNativeRun[] = [];
     const campaigns = openResearchCampaigns({
       databasePath: join(directory, "agent-led.sqlite"),
       runtime: {
@@ -982,418 +977,6 @@ describe("ResearchCampaigns", () => {
         },
       },
     ]);
-    campaigns.close();
-  });
-
-  it("keeps a budget-starved Validation incomplete instead of negative", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "research-candidate-"));
-    temporaryDirectories.push(directory);
-    const candidateInput: CampaignInput = {
-      ...input,
-      campaignId: "campaign-validation-pending-1",
-    };
-    const campaigns = openResearchCampaigns({
-      databasePath: join(directory, "agent-led.sqlite"),
-      runtime: {
-        async execute(run) {
-          return {
-            schemaVersion: 1,
-            runId: run.runId,
-            runtimeProfileDigest: run.agentRuntimeProfile.digest,
-            terminal: "completed",
-            startedAt: "2026-09-07T09:00:00.000Z",
-            completedAt: "2026-09-07T09:01:00.000Z",
-            usage: { wallTimeMs: 60_000 },
-            activity: { subagents: 2, tools: ["source.read"] },
-            isolation: gvisorIsolation,
-            checkpoint: checkpointFor(run),
-            report: {
-              schemaVersion: 1,
-              candidates: [
-                {
-                  candidateId: "candidate-persistent-output-1",
-                  attackerPremise:
-                    "An unauthenticated visitor can submit the public form.",
-                  brokenSecurityProperty:
-                    "Persisted attacker input must be made inert at privileged output.",
-                  claim:
-                    "An unauthenticated value is persisted and rendered to another principal without context-appropriate escaping.",
-                  evidence: [
-                    {
-                      path: "includes/form.php",
-                      location: "submit_form:42",
-                      observation: "Stores the public form value.",
-                    },
-                    {
-                      path: "admin/render.php",
-                      location: "render_entry:99",
-                      observation: "Renders the stored value in an attribute.",
-                    },
-                  ],
-                },
-              ],
-              decision: {
-                kind: "stop",
-                basis:
-                  "The candidate is source-bound and no separate actionable frontier remains.",
-              },
-            },
-          };
-        },
-      },
-    });
-
-    await expect(
-      conductWithHumanAdvance(campaigns, candidateInput),
-    ).resolves.toMatchObject({
-      status: "incomplete",
-    });
-    await expect(
-      campaigns.inspect({ campaignId: "campaign-validation-pending-1" }),
-    ).resolves.toMatchObject({
-      status: "incomplete",
-      coverage: { status: "incomplete" },
-      interruption: {
-        reason: "budget-exhausted",
-        summary:
-          "The Native Run budget ended before Independent Validation completed.",
-      },
-      nativeRuns: [
-        {
-          report: {
-            candidates: [{ candidateId: "candidate-persistent-output-1" }],
-          },
-        },
-      ],
-      validationRuns: [],
-      findings: [],
-    });
-    campaigns.close();
-  });
-
-  it("creates a Finding only after one fresh independent source Validation", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "research-validation-"));
-    temporaryDirectories.push(directory);
-    const candidateInput: CampaignInput = {
-      ...input,
-      campaignId: "campaign-source-validated-1",
-      dependencySnapshots: [
-        {
-          id: "wordpress-core-7.1",
-          mountName: "wordpress",
-          version: "7.1",
-          digest:
-            "sha256:abababababababababababababababababababababababababababababababab",
-          sourceTree: {
-            digest:
-              "sha256:9898989898989898989898989898989898989898989898989898989898989898",
-            entries: 10,
-            bytes: 1_024,
-          },
-        },
-      ],
-      validationPromptSet: {
-        id: "prompt-independent-validation-v1",
-        digest:
-          "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-      },
-      budgetEnvelope: {
-        ...input.budgetEnvelope,
-        maxNativeRuns: 2,
-      },
-    };
-    const seenValidationCandidates: string[] = [];
-    const runtime: NativeAgentRuntime = {
-      async execute(run) {
-        expect(run.dependencySnapshots).toEqual(
-          candidateInput.dependencySnapshots,
-        );
-        if (run.kind === "sealed-native-validation-run") {
-          expect("history" in run).toBe(false);
-          seenValidationCandidates.push(run.candidate.candidateId);
-          return {
-            schemaVersion: 1,
-            runId: run.runId,
-            runtimeProfileDigest: run.agentRuntimeProfile.digest,
-            terminal: "completed",
-            startedAt: "2026-09-07T10:02:00.000Z",
-            completedAt: "2026-09-07T10:03:00.000Z",
-            usage: { wallTimeMs: 60_000 },
-            activity: { subagents: 1, tools: ["source.read"] },
-            isolation: gvisorIsolation,
-            report: {
-              schemaVersion: 1,
-              candidateId: run.candidate.candidateId,
-              disposition: "source-validated",
-              reason:
-                "A public request controls persisted markup which is rendered to an administrator without context-appropriate escaping.",
-              evidence: [
-                {
-                  path: "public/submit.php",
-                  location: "submit_public_form:51",
-                  observation:
-                    "The unauthenticated handler persists the request value without sanitizing markup.",
-                },
-                {
-                  path: "admin/entries.php",
-                  location: "render_entry:103",
-                  observation:
-                    "The administrator view emits the persisted value without output escaping.",
-                },
-              ],
-            },
-          };
-        }
-        return {
-          schemaVersion: 1,
-          runId: run.runId,
-          runtimeProfileDigest: run.agentRuntimeProfile.digest,
-          terminal: "completed",
-          startedAt: "2026-09-07T10:00:00.000Z",
-          completedAt: "2026-09-07T10:01:00.000Z",
-          usage: { wallTimeMs: 60_000 },
-          activity: { subagents: 2, tools: ["source.read"] },
-          isolation: gvisorIsolation,
-          checkpoint: checkpointFor(run),
-          report: {
-            schemaVersion: 1,
-            candidates: [
-              {
-                candidateId: "candidate-unauth-stored-xss-1",
-                attackerPremise:
-                  "An unauthenticated visitor can submit the public form.",
-                brokenSecurityProperty:
-                  "Persisted attacker input must be made inert at privileged output.",
-                claim:
-                  "An unauthenticated form value is persisted and later rendered as active markup to an administrator.",
-                evidence: [
-                  {
-                    path: "public/submit.php",
-                    location: "submit_public_form:51",
-                    observation: "Persists an unauthenticated request value.",
-                  },
-                  {
-                    path: "admin/entries.php",
-                    location: "render_entry:103",
-                    observation:
-                      "Emits the persisted value to an administrator.",
-                  },
-                ],
-              },
-            ],
-            decision: {
-              kind: "stop",
-              basis:
-                "The candidate is source-bound and no separate actionable frontier remains.",
-            },
-          },
-        };
-      },
-    };
-    const campaigns = openResearchCampaigns({
-      databasePath: join(directory, "agent-led.sqlite"),
-      runtime,
-    });
-
-    await expect(
-      conductWithHumanAdvance(campaigns, candidateInput),
-    ).resolves.toMatchObject({
-      status: "coverage-closed",
-    });
-    await expect(
-      campaigns.inspect({ campaignId: "campaign-source-validated-1" }),
-    ).resolves.toMatchObject({
-      status: "coverage-closed",
-      coverage: { status: "closed" },
-      validationRuns: [
-        {
-          candidateId: "candidate-unauth-stored-xss-1",
-          receipt: {
-            terminal: "completed",
-            report: { disposition: "source-validated" },
-          },
-        },
-      ],
-      findings: [
-        {
-          candidateId: "candidate-unauth-stored-xss-1",
-          targetSnapshot: candidateInput.targetSnapshot,
-          dependencySnapshots: candidateInput.dependencySnapshots,
-          attackerPremise:
-            "An unauthenticated visitor can submit the public form.",
-          brokenSecurityProperty:
-            "Persisted attacker input must be made inert at privileged output.",
-          claim:
-            "An unauthenticated form value is persisted and later rendered as active markup to an administrator.",
-          assurance: "source-validated",
-          validation: {
-            runId: "campaign-source-validated-1:validation:1",
-            promptSet: candidateInput.validationPromptSet,
-            runtimeProfileDigest: candidateInput.agentRuntimeProfile.digest,
-            permissionProfileDigest: candidateInput.permissionProfile.digest,
-          },
-        },
-      ],
-    });
-    await expect(campaigns.conduct(candidateInput)).resolves.toMatchObject({
-      status: "coverage-closed",
-    });
-    expect(seenValidationCandidates).toEqual(["candidate-unauth-stored-xss-1"]);
-    campaigns.close();
-  });
-
-  it("returns a source-bound Validation proof gap to the Research Root", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "research-proof-gap-"));
-    temporaryDirectories.push(directory);
-    const proofGapInput: CampaignInput = {
-      ...input,
-      campaignId: "campaign-proof-gap-1",
-      budgetEnvelope: {
-        ...input.budgetEnvelope,
-        maxNativeRuns: 3,
-      },
-    };
-    let researchRuns = 0;
-    const campaigns = openResearchCampaigns({
-      databasePath: join(directory, "agent-led.sqlite"),
-      runtime: {
-        async execute(run) {
-          if (run.kind === "sealed-native-validation-run") {
-            return {
-              schemaVersion: 1,
-              runId: run.runId,
-              runtimeProfileDigest: run.agentRuntimeProfile.digest,
-              terminal: "completed",
-              startedAt: "2026-09-07T11:01:00.000Z",
-              completedAt: "2026-09-07T11:02:00.000Z",
-              usage: { wallTimeMs: 60_000 },
-              activity: { subagents: 0, tools: ["source.read"] },
-              isolation: gvisorIsolation,
-              report: {
-                schemaVersion: 1,
-                candidateId: run.candidate.candidateId,
-                disposition: "needs-research",
-                reason:
-                  "The write path is established, but the privileged renderer named in the claim is only referenced indirectly.",
-                evidence: [
-                  {
-                    path: "public/save.php",
-                    location: "save_value:44",
-                    observation: "Persists the public request value.",
-                  },
-                ],
-                nextActions: [
-                  {
-                    question:
-                      "Which registered admin callback invokes render_saved_value?",
-                    sourcePointers: ["admin/bootstrap.php", "admin/view.php"],
-                  },
-                ],
-              },
-            };
-          }
-
-          researchRuns += 1;
-          if (researchRuns === 2) {
-            expect(run.validationFeedback).toMatchObject([
-              {
-                candidateId: "candidate-proof-gap-1",
-                report: {
-                  disposition: "needs-research",
-                  nextActions: [
-                    {
-                      question:
-                        "Which registered admin callback invokes render_saved_value?",
-                    },
-                  ],
-                },
-              },
-            ]);
-            return {
-              schemaVersion: 1,
-              runId: run.runId,
-              runtimeProfileDigest: run.agentRuntimeProfile.digest,
-              terminal: "completed",
-              startedAt: "2026-09-07T11:02:00.000Z",
-              completedAt: "2026-09-07T11:03:00.000Z",
-              usage: { wallTimeMs: 60_000 },
-              activity: { subagents: 1, tools: ["source.read"] },
-              isolation: gvisorIsolation,
-              checkpoint: checkpointFor(run),
-              report: {
-                schemaVersion: 1,
-                candidates: [],
-                decision: {
-                  kind: "stop",
-                  basis:
-                    "The callback registration was traced and applies output escaping; no actionable frontier remains.",
-                },
-              },
-            };
-          }
-
-          return {
-            schemaVersion: 1,
-            runId: run.runId,
-            runtimeProfileDigest: run.agentRuntimeProfile.digest,
-            terminal: "completed",
-            startedAt: "2026-09-07T11:00:00.000Z",
-            completedAt: "2026-09-07T11:01:00.000Z",
-            usage: { wallTimeMs: 60_000 },
-            activity: { subagents: 1, tools: ["source.read"] },
-            isolation: gvisorIsolation,
-            checkpoint: checkpointFor(run),
-            report: {
-              schemaVersion: 1,
-              candidates: [
-                {
-                  candidateId: "candidate-proof-gap-1",
-                  attackerPremise:
-                    "An unauthenticated visitor can submit the public form.",
-                  brokenSecurityProperty:
-                    "Persisted attacker input must be inert in privileged output.",
-                  claim:
-                    "A public request value reaches privileged HTML output without escaping.",
-                  evidence: [
-                    {
-                      path: "public/save.php",
-                      location: "save_value:44",
-                      observation: "Persists the public request value.",
-                    },
-                  ],
-                },
-              ],
-              decision: {
-                kind: "stop",
-                basis:
-                  "The candidate is source-bound and no other frontier remains.",
-              },
-            },
-          };
-        },
-      },
-    });
-
-    await expect(
-      conductWithHumanAdvance(campaigns, proofGapInput),
-    ).resolves.toMatchObject({
-      status: "coverage-closed",
-    });
-    await expect(
-      campaigns.inspect({ campaignId: "campaign-proof-gap-1" }),
-    ).resolves.toMatchObject({
-      coverage: { status: "closed" },
-      nativeRuns: [{}, {}],
-      validationRuns: [
-        {
-          receipt: {
-            terminal: "completed",
-            report: { disposition: "needs-research" },
-          },
-        },
-      ],
-      findings: [],
-    });
     campaigns.close();
   });
 });

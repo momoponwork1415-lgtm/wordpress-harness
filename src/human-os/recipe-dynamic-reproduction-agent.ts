@@ -1,43 +1,21 @@
+import { lstat, readFile } from "node:fs/promises";
+import { isAbsolute, join } from "node:path";
+
 import { z } from "zod";
 
-import { canonicalDigest } from "../infrastructure/canonical-json.js";
-import type { SourceValidatedFinding } from "../research/index.js";
+import {
+  candidateVerificationRecipeSchema,
+  type CandidateVerificationRecipe,
+  type CandidateVerificationRequest,
+} from "../research/index.js";
 import { externalDependencyEvidenceRequestSchema } from "./contracts-v3.js";
 import type {
   DynamicReproductionAgent,
   DynamicReproductionAgentOutcome,
 } from "./gvisor-wordpress-dynamic-reproduction.js";
 
-const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
-const recipeBodySchema = z.strictObject({
-  kind: z.literal("dynamic-reproduction-recipe"),
-  schemaVersion: z.literal(1),
-  recipeId: z.string().min(1).max(512),
-  findingId: z.string().min(1).max(512),
-  targetSnapshotDigest: digestSchema,
-  script: z
-    .string()
-    .min(1)
-    .max(128 * 1024),
-  timeoutMs: z
-    .number()
-    .int()
-    .min(1)
-    .max(5 * 60_000),
-});
-
-export const dynamicReproductionRecipeSchema = recipeBodySchema
-  .extend({ digest: digestSchema })
-  .superRefine((recipe, context) => {
-    const { digest, ...body } = recipe;
-    if (digest !== canonicalDigest(body)) {
-      context.addIssue({
-        code: "custom",
-        path: ["digest"],
-        message: "Dynamic Reproduction Recipe digest must bind its exact body",
-      });
-    }
-  });
+export const dynamicReproductionRecipeSchema =
+  candidateVerificationRecipeSchema;
 
 export const dynamicReproductionRecipeResolutionSchema = z.discriminatedUnion(
   "kind",
@@ -62,21 +40,66 @@ const experimentResultSchema = z.strictObject({
 });
 const experimentResultPrefix = "HARNESS_RESULT=";
 
-export type DynamicReproductionRecipe = z.infer<
-  typeof dynamicReproductionRecipeSchema
->;
+export type DynamicReproductionRecipe = CandidateVerificationRecipe;
 export type DynamicReproductionRecipeResolution = z.infer<
   typeof dynamicReproductionRecipeResolutionSchema
 >;
 
 export interface DynamicReproductionRecipeResolver {
   resolve(input: {
-    readonly finding: SourceValidatedFinding;
+    readonly request: CandidateVerificationRequest;
   }): Promise<DynamicReproductionRecipeResolution>;
 }
 
 export interface RecipeDynamicReproductionAgentOptions {
   readonly recipeResolver: DynamicReproductionRecipeResolver;
+}
+
+export interface FileCandidateVerificationRecipeResolverOptions {
+  readonly candidateRecipeDirectory: string;
+}
+
+class FileCandidateVerificationRecipeResolver implements DynamicReproductionRecipeResolver {
+  readonly #directory: string;
+
+  constructor(options: FileCandidateVerificationRecipeResolverOptions) {
+    if (!isAbsolute(options.candidateRecipeDirectory)) {
+      throw new Error("Candidate Recipe directory must be absolute");
+    }
+    this.#directory = options.candidateRecipeDirectory;
+  }
+
+  async resolve(input: {
+    readonly request: CandidateVerificationRequest;
+  }): Promise<DynamicReproductionRecipeResolution> {
+    const reference = input.request.candidate.reproductionRecipe;
+    const path = join(
+      this.#directory,
+      `${reference.digest.slice("sha256:".length)}.json`,
+    );
+    const fileStat = await lstat(path);
+    if (
+      !fileStat.isFile() ||
+      fileStat.isSymbolicLink() ||
+      fileStat.nlink !== 1 ||
+      fileStat.size !== reference.bytes
+    ) {
+      throw new Error("Candidate Recipe artifact is unsafe or unbound");
+    }
+    const encoded = await readFile(path);
+    const recipe = candidateVerificationRecipeSchema.parse(
+      JSON.parse(encoded.toString("utf8")) as unknown,
+    );
+    if (
+      recipe.digest !== reference.digest ||
+      recipe.recipeId !== reference.recipeId ||
+      recipe.candidateId !== input.request.candidate.candidateId ||
+      recipe.targetSnapshotDigest !== input.request.targetSnapshot.digest
+    ) {
+      throw new Error("Candidate Recipe artifact does not match the Request");
+    }
+    return { kind: "recipe-ready", recipe };
+  }
 }
 
 function incomplete(
@@ -122,11 +145,11 @@ class RecipeDynamicReproductionAgent implements DynamicReproductionAgent {
     let resolution: DynamicReproductionRecipeResolution;
     try {
       resolution = dynamicReproductionRecipeResolutionSchema.parse(
-        await this.#recipeResolver.resolve({ finding: input.finding }),
+        await this.#recipeResolver.resolve({ request: input.request }),
       );
     } catch {
       return incomplete(
-        "No valid Finding-bound reproduction recipe is available.",
+        "No valid Candidate-bound reproduction recipe is available.",
       );
     }
     if (resolution.kind === "setup-required") {
@@ -141,10 +164,14 @@ class RecipeDynamicReproductionAgent implements DynamicReproductionAgent {
     }
     const { recipe } = resolution;
     if (
-      recipe.findingId !== input.finding.findingId ||
-      recipe.targetSnapshotDigest !== input.finding.targetSnapshot.digest
+      recipe.candidateId !== input.request.candidate.candidateId ||
+      recipe.recipeId !== input.request.candidate.reproductionRecipe.recipeId ||
+      recipe.digest !== input.request.candidate.reproductionRecipe.digest ||
+      recipe.targetSnapshotDigest !== input.request.targetSnapshot.digest
     ) {
-      return incomplete("The reproduction recipe does not match the Finding.");
+      return incomplete(
+        "The reproduction recipe does not match the Candidate.",
+      );
     }
     const observation = await input.experiment.run({
       script: recipe.script,
@@ -172,6 +199,19 @@ class RecipeDynamicReproductionAgent implements DynamicReproductionAgent {
         effectObserved: true as const,
       };
     }
+    if (
+      result.preconditionsMatched &&
+      result.recipeCompleted &&
+      !result.effectObserved
+    ) {
+      return {
+        status: "contradicted" as const,
+        summary: result.summary,
+        preconditionsMatched: true as const,
+        recipeCompleted: true as const,
+        effectObserved: false as const,
+      };
+    }
     return incomplete(result.summary, result);
   }
 }
@@ -180,4 +220,10 @@ export function openRecipeDynamicReproductionAgent(
   options: RecipeDynamicReproductionAgentOptions,
 ): DynamicReproductionAgent {
   return new RecipeDynamicReproductionAgent(options);
+}
+
+export function openFileCandidateVerificationRecipeResolver(
+  options: FileCandidateVerificationRecipeResolverOptions,
+): DynamicReproductionRecipeResolver {
+  return new FileCandidateVerificationRecipeResolver(options);
 }

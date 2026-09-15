@@ -53,10 +53,6 @@ function policy(): ResearchCampaignPolicy {
     schemaVersion: 1 as const,
     id: "research-campaign-policy-v1",
     promptSet: { id: "research-prompt-v1", digest: digest("e") },
-    validationPromptSet: {
-      id: "validation-prompt-v1",
-      digest: digest("f"),
-    },
     agentRuntimeProfile: {
       id: "claude-code-research-v1",
       kind: "claude-code-native/v1",

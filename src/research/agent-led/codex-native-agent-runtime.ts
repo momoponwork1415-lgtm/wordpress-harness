@@ -11,13 +11,11 @@ import {
 } from "./gvisor-agent-sandbox.js";
 import {
   nativeRunReceiptSchema,
-  researchReportSchema,
-  validationReportSchema,
-  validationRunReceiptSchema,
-  type NativeAgentReceipt,
+  type NativeRunReceipt,
   type NativeAgentRuntime,
-  type SealedAgentRun,
+  type SealedNativeRun,
 } from "./contracts.js";
+import { providerResearchReportSchema } from "./provider-research-report.js";
 
 const codexTransportEligibility = {
   schemaVersion: 1,
@@ -223,7 +221,7 @@ function nullableJsonSchema(value: unknown): Record<string, unknown> {
 }
 
 function researchTransportSchema(): Record<string, unknown> {
-  const schema = jsonObject(z.toJSONSchema(researchReportSchema));
+  const schema = jsonObject(z.toJSONSchema(providerResearchReportSchema));
   delete schema.$schema;
   const properties = jsonObject(schema.properties);
   const required = z.array(z.string()).parse(schema.required);
@@ -247,88 +245,30 @@ function researchTransportSchema(): Record<string, unknown> {
   return schema;
 }
 
-function validationTransportSchema(): Record<string, unknown> {
-  const domainSchema = jsonObject(z.toJSONSchema(validationReportSchema));
-  const branches = z.array(z.unknown()).min(4).parse(domainSchema.oneOf);
-  const branchProperties = branches.map((branch) =>
-    jsonObject(jsonObject(branch).properties),
-  );
-  const common = branchProperties[0];
-  const needsResearch = branchProperties.find(
-    (properties) =>
-      jsonObject(properties.disposition).const === "needs-research",
-  );
-  if (common === undefined || needsResearch === undefined) {
-    throw new Error("Unsupported Validation Report schema");
-  }
-  return {
-    type: "object",
-    properties: {
-      schemaVersion: common.schemaVersion,
-      candidateId: common.candidateId,
-      disposition: {
-        type: "string",
-        enum: [
-          "source-validated",
-          "needs-research",
-          "disproven",
-          "validation-pending",
-        ],
-      },
-      reason: common.reason,
-      evidence: common.evidence,
-      nextActions: nullableJsonSchema(needsResearch.nextActions),
-    },
-    required: [
-      "schemaVersion",
-      "candidateId",
-      "disposition",
-      "reason",
-      "evidence",
-      "nextActions",
-    ],
-    additionalProperties: false,
-  };
+function codexSchema(): string {
+  return JSON.stringify(researchTransportSchema());
 }
 
-function codexSchema(run: SealedAgentRun): string {
-  return JSON.stringify(
-    run.kind === "sealed-native-research-run"
-      ? researchTransportSchema()
-      : validationTransportSchema(),
-  );
-}
-
-function normalizeTransportReport(
-  run: SealedAgentRun,
-  value: unknown,
-): unknown {
+function normalizeTransportReport(value: unknown): unknown {
   const report = jsonObject(value);
-  if (run.kind === "sealed-native-research-run") {
-    const decision = jsonObject(report.decision);
-    if (decision.kind === "continue") {
-      const { basis: _basis, ...normalizedDecision } = decision;
-      return { ...report, decision: normalizedDecision };
-    }
-    if (decision.kind === "stop") {
-      const {
-        reason: _reason,
-        nextActions: _nextActions,
-        ...normalizedDecision
-      } = decision;
-      return { ...report, decision: normalizedDecision };
-    }
-    return report;
+  const decision = jsonObject(report.decision);
+  if (decision.kind === "continue") {
+    const { basis: _basis, ...normalizedDecision } = decision;
+    return { ...report, decision: normalizedDecision };
   }
-  if (report.disposition === "needs-research") return report;
-  const { nextActions: _nextActions, ...normalized } = report;
-  return normalized;
+  if (decision.kind === "stop") {
+    const {
+      reason: _reason,
+      nextActions: _nextActions,
+      ...normalizedDecision
+    } = decision;
+    return { ...report, decision: normalizedDecision };
+  }
+  return report;
 }
 
-function transportPrompt(run: SealedAgentRun, prompt: string): string {
-  return run.kind === "sealed-native-research-run"
-    ? `${prompt}\n\nTransport requirement: always include parkedProgrammeLeads; use an empty array when there are none. Decision must include kind, reason, nextActions, and basis. For continue, set basis to null. For stop, set reason and nextActions to null. These null placeholders are transport-only.`
-    : `${prompt}\n\nTransport requirement: always include nextActions. Set it to null unless disposition is needs-research. This null placeholder is transport-only.`;
+function transportPrompt(prompt: string): string {
+  return `${prompt}\n\nTransport requirement: always include parkedProgrammeLeads; use an empty array when there are none. Decision must include kind, reason, nextActions, and basis. For continue, set basis to null. For stop, set reason and nextActions to null. These null placeholders are transport-only.`;
 }
 
 const managedRequirements = `allowed_web_search_modes = []
@@ -379,7 +319,7 @@ class CodexNativeAgentRuntime implements NativeAgentRuntime {
     );
   }
 
-  async #command(run: SealedAgentRun): Promise<SandboxedAgentCommand> {
+  async #command(run: SealedNativeRun): Promise<SandboxedAgentCommand> {
     return {
       executable: "codex",
       versionTokenIndex: 1,
@@ -394,7 +334,7 @@ class CodexNativeAgentRuntime implements NativeAgentRuntime {
         },
         {
           filename: "report-schema.json",
-          text: codexSchema(run),
+          text: codexSchema(),
         },
         {
           filename: "requirements.toml",
@@ -404,20 +344,16 @@ class CodexNativeAgentRuntime implements NativeAgentRuntime {
       ],
       ephemeralProviderCredentialFiles: ["auth.json"],
       ephemeralProviderHomeMount: { path: "/provider", mode: "rw" },
-      ...(run.kind === "sealed-native-research-run"
-        ? {
-            researchSession: {
-              newSessionArguments: () => ["-"],
-              resumeSessionArguments: (sessionId: string) => [
-                "resume",
-                sessionId,
-                "-",
-              ],
-              generatedSessionIdFromOutput: (stdout: string) =>
-                sessionIdFromOutput(stdout),
-            },
-          }
-        : {}),
+      researchSession: {
+        newSessionArguments: () => ["-"],
+        resumeSessionArguments: (sessionId: string) => [
+          "resume",
+          sessionId,
+          "-",
+        ],
+        generatedSessionIdFromOutput: (stdout: string) =>
+          sessionIdFromOutput(stdout),
+      },
       args: [
         "exec",
         "--model",
@@ -464,18 +400,15 @@ class CodexNativeAgentRuntime implements NativeAgentRuntime {
         "--color",
         "never",
         "--json",
-        ...(run.kind === "sealed-native-validation-run"
-          ? ["--ephemeral", "-"]
-          : []),
       ],
       prompt: {
         kind: "stdin",
-        text: transportPrompt(run, this.#sandbox.prompt(run)),
+        text: transportPrompt(this.#sandbox.prompt(run)),
       },
     };
   }
 
-  async execute(run: SealedAgentRun): Promise<NativeAgentReceipt> {
+  async execute(run: SealedNativeRun): Promise<NativeRunReceipt> {
     if (
       run.agentRuntimeProfile.kind !== "codex-native/v1" ||
       !this.#transportAdmitted ||
@@ -537,9 +470,8 @@ class CodexNativeAgentRuntime implements NativeAgentRuntime {
       );
     }
     if (
-      run.kind === "sealed-native-research-run" &&
-      (execution.checkpoint === undefined ||
-        execution.checkpoint.sessionId !== decoded.sessionId)
+      execution.checkpoint === undefined ||
+      execution.checkpoint.sessionId !== decoded.sessionId
     ) {
       const summary = "Codex returned an unbound Research session.";
       return refusedNativeRunReceipt(
@@ -562,12 +494,14 @@ class CodexNativeAgentRuntime implements NativeAgentRuntime {
     }
     let normalizedReport: unknown;
     try {
-      normalizedReport = normalizeTransportReport(run, decoded.reportValue);
+      normalizedReport = normalizeTransportReport(decoded.reportValue);
     } catch {
       normalizedReport = decoded.reportValue;
     }
-    const report = schemaFor(run).safeParse(normalizedReport);
-    if (!report.success) {
+    let report;
+    try {
+      report = await this.#sandbox.materializeReport(run, normalizedReport);
+    } catch {
       const summary = "Codex returned an unsupported Agent Report.";
       return refusedNativeRunReceipt(
         run,
@@ -601,20 +535,11 @@ class CodexNativeAgentRuntime implements NativeAgentRuntime {
         runtime: "runsc",
         fallbackUsed: false,
       },
-      ...(run.kind === "sealed-native-research-run"
-        ? { checkpoint: execution.checkpoint, report: report.data }
-        : { report: report.data }),
+      checkpoint: execution.checkpoint,
+      report,
     };
-    return run.kind === "sealed-native-research-run"
-      ? nativeRunReceiptSchema.parse(receipt)
-      : validationRunReceiptSchema.parse(receipt);
+    return nativeRunReceiptSchema.parse(receipt);
   }
-}
-
-function schemaFor(run: SealedAgentRun): z.ZodType {
-  return run.kind === "sealed-native-research-run"
-    ? researchReportSchema
-    : validationReportSchema;
 }
 
 export function openCodexNativeAgentRuntime(

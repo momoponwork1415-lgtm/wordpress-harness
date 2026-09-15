@@ -48,10 +48,6 @@ describe("Grok Native Agent Runtime", () => {
           digest: `sha256:${"b".repeat(64)}`,
           text: "This is not the sealed prompt.",
         },
-        validationPromptSet: {
-          digest: promptTextDigest("validation"),
-          text: "validation",
-        },
         permissionProfileDigest: `sha256:${"d".repeat(64)}`,
         maxOutputBytes: 1_000_000,
       }),
@@ -234,12 +230,7 @@ if [ "$invocation" -eq 2 ]; then
   printf '{"text":"{\\"schemaVersion\\":1,\\"candidates\\":[],\\"decision\\":{\\"kind\\":\\"stop\\",\\"basis\\":\\"The remaining frontier was resolved.\\"}}","stopReason":"end_turn","sessionId":"%s","requestId":"request-3","usage":{"input_tokens":3000,"cache_read_input_tokens":500,"cache_creation_input_tokens":250,"output_tokens":500,"reasoning_tokens":200,"total_tokens":4250},"num_turns":3,"total_cost_usd":0.3,"modelUsage":{"grok-4.6-build":{"inputTokens":3000,"outputTokens":500,"cacheReadInputTokens":500,"cacheCreationInputTokens":250,"modelCalls":3,"costUSD":0.3}}}' "$active_session"
   exit 0
 fi
-grep -F 'This is one fresh Independent Validation.' "$scratch/prompt.txt" >/dev/null
-grep -F 'Candidate:' "$scratch/prompt.txt" >/dev/null
-if grep -F 'Prior source-bound reports:' "$scratch/prompt.txt" >/dev/null; then
-  exit 93
-fi
-printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","requestId":"request-2","usage":{"input_tokens":6000,"cache_read_input_tokens":500,"cache_creation_input_tokens":250,"output_tokens":900,"reasoning_tokens":300,"total_tokens":7650},"num_turns":5,"total_cost_usd":0.4,"modelUsage":{"grok-4.6-build":{"inputTokens":6000,"outputTokens":900,"cacheReadInputTokens":500,"cacheCreationInputTokens":250,"modelCalls":5,"costUSD":0.4}},"structuredOutput":{"schemaVersion":1,"candidateId":"candidate-grok-stored-xss-1","disposition":"source-validated","reason":"The public write and privileged unescaped output are independently supported.","evidence":[{"path":"admin/view.php","location":"render_value:88","observation":"Emits the persisted value without escaping."}]}}'
+exit 75
 `,
       { encoding: "utf8", mode: 0o700 },
     );
@@ -247,8 +238,6 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
 
     const researchPrompt =
       "Audit the immutable WordPress plugin source from first principles.";
-    const validationPrompt =
-      "Independently validate one source-bound candidate.";
     const wordpressDependency = {
       id: "wordpress-core-7.1",
       mountName: "wordpress",
@@ -277,10 +266,6 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
       promptSet: {
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
-      },
-      validationPromptSet: {
-        id: "independent-validation-v1",
-        digest: promptTextDigest(validationPrompt),
       },
       agentRuntimeProfile: {
         id: "grok-build-native-v1",
@@ -322,10 +307,6 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
         digest: input.promptSet.digest,
         text: researchPrompt,
       },
-      validationPromptSet: {
-        digest: input.validationPromptSet.digest,
-        text: validationPrompt,
-      },
       permissionProfileDigest: input.permissionProfile.digest,
       maxOutputBytes: 1_000_000,
     };
@@ -362,7 +343,7 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
     await expect(
       conductWithHumanAdvance(campaigns, input),
     ).resolves.toMatchObject({
-      status: "coverage-closed",
+      status: "verification-preparation-needed",
     });
     await expect(
       campaigns.inspect({ campaignId: "campaign-grok-native-1" }),
@@ -398,39 +379,14 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
           },
         },
       ],
-      validationRuns: [
-        {
-          candidateId: "candidate-grok-stored-xss-1",
-          receipt: {
-            terminal: "completed",
-            usage: {
-              inputTokens: 6_750,
-              outputTokens: 900,
-              estimatedCostUsd: 0.4,
-            },
-            isolation: {
-              backend: "gvisor",
-              runtime: "runsc",
-              fallbackUsed: false,
-            },
-            report: { disposition: "source-validated" },
-          },
-        },
-      ],
-      findings: [
-        {
-          candidateId: "candidate-grok-stored-xss-1",
-          assurance: "source-validated",
-        },
-      ],
     });
     const scratchPaths = (
       await readFile(`${dockerExecutablePath}.scratch`, "utf8")
     )
       .trim()
       .split("\n");
-    expect(scratchPaths).toHaveLength(3);
-    expect(new Set(scratchPaths).size).toBe(3);
+    expect(scratchPaths).toHaveLength(2);
+    expect(new Set(scratchPaths).size).toBe(2);
     expect(await readFile(join(sourceDirectory, "plugin.php"), "utf8")).toBe(
       "<?php\n",
     );
@@ -463,7 +419,7 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"session-2","request
         },
       ],
     });
-    expect(await readFile(`${dockerExecutablePath}.count`, "utf8")).toBe("3");
+    expect(await readFile(`${dockerExecutablePath}.count`, "utf8")).toBe("2");
 
     await writeFile(join(sourceDirectory, "plugin.php"), "<?php\n", "utf8");
     await writeFile(
@@ -567,7 +523,6 @@ printf '{"text":"{\\"schemaVersion\\":1,\\"candidates\\":[],\\"decision\\":{\\"k
     await chmod(dockerExecutablePath, 0o700);
 
     const researchPrompt = "Audit the immutable plugin source.";
-    const validationPrompt = "Independently validate one source claim.";
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 1,
@@ -583,10 +538,6 @@ printf '{"text":"{\\"schemaVersion\\":1,\\"candidates\\":[],\\"decision\\":{\\"k
       promptSet: {
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
-      },
-      validationPromptSet: {
-        id: "independent-validation-v1",
-        digest: promptTextDigest(validationPrompt),
       },
       agentRuntimeProfile: {
         id: "grok-build-native-v1",
@@ -623,10 +574,6 @@ printf '{"text":"{\\"schemaVersion\\":1,\\"candidates\\":[],\\"decision\\":{\\"k
         providerConfigDirectory,
         scratchRootDirectory,
         promptSet: { digest: input.promptSet.digest, text: researchPrompt },
-        validationPromptSet: {
-          digest: input.validationPromptSet.digest,
-          text: validationPrompt,
-        },
         permissionProfileDigest: input.permissionProfile.digest,
         maxOutputBytes: 1_000_000,
       }),

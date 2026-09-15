@@ -29,7 +29,7 @@ Interfaceとテストだけでは使い方が分からず内部を横断する�
 | 承認済みTargetをResearchへ渡す | Target Intelligence | [Approved Target Campaigns](#approved-target-campaigns) |
 | Campaignの判断点と記録を扱う | Research | [Research Campaigns](#research-campaigns) |
 | providerと隔離実行を接続する | Research | [gVisor Native Agent Runtimes](#gvisor-native-agent-runtimes) |
-| Findingへ検証記録と承認を追記する | Human OS | [Human OS](#human-os) |
+| Candidateを動的検証しscopeと提出承認を扱う | Human OS | [Human OS](#human-os) |
 | コマンドと実行依存を接続する | Composition root | [CLI](#cli) |
 | Agentへ渡る入力の所在を確認する | Research / Runtime Adapter | [Agent input](#agent-input) |
 | 共通のJSON・source digestを調べる | Infrastructure | [Shared infrastructure](#shared-infrastructure) |
@@ -44,9 +44,9 @@ skillが必要なModuleを呼び、データを取得して手順を進める使
 | --- | --- | --- |
 | Target供給 | local / WordPress.org acquisition、Update Frontier → Candidate Pool、Programme / disclosure observations | 候補集合の組立には呼び出し側がSelection Contextを渡す。同種の既知脆弱性の履歴照会は未実装 |
 | 履歴・提案・承認 | 保存済みplugin/version履歴の照会、AI Proposal、Approved Batch、単一Campaignへのdispatch | 調査履歴は読み取り専用。現行Campaignの実績を追加する入口はない |
-| Research | Grant、両Human Review、Checkpoint再開、Independent Validation、Finding / Coverage記録 | `inspect`で結果を取得できる。領域間のCampaign Coverage Receipt形式への変換は未実装 |
-| Native Runtime | Grok / Claude / GLM / CodexのAdapterと固定runtime binding | GLM Validationのsingle-fresh-run不整合は下記。実providerでの効果は別途評価が必要 |
-| Human OS | Finding受領、runtime / human verification、private evidence、提出草案と承認の記録・照会 | 呼び出し側がソース・環境設定・手順を供給する。手順の解決Interfaceはあるが、標準の保存・読み出し実装はない |
+| Research | Grant、両Human Review、Checkpoint再開、Candidate Verification Request / Coverage記録 | `inspect`でRequestとrecipe準備不足を取得できる。領域間のCampaign Coverage Receipt形式への変換は未実装 |
+| Native Runtime | Grok / Claude / GLM / CodexのResearch Adapter、固定runtime binding、private recipe materialization | 実providerでのCandidateとrecipeの品質は別途評価が必要 |
+| Human OS | Candidate-bound dynamic verification、Verified Vulnerability、programme scope、提出草案と承認の記録・照会 | 呼び出し側がsource・Lab・private recipe store・全programmeを列挙するscope evaluatorを供給する。外部送信は行わない |
 
 外部送信と複数Targetの中央schedulerは意図的に持たない。次の有限workと受入条件は[GitHub Issues](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues)を参照する。
 
@@ -190,16 +190,16 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 ## Research Campaigns
 
 <details>
-<summary>Research — Campaignの判断点と記録を扱う</summary>
+<summary>Research — Campaignの判断点と検証handoffを扱う</summary>
 
-- **目的:** Research、両Human Review、Independent Validation、Finding、Coverageと再開を一つのModuleに隠す。
+- **目的:** Research、両Human Review、Candidate Verification Request、Coverageと再開を一つのModuleに隠す。
 - **Interface:** `ResearchCampaigns.conduct / inspect`。versioned handoffは[`research/index.ts`](../src/research/index.ts)、入力とcommandのfieldは[`contracts.ts`](../src/research/agent-led/contracts.ts)。
-- **所有する記録・不変条件:** SQLiteのappend-only Campaign eventsとprivate Checkpoint / Diagnosticへのopaque ref。最大1時間のGrant、exact bindingの両Human Review、Parked Programme LeadのValidation除外、独立ValidationだけによるFinding生成、Finding/Coverage分離を維持する。ValidationへResearchのCheckpoint・Programme Boundaryを渡さない。run数とwall timeがhard limit、provider costは観測値。
-- **失敗時:** review待ちはrunを開始しない。異なるinput、stale/partial reviewはatomic conflict。provider・Budget・policy・invalid outputは`incomplete` / `validation-pending`として残す。Researchの有効Checkpointによるresumeと実行前availability / 未認証の一度のretryを区別する。source / Checkpoint integrity failureはretry不可。Validationの再試行にはexact current failed run集合に対するHuman Validation Retryを要し、過去Receiptを置換しない。
+- **所有する記録・不変条件:** SQLiteのappend-only Campaign eventsとprivate Checkpoint / Diagnostic / Candidate Recipeへのopaque ref。最大1時間のGrant、exact bindingの両Human Review、Parked Programme LeadのCandidate Review除外、admitされたCandidateだけのRequest生成、Research Coverageとの分離を維持する。Candidate VerificationへCheckpointやProgramme Boundaryを渡さない。run数とwall timeがhard limit、provider costは観測値。
+- **失敗時:** review待ちはrunを開始しない。異なるinput、stale/partial reviewはatomic conflict。provider・Budget・policy・invalid outputは`incomplete`として残す。Researchの有効Checkpointによるresumeと実行前availability / 未認証の一度のretryを区別する。source / Checkpoint integrity failureはretry不可。admit済みCandidateにrecipeがなければRequestを捏造せず`verification-preparation-needed`にする。
 
 入力例は[`campaign-threat-context.test.ts`](../tests/research/campaign-threat-context.test.ts)。入力の組立箇所は[Agent input](#agent-input)へ進む。
 
-**Source / Behavior Test:** [`research-campaigns.ts`](../src/research/agent-led/research-campaigns.ts) · [`research-campaigns.test.ts`](../tests/research/research-campaigns.test.ts) · [`human-research-continuation-review.test.ts`](../tests/research/human-research-continuation-review.test.ts) · [`human-candidate-review.test.ts`](../tests/research/human-candidate-review.test.ts) · [`parked-programme-leads.test.ts`](../tests/research/parked-programme-leads.test.ts) · [`independent-validation.test.ts`](../tests/research/independent-validation.test.ts) · [`agent-led-campaign-cli.test.ts`](../tests/cli/agent-led-campaign-cli.test.ts)
+**Source / Behavior Test:** [`research-campaigns.ts`](../src/research/agent-led/research-campaigns.ts) · [`research-campaigns.test.ts`](../tests/research/research-campaigns.test.ts) · [`human-research-continuation-review.test.ts`](../tests/research/human-research-continuation-review.test.ts) · [`candidate-verification-handoff.test.ts`](../tests/research/candidate-verification-handoff.test.ts) · [`parked-programme-leads.test.ts`](../tests/research/parked-programme-leads.test.ts) · [`agent-led-campaign-cli.test.ts`](../tests/cli/agent-led-campaign-cli.test.ts)
 
 </details>
 
@@ -210,7 +210,7 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 
 - **目的:** provider-nativeな実行・session・subagentを隔離し、bindingとReceiptを扱う。
 - **Interface:** `NativeAgentRuntime.execute`。Grok、Claude Code、GLM、CodexのAdapterを持つ。
-- **所有する記録・不変条件:** private provider home、Checkpoint、Diagnostic。exact image / CLI、non-root、read-only source、ResearchとValidationの別scratch、Root込み最大4 active agentsを要求する。ambient権限やprovider fallbackを与えない。設定値は各Adapterのsourceを正本とする。
+- **所有する記録・不変条件:** private provider home、Checkpoint、Diagnostic、content-addressed Candidate Recipe。exact image / CLI、non-root、read-only source、writeable scratch、Root込み最大4 active agentsを要求する。ambient権限やprovider fallbackを与えない。provider report内のrecipe本文はprivate storeへ移し、公開Research Reportにはdigest-bound参照だけを残す。
 - **失敗時:** availability・binding・policy・provider・schemaの失敗をtyped receiptへ変換する。timeoutは`budget-exhausted`、対応するaccount envelopeは`provider-unauthenticated` / `provider-quota-exhausted`。元の分類・usageをcleanupで失わず、拒否したoutputもprivate Diagnosticへ保存する。Diagnostic保存不能は`provider-failed`。診断用stateはresumeに使わない。
 
 通常は[`NativeAgentRuntime.execute`](../src/research/agent-led/contracts.ts)と対象providerのBehavior Testまで読む。`grok`・`claude-code`・`codex`というファイル名は、固有のCLI設定・応答変換を所有するAdapterを示す。modelの選択は実行profileの`model`で確認する。
@@ -223,29 +223,28 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 | 認証ファイルの検査・コピー・削除・ログ秘匿 | [`ProviderCredentialFiles.copyTo / removeFrom / redact`](../src/research/agent-led/provider-files.ts) |
 | Checkpointの照合・作業用コピー・確定 | [`prepareResearchState / finalizeResearchState`](../src/research/agent-led/research-checkpoints.ts) |
 | 非公開Diagnosticの保存 | [`preserveAgentRunDiagnostic`](../src/research/agent-led/agent-run-diagnostics.ts) |
+| Candidate Recipe本文の検査・非公開保存 | [`materializeResearchReport`](../src/research/agent-led/provider-research-report.ts) |
 | Agent入力の組立 | [Agent input](#agent-input) |
 
 認証情報を削除できない状態はCheckpointや診断用stateへ保存しない。削除後もログ秘匿を使える。契約は[`provider-files.test.ts`](../tests/research/provider-files.test.ts)、再開・診断・Runtimeとの接続は下記AdapterのBehavior Testsで確認する。
 
-認証障害を調べる場合は、認証Moduleと各Adapterのmount設定を読む。ClaudeのResearchは認証用directoryを書き込み可能、Validationは読み取り専用にする。この実装だけで障害の原因は確定しない。隔離を要求する理由は[ADR 0063](adr/0063-separate-the-orchestrator-agent-and-target-trust-zones.md)を参照する。
+認証障害を調べる場合は、認証Moduleと各Adapterのmount設定を読む。この実装だけで障害の原因は確定しない。隔離を要求する理由は[ADR 0063](adr/0063-separate-the-orchestrator-agent-and-target-trust-zones.md)を参照する。
 
-**既知の設計不整合:** GLMのmalformed-output補正はValidationでもsecond model executionを行う。[#144](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues/144)はIssue分割の見直しでclosedになっており、解消済みを意味しない。single-fresh-runの方針は[Research Design](RESEARCH-DESIGN.md#independent-validation)を参照。
-
-**Source / Behavior Test:** [`gvisor-agent-sandbox.ts`](../src/research/agent-led/gvisor-agent-sandbox.ts) · [`grok-native-agent-runtime.ts`](../src/research/agent-led/grok-native-agent-runtime.ts) · [`claude-code-native-agent-runtime.ts`](../src/research/agent-led/claude-code-native-agent-runtime.ts) · [`codex-native-agent-runtime.ts`](../src/research/agent-led/codex-native-agent-runtime.ts) · [`codex-source-reader.ts`](../src/research/agent-led/codex-source-reader.ts) · [`grok-native-agent-runtime.test.ts`](../tests/research/grok-native-agent-runtime.test.ts) · [`claude-code-native-agent-runtime.test.ts`](../tests/research/claude-code-native-agent-runtime.test.ts) · [`glm-native-agent-runtime.test.ts`](../tests/research/glm-native-agent-runtime.test.ts) · [`codex-native-agent-runtime.test.ts`](../tests/research/codex-native-agent-runtime.test.ts)
+**Source / Behavior Test:** [`gvisor-agent-sandbox.ts`](../src/research/agent-led/gvisor-agent-sandbox.ts) · [`provider-research-report.ts`](../src/research/agent-led/provider-research-report.ts) · [`grok-native-agent-runtime.ts`](../src/research/agent-led/grok-native-agent-runtime.ts) · [`claude-code-native-agent-runtime.ts`](../src/research/agent-led/claude-code-native-agent-runtime.ts) · [`codex-native-agent-runtime.ts`](../src/research/agent-led/codex-native-agent-runtime.ts) · [`codex-source-reader.ts`](../src/research/agent-led/codex-source-reader.ts) · [`provider-research-report.test.ts`](../tests/research/provider-research-report.test.ts) · [`grok-native-agent-runtime.test.ts`](../tests/research/grok-native-agent-runtime.test.ts) · [`claude-code-native-agent-runtime.test.ts`](../tests/research/claude-code-native-agent-runtime.test.ts) · [`glm-native-agent-runtime.test.ts`](../tests/research/glm-native-agent-runtime.test.ts) · [`codex-native-agent-runtime.test.ts`](../tests/research/codex-native-agent-runtime.test.ts)
 
 </details>
 
 ## Human OS
 
 <details>
-<summary>Human OS — Findingへ検証記録と承認を追記する</summary>
+<summary>Human OS — Candidateを動的検証しscopeと提出承認を扱う</summary>
 
-- **目的:** Findingへruntime / human verificationを追記し、提出前の人間承認を扱う。
-- **Interface:** `HumanOs.receiveFinding / reproduceFinding / recordAIReproduction / recordHumanVerification / saveSubmissionDraft / authorizeExternalAction / admitExternalAction / inspect`。公開入口は[`human-os/index.ts`](../src/human-os/index.ts)。
-- **所有する記録・不変条件:** SQLite v3のFinding・Verification・Draft・Authorization eventsとcontent-addressed Private Evidence。Recipe・Lab Setup・Target・Dependencyのbinding、freshな隔離環境、AI/humanで別environment identity、Draft revisionとdestinationへのexact authorizationを要求する。runtime確認はpreconditions・recipe completion・observed effectとevidence・cleanupが揃った場合だけ。Findingは削除せず、外部送信は行わない。
-- **失敗時:** source / image / runsc不一致ではlabを開始しない。provision・Recipe・観測・cleanup・evidence failureは`incomplete`。外部identityが必要なら`external-dependency-required`。必要なFinding・Draft・human confirmation・authorizationがなければexternal action admissionを拒否する。
+- **目的:** Candidateをfreshな実環境で検証し、技術的な脆弱性、programme適格性、提出前の人間承認を別々に扱う。
+- **Interface:** `HumanOs.receiveCandidateVerification / verifyCandidate / saveSubmissionDraft / authorizeExternalAction / admitExternalAction / inspect`。公開入口は[`human-os/index.ts`](../src/human-os/index.ts)。
+- **所有する記録・不変条件:** SQLite v3のVerification・Verified Vulnerability・Programme Scope・Submission Candidate・Draft・Authorization eventsとcontent-addressed Private Evidence。Request・Recipe・Lab Setup・Target・Dependencyのbinding、freshな隔離環境、全configured programmeのexactly-once評価、Draft revisionとdestinationへのexact authorizationを要求する。`runtime-confirmed`だけがVerified Vulnerabilityを作り、`in-scope`だけがSubmission Candidateを作る。外部送信は行わない。
+- **失敗時:** source / image / runsc不一致ではlabを開始しない。provision・Recipe・観測・cleanup・evidence failureは`incomplete`。scope evaluatorのfailureや不完全なprogramme集合はscopeだけを`incomplete`にし、Verified Vulnerabilityを失わない。必要なVerified Vulnerability・Submission Candidate・Draft・authorizationがなければexternal action admissionを拒否する。
 
-**Source / Behavior Test:** [`src/human-os`](../src/human-os) · [`dynamic-ai-reproduction.test.ts`](../tests/human-os/dynamic-ai-reproduction.test.ts) · [`gvisor-wordpress-dynamic-reproduction.test.ts`](../tests/human-os/gvisor-wordpress-dynamic-reproduction.test.ts) · [`recipe-dynamic-reproduction-agent.test.ts`](../tests/human-os/recipe-dynamic-reproduction-agent.test.ts) · [`agent-led-human-os.test.ts`](../tests/human-os/agent-led-human-os.test.ts)
+**Source / Behavior Test:** [`src/human-os`](../src/human-os) · [`candidate-verification.test.ts`](../tests/human-os/candidate-verification.test.ts) · [`gvisor-candidate-verification.test.ts`](../tests/human-os/gvisor-candidate-verification.test.ts) · [`recipe-dynamic-reproduction-agent.test.ts`](../tests/human-os/recipe-dynamic-reproduction-agent.test.ts)
 
 </details>
 
@@ -255,7 +254,7 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 <summary>Composition root — コマンドと実行依存を接続する</summary>
 
 - **目的:** AIが既存のCampaign操作と照会を呼ぶための薄い入口を提供する。
-- **Interface:** `wordpress-harness campaign conduct | conduct-approved | review-research | review-candidates | retry-validation | inspect`。
+- **Interface:** `wordpress-harness campaign conduct | conduct-approved | review-research | review-candidates | inspect`。
 - **所有する記録・不変条件:** CLI独自のCampaign stateは持たない。sealed profileからAdapterを選び、prompt digestとDependency mount集合を検査する。`inspect`はrunを起動しない。Review前の一時照会も、例外時を含めDB接続を閉じる。
 - **失敗時:** unsupported runtime・missing option・invalid inputはnon-zero。buildは古いdistを消し、現行sourceにないartifactを拒否する。
 
@@ -270,9 +269,10 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 | 内容 | Source | 現在の関係 |
 | --- | --- | --- |
 | base Prompt | [Research Prompt v2](../prompts/wordpress-plugin-research-v2.md) | CLIから本文を渡し、sealed digestを検査する |
-| run固有のcontextと追加指示 | [`agent-prompts.ts`](../src/research/agent-led/agent-prompts.ts) | `agentResearchPrompt / agentValidationPrompt`がsealed runからTarget・Dependencyの表示とJSON化したcontextを組み立てる。Sandboxはこの入口を呼ぶ |
+| run固有のcontextと追加指示 | [`agent-prompts.ts`](../src/research/agent-led/agent-prompts.ts) | `agentResearchPrompt`がsealed runからTarget・Dependency・Threat Context・Programme Boundary・継続next actionの表示とJSON化したcontextを組み立て、Candidate-bound recipeの出力を要求する |
 | 入出力schema | [contracts.ts](../src/research/agent-led/contracts.ts) | versioned Zod schemaを所有する |
 | provider向け表現 | [Grok](../src/research/agent-led/grok-native-agent-runtime.ts)・[Claude / GLM](../src/research/agent-led/claude-code-native-agent-runtime.ts)・[Codex](../src/research/agent-led/codex-native-agent-runtime.ts) | schemaからJSON Schemaを生成し、provider別のprompt / structured-output形式へ変換する |
+| Candidate recipeのprivate保存 | [`provider-research-report.ts`](../src/research/agent-led/provider-research-report.ts) | provider outputの本文を検査し、private CASへ保存して公開Reportをopaque refへ変換する |
 
 JSON Schemaの元はZod。Codex等のAdapterは項目名・必須項目・選択肢をprovider向けに変換するため、schema変更時には対応するBehavior Testも確認する。入力の組立を移動する変更では文字列を維持する。base Promptと追加文章に重なる指示を削除・並べ替える場合は、Agentへ届く入力を変える仕様変更として扱う。対応する観測は[Campaign input例](../tests/research/campaign-threat-context.test.ts)と各Runtime AdapterのBehavior Testsにある。
 

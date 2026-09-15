@@ -16,22 +16,24 @@ import {
   type AgentRunDiagnosticRef,
   type AgentRunFailureStage,
   type DependencySnapshotRef,
-  type NativeAgentReceipt,
-  type SealedAgentRun,
+  type NativeRunReceipt,
+  type ResearchReport,
+  type SealedNativeRun,
 } from "./contracts.js";
+import { materializeResearchReport } from "./provider-research-report.js";
 import {
   ProviderCredentialFiles,
   providerFileNameSchema,
 } from "./provider-files.js";
 import { preserveAgentRunDiagnostic } from "./agent-run-diagnostics.js";
-import { agentResearchPrompt, agentValidationPrompt } from "./agent-prompts.js";
+import { agentResearchPrompt } from "./agent-prompts.js";
 import {
   prepareResearchState,
   finalizeResearchState,
   type ResearchWorkingState,
 } from "./research-checkpoints.js";
 
-export { agentResearchPrompt, agentValidationPrompt } from "./agent-prompts.js";
+export { agentResearchPrompt } from "./agent-prompts.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const pinnedImageSchema = z
@@ -54,11 +56,8 @@ export interface GvisorAgentRuntimeOptions {
   }[];
   readonly providerConfigDirectory: string;
   readonly scratchRootDirectory: string;
+  readonly candidateRecipeDirectory?: string;
   readonly promptSet: {
-    readonly digest: string;
-    readonly text: string;
-  };
-  readonly validationPromptSet: {
     readonly digest: string;
     readonly text: string;
   };
@@ -95,7 +94,7 @@ export interface SandboxedAgentCommand {
 }
 
 type FailedReceipt = Exclude<
-  NativeAgentReceipt,
+  NativeRunReceipt,
   { readonly terminal: "completed" }
 >;
 
@@ -163,7 +162,7 @@ async function directory(path: string, name: string): Promise<string> {
 }
 
 export function failedNativeRunReceipt(
-  run: SealedAgentRun,
+  run: SealedNativeRun,
   terminal: FailedReceipt["terminal"],
   summary: string,
   startedAt: Date,
@@ -205,7 +204,7 @@ export function failedNativeRunReceipt(
 }
 
 export async function refusedNativeRunReceipt(
-  run: SealedAgentRun,
+  run: SealedNativeRun,
   execution: Extract<SandboxedAgentResult, { status: "completed" }>,
   terminal: "policy-denied" | "invalid-output",
   summary: string,
@@ -272,7 +271,6 @@ export class GvisorAgentSandbox {
       throw new Error("Source tree byte count must be a non-negative integer");
     }
     digestSchema.parse(options.promptSet.digest);
-    digestSchema.parse(options.validationPromptSet.digest);
     digestSchema.parse(options.permissionProfileDigest);
     if (options.promptSet.text.length === 0) {
       throw new Error("Agent Runtime prompt must not be empty");
@@ -280,33 +278,24 @@ export class GvisorAgentSandbox {
     if (promptTextDigest(options.promptSet.text) !== options.promptSet.digest) {
       throw new Error("Research prompt text does not match its sealed digest");
     }
-    if (options.validationPromptSet.text.length === 0) {
-      throw new Error("Independent Validation prompt must not be empty");
-    }
-    if (
-      promptTextDigest(options.validationPromptSet.text) !==
-      options.validationPromptSet.digest
-    ) {
-      throw new Error(
-        "Validation prompt text does not match its sealed digest",
-      );
-    }
     if (
       !Number.isSafeInteger(options.maxOutputBytes) ||
       options.maxOutputBytes <= 0
     ) {
       throw new Error("Agent Runtime output limit must be a positive integer");
     }
+    if (
+      options.candidateRecipeDirectory !== undefined &&
+      !isAbsolute(options.candidateRecipeDirectory)
+    ) {
+      throw new Error("Candidate Recipe directory must be absolute");
+    }
     this.#options = options;
     this.#clock = options.clock ?? (() => new Date());
     this.#containerUser = nonRootHostUser();
   }
 
-  bindingMatches(run: SealedAgentRun): boolean {
-    const promptSet =
-      run.kind === "sealed-native-research-run"
-        ? this.#options.promptSet
-        : this.#options.validationPromptSet;
+  bindingMatches(run: SealedNativeRun): boolean {
     return (
       run.targetSnapshot.digest === this.#options.targetSnapshotDigest &&
       run.targetSnapshot.sourceTree.digest ===
@@ -320,15 +309,25 @@ export class GvisorAgentSandbox {
             (dependency) => dependency.snapshot,
           ),
         ) &&
-      run.promptSet.digest === promptSet.digest &&
+      run.promptSet.digest === this.#options.promptSet.digest &&
       run.permissionProfile.digest === this.#options.permissionProfileDigest
     );
   }
 
-  prompt(run: SealedAgentRun): string {
-    return run.kind === "sealed-native-research-run"
-      ? agentResearchPrompt(this.#options.promptSet.text, run)
-      : agentValidationPrompt(this.#options.validationPromptSet.text, run);
+  prompt(run: SealedNativeRun): string {
+    return agentResearchPrompt(this.#options.promptSet.text, run);
+  }
+
+  materializeReport(
+    run: SealedNativeRun,
+    value: unknown,
+  ): Promise<ResearchReport> {
+    return materializeResearchReport(
+      value,
+      run,
+      this.#options.candidateRecipeDirectory ??
+        join(this.#options.scratchRootDirectory, "candidate-recipes"),
+    );
   }
 
   now(): Date {
@@ -336,7 +335,7 @@ export class GvisorAgentSandbox {
   }
 
   async execute(
-    run: SealedAgentRun,
+    run: SealedNativeRun,
     command: SandboxedAgentCommand,
   ): Promise<SandboxedAgentResult> {
     const startedAt = this.#clock();
@@ -504,11 +503,6 @@ export class GvisorAgentSandbox {
 
     try {
       if (command.researchSession !== undefined) {
-        if (run.kind !== "sealed-native-research-run") {
-          throw new Error(
-            "Independent Validation cannot resume Research state",
-          );
-        }
         try {
           researchState = await prepareResearchState(run, scratchRootDirectory);
         } catch {
@@ -530,10 +524,7 @@ export class GvisorAgentSandbox {
         scratchDirectory = researchState.scratchDirectory;
         providerHome = researchState.providerHome;
       } else {
-        if (
-          run.kind === "sealed-native-research-run" &&
-          run.resumeFrom !== undefined
-        ) {
+        if (run.resumeFrom !== undefined) {
           throw new Error(
             "Research resume requires a provider session binding",
           );
@@ -562,9 +553,7 @@ export class GvisorAgentSandbox {
             encoding: "utf8",
             mode: 0o600,
             flag:
-              researchState !== undefined &&
-              run.kind === "sealed-native-research-run" &&
-              run.resumeFrom !== undefined
+              researchState !== undefined && run.resumeFrom !== undefined
                 ? "w"
                 : "wx",
           });
@@ -662,8 +651,7 @@ export class GvisorAgentSandbox {
       const sessionArguments =
         researchState === undefined || command.researchSession === undefined
           ? []
-          : run.kind === "sealed-native-research-run" &&
-              run.resumeFrom !== undefined
+          : run.resumeFrom !== undefined
             ? command.researchSession.resumeSessionArguments(
                 researchState.sessionId,
               )
@@ -673,10 +661,7 @@ export class GvisorAgentSandbox {
       const finalizeCheckpoint = async (
         stdout?: string,
       ): Promise<AgentCheckpointRef | undefined> => {
-        if (
-          researchState === undefined ||
-          run.kind !== "sealed-native-research-run"
-        ) {
+        if (researchState === undefined) {
           return undefined;
         }
         await removeProviderCredentials();

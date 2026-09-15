@@ -140,7 +140,6 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
     await chmod(dockerExecutablePath, 0o700);
 
     const researchPrompt = "Research broken security semantics from source.";
-    const validationPrompt = "Independently validate from source.";
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 1,
@@ -156,10 +155,6 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
       promptSet: {
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
-      },
-      validationPromptSet: {
-        id: "independent-validation-v1",
-        digest: promptTextDigest(validationPrompt),
       },
       agentRuntimeProfile: {
         id: "codex-daybreak-blue-native-v1",
@@ -196,10 +191,6 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
         providerConfigDirectory,
         scratchRootDirectory,
         promptSet: { digest: input.promptSet.digest, text: researchPrompt },
-        validationPromptSet: {
-          digest: input.validationPromptSet.digest,
-          text: validationPrompt,
-        },
         permissionProfileDigest: input.permissionProfile.digest,
         maxOutputBytes: 1_000_000,
         sourceReaderScript: "process.exit(0);\n",
@@ -313,7 +304,6 @@ sleep 60
     await chmod(dockerExecutablePath, 0o700);
 
     const researchPrompt = "Research broken security semantics from source.";
-    const validationPrompt = "Independently validate from source.";
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 1,
@@ -329,10 +319,6 @@ sleep 60
       promptSet: {
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
-      },
-      validationPromptSet: {
-        id: "independent-validation-v1",
-        digest: promptTextDigest(validationPrompt),
       },
       agentRuntimeProfile: {
         id: "codex-daybreak-blue-native-v1",
@@ -369,10 +355,6 @@ sleep 60
         providerConfigDirectory,
         scratchRootDirectory,
         promptSet: { digest: input.promptSet.digest, text: researchPrompt },
-        validationPromptSet: {
-          digest: input.validationPromptSet.digest,
-          text: validationPrompt,
-        },
         permissionProfileDigest: input.permissionProfile.digest,
         maxOutputBytes: 1_000_000,
         sourceReaderScript: "process.exit(0);\n",
@@ -516,7 +498,6 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
     await chmod(dockerExecutablePath, 0o700);
 
     const researchPrompt = "Research broken security semantics from source.";
-    const validationPrompt = "Independently validate from source.";
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 1,
@@ -532,10 +513,6 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
       promptSet: {
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
-      },
-      validationPromptSet: {
-        id: "independent-validation-v1",
-        digest: promptTextDigest(validationPrompt),
       },
       agentRuntimeProfile: {
         id: "codex-daybreak-blue-native-v1",
@@ -572,10 +549,6 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
         providerConfigDirectory,
         scratchRootDirectory,
         promptSet: { digest: input.promptSet.digest, text: researchPrompt },
-        validationPromptSet: {
-          digest: input.validationPromptSet.digest,
-          text: validationPrompt,
-        },
         permissionProfileDigest: input.permissionProfile.digest,
         maxOutputBytes: 1_000_000,
         sourceReaderScript: "process.exit(0);\n",

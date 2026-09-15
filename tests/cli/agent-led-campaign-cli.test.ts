@@ -55,14 +55,8 @@ describe("agent-led campaign CLI", () => {
       ],
     });
     const researchPrompt = "Research broken security semantics from source.";
-    const validationPrompt =
-      "Independently validate the candidate from source.";
     const researchPromptPath = join(directory, "research-prompt.txt");
-    const validationPromptPath = join(directory, "validation-prompt.txt");
-    await Promise.all([
-      writeFile(researchPromptPath, researchPrompt, "utf8"),
-      writeFile(validationPromptPath, validationPrompt, "utf8"),
-    ]);
+    await writeFile(researchPromptPath, researchPrompt, "utf8");
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 1,
@@ -90,10 +84,6 @@ describe("agent-led campaign CLI", () => {
       promptSet: {
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
-      },
-      validationPromptSet: {
-        id: "independent-validation-v1",
-        digest: promptTextDigest(validationPrompt),
       },
       agentRuntimeProfile: {
         id: "glm-5.3-claude-code-native-v1",
@@ -165,8 +155,6 @@ exit 90
           scratchRootDirectory,
           "--research-prompt",
           researchPromptPath,
-          "--validation-prompt",
-          validationPromptPath,
         ],
         io,
       );
@@ -197,7 +185,6 @@ exit 90
         campaignId: input.campaignId,
         status: "incomplete",
         nativeRuns: [{ terminal: "policy-denied" }],
-        findings: [],
         coverage: { status: "incomplete" },
       });
     } finally {
@@ -214,7 +201,7 @@ exit 90
 
     expect(exit).toBe(1);
     expect(errors.join("")).toContain(
-      "Usage: wordpress-harness campaign <conduct|conduct-approved|review-research|review-candidates|retry-validation|inspect>",
+      "Usage: wordpress-harness campaign <conduct|conduct-approved|review-research|review-candidates|inspect>",
     );
   });
 
@@ -241,14 +228,8 @@ exit 90
       ],
     });
     const researchPrompt = "Research broken security semantics from source.";
-    const validationPrompt =
-      "Independently validate the Candidate from source.";
     const researchPromptPath = join(directory, "research-prompt.txt");
-    const validationPromptPath = join(directory, "validation-prompt.txt");
-    await Promise.all([
-      writeFile(researchPromptPath, researchPrompt, "utf8"),
-      writeFile(validationPromptPath, validationPrompt, "utf8"),
-    ]);
+    await writeFile(researchPromptPath, researchPrompt, "utf8");
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 1,
@@ -263,10 +244,6 @@ exit 90
       promptSet: {
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
-      },
-      validationPromptSet: {
-        id: "independent-validation-v1",
-        digest: promptTextDigest(validationPrompt),
       },
       agentRuntimeProfile: {
         id: "glm-5.3-claude-code-native-v1",
@@ -370,8 +347,8 @@ exit 90
       decisions: [
         {
           candidateId: "candidate-cli-review-1",
-          disposition: "advance-to-independent-validation" as const,
-          reason: "The trust-boundary impact warrants independent validation.",
+          disposition: "advance-to-candidate-verification" as const,
+          reason: "The trust-boundary impact warrants runtime verification.",
         },
       ],
     };
@@ -426,15 +403,13 @@ exit 90
           scratchRootDirectory,
           "--research-prompt",
           researchPromptPath,
-          "--validation-prompt",
-          validationPromptPath,
         ],
         io,
       );
       expect({ exit, errors }).toEqual({ exit: 0, errors: [] });
       expect(JSON.parse(output[0] ?? "null")).toMatchObject({
         campaignId: input.campaignId,
-        status: "incomplete",
+        status: "verification-preparation-needed",
       });
       const recorded = openResearchCampaigns({
         databasePath,
@@ -447,65 +422,6 @@ exit 90
         candidateReviews: [{ reviewId: "review-cli-1" }],
       });
       recorded.close();
-
-      const retryBody = {
-        kind: "human-validation-retry" as const,
-        schemaVersion: 1 as const,
-        retryId: "validation-retry-cli-1",
-        campaignId: input.campaignId,
-        campaignInputDigest: failedView.inputDigest,
-        failedValidationRunIds: failedView.validationRuns.map(
-          (record) => record.receipt.runId,
-        ),
-        operator: {
-          identity: "human-operator-1",
-          decidedAt: "2026-09-09T01:03:00.000Z",
-        },
-        reason: "The provider constraint is resolved; retry the failed run.",
-      };
-      const retryPath = join(directory, "validation-retry.json");
-      await writeFile(
-        retryPath,
-        JSON.stringify({ ...retryBody, digest: canonicalDigest(retryBody) }),
-        "utf8",
-      );
-      const retryExit = await runCli(
-        [
-          "campaign",
-          "retry-validation",
-          "--database",
-          databasePath,
-          "--retry",
-          retryPath,
-          "--docker",
-          dockerExecutablePath,
-          "--image",
-          digest("f"),
-          "--source",
-          sourceDirectory,
-          "--provider-config",
-          providerConfigDirectory,
-          "--scratch",
-          scratchRootDirectory,
-          "--research-prompt",
-          researchPromptPath,
-          "--validation-prompt",
-          validationPromptPath,
-        ],
-        io,
-      );
-      expect({ retryExit, errors }).toEqual({ retryExit: 0, errors: [] });
-      const retried = openResearchCampaigns({
-        databasePath,
-        runtime: { execute: () => Promise.reject(new Error("inspect only")) },
-      });
-      await expect(
-        retried.inspect({ campaignId: input.campaignId }),
-      ).resolves.toMatchObject({
-        validationRuns: [{}, {}],
-        validationRetries: [{ retryId: "validation-retry-cli-1" }],
-      });
-      retried.close();
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -534,14 +450,8 @@ exit 90
       ],
     });
     const researchPrompt = "Research broken security semantics from source.";
-    const validationPrompt =
-      "Independently validate the Candidate from source.";
     const researchPromptPath = join(directory, "research-prompt.txt");
-    const validationPromptPath = join(directory, "validation-prompt.txt");
-    await Promise.all([
-      writeFile(researchPromptPath, researchPrompt, "utf8"),
-      writeFile(validationPromptPath, validationPrompt, "utf8"),
-    ]);
+    await writeFile(researchPromptPath, researchPrompt, "utf8");
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 1,
@@ -556,10 +466,6 @@ exit 90
       promptSet: {
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
-      },
-      validationPromptSet: {
-        id: "independent-validation-v1",
-        digest: promptTextDigest(validationPrompt),
       },
       agentRuntimeProfile: {
         id: "glm-5.3-claude-code-native-v1",
@@ -700,8 +606,6 @@ exit 90
         scratchRootDirectory,
         "--research-prompt",
         researchPromptPath,
-        "--validation-prompt",
-        validationPromptPath,
       ],
       {
         stdout: (text: string) => output.push(text),

@@ -40,27 +40,35 @@ afterEach(async () => {
 });
 
 describe("CLI database lifetime", () => {
-  it.each(["inspect", "retry-validation"])(
+  it.each(["inspect", "review-candidates"])(
     "releases its database after %s cannot read a campaign",
     async (command) => {
       const directory = await mkdtemp(join(tmpdir(), "cli-database-lifetime-"));
       directories.push(directory);
-      const retryPath = join(directory, "retry.json");
+      const reviewPath = join(directory, "review.json");
       const body = {
-        kind: "human-validation-retry",
+        kind: "human-candidate-review",
         schemaVersion: 1,
-        retryId: "fixture-retry",
+        reviewId: "fixture-review",
         campaignId: "missing-campaign",
         campaignInputDigest: `sha256:${"a".repeat(64)}`,
-        failedValidationRunIds: ["fixture-run"],
+        terminalResearchRunId: "fixture-run",
+        candidateSetDigest: `sha256:${"b".repeat(64)}`,
+        candidateReviewRequestDigest: `sha256:${"c".repeat(64)}`,
         operator: {
           identity: "fixture-operator",
           decidedAt: "2030-01-01T00:00:00.000Z",
         },
-        reason: "Fixture retry against a missing record.",
+        decisions: [
+          {
+            candidateId: "fixture-candidate",
+            disposition: "advance-to-candidate-verification",
+            reason: "Fixture review against a missing record.",
+          },
+        ],
       };
       await writeFile(
-        retryPath,
+        reviewPath,
         JSON.stringify({ ...body, digest: canonicalDigest(body) }),
       );
       const output: string[] = [];
@@ -73,7 +81,7 @@ describe("CLI database lifetime", () => {
           join(directory, "research.sqlite"),
           ...(command === "inspect"
             ? ["--campaign", "missing-campaign"]
-            : ["--retry", retryPath]),
+            : ["--review", reviewPath]),
         ],
         {
           stdout: (text) => output.push(text),

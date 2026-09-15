@@ -7,7 +7,7 @@ import {
   measureCanonicalSourceTree,
   verifyCanonicalSourceTree,
 } from "../../infrastructure/canonical-source-tree.js";
-import type { AgentCheckpointRef, SealedAgentRun } from "./contracts.js";
+import type { AgentCheckpointRef, SealedNativeRun } from "./contracts.js";
 
 const checkpointLimits = {
   maxEntries: 20_000,
@@ -39,7 +39,7 @@ function deterministicSessionId(campaignInputDigest: string): string {
 
 function checkpointMatchesRun(
   checkpoint: AgentCheckpointRef,
-  run: Extract<SealedAgentRun, { readonly kind: "sealed-native-research-run" }>,
+  run: SealedNativeRun,
 ): boolean {
   const dependencySnapshots = run.dependencySnapshots ?? [];
   const dependencySnapshotsDigest =
@@ -58,7 +58,7 @@ function checkpointMatchesRun(
 }
 
 export async function prepareResearchState(
-  run: Extract<SealedAgentRun, { readonly kind: "sealed-native-research-run" }>,
+  run: SealedNativeRun,
   scratchRootDirectory: string,
 ): Promise<ResearchWorkingState> {
   const checkpointRoot = join(scratchRootDirectory, "agent-checkpoints");
@@ -117,7 +117,7 @@ export async function prepareResearchState(
 }
 
 export async function finalizeResearchState(
-  run: Extract<SealedAgentRun, { readonly kind: "sealed-native-research-run" }>,
+  run: SealedNativeRun,
   state: ResearchWorkingState,
   scratchRootDirectory: string,
 ): Promise<AgentCheckpointRef | undefined> {

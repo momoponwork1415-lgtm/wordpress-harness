@@ -22,15 +22,15 @@ import {
 } from "../infrastructure/canonical-json.js";
 import { runNativeModelProcess } from "../infrastructure/native-model-process.js";
 import {
-  sourceValidatedFindingSchema,
-  type SourceValidatedFinding,
+  candidateVerificationRequestSchema,
+  type CandidateVerificationRequest,
 } from "../research/index.js";
 import {
-  defineAIReproductionRecord,
+  defineCandidateVerificationRecord,
   externalDependencyEvidenceRequestSchema,
-  type AIReproductionRecord,
+  type CandidateVerificationRecord,
 } from "./contracts-v3.js";
-import type { DynamicReproductionRuntime } from "./human-os-v3.js";
+import type { CandidateVerificationRuntime } from "./human-os-v3.js";
 
 const pinnedImageSchema = z.string().regex(/^[^\s@]+@sha256:[a-f0-9]{64}$/);
 const dockerRuntimesSchema = z.record(z.string(), z.unknown());
@@ -49,7 +49,7 @@ const boundedSummarySchema = z.string().min(1).max(4_000);
 const dynamicReproductionLabSetupBodySchema = z.strictObject({
   kind: z.literal("dynamic-reproduction-lab-setup"),
   schemaVersion: z.literal(1),
-  findingId: z.string().min(1).max(512),
+  requestId: z.string().min(1).max(512),
   targetSnapshotDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
   dependencySnapshotsDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
   script: z
@@ -83,7 +83,7 @@ export const dynamicReproductionAgentOutcomeSchema = z.discriminatedUnion(
       effectObserved: z.literal(true),
     }),
     z.strictObject({
-      status: z.literal("disproved"),
+      status: z.literal("contradicted"),
       summary: boundedSummarySchema,
       preconditionsMatched: z.literal(true),
       recipeCompleted: z.literal(true),
@@ -134,14 +134,14 @@ export type DynamicReproductionLabSetup = z.infer<
 
 export interface DynamicReproductionSourceResolver {
   resolve(input: {
-    readonly targetSnapshot: SourceValidatedFinding["targetSnapshot"];
+    readonly targetSnapshot: CandidateVerificationRequest["targetSnapshot"];
     readonly dependencySnapshots: NonNullable<
-      SourceValidatedFinding["dependencySnapshots"]
+      CandidateVerificationRequest["dependencySnapshots"]
     >;
   }): Promise<{
     readonly sourceDirectory: string;
     readonly dependencies?: readonly DynamicReproductionDependency[];
-    /** Finding-bound ordinary site-owner configuration run once after every
+    /** Candidate-bound ordinary site-owner configuration run once after every
      * plugin is active. It must not grant the attacker authority that the
      * ordinary configuration would not.
      */
@@ -163,13 +163,13 @@ export type DynamicReproductionAgentOutcome = z.infer<
 
 export interface DynamicReproductionAgent {
   execute(input: {
-    readonly finding: SourceValidatedFinding;
+    readonly request: CandidateVerificationRequest;
     readonly sourceDirectory: string;
     readonly experiment: DynamicReproductionExperiment;
   }): Promise<DynamicReproductionAgentOutcome>;
 }
 
-export interface GvisorWordPressDynamicReproductionOptions {
+export interface GvisorWordPressCandidateVerificationOptions {
   readonly dockerExecutablePath: string;
   readonly images: {
     readonly database: string;
@@ -293,15 +293,15 @@ async function putPrivateEvidence(
   return digest;
 }
 
-class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRuntime {
-  readonly #options: GvisorWordPressDynamicReproductionOptions;
+class GvisorWordPressCandidateVerificationRuntime implements CandidateVerificationRuntime {
+  readonly #options: GvisorWordPressCandidateVerificationOptions;
   readonly #runner: ContainerProcessRunner;
   readonly #clock: () => Date;
   readonly #healthAttempts: number;
   readonly #maxExperiments: number;
   readonly #containerUser: string;
 
-  constructor(options: GvisorWordPressDynamicReproductionOptions) {
+  constructor(options: GvisorWordPressCandidateVerificationOptions) {
     this.#options = options;
     if (!isAbsolute(options.dockerExecutablePath)) {
       throw new Error("Docker executable path must be absolute");
@@ -330,9 +330,9 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
   }
 
   async execute(input: {
-    readonly finding: SourceValidatedFinding;
-  }): Promise<AIReproductionRecord> {
-    const finding = sourceValidatedFindingSchema.parse(input.finding);
+    readonly request: CandidateVerificationRequest;
+  }): Promise<CandidateVerificationRecord> {
+    const request = candidateVerificationRequestSchema.parse(input.request);
     const runtimeProfileDigest = canonicalDigest({
       kind: "dynamic-reproduction-runtime-profile",
       schemaVersion: 1,
@@ -350,8 +350,8 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
     ]);
     await chmod(privateEvidenceDirectory, 0o700);
     const resolved = await this.#options.sourceResolver.resolve({
-      targetSnapshot: finding.targetSnapshot,
-      dependencySnapshots: finding.dependencySnapshots ?? [],
+      targetSnapshot: request.targetSnapshot,
+      dependencySnapshots: request.dependencySnapshots ?? [],
     });
     const sourceDirectory = await absoluteDirectory(
       resolved.sourceDirectory,
@@ -361,14 +361,14 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
       !(
         await verifyCanonicalSourceTree(
           sourceDirectory,
-          finding.targetSnapshot.sourceTree,
+          request.targetSnapshot.sourceTree,
         )
       ).matches
     ) {
       throw new Error("Dynamic Reproduction Target source mismatch");
     }
     const dependencySnapshots = new Map(
-      (finding.dependencySnapshots ?? []).map((snapshot) => [
+      (request.dependencySnapshots ?? []).map((snapshot) => [
         snapshot.id,
         snapshot,
       ]),
@@ -382,7 +382,7 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
         resolvedDependencyIds.has(dependency.dependencySnapshotId)
       ) {
         throw new Error(
-          "Dynamic Reproduction Dependency does not match the Finding",
+          "Candidate Verification Dependency does not match the Request",
         );
       }
       resolvedDependencyIds.add(dependency.dependencySnapshotId);
@@ -412,12 +412,14 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
         : dynamicReproductionLabSetupSchema.parse(resolved.labSetup);
     if (
       labSetup !== undefined &&
-      (labSetup.findingId !== finding.findingId ||
-        labSetup.targetSnapshotDigest !== finding.targetSnapshot.digest ||
+      (labSetup.requestId !== request.requestId ||
+        labSetup.targetSnapshotDigest !== request.targetSnapshot.digest ||
         labSetup.dependencySnapshotsDigest !==
-          canonicalDigest(finding.dependencySnapshots ?? []))
+          canonicalDigest(request.dependencySnapshots ?? []))
     ) {
-      throw new Error("Dynamic Reproduction Lab Setup does not match Finding");
+      throw new Error(
+        "Candidate Verification Lab Setup does not match Request",
+      );
     }
     await this.#inspectIsolation();
 
@@ -450,7 +452,7 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
         await this.#setupLab(
           resources,
           sourceDirectory,
-          finding.targetSnapshot.pluginSlug,
+          request.targetSnapshot.pluginSlug,
           databasePassword,
           adminPassword,
           dependencies,
@@ -492,7 +494,7 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
         try {
           outcome = dynamicReproductionAgentOutcomeSchema.parse(
             await this.#options.agent.execute({
-              finding,
+              request,
               sourceDirectory,
               experiment,
             }),
@@ -519,13 +521,13 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
         cleanupCompleted = await this.#cleanup(resources);
       }
 
-      let evidence: AIReproductionRecord["privateEvidence"] = [];
+      let evidence: CandidateVerificationRecord["privateEvidence"] = [];
       let evidenceStored = true;
       try {
         evidence = await this.#persistEvidence(
           privateEvidenceDirectory,
           evidenceDirectory,
-          finding,
+          request,
           environmentId,
           runtimeProfileDigest,
           transcripts,
@@ -549,15 +551,16 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
           : outcome?.status === "incomplete"
             ? outcome.summary
             : "Dynamic Reproduction did not complete a fully evidenced fresh-lab experiment.";
-      return defineAIReproductionRecord({
-        kind: "ai-reproduction-record",
-        schemaVersion: 3,
-        findingId: finding.findingId,
+      return defineCandidateVerificationRecord({
+        kind: "candidate-verification-record",
+        schemaVersion: 1,
+        requestId: request.requestId,
+        candidateId: request.candidate.candidateId,
         environment:
           setupCompleted && cleanupCompleted
             ? {
                 environmentId,
-                targetSnapshotDigest: finding.targetSnapshot.digest,
+                targetSnapshotDigest: request.targetSnapshot.digest,
                 runtimeProfileDigest,
                 backend: "gvisor",
                 runtime: "runsc",
@@ -976,12 +979,12 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
   async #persistEvidence(
     privateEvidenceDirectory: string,
     evidenceDirectory: string,
-    finding: SourceValidatedFinding,
+    request: CandidateVerificationRequest,
     environmentId: string,
     runtimeProfileDigest: string,
     transcripts: readonly ExperimentTranscript[],
     outcome: DynamicReproductionAgentOutcome | undefined,
-  ): Promise<AIReproductionRecord["privateEvidence"]> {
+  ): Promise<CandidateVerificationRecord["privateEvidence"]> {
     const contents: Uint8Array[] = [];
     if (transcripts.length > 0) {
       contents.push(
@@ -989,8 +992,8 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
           canonicalJson({
             kind: "dynamic-reproduction-transcript",
             schemaVersion: 1,
-            findingId: finding.findingId,
-            targetSnapshotDigest: finding.targetSnapshot.digest,
+            requestId: request.requestId,
+            targetSnapshotDigest: request.targetSnapshot.digest,
             runtimeProfileDigest,
             images: this.#options.images,
             environmentId,
@@ -1032,8 +1035,8 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
   }
 }
 
-export function openGvisorWordPressDynamicReproductionRuntime(
-  options: GvisorWordPressDynamicReproductionOptions,
-): DynamicReproductionRuntime {
-  return new GvisorWordPressDynamicReproductionRuntime(options);
+export function openGvisorWordPressCandidateVerificationRuntime(
+  options: GvisorWordPressCandidateVerificationOptions,
+): CandidateVerificationRuntime {
+  return new GvisorWordPressCandidateVerificationRuntime(options);
 }

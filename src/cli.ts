@@ -8,7 +8,6 @@ import {
   campaignInputSchema,
   humanCandidateReviewSchema,
   humanResearchContinuationReviewSchema,
-  humanValidationRetrySchema,
   type CampaignInput,
 } from "./research/index.js";
 import {
@@ -26,7 +25,7 @@ import {
 import { admitApprovedTargetCampaign } from "./target-intelligence/approved-target-campaign/approved-target-campaigns.js";
 
 const usage =
-  "Usage: wordpress-harness campaign <conduct|conduct-approved|review-research|review-candidates|retry-validation|inspect> --database <path> ...";
+  "Usage: wordpress-harness campaign <conduct|conduct-approved|review-research|review-candidates|inspect> --database <path> ...";
 
 export interface CliIo {
   stdout(text: string): void;
@@ -116,7 +115,6 @@ function openNativeRuntime(
   args: readonly string[],
   input: CampaignInput,
   researchPrompt: string,
-  validationPrompt: string,
 ): NativeAgentRuntime {
   const options = {
     dockerExecutablePath: resolve(readOption(args, "--docker")),
@@ -130,10 +128,6 @@ function openNativeRuntime(
     promptSet: {
       digest: input.promptSet.digest,
       text: researchPrompt,
-    },
-    validationPromptSet: {
-      digest: input.validationPromptSet.digest,
-      text: validationPrompt,
     },
     permissionProfileDigest: input.permissionProfile.digest,
     maxOutputBytes: 8 * 1024 * 1024,
@@ -169,33 +163,20 @@ export async function runCli(
         command !== "conduct-approved" &&
         command !== "review-research" &&
         command !== "review-candidates" &&
-        command !== "retry-validation" &&
         command !== "inspect")
     ) {
       throw new Error(usage);
     }
     const databasePath = resolve(readOption(args, "--database"));
 
-    if (
-      command === "review-research" ||
-      command === "review-candidates" ||
-      command === "retry-validation"
-    ) {
+    if (command === "review-research" || command === "review-candidates") {
       const reviewValue = JSON.parse(
-        await readFile(
-          readOption(
-            args,
-            command === "retry-validation" ? "--retry" : "--review",
-          ),
-          "utf8",
-        ),
+        await readFile(readOption(args, "--review"), "utf8"),
       ) as unknown;
       const review =
         command === "review-research"
           ? humanResearchContinuationReviewSchema.parse(reviewValue)
-          : command === "review-candidates"
-            ? humanCandidateReviewSchema.parse(reviewValue)
-            : humanValidationRetrySchema.parse(reviewValue);
+          : humanCandidateReviewSchema.parse(reviewValue);
       const inspection = openResearchCampaigns({
         databasePath,
         runtime: unavailableInspectionRuntime(),
@@ -207,18 +188,13 @@ export async function runCli(
       } finally {
         inspection.close();
       }
-      const [researchPrompt, validationPrompt] = await Promise.all([
-        readFile(readOption(args, "--research-prompt"), "utf8"),
-        readFile(readOption(args, "--validation-prompt"), "utf8"),
-      ]);
+      const researchPrompt = await readFile(
+        readOption(args, "--research-prompt"),
+        "utf8",
+      );
       const campaigns = openResearchCampaigns({
         databasePath,
-        runtime: openNativeRuntime(
-          args,
-          input,
-          researchPrompt,
-          validationPrompt,
-        ),
+        runtime: openNativeRuntime(args, input, researchPrompt),
       });
       close = () => campaigns.close();
       const outcome = await campaigns.conduct(review);
@@ -238,18 +214,13 @@ export async function runCli(
         approvedRequest === undefined
           ? campaignInputSchema.parse(inputValue)
           : admitApprovedTargetCampaign(approvedRequest);
-      const [researchPrompt, validationPrompt] = await Promise.all([
-        readFile(readOption(args, "--research-prompt"), "utf8"),
-        readFile(readOption(args, "--validation-prompt"), "utf8"),
-      ]);
+      const researchPrompt = await readFile(
+        readOption(args, "--research-prompt"),
+        "utf8",
+      );
       const campaigns = openResearchCampaigns({
         databasePath,
-        runtime: openNativeRuntime(
-          args,
-          input,
-          researchPrompt,
-          validationPrompt,
-        ),
+        runtime: openNativeRuntime(args, input, researchPrompt),
       });
       close = () => campaigns.close();
       const outcome =

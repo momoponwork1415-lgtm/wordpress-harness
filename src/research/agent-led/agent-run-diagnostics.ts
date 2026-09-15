@@ -13,7 +13,7 @@ import type { NativeModelProcessResult } from "../../infrastructure/native-model
 import type {
   AgentRunDiagnosticRef,
   AgentRunFailureStage,
-  SealedAgentRun,
+  SealedNativeRun,
 } from "./contracts.js";
 
 function diagnosticError(
@@ -38,7 +38,7 @@ function diagnosticError(
 
 export async function preserveAgentRunDiagnostic(options: {
   readonly scratchRootDirectory: string;
-  readonly run: SealedAgentRun;
+  readonly run: SealedNativeRun;
   readonly stage: AgentRunFailureStage;
   readonly redact: (text: string) => string;
   readonly process?: NativeModelProcessResult;
