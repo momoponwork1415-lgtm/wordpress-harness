@@ -205,7 +205,7 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         "--no-memory",
         "--disable-web-search",
         "--tools",
-        "read_file,grep,list_dir,task",
+        "GrokBuild:read_file,GrokBuild:grep,GrokBuild:list_dir,GrokBuild:task,GrokBuild:get_task_output,GrokBuild:kill_task",
         "--deny",
         "Read(/provider/**)",
         "--deny",
