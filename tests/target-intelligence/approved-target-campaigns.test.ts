@@ -8,7 +8,7 @@ import {
   type ResearchCampaignPolicy,
 } from "../../src/target-intelligence/approved-target-campaign/index.js";
 import type { ApprovedTargetBatch } from "../../src/target-intelligence/approved-target-batch/index.js";
-import type { TargetCandidate } from "../../src/target-intelligence/target-proposal/index.js";
+import type { TargetCandidate } from "../../src/target-intelligence/candidate-pool/index.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 

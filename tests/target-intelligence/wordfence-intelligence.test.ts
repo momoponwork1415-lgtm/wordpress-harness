@@ -342,7 +342,7 @@ describe("WordfenceIntelligence", () => {
     }
   });
 
-  it("refreshes and replays a fixed-main local CAS artifact stored with mode 0644", async () => {
+  it("refreshes and replays a current local CAS artifact stored with mode 0644", async () => {
     const directory = await mkdtemp(
       join(tmpdir(), "wordfence-local-cas-upgrade-"),
     );
@@ -609,7 +609,11 @@ describe("WordfenceIntelligence", () => {
     }
   });
 
-  it("replays an explicitly marked legacy record set without re-publishing it", async () => {
+  it.each([
+    "unmarked record-only",
+    "marked record-only",
+    "previous index version",
+  ] as const)("rejects %s storage without changing it", async (format) => {
     const directory = await mkdtemp(join(tmpdir(), "wordfence-legacy-replay-"));
     const databasePath = join(directory, "target-intelligence.sqlite");
     const artifactDirectory = join(directory, "artifacts");
@@ -656,24 +660,58 @@ describe("WordfenceIntelligence", () => {
           digest: authorization.digest,
         },
       };
-      const expectedAggregate = await original.aggregate(aggregateRequest);
-      const expectedExact = await original.inspectKnownRecords(exactRequest);
 
       const legacyMigration = new Database(databasePath);
-      legacyMigration.exec(`
-        UPDATE wordfence_intelligence_records
-           SET record_json = json_extract(record_json, '$.record')
-         WHERE json_type(record_json, '$.record') = 'object';
-        DROP TABLE IF EXISTS wordfence_intelligence_record_set_manifests;
-        DROP TABLE IF EXISTS wordfence_intelligence_legacy_record_sets;
-        DROP TABLE IF EXISTS wordfence_intelligence_index_metadata;
-      `);
+      if (format === "previous index version") {
+        legacyMigration.exec(`
+          CREATE TABLE IF NOT EXISTS wordfence_intelligence_legacy_record_sets
+            (snapshot_digest TEXT PRIMARY KEY, legacy_json TEXT NOT NULL) STRICT;
+          UPDATE wordfence_intelligence_index_metadata SET schema_version = 1;
+        `);
+      } else {
+        legacyMigration.exec(`
+          UPDATE wordfence_intelligence_records
+             SET record_json = json_extract(record_json, '$.record');
+          DROP TABLE wordfence_intelligence_record_set_manifests;
+          DROP TABLE IF EXISTS wordfence_intelligence_legacy_record_sets;
+          DROP TABLE wordfence_intelligence_index_metadata;
+        `);
+        if (format === "marked record-only") {
+          legacyMigration.exec(`
+            CREATE TABLE wordfence_intelligence_record_set_manifests
+              (snapshot_digest TEXT PRIMARY KEY, manifest_json TEXT NOT NULL) STRICT;
+            CREATE TABLE wordfence_intelligence_legacy_record_sets
+              (snapshot_digest TEXT PRIMARY KEY, legacy_json TEXT NOT NULL) STRICT;
+            CREATE TABLE wordfence_intelligence_index_metadata
+              (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), schema_version INTEGER NOT NULL) STRICT;
+            INSERT INTO wordfence_intelligence_index_metadata VALUES (1, 1);
+          `);
+          legacyMigration
+            .prepare(
+              `INSERT INTO wordfence_intelligence_legacy_record_sets VALUES (?, ?)`,
+            )
+            .run(
+              current.snapshotRef.digest,
+              JSON.stringify({
+                kind: "wordfence-intelligence-legacy-record-set",
+                schemaVersion: 1,
+                snapshotDigest: current.snapshotRef.digest,
+                snapshotSchemaVersion: 1,
+                parserVersion: "wordfence-intelligence-production-v3",
+                recordFormat: "record-only-v1",
+                integrity: "unbound-read-only",
+              }),
+            );
+        }
+      }
+      const before = legacyMigration.serialize();
       legacyMigration.close();
 
+      const retrieve = vi.fn(fixtureAdapter().retrieveProductionFeed);
       const restarted = openWordfenceIntelligence({
         databasePath,
         artifactDirectory,
-        adapter: fixtureAdapter(),
+        adapter: { ...fixtureAdapter(), retrieveProductionFeed: retrieve },
         credential: { kind: "secret-ref", id: "wordfence-v3-api-key" },
         knownRecordAuthorizationProvider: authorizationProvider,
         clock: () => new Date("2030-08-01T00:00:00.000Z"),
@@ -683,19 +721,26 @@ describe("WordfenceIntelligence", () => {
           kind: "wordfence-intelligence-inspection",
           schemaVersion: 1,
         }),
-      ).resolves.toEqual(current);
-      await expect(restarted.aggregate(aggregateRequest)).resolves.toEqual(
-        expectedAggregate,
+      ).rejects.toThrow("Wordfence Intelligence snapshot conflict");
+      await expect(restarted.aggregate(aggregateRequest)).rejects.toThrow(
+        "Wordfence Intelligence snapshot conflict",
       );
-      await expect(
-        restarted.inspectKnownRecords(exactRequest),
-      ).resolves.toEqual(expectedExact);
+      await expect(restarted.inspectKnownRecords(exactRequest)).rejects.toThrow(
+        "Wordfence Intelligence snapshot conflict",
+      );
       await expect(
         restarted.refresh({
           kind: "wordfence-intelligence-refresh",
           schemaVersion: 1,
         }),
       ).rejects.toThrow("Wordfence Intelligence snapshot conflict");
+      expect(retrieve).not.toHaveBeenCalled();
+      const after = new Database(databasePath, { readonly: true });
+      try {
+        expect(after.serialize()).toEqual(before);
+      } finally {
+        after.close();
+      }
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

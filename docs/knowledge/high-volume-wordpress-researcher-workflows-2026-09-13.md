@@ -1,7 +1,7 @@
 # Knowledge: 高volume WordPress researcherの探索workflow
 
 Status: primary-source research, 2026-09-13
-Retrieval date: 2026-09-13
+Retrieval date: 2026-09-13（追補: 2026-09-15）
 
 ## 結論
 
@@ -26,6 +26,19 @@ Retrieval date: 2026-09-13
 - 公開情報には監査したTarget総数、時間、棄却、duplicate、非発見runがない。二人のprecision、recall、Findings/Target、Findings/hourは算出しない。
 
 ## Observed: Rafie Muhammad
+
+### 追補: 公開動画と既知脆弱性の履歴（2026-09-15）
+
+今回の利用目的は、**指定したプラグインで、同種の脆弱性が過去に公開報告されたかを確認すること**。これは本セッションの利用者要件であり、Rafie本人の発言や、全件保存を採用した設計判断として扱わない。
+
+| 資料 | 今回確認できたこと |
+| --- | --- |
+| [Catching WordPress 0-Days on the Fly — BSides Canberra 2025](https://pretalx.com/bsides-canberra-2025/talk/XLN9H3/) / [動画](https://www.youtube.com/watch?v=-K5BZGWrtqM&t=270s) | 公式概要でAnanda DhakalとRafie Muhammadの共同発表を確認。公開コードの変更を監視し、人による調査を補助する内容。概要には既知脆弱性DBの保存範囲への言及がない。 |
+| [Uncharted Depths Navigating Overlooked Vulnerabilities in the Sea of Million WordPress Sites — Off-by-One 2024](https://www.youtube.com/watch?v=foOyhOUreno&t=277s) | [本人の公開プロフィール](https://id.linkedin.com/in/rafiemuhammad)で題名と動画リンクを確認。[主催者の公開資料一覧](https://offbyone.sg/archive/2024)には動画集とスライド集へのリンクがある。 |
+
+今回、YouTubeの本文・字幕と該当スライドの内容は取得できなかった。したがって、過去の報告をどう使うかという本人の具体的な説明や「全件をローカルDBに保存すべき」という推奨は確認できていない。本追補は、既存の時刻付き動画要約を再検証したものでもない。
+
+保存範囲とは別に、取得元の制約がある。Wordfence v3のProduction / Scanner Feedはともに全件を返し、絞り込み用の追加パラメーターを受け付けない。CWE（弱点の種類）はProduction Feedだけにあり、値が未設定の場合もある。**全件を取得する制約と、全件を永続保存する必要性は別の判断になる**（[Wordfence公式API仕様](https://www.wordfence.com/help/wordfence-intelligence/v3-accessing-and-consuming-the-vulnerability-data-feed/)）。
 
 ### 公開portfolio
 

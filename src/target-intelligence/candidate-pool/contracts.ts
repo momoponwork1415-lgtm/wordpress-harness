@@ -6,11 +6,8 @@ import {
   type WordPressOrgTargetSource,
 } from "../acquisition/index.js";
 import {
-  targetCandidatePoolSchema,
-  targetCandidateSchema,
-} from "../target-proposal/contracts.js";
-import {
   wordPressOrgUpdateFrontierRefSchema,
+  wordPressOrgUpdateNavigationSignalSchema,
   type WordPressOrgUpdateFrontiers,
 } from "../update-frontier/contracts.js";
 
@@ -25,6 +22,159 @@ const immutableRefSchema = z.strictObject({
   id: identifierSchema,
   digest: digestSchema,
 });
+
+const termSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-z0-9][a-z0-9-]*$/);
+export const targetIdentitySchema = z.strictObject({
+  pluginIdentity: z
+    .string()
+    .regex(
+      /^(?:wporg:[a-z0-9][a-z0-9-]*|premium:[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*)$/,
+    ),
+  verifiedVersion: z.string().min(1).max(64),
+  canonicalFileManifestDigest: digestSchema,
+});
+
+export const targetObservationSchema = z.strictObject({
+  ref: immutableRefSchema,
+  retrievedAt: z.iso.datetime(),
+  currentUntil: z.iso.datetime(),
+  acquisition: z.enum(["available", "unavailable"]),
+  provenance: z.enum(["verified", "unverified", "conflicting"]),
+  identity: z.enum(["verified", "unverified"]),
+});
+
+const selectionFactsSchema = z.strictObject({
+  activeInstallCount: z.number().int().nonnegative(),
+  lastUpdatedAt: z.iso.datetime(),
+  integrations: z.array(termSchema),
+  sourceScale: z
+    .strictObject({
+      fileCount: z.number().int().positive(),
+      byteCount: z.number().int().positive(),
+      languages: z.array(termSchema).min(1),
+    })
+    .optional(),
+  updateActivity: z
+    .strictObject({
+      frontierRef: immutableRefSchema,
+      fromRevisionExclusive: z.number().int().nonnegative(),
+      toRevisionInclusive: z.number().int().nonnegative(),
+      changesetCount: z.number().int().positive(),
+      changedPhpFileOccurrences: z.number().int().positive(),
+      addedPhpLines: z.number().int().nonnegative(),
+      navigationSignals: z.array(wordPressOrgUpdateNavigationSignalSchema),
+    })
+    .optional(),
+});
+
+const programmeObservationSchema = z.strictObject({
+  programmeIdentity: z.string().regex(/^programme:[a-z0-9][a-z0-9-]*$/),
+  snapshotRef: immutableRefSchema,
+  opportunityBand: z.enum(["broad", "high-impact-only", "research-only"]),
+  eligibility: z.enum(["eligible", "ineligible", "unknown"]),
+  currentUntil: z.iso.datetime(),
+});
+
+const disclosureRouteSchema = z.strictObject({
+  observationRef: immutableRefSchema.extend({ routeDigest: digestSchema }),
+  kind: z.enum([
+    "first-party-bounty",
+    "first-party-vdp",
+    "delegated-vdp",
+    "security-contact-only",
+    "none-found",
+    "conflicting",
+  ]),
+  currentUntil: z.iso.datetime(),
+});
+
+const researchHistorySchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("new") }),
+  z.strictObject({
+    status: z.literal("active"),
+    campaignId: identifierSchema,
+  }),
+  z.strictObject({
+    status: z.literal("coverage-closed"),
+    campaignId: identifierSchema,
+  }),
+  z.strictObject({
+    status: z.literal("incomplete"),
+    campaignId: identifierSchema,
+  }),
+]);
+
+const vulnerabilityHistoryAggregateSchema = z.strictObject({
+  snapshotRef: immutableRefSchema,
+  publishedRecordCount: z.number().int().nonnegative(),
+  densityBand: z.enum(["none", "low", "medium", "high"]),
+  lastPublishedAt: z.iso.datetime().optional(),
+});
+
+export const targetCandidateSchema = z.strictObject({
+  candidateId: identifierSchema,
+  target: targetIdentitySchema,
+  targetObservation: targetObservationSchema,
+  selectionFacts: selectionFactsSchema,
+  programmes: z.array(programmeObservationSchema),
+  disclosureRoute: disclosureRouteSchema,
+  vulnerabilityHistoryAggregate: vulnerabilityHistoryAggregateSchema.optional(),
+  researchHistory: researchHistorySchema,
+});
+
+const targetCandidatePoolBodySchema = z.strictObject({
+  kind: z.literal("target-candidate-pool"),
+  schemaVersion: z.literal(1),
+  id: identifierSchema,
+  candidates: z.array(targetCandidateSchema).min(1),
+});
+
+export const targetCandidatePoolSchema = targetCandidatePoolBodySchema
+  .extend({ digest: digestSchema })
+  .superRefine((pool, context) => {
+    const body = {
+      kind: pool.kind,
+      schemaVersion: pool.schemaVersion,
+      id: pool.id,
+      candidates: pool.candidates,
+    };
+    if (pool.digest !== canonicalDigest(body)) {
+      context.addIssue({
+        code: "custom",
+        path: ["digest"],
+        message: "Candidate Pool digest must bind its exact candidates",
+      });
+    }
+    const candidateIds = new Set<string>();
+    const targetIds = new Set<string>();
+    for (const [index, candidate] of pool.candidates.entries()) {
+      if (candidateIds.has(candidate.candidateId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["candidates", index, "candidateId"],
+          message: "Candidate IDs must be unique",
+        });
+      }
+      candidateIds.add(candidate.candidateId);
+      const targetId = [
+        candidate.target.pluginIdentity,
+        candidate.target.verifiedVersion,
+        candidate.target.canonicalFileManifestDigest,
+      ].join("|");
+      if (targetIds.has(targetId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["candidates", index, "target"],
+          message: "A Target may occur only once in a Candidate Pool",
+        });
+      }
+      targetIds.add(targetId);
+    }
+  });
 
 const candidatePoolFreshnessPolicyBodySchema = z.strictObject({
   kind: z.literal("wordpress-org-candidate-pool-freshness-policy"),
@@ -217,3 +367,6 @@ export interface OpenWordPressOrgUpdateCandidatePoolsOptions {
   readonly targetSource: WordPressOrgTargetSource;
   readonly clock?: () => Date;
 }
+
+export type TargetCandidate = z.infer<typeof targetCandidateSchema>;
+export type TargetCandidatePool = z.infer<typeof targetCandidatePoolSchema>;

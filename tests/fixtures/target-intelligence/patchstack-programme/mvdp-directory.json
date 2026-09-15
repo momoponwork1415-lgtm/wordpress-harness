@@ -1,8 +1,8 @@
 {
   "kind": "patchstack-programme-page",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceKind": "mvdp-directory",
-  "precedence": 4,
+  "precedence": 3,
   "assertions": {
     "eligibility": {
       "attackerRoles": [

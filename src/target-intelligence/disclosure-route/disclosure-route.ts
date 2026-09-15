@@ -1,20 +1,17 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { persistImmutableFile } from "../../infrastructure/immutable-file.js";
 import { canonicalJson, sha256Digest } from "../acquisition/canonical-json.js";
 import {
   DisclosureRouteError,
-  DisclosureRouteStalenessError,
   disclosureRouteObservationRefSchema,
   disclosureRouteObservationSchema,
   disclosureRouteObserveRequestSchema,
   disclosureRouteSourceDocumentSchema,
   disclosureRouteSourceKindSchema,
   disclosureRouteSourceSnapshotSchema,
-  programmeAssignmentRouteBindingSchema,
-  programmeAssignmentRouteStalenessRequestSchema,
-  programmeAssignmentRouteStalenessSchema,
   type DisclosureRoute,
   type DisclosureRouteObservation,
   type DisclosureRouteObservationRef,
@@ -22,8 +19,6 @@ import {
   type DisclosureRouteSourceAdapter,
   type DisclosureRouteSourceSnapshot,
   type OpenDisclosureRouteOptions,
-  type ProgrammeAssignmentRouteStaleness,
-  type ProgrammeAssignmentRouteStalenessRequest,
 } from "./contracts.js";
 
 const precedence = {
@@ -36,15 +31,6 @@ const precedence = {
 
 function rawDigest(bytes: Uint8Array): string {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-}
-
-function hasErrorCode(error: unknown, code: string): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === code
-  );
 }
 
 function uniqueCanonical<T>(values: readonly T[]): T[] {
@@ -145,12 +131,10 @@ function validatedOrigin(value: string): string {
 class FileDisclosureRoute implements DisclosureRoute {
   readonly #storageDirectory: string;
   readonly #sourceAdapters: readonly DisclosureRouteSourceAdapter[];
-  readonly #assignmentBindingResolver: OpenDisclosureRouteOptions["assignmentBindingResolver"];
   readonly #clock: () => Date;
 
   constructor(options: OpenDisclosureRouteOptions) {
     this.#storageDirectory = options.storageDirectory;
-    this.#assignmentBindingResolver = options.assignmentBindingResolver;
     this.#sourceAdapters = [...options.sourceAdapters].sort((left, right) => {
       const sourceOrder =
         precedence[left.sourceKind] - precedence[right.sourceKind];
@@ -258,61 +242,6 @@ class FileDisclosureRoute implements DisclosureRoute {
     return observation;
   }
 
-  async projectAssignmentStaleness(
-    requestValue: ProgrammeAssignmentRouteStalenessRequest,
-  ): Promise<ProgrammeAssignmentRouteStaleness> {
-    const request =
-      programmeAssignmentRouteStalenessRequestSchema.parse(requestValue);
-    let binding;
-    try {
-      if (this.#assignmentBindingResolver === undefined) {
-        throw new Error("Programme Assignment binding resolver is unavailable");
-      }
-      binding = programmeAssignmentRouteBindingSchema.parse(
-        await this.#assignmentBindingResolver.resolve(
-          request.assignmentBindingRef,
-        ),
-      );
-      const { id, digest, ...body } = binding;
-      if (
-        sha256Digest(body) !== digest ||
-        id !== `assignment-route-binding:${digest.slice(7, 31)}` ||
-        id !== request.assignmentBindingRef.id ||
-        digest !== request.assignmentBindingRef.digest
-      ) {
-        throw new Error(
-          "Programme Assignment route binding integrity mismatch",
-        );
-      }
-    } catch {
-      throw new DisclosureRouteStalenessError("assignment-binding-unverified");
-    }
-    const observation = await this.inspect(request.currentObservationRef);
-    if (observation.pluginIdentity !== binding.pluginIdentity) {
-      throw new DisclosureRouteStalenessError("binding-mismatch");
-    }
-    const body = {
-      kind: "programme-assignment-route-staleness" as const,
-      schemaVersion: 2 as const,
-      assignmentBindingRef: request.assignmentBindingRef,
-      programmeAssignmentRef: binding.programmeAssignmentRef,
-      pluginIdentity: binding.pluginIdentity,
-      status:
-        binding.routeDigest === request.currentObservationRef.routeDigest
-          ? ("current" as const)
-          : ("stale" as const),
-      assignedRouteDigest: binding.routeDigest,
-      observedRouteDigest: request.currentObservationRef.routeDigest,
-      observationRef: request.currentObservationRef,
-    };
-    const digest = sha256Digest(body);
-    return programmeAssignmentRouteStalenessSchema.parse({
-      ...body,
-      id: `route-staleness:${digest.slice(7, 31)}`,
-      digest,
-    });
-  }
-
   async #persist(
     observation: DisclosureRouteObservation,
   ): Promise<DisclosureRouteObservationRef> {
@@ -323,17 +252,8 @@ class FileDisclosureRoute implements DisclosureRoute {
       "disclosure-route-observations",
     );
     const path = join(directory, `${ref.digest.slice(7)}.json`);
-    await mkdir(directory, { recursive: true });
-    try {
-      await writeFile(path, bytes, { flag: "wx" });
-    } catch (error) {
-      if (!hasErrorCode(error, "EEXIST")) {
-        throw error;
-      }
-      const existing = await readFile(path);
-      if (!existing.equals(bytes)) {
-        throw new Error("Disclosure Route Observation artifact conflict");
-      }
+    if ((await persistImmutableFile(path, bytes)) === "conflict") {
+      throw new Error("Disclosure Route Observation artifact conflict");
     }
     return ref;
   }

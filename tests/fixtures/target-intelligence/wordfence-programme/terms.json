@@ -1,6 +1,6 @@
 {
   "kind": "wordfence-programme-page",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceKind": "terms",
   "assertions": {
     "eligibility": {

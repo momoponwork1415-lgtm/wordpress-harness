@@ -39,11 +39,6 @@ export const wordfenceSecretRefSchema = z.strictObject({
   id: identifierSchema,
 });
 
-export const wordfenceLegacyStorageAdoptionSchema = z.strictObject({
-  kind: z.literal("wordfence-intelligence-legacy-storage-adoption"),
-  schemaVersion: z.literal(1),
-});
-
 export const wordfenceIntelligenceSnapshotRefSchema = z.strictObject({
   kind: z.literal("wordfence-intelligence-snapshot-ref"),
   schemaVersion: z.literal(1),
@@ -303,9 +298,6 @@ export const wordfenceIntelligenceSourceResponseSchema = z.strictObject({
 });
 
 export type WordfenceSecretRef = z.infer<typeof wordfenceSecretRefSchema>;
-export type WordfenceLegacyStorageAdoption = z.infer<
-  typeof wordfenceLegacyStorageAdoptionSchema
->;
 export type WordfenceIntelligenceSnapshotRef = z.infer<
   typeof wordfenceIntelligenceSnapshotRefSchema
 >;
@@ -458,9 +450,21 @@ export interface OpenWordfenceIntelligenceRefreshOptions {
   readonly databasePath: string;
   readonly artifactDirectory: string;
   readonly credentialBroker: HostPrivateCredentialBroker;
-  readonly legacyStorageAdoption?: WordfenceLegacyStorageAdoption;
   readonly maximumFeedBytes?: number;
   readonly fetch?: typeof fetch;
   readonly knownRecordAuthorizationProvider?: KnownRecordAccessAuthorizationProvider;
   readonly clock?: () => Date;
+}
+
+export function wordfenceIntelligenceFailure(
+  reason: WordfenceIntelligenceFailure["reason"],
+  backoff?: WordfenceRateLimitBackoff,
+): WordfenceIntelligenceFailure {
+  return wordfenceIntelligenceFailureSchema.parse({
+    kind: "wordfence-intelligence-result",
+    schemaVersion: 1,
+    status: "failed",
+    reason,
+    ...(backoff === undefined ? {} : { backoff }),
+  });
 }

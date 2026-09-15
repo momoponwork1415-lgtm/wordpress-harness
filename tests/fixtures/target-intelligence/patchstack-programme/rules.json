@@ -1,12 +1,15 @@
 {
   "kind": "patchstack-programme-page",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceKind": "rules",
   "precedence": 1,
   "assertions": {
     "eligibility": {
       "assets": [
-        { "kind": "wordpress-plugin", "scope": "publicly-distributed" }
+        {
+          "kind": "wordpress-plugin",
+          "scope": "publicly-distributed"
+        }
       ],
       "vulnerabilityClasses": [
         "arbitrary-file-operation",
@@ -25,7 +28,10 @@
         "customer",
         "contributor-for-mvdp"
       ],
-      "activeInstallThreshold": { "kind": "minimum", "value": 1000 },
+      "activeInstallThreshold": {
+        "kind": "minimum",
+        "value": 1000
+      },
       "researcherTiers": ["standard", "verified"],
       "exclusions": [
         "duplicate-report",
@@ -40,14 +46,6 @@
         "working-exploit-required"
       ]
     },
-    "programmeOpportunityBand": "broad",
-    "rewardFactors": [
-      "cvss-base-score",
-      "active-install-band",
-      "attacker-role",
-      "vulnerability-type",
-      "mvdp-status"
-    ],
-    "rewardRoutes": []
+    "programmeOpportunityBand": "broad"
   }
 }

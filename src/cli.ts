@@ -200,10 +200,13 @@ export async function runCli(
         databasePath,
         runtime: unavailableInspectionRuntime(),
       });
-      const input = (
-        await inspection.inspect({ campaignId: review.campaignId })
-      ).input;
-      inspection.close();
+      let input: CampaignInput;
+      try {
+        input = (await inspection.inspect({ campaignId: review.campaignId }))
+          .input;
+      } finally {
+        inspection.close();
+      }
       const [researchPrompt, validationPrompt] = await Promise.all([
         readFile(readOption(args, "--research-prompt"), "utf8"),
         readFile(readOption(args, "--validation-prompt"), "utf8"),

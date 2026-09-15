@@ -1,12 +1,15 @@
 {
   "kind": "patchstack-programme-page",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceKind": "report-form",
   "precedence": 2,
   "assertions": {
     "eligibility": {
       "assets": [
-        { "kind": "wordpress-plugin", "scope": "publicly-distributed" }
+        {
+          "kind": "wordpress-plugin",
+          "scope": "publicly-distributed"
+        }
       ],
       "attackerRoles": [
         "unauthenticated",

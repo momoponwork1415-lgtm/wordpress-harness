@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import {
   canonicalDigest,
-  encodeCanonicalJson,
+  canonicalJson,
 } from "../infrastructure/canonical-json.js";
 import {
   sourceValidatedFindingSchema,
@@ -94,10 +94,6 @@ export interface OpenHumanOsOptions {
   readonly databasePath: string;
   readonly dynamicReproductionRuntime?: DynamicReproductionRuntime;
   readonly clock?: () => Date;
-}
-
-function encode(value: unknown): string {
-  return encodeCanonicalJson(z.json().parse(value));
 }
 
 class SqliteHumanOs implements HumanOs {
@@ -311,7 +307,7 @@ class SqliteHumanOs implements HumanOs {
 
   #append(findingId: string, event: z.infer<typeof eventSchema>): void {
     const value = eventSchema.parse(event);
-    const eventJson = encode(value);
+    const eventJson = canonicalJson(value);
     const sequence = z
       .number()
       .int()

@@ -10,7 +10,7 @@ import {
 import { z } from "zod";
 import { targetIntakePacketSchema } from "../acquisition/contracts.js";
 import { approvedTargetBatchSchema } from "../approved-target-batch/contracts.js";
-import { targetObservationSchema } from "../target-proposal/contracts.js";
+import { targetObservationSchema } from "../candidate-pool/contracts.js";
 
 const identifierSchema = z
   .string()

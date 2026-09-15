@@ -1,12 +1,18 @@
 {
   "kind": "wordfence-programme-page",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceKind": "report-form",
   "assertions": {
     "eligibility": {
       "assets": [
-        { "kind": "wordpress-plugin", "scope": "publicly-distributed" },
-        { "kind": "wordpress-theme", "scope": "publicly-distributed" }
+        {
+          "kind": "wordpress-plugin",
+          "scope": "publicly-distributed"
+        },
+        {
+          "kind": "wordpress-theme",
+          "scope": "publicly-distributed"
+        }
       ],
       "attackerRoles": ["unauthenticated", "subscriber", "contributor"]
     }

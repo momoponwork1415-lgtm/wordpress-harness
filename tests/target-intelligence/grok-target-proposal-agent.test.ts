@@ -8,9 +8,11 @@ import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import {
   defineTargetCandidatePool,
+  type TargetCandidate,
+} from "../../src/target-intelligence/candidate-pool/index.js";
+import {
   openGrokTargetProposalAgent,
   openTargetProposals,
-  type TargetCandidate,
   type TargetSelectionRunInput,
 } from "../../src/target-intelligence/target-proposal/index.js";
 

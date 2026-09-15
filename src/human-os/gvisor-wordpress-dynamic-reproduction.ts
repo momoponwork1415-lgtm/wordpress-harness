@@ -18,7 +18,7 @@ import { z } from "zod";
 import { verifyCanonicalSourceTree } from "../infrastructure/canonical-source-tree.js";
 import {
   canonicalDigest,
-  encodeCanonicalJson,
+  canonicalJson,
 } from "../infrastructure/canonical-json.js";
 import { runNativeModelProcess } from "../infrastructure/native-model-process.js";
 import {
@@ -986,19 +986,17 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
     if (transcripts.length > 0) {
       contents.push(
         Buffer.from(
-          encodeCanonicalJson(
-            z.json().parse({
-              kind: "dynamic-reproduction-transcript",
-              schemaVersion: 1,
-              findingId: finding.findingId,
-              targetSnapshotDigest: finding.targetSnapshot.digest,
-              runtimeProfileDigest,
-              images: this.#options.images,
-              environmentId,
-              experiments: transcripts,
-              outcome: outcome ?? null,
-            }),
-          ),
+          canonicalJson({
+            kind: "dynamic-reproduction-transcript",
+            schemaVersion: 1,
+            findingId: finding.findingId,
+            targetSnapshotDigest: finding.targetSnapshot.digest,
+            runtimeProfileDigest,
+            images: this.#options.images,
+            environmentId,
+            experiments: transcripts,
+            outcome: outcome ?? null,
+          }),
           "utf8",
         ),
       );

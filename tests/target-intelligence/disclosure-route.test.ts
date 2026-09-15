@@ -7,7 +7,6 @@ import { describe, expect, it } from "vitest";
 import {
   DisclosureRouteError,
   openDisclosureRoute,
-  programmeAssignmentRouteBindingSchema,
   type DisclosureRouteSourceAdapter,
 } from "../../src/target-intelligence/disclosure-route/index.js";
 
@@ -37,49 +36,6 @@ function fixtureSource(
       finalUrl: options.finalUrl ?? options.sourceUrl,
     }),
     parse: (bytes) => JSON.parse(Buffer.from(bytes).toString("utf8")),
-  };
-}
-
-async function assignmentBinding(
-  pluginIdentity: string,
-  routeDigest: string,
-  assignmentId = "programme-assignment:fixture",
-): Promise<{
-  readonly artifact: ReturnType<
-    typeof programmeAssignmentRouteBindingSchema.parse
-  >;
-  readonly ref: {
-    readonly kind: "programme-assignment-route-binding-ref";
-    readonly schemaVersion: 2;
-    readonly id: string;
-    readonly digest: string;
-  };
-}> {
-  const fixture = JSON.parse(
-    await readFile(
-      join(fixtureDirectory, "programme-assignment-route-bindings.json"),
-      "utf8",
-    ),
-  ) as unknown;
-  const artifact = programmeAssignmentRouteBindingSchema
-    .array()
-    .parse(fixture)
-    .find(
-      (candidate) =>
-        candidate.pluginIdentity === pluginIdentity &&
-        candidate.programmeAssignmentRef.id === assignmentId,
-    );
-  if (artifact === undefined || artifact.routeDigest !== routeDigest) {
-    throw new Error("Missing Programme Assignment route binding fixture");
-  }
-  return {
-    artifact,
-    ref: {
-      kind: "programme-assignment-route-binding-ref" as const,
-      schemaVersion: 2 as const,
-      id: artifact.id,
-      digest: artifact.digest,
-    },
   };
 }
 
@@ -316,8 +272,10 @@ describe("DisclosureRoute", () => {
       });
       expect(stagingRef.digest).not.toBe(selectionRef.digest);
       expect(stagingRef.routeDigest).toBe(selectionRef.routeDigest);
+      expect(selectionRef.routeDigest).toBe(
+        "sha256:41eb5f8aacff3362ff4e2bfa587b426ec34ce92353201e33e01c6bd3b28570f1",
+      );
 
-      const assignmentBindings = new Map<string, unknown>();
       const changed = openDisclosureRoute({
         storageDirectory: directory,
         sourceAdapters: [
@@ -331,9 +289,6 @@ describe("DisclosureRoute", () => {
             fixture: "first-party-vdp.json",
           }),
         ],
-        assignmentBindingResolver: {
-          resolve: async (ref) => assignmentBindings.get(ref.digest),
-        },
         clock: () => new Date("2030-09-03T00:00:00.000Z"),
       });
       const changedRef = await changed.observe({
@@ -343,70 +298,6 @@ describe("DisclosureRoute", () => {
         requiredFor: "submission-staging",
       });
       expect(changedRef.routeDigest).not.toBe(selectionRef.routeDigest);
-
-      const bound = await assignmentBinding(
-        "wporg:route-refresh-fixture",
-        selectionRef.routeDigest,
-      );
-      assignmentBindings.set(bound.ref.digest, bound.artifact);
-      await expect(
-        changed.projectAssignmentStaleness({
-          kind: "programme-assignment-route-staleness-request",
-          schemaVersion: 2,
-          assignmentBindingRef: bound.ref,
-          currentObservationRef: stagingRef,
-        }),
-      ).resolves.toMatchObject({
-        kind: "programme-assignment-route-staleness",
-        schemaVersion: 2,
-        id: expect.stringMatching(/^route-staleness:/),
-        digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
-        assignmentBindingRef: bound.ref,
-        programmeAssignmentRef: bound.artifact.programmeAssignmentRef,
-        pluginIdentity: bound.artifact.pluginIdentity,
-        status: "current",
-        assignedRouteDigest: selectionRef.routeDigest,
-        observedRouteDigest: stagingRef.routeDigest,
-        observationRef: stagingRef,
-      });
-      await expect(
-        changed.projectAssignmentStaleness({
-          kind: "programme-assignment-route-staleness-request",
-          schemaVersion: 2,
-          assignmentBindingRef: bound.ref,
-          currentObservationRef: changedRef,
-        }),
-      ).resolves.toMatchObject({
-        status: "stale",
-        assignedRouteDigest: selectionRef.routeDigest,
-        observedRouteDigest: changedRef.routeDigest,
-      });
-      await expect(
-        changed.projectAssignmentStaleness({
-          kind: "programme-assignment-route-staleness-request",
-          schemaVersion: 2,
-          assignmentBindingRef: {
-            ...bound.ref,
-            digest: `sha256:${"9".repeat(64)}`,
-          },
-          currentObservationRef: changedRef,
-        }),
-      ).rejects.toMatchObject({ code: "assignment-binding-unverified" });
-
-      const mismatched = await assignmentBinding(
-        "wporg:different-target",
-        selectionRef.routeDigest,
-        "programme-assignment:different-target",
-      );
-      assignmentBindings.set(mismatched.ref.digest, mismatched.artifact);
-      await expect(
-        changed.projectAssignmentStaleness({
-          kind: "programme-assignment-route-staleness-request",
-          schemaVersion: 2,
-          assignmentBindingRef: mismatched.ref,
-          currentObservationRef: changedRef,
-        }),
-      ).rejects.toMatchObject({ code: "binding-mismatch" });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

@@ -1,13 +1,11 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  openTargetResearchHistories,
-  type BuildLegacyResearchHistoryRequest,
-} from "../../src/target-intelligence/research-history/index.js";
+import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
+import { openTargetResearchHistories } from "../../src/target-intelligence/research-history/index.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -22,161 +20,66 @@ afterEach(async () => {
 async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), "target-research-history-"));
   temporaryDirectories.push(directory);
-  const storageDirectory = join(directory, "history");
-  const auditLedgerPath = join(directory, "audit-ledger.json");
-  const wp2shellLabsRoot = join(directory, "wp2shell-labs");
-  await mkdir(wp2shellLabsRoot, { recursive: true });
-  await writeFile(
-    auditLedgerPath,
-    JSON.stringify({
-      schema_version: "wordpress-plugin-audit-ledger/v1",
-      generated_at: "2026-08-31T12:33:58Z",
-      plugins: [
-        {
-          slug: "learning-suite-a-fixture",
-          attempts: [
-            {
-              closure: "forbidden exploration outcome",
-              result_sha256:
-                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-              source_tree_sha256:
-                "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-              status: "forbidden exploration status",
-              version: "4.0.7",
-            },
-            {
-              closure: "another forbidden outcome",
-              result_sha256:
-                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-              source_tree_sha256:
-                "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-              status: "another forbidden status",
-              version: "4.0.7",
-            },
-          ],
-        },
-        {
-          slug: "learning-suite-b-fixture",
-          attempts: [
-            {
-              result_sha256:
-                "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-              source_tree_sha256:
-                "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-              version: "4.4.5",
-            },
-          ],
-        },
-      ],
-    }),
-  );
-
-  const wp2shellLab = join(
-    wp2shellLabsRoot,
-    "mail-delivery-fixture-4.9.0-codex",
-  );
-  await mkdir(wp2shellLab);
-  await writeFile(
-    join(wp2shellLab, "SOURCE_PROVENANCE.txt"),
-    [
-      "Target: Mail Delivery Fixture",
-      "Slug: mail-delivery-fixture",
-      "Version: 4.9.0",
-      "Source: official WordPress.org release ZIP",
-      "ZIP SHA-256: 1111111111111111111111111111111111111111111111111111111111111111",
-      "Do not import this old harness method or prompt.",
-    ].join("\n"),
-  );
-
-  return {
-    directory,
-    storageDirectory,
-    auditLedgerPath,
-    wp2shellLabsRoot,
-  };
-}
-
-function request(
-  source: Awaited<ReturnType<typeof fixture>>,
-): BuildLegacyResearchHistoryRequest {
-  return {
-    kind: "build-legacy-research-history",
+  const body = {
+    kind: "target-research-history-snapshot",
     schemaVersion: 1,
-    snapshotId: "legacy-target-history-2026-09-08",
-    sources: {
-      whitebox: {
-        auditLedgerPath: source.auditLedgerPath,
-      },
-      wordfence: {
-        wp2shellLabsRoot: source.wp2shellLabsRoot,
-      },
-    },
+    id: "fixture-history",
+    generatedAt: "2026-09-08T12:00:00.000Z",
+    historyEntries: [
+      { pluginIdentity: "wporg:learning-suite-a-fixture", version: "4.0.7" },
+      { pluginIdentity: "wporg:learning-suite-b-fixture", version: "4.4.5" },
+      { pluginIdentity: "wporg:mail-delivery-fixture", version: "4.9.0" },
+    ],
   };
+  const snapshot = { ...body, digest: canonicalDigest(body) };
+  const path = join(directory, `${body.id}.json`);
+  const serialized = JSON.stringify(snapshot);
+  await writeFile(path, serialized);
+  return { directory, path, snapshot, serialized };
 }
 
 describe("Target Research History", () => {
-  it("stores target/source history without exploration or submission results", async () => {
+  it("reads existing history without importing or rewriting its records", async () => {
     const source = await fixture();
     const histories = openTargetResearchHistories({
-      storageDirectory: source.storageDirectory,
-      clock: () => new Date("2026-09-08T12:00:00.000Z"),
+      storageDirectory: source.directory,
     });
-
-    const ref = await histories.buildFromLegacyData(request(source));
-
-    expect(ref.historyEntries).toBe(3);
     const learningSuiteA = await histories.inspect({
-      snapshotId: ref.id,
+      snapshotId: source.snapshot.id,
       pluginIdentity: "wporg:learning-suite-a-fixture",
       version: "4.0.7",
     });
+    expect(learningSuiteA.snapshotRef).toMatchObject({
+      id: source.snapshot.id,
+      digest: source.snapshot.digest,
+      historyEntries: 3,
+    });
     expect(learningSuiteA.sameVersion).toEqual({ observed: true });
-
+    expect(learningSuiteA.priorVersions).toEqual([]);
     const learningSuiteB = await histories.inspect({
-      snapshotId: ref.id,
+      snapshotId: source.snapshot.id,
       pluginIdentity: "wporg:learning-suite-b-fixture",
       version: "4.4.6",
     });
     expect(learningSuiteB.sameVersion).toEqual({ observed: false });
     expect(learningSuiteB.priorVersions).toEqual(["4.4.5"]);
-
-    const mailDelivery = await histories.inspect({
-      snapshotId: ref.id,
-      pluginIdentity: "wporg:mail-delivery-fixture",
-      version: "4.9.0",
-    });
-    expect(mailDelivery.sameVersion).toEqual({ observed: true });
-
-    const serialized = await readFile(
-      join(source.storageDirectory, `${ref.id}.json`),
-      "utf8",
+    await expect(readFile(source.path, "utf8")).resolves.toBe(
+      source.serialized,
     );
-    expect(serialized).not.toContain("result_sha256");
-    expect(serialized).not.toContain("exploration outcome");
-    expect(serialized).not.toContain("exploration status");
-    expect(serialized).not.toContain("legacyFindings");
-    expect(serialized).not.toContain("submissions");
-    expect(serialized).not.toContain("outcomes");
-    expect(serialized).not.toContain("coverage");
-    expect(serialized).not.toContain("sourceIdentity");
-    expect(serialized).not.toContain("contentDigest");
-    expect(serialized).not.toContain("old harness method");
   });
 
   it("distinguishes an unseen target from unavailable history", async () => {
     const source = await fixture();
     const histories = openTargetResearchHistories({
-      storageDirectory: source.storageDirectory,
+      storageDirectory: source.directory,
     });
-    const ref = await histories.buildFromLegacyData(request(source));
-
-    const communitySuite = await histories.inspect({
-      snapshotId: ref.id,
+    const unseen = await histories.inspect({
+      snapshotId: source.snapshot.id,
       pluginIdentity: "wporg:community-suite-fixture",
       version: "6.0.0.2",
     });
-    expect(communitySuite.sameVersion).toEqual({ observed: false });
-    expect(communitySuite.priorVersions).toEqual([]);
+    expect(unseen.sameVersion).toEqual({ observed: false });
+    expect(unseen.priorVersions).toEqual([]);
     await expect(
       histories.inspect({
         snapshotId: "missing-snapshot",
@@ -186,25 +89,37 @@ describe("Target Research History", () => {
     ).rejects.toThrow("Target Research History Snapshot not found");
   });
 
-  it("fails closed on malformed legacy identity data", async () => {
-    const source = await fixture();
-    const ledger = JSON.parse(
-      await readFile(source.auditLedgerPath, "utf8"),
-    ) as { plugins: Array<{ slug: string }> };
-    ledger.plugins[0]!.slug = "../../escape";
-    await writeFile(source.auditLedgerPath, JSON.stringify(ledger));
-    const histories = openTargetResearchHistories({
-      storageDirectory: source.storageDirectory,
-    });
-
-    await expect(
-      histories.buildFromLegacyData(request(source)),
-    ).rejects.toThrow();
-    await expect(
-      readFile(
-        join(source.storageDirectory, "legacy-target-history-2026-09-08.json"),
-        "utf8",
-      ),
-    ).rejects.toMatchObject({ code: "ENOENT" });
-  });
+  it.each(["digest", "schema", "unexpected-field"])(
+    "rejects %s corruption without treating the history as empty or repairing it",
+    async (corruption) => {
+      const source = await fixture();
+      const { digest, ...body } = source.snapshot;
+      const corruptedBody = {
+        ...body,
+        ...(corruption === "schema" ? { schemaVersion: 2 } : {}),
+        ...(corruption === "unexpected-field"
+          ? { claim: "fixture claim" }
+          : {}),
+      };
+      const bytes = JSON.stringify({
+        ...corruptedBody,
+        digest:
+          corruption === "digest"
+            ? `sha256:${"0".repeat(64)}`
+            : canonicalDigest(corruptedBody),
+      });
+      await writeFile(source.path, bytes);
+      const histories = openTargetResearchHistories({
+        storageDirectory: source.directory,
+      });
+      await expect(
+        histories.inspect({
+          snapshotId: source.snapshot.id,
+          pluginIdentity: "wporg:learning-suite-a-fixture",
+          version: "4.0.7",
+        }),
+      ).rejects.toThrow();
+      await expect(readFile(source.path, "utf8")).resolves.toBe(bytes);
+    },
+  );
 });

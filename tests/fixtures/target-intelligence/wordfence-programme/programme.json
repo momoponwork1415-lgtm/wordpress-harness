@@ -1,12 +1,18 @@
 {
   "kind": "wordfence-programme-page",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceKind": "programme",
   "assertions": {
     "eligibility": {
       "assets": [
-        { "kind": "wordpress-plugin", "scope": "publicly-distributed" },
-        { "kind": "wordpress-theme", "scope": "publicly-distributed" }
+        {
+          "kind": "wordpress-plugin",
+          "scope": "publicly-distributed"
+        },
+        {
+          "kind": "wordpress-theme",
+          "scope": "publicly-distributed"
+        }
       ],
       "vulnerabilityClasses": [
         "arbitrary-file-operation",
@@ -17,7 +23,10 @@
         "cross-site-scripting"
       ],
       "attackerRoles": ["unauthenticated", "subscriber", "contributor"],
-      "activeInstallThreshold": { "kind": "minimum", "value": 1000 },
+      "activeInstallThreshold": {
+        "kind": "minimum",
+        "value": 1000
+      },
       "researcherTiers": ["standard", "resourceful", "elite"],
       "exclusions": [
         "administrator-required",
@@ -30,14 +39,13 @@
         "exclusive-responsible-disclosure",
         "working-proof-of-concept"
       ],
-      "limits": [{ "key": "pending-submission-cap", "value": 10 }]
+      "limits": [
+        {
+          "key": "pending-submission-cap",
+          "value": 10
+        }
+      ]
     },
-    "programmeOpportunityBand": "high-impact-only",
-    "rewardFactors": [
-      "cvss-base-score",
-      "active-install-band",
-      "attacker-role",
-      "researcher-tier"
-    ]
+    "programmeOpportunityBand": "high-impact-only"
   }
 }

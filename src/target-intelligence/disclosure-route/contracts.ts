@@ -19,11 +19,6 @@ const routeTermSchema = z
 const httpsUrlSchema = z
   .url()
   .refine((value) => new URL(value).protocol === "https:");
-const immutableRefSchema = z.strictObject({
-  id: identifierSchema,
-  digest: digestSchema,
-});
-
 export const disclosureRouteSourceKindSchema = z.enum([
   "vendor-official",
   "official-repository-security",
@@ -136,49 +131,6 @@ export const disclosureRouteObservationRefSchema = z.strictObject({
   routeDigest: digestSchema,
 });
 
-export const programmeAssignmentRouteBindingSchema = z.strictObject({
-  kind: z.literal("programme-assignment-route-binding"),
-  schemaVersion: z.literal(2),
-  id: identifierSchema,
-  digest: digestSchema,
-  programmeAssignmentRef: immutableRefSchema,
-  pluginIdentity: pluginIdentitySchema,
-  routeDigest: digestSchema,
-  boundAt: z.string().datetime({ offset: true }),
-});
-
-export const programmeAssignmentRouteBindingRefSchema = z.strictObject({
-  kind: z.literal("programme-assignment-route-binding-ref"),
-  schemaVersion: z.literal(2),
-  id: identifierSchema,
-  digest: digestSchema,
-});
-
-export const programmeAssignmentRouteStalenessRequestSchema = z.strictObject({
-  kind: z.literal("programme-assignment-route-staleness-request"),
-  schemaVersion: z.literal(2),
-  assignmentBindingRef: programmeAssignmentRouteBindingRefSchema,
-  currentObservationRef: disclosureRouteObservationRefSchema,
-});
-
-const programmeAssignmentRouteStalenessBodySchema = z.strictObject({
-  kind: z.literal("programme-assignment-route-staleness"),
-  schemaVersion: z.literal(2),
-  assignmentBindingRef: programmeAssignmentRouteBindingRefSchema,
-  programmeAssignmentRef: immutableRefSchema,
-  pluginIdentity: pluginIdentitySchema,
-  status: z.enum(["current", "stale"]),
-  assignedRouteDigest: digestSchema,
-  observedRouteDigest: digestSchema,
-  observationRef: disclosureRouteObservationRefSchema,
-});
-
-export const programmeAssignmentRouteStalenessSchema =
-  programmeAssignmentRouteStalenessBodySchema.extend({
-    id: identifierSchema,
-    digest: digestSchema,
-  });
-
 export type DisclosureRouteSourceKind = z.infer<
   typeof disclosureRouteSourceKindSchema
 >;
@@ -194,16 +146,6 @@ export type DisclosureRouteObservation = z.infer<
 export type DisclosureRouteObservationRef = z.infer<
   typeof disclosureRouteObservationRefSchema
 >;
-export type ProgrammeAssignmentRouteBindingRef = z.infer<
-  typeof programmeAssignmentRouteBindingRefSchema
->;
-export type ProgrammeAssignmentRouteStalenessRequest = z.infer<
-  typeof programmeAssignmentRouteStalenessRequestSchema
->;
-export type ProgrammeAssignmentRouteStaleness = z.infer<
-  typeof programmeAssignmentRouteStalenessSchema
->;
-
 export interface DisclosureRouteSourceAdapter {
   readonly sourceId: string;
   readonly sourceKind: DisclosureRouteSourceKind;
@@ -233,23 +175,6 @@ export class DisclosureRouteError extends Error {
   }
 }
 
-export type DisclosureRouteStalenessErrorCode =
-  "assignment-binding-unverified" | "binding-mismatch";
-
-export class DisclosureRouteStalenessError extends Error {
-  readonly code: DisclosureRouteStalenessErrorCode;
-
-  constructor(code: DisclosureRouteStalenessErrorCode) {
-    super(`Disclosure Route staleness ${code}`);
-    this.name = "DisclosureRouteStalenessError";
-    this.code = code;
-  }
-}
-
-export interface ProgrammeAssignmentRouteBindingResolver {
-  resolve(ref: ProgrammeAssignmentRouteBindingRef): Promise<unknown>;
-}
-
 export interface DisclosureRoute {
   observe(
     request: DisclosureRouteObserveRequest,
@@ -257,14 +182,10 @@ export interface DisclosureRoute {
   inspect(
     ref: DisclosureRouteObservationRef,
   ): Promise<DisclosureRouteObservation>;
-  projectAssignmentStaleness(
-    request: ProgrammeAssignmentRouteStalenessRequest,
-  ): Promise<ProgrammeAssignmentRouteStaleness>;
 }
 
 export interface OpenDisclosureRouteOptions {
   readonly storageDirectory: string;
   readonly sourceAdapters: readonly DisclosureRouteSourceAdapter[];
-  readonly assignmentBindingResolver?: ProgrammeAssignmentRouteBindingResolver;
   readonly clock?: () => Date;
 }

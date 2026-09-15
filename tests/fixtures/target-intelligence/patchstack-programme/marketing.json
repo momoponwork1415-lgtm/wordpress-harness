@@ -1,25 +1,9 @@
 {
   "kind": "patchstack-programme-page",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceKind": "marketing",
-  "precedence": 5,
+  "precedence": 4,
   "assertions": {
-    "programmeOpportunityBand": "broad",
-    "rewardRoutes": [
-      {
-        "id": "zeroday",
-        "kind": "fixed-zeroday-table",
-        "currency": "USD",
-        "factors": [
-          "active-install-band",
-          "attacker-role",
-          "full-site-compromise"
-        ],
-        "terms": [
-          { "key": "finding-only", "value": true },
-          { "key": "payout-not-guaranteed", "value": true }
-        ]
-      }
-    ]
+    "programmeOpportunityBand": "broad"
   }
 }

@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import {
   canonicalDigest,
+  canonicalJson,
   encodeCanonicalJson,
 } from "../../infrastructure/canonical-json.js";
 import {
@@ -40,8 +41,6 @@ import {
   type ValidationRunReceipt,
   type ValidationRunRecord,
 } from "./contracts.js";
-
-const jsonValueSchema = z.json();
 
 const eventRowSchema = z.object({
   kind: z.enum([
@@ -137,10 +136,6 @@ export class HumanValidationRetryConflictError extends Error {
     );
     this.name = "HumanValidationRetryConflictError";
   }
-}
-
-function encode(value: unknown): string {
-  return encodeCanonicalJson(jsonValueSchema.parse(value));
 }
 
 function decodeJson(value: string): unknown {
@@ -950,7 +945,7 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
   }
 
   #append(campaignId: string, kind: EventRow["kind"], payload: unknown): void {
-    const payloadJson = encode(payload);
+    const payloadJson = canonicalJson(payload);
     const nextSequence = this.#database
       .prepare(
         `SELECT COALESCE(MAX(campaign_sequence), 0) + 1 AS next_sequence

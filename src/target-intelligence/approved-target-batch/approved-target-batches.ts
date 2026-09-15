@@ -4,10 +4,10 @@ import { join } from "node:path";
 import { canonicalDigest } from "../../infrastructure/canonical-json.js";
 import { canonicalJson } from "../acquisition/canonical-json.js";
 import {
-  targetProposalSchema,
-  targetSelectionRunSchema,
+  isCurrentTargetCandidate,
   type TargetCandidate,
-} from "../target-proposal/contracts.js";
+} from "../candidate-pool/index.js";
+import { resolveTargetProposal } from "../target-proposal/index.js";
 import {
   approvedTargetBatchRefSchema,
   approvedTargetBatchRequestSchema,
@@ -46,13 +46,17 @@ export class ApprovedTargetBatchError extends Error {
   }
 }
 
-function targetIsFresh(candidate: TargetCandidate, decidedAt: number): boolean {
-  return (
-    candidate.targetObservation.acquisition === "available" &&
-    candidate.targetObservation.provenance === "verified" &&
-    candidate.targetObservation.identity === "verified" &&
-    Date.parse(candidate.targetObservation.currentUntil) >= decidedAt
-  );
+export function approvedTargetBatchReference(
+  batch: ApprovedTargetBatch,
+): ApprovedTargetBatchRef {
+  return approvedTargetBatchRefSchema.parse({
+    kind: "approved-target-batch-ref",
+    schemaVersion: 3,
+    id: batch.id,
+    digest: batch.digest,
+    batchKey: batch.batchKey,
+    revision: batch.revision,
+  });
 }
 
 export function admitTargetDispatch(
@@ -131,53 +135,34 @@ class FileApprovedTargetBatches implements ApprovedTargetBatches {
       if (existing.approvalInputDigest !== approvalInputDigest) {
         throw new ApprovedTargetBatchError("revision-conflict");
       }
-      return this.#ref(existing);
+      return approvedTargetBatchReference(existing);
     }
 
-    const view = await this.#options.proposals
-      .inspect({
-        selectionKey: request.proposalRef.selectionKey,
-        revision: request.proposalRef.revision,
-      })
-      .catch(() => undefined);
-    if (view?.status !== "proposed" || view.proposal === undefined) {
-      throw new ApprovedTargetBatchError("proposal-unavailable");
+    const resolution = resolveTargetProposal(
+      await this.#options.proposals
+        .inspect({
+          selectionKey: request.proposalRef.selectionKey,
+          revision: request.proposalRef.revision,
+        })
+        .catch(() => undefined),
+      request.proposalRef,
+    );
+    if (resolution.status !== "resolved") {
+      throw new ApprovedTargetBatchError(
+        resolution.status === "unavailable"
+          ? "proposal-unavailable"
+          : "binding-mismatch",
+      );
     }
-    const parsedProposal = targetProposalSchema.safeParse(view.proposal);
-    const parsedRun = targetSelectionRunSchema.safeParse(view.run);
+    const { proposal, candidatePool } = resolution;
     if (
-      !parsedProposal.success ||
-      !parsedRun.success ||
-      parsedRun.data.status !== "proposed"
-    ) {
-      throw new ApprovedTargetBatchError("binding-mismatch");
-    }
-    const proposal = parsedProposal.data;
-    const run = parsedRun.data;
-    const {
-      id: _proposalId,
-      digest: _proposalDigest,
-      ...proposalBody
-    } = proposal;
-    if (
-      proposal.id !== request.proposalRef.id ||
-      proposal.digest !== request.proposalRef.digest ||
-      proposal.digest !== canonicalDigest(proposalBody) ||
-      run.inputDigest !== canonicalDigest(run.input) ||
-      run.proposal.id !== proposal.id ||
-      run.proposal.digest !== proposal.digest ||
-      proposal.inputDigest !== run.inputDigest ||
-      proposal.selectionKey !== run.input.selectionKey ||
-      proposal.revision !== run.input.revision ||
-      proposal.candidatePool.id !== run.input.candidatePool.id ||
-      proposal.candidatePool.digest !== run.input.candidatePool.digest ||
       Date.parse(request.operator.decidedAt) < Date.parse(proposal.proposedAt)
     ) {
       throw new ApprovedTargetBatchError("binding-mismatch");
     }
 
     const poolCandidates = new Map(
-      run.input.candidatePool.candidates.map((candidate) => [
+      candidatePool.candidates.map((candidate) => [
         candidate.candidateId,
         candidate,
       ]),
@@ -197,13 +182,6 @@ class FileApprovedTargetBatches implements ApprovedTargetBatches {
         }
     >();
     for (const proposed of proposal.targets) {
-      const poolCandidate = poolCandidates.get(proposed.candidateId);
-      if (
-        poolCandidate === undefined ||
-        canonicalJson(poolCandidate) !== canonicalJson(proposed.candidate)
-      ) {
-        throw new ApprovedTargetBatchError("binding-mismatch");
-      }
       selectable.set(proposed.candidateId, {
         source: "agent-proposal",
         candidate: proposed.candidate,
@@ -258,7 +236,7 @@ class FileApprovedTargetBatches implements ApprovedTargetBatches {
         const selected = selectable.get(candidateId);
         return (
           selected === undefined ||
-          !targetIsFresh(selected.candidate, decidedAt)
+          !isCurrentTargetCandidate(selected.candidate, decidedAt)
         );
       })
     ) {
@@ -337,9 +315,9 @@ class FileApprovedTargetBatches implements ApprovedTargetBatches {
       ) {
         throw new ApprovedTargetBatchError("revision-conflict");
       }
-      return this.#ref(raced);
+      return approvedTargetBatchReference(raced);
     }
-    return this.#ref(batch);
+    return approvedTargetBatchReference(batch);
   }
 
   async inspect(refValue: ApprovedTargetBatchRef) {
@@ -363,17 +341,6 @@ class FileApprovedTargetBatches implements ApprovedTargetBatches {
     const request = targetDispatchAdmissionRequestSchema.parse(requestValue);
     const batch = await this.inspect(request.batchRef);
     return admitTargetDispatch(batch, request);
-  }
-
-  #ref(batch: ApprovedTargetBatch): ApprovedTargetBatchRef {
-    return approvedTargetBatchRefSchema.parse({
-      kind: "approved-target-batch-ref",
-      schemaVersion: 3,
-      id: batch.id,
-      digest: batch.digest,
-      batchKey: batch.batchKey,
-      revision: batch.revision,
-    });
   }
 
   #path(input: { readonly batchKey: string; readonly revision: number }) {

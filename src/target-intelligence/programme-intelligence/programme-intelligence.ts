@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { persistImmutableFile } from "../../infrastructure/immutable-file.js";
 import { canonicalJson, sha256Digest } from "../acquisition/canonical-json.js";
 import {
   normalizedProgrammePolicySchema,
@@ -32,15 +33,6 @@ interface RetrievedPolicy {
 
 function rawDigest(bytes: Uint8Array): string {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-}
-
-function hasErrorCode(error: unknown, code: string): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === code
-  );
 }
 
 function snapshotRef(snapshot: ProgrammeEligibilitySnapshot) {
@@ -181,17 +173,13 @@ class FileProgrammeIntelligence implements ProgrammeIntelligence {
     }
     const snapshot = programmeEligibilitySnapshotSchema.parse({
       kind: "programme-eligibility-snapshot",
-      schemaVersion: 1,
+      schemaVersion: 2,
       programmeIdentity: request.programmeIdentity,
       retrievedAt,
       sources,
       policy: {
         eligibility: first.policy.eligibility,
         programmeOpportunityBand: first.policy.programmeOpportunityBand,
-        rewardEstimateInput: first.policy.rewardEstimateInput,
-        ...(first.policy.monthlyAggregates === undefined
-          ? {}
-          : { monthlyAggregates: first.policy.monthlyAggregates }),
       },
       freshnessPolicy: this.#freshnessPolicy,
     });
@@ -232,17 +220,8 @@ class FileProgrammeIntelligence implements ProgrammeIntelligence {
     const bytes = Buffer.from(canonicalJson(snapshot), "utf8");
     const directory = join(this.#storageDirectory, "programme-snapshots");
     const path = join(directory, `${ref.digest.slice(7)}.json`);
-    await mkdir(directory, { recursive: true });
-    try {
-      await writeFile(path, bytes, { flag: "wx" });
-    } catch (error) {
-      if (!hasErrorCode(error, "EEXIST")) {
-        throw error;
-      }
-      const existing = await readFile(path);
-      if (!existing.equals(bytes)) {
-        throw new Error("Programme Eligibility Snapshot artifact conflict");
-      }
+    if ((await persistImmutableFile(path, bytes)) === "conflict") {
+      throw new Error("Programme Eligibility Snapshot artifact conflict");
     }
     return ref;
   }

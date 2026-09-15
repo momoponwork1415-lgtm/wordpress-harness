@@ -1,9 +1,13 @@
-import { readFile, mkdtemp, rm } from "node:fs/promises";
+import { readFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import {
+  canonicalJson,
+  sha256Digest,
+} from "../../src/target-intelligence/acquisition/canonical-json.js";
 import {
   openProgrammeIntelligence,
   type ProgrammePolicySourceAdapter,
@@ -26,7 +30,7 @@ const programmes = [
     sourceUrl: "https://fixtures.invalid/patchstack/policy",
     parserVersion: "patchstack-sanitized-fixture-v1",
     contentDigest:
-      "sha256:13f642c523589454b26fc91f28f5c48a8e2671d6a0802ca15330ee6fd1ef4bd1",
+      "sha256:d5219dd29aead1da3ee56db27dd87810288a428ac79d68d27afca5d2d54b76eb",
     opportunityBand: "broad",
   },
   {
@@ -36,7 +40,7 @@ const programmes = [
     sourceUrl: "https://fixtures.invalid/wordfence/policy",
     parserVersion: "wordfence-sanitized-fixture-v1",
     contentDigest:
-      "sha256:e17841e1340ceac121efb522a4307403e7b9700a3cacb38904f9e4c9c8f12210",
+      "sha256:595274a8eba837c3965d982c42932f85a78e31aa6b18b8ec0cf103384bc6fae9",
     opportunityBand: "high-impact-only",
   },
 ] as const;
@@ -55,6 +59,89 @@ function fixtureAdapter(
 }
 
 describe("ProgrammeIntelligence", () => {
+  it.each(["old-version", "removed-fields"])(
+    "rejects %s storage without rewriting its artifact",
+    async (unsupported) => {
+      const directory = await mkdtemp(join(tmpdir(), "programme-format-"));
+      try {
+        const programme = programmes[0];
+        const policy = JSON.parse(
+          await readFile(join(fixtureDirectory, programme.fixture), "utf8"),
+        ) as Record<string, unknown>;
+        delete policy.programmeIdentity;
+        const freshnessPolicy = {
+          kind: "programme-eligibility-freshness-policy" as const,
+          schemaVersion: 1 as const,
+          id: "programme-freshness-v1",
+          digest: digest("f"),
+          maximumAgeMs: {
+            targetSelectionBatch: 86_400_000,
+            submissionStaging: 3_600_000,
+          },
+        };
+        const snapshot = {
+          kind: "programme-eligibility-snapshot",
+          schemaVersion: unsupported === "old-version" ? 1 : 2,
+          programmeIdentity: programme.identity,
+          retrievedAt: "2030-07-01T00:00:00.000Z",
+          sources: [
+            {
+              sourceId: `${programme.identity}:eligibility-policy`,
+              sourceUrl: programme.sourceUrl,
+              parserVersion: programme.parserVersion,
+              retrievedAt: "2030-07-01T00:00:00.000Z",
+              contentDigest: programme.contentDigest,
+            },
+          ],
+          policy: {
+            ...policy,
+            ...(unsupported === "removed-fields"
+              ? {
+                  rewardEstimateInput: {
+                    kind: "finding-only-reward-estimate-input",
+                    currency: "USD",
+                    factors: ["fixture-factor"],
+                  },
+                }
+              : {}),
+          },
+          freshnessPolicy,
+        };
+        const snapshotDigest = sha256Digest(snapshot);
+        const path = join(
+          directory,
+          "programme-snapshots",
+          `${snapshotDigest.slice(7)}.json`,
+        );
+        const bytes = canonicalJson(snapshot);
+        await mkdir(join(directory, "programme-snapshots"));
+        await writeFile(path, bytes);
+        const intelligence = openProgrammeIntelligence({
+          storageDirectory: directory,
+          sourceAdapters: [],
+          freshnessPolicy,
+          clock: () => new Date("2030-07-01T00:00:00.000Z"),
+        });
+        await expect(
+          intelligence.inspect({
+            kind: "programme-eligibility-inspection",
+            schemaVersion: 1,
+            snapshotRef: {
+              kind: "programme-eligibility-snapshot-ref",
+              schemaVersion: 1,
+              id: `programme-snapshot:${snapshotDigest.slice(7, 31)}`,
+              digest: snapshotDigest,
+            },
+            requiredFor: "target-selection-batch",
+          }),
+        ).rejects.toMatchObject({ name: "ZodError" });
+        await expect(readFile(path, "utf8")).resolves.toBe(bytes);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   it.each(programmes)(
     "normalizes the $name fixture into the common eligibility contract",
     async (programme) => {
@@ -88,7 +175,7 @@ describe("ProgrammeIntelligence", () => {
           status: "current",
           snapshot: {
             kind: "programme-eligibility-snapshot",
-            schemaVersion: 1,
+            schemaVersion: 2,
             programmeIdentity: programme.identity,
             retrievedAt: "2030-07-01T00:00:00.000Z",
             sources: [
@@ -110,9 +197,6 @@ describe("ProgrammeIntelligence", () => {
                 exclusions: expect.any(Array),
               },
               programmeOpportunityBand: programme.opportunityBand,
-              rewardEstimateInput: {
-                kind: "finding-only-reward-estimate-input",
-              },
             },
           },
           snapshotRef: {
