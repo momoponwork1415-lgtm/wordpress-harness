@@ -11,6 +11,12 @@ Target IntelligenceはResearch仮説、candidate、Finding、runtime verificatio
 **Target Observation**
 : plugin identity、version、acquisition、provenance、freshnessを持つ時点付きfact。
 
+**WordPress.org Update Frontier**
+: callerが指定したexclusive SVN cursorからbounded revision windowを観測し、`trunk`のPHP変更をcurrent Target Observationへ結び付けたoracle-freeな選定artifact。exact pathとadded lineはprivate evidenceに留め、frontierは変更file数、added line数とoptionalなnavigation signal familyだけを持つ。signal一致はmembership条件にしない。
+
+**Update Candidate Pool Assembly**
+: Update Frontier、Target Intake Policy、freshness policyとcaller-supplied Selection Contextをbindし、各leadの同一version sourceを再取得してCandidate Poolへ変換したprivate record。source-readyなCandidateと、欠損、stale、acquisition failureまたはbinding mismatchのunresolved gapを分離する。
+
 **Programme Observation**
 : bounty / VDP programmeのidentity、eligibility、opportunity band、freshnessを持つfact。
 
@@ -56,6 +62,10 @@ Target IntelligenceはResearch仮説、candidate、Finding、runtime verificatio
 ## Invariants
 
 - Candidate PoolとProposalのinputをdigest bindする。
+- WordPress.org Update Frontierはrevision cursor、明示policy、official SVN log / diff evidenceとcurrent Target Observationをdigest bindする。source failure、timeout、quota超過、malformed outputを空の成功artifactへ丸めない。
+- `trunk`のPHP変更はactive-install policyを満たす限りnavigation signalの有無にかかわらずUpdate Frontierへ残す。exact added lineとpathをTarget ProposalまたはResearchへ渡さない。
+- Update Candidate Pool AssemblyはfrontierへbindしたPlugin Identity、version、observation ref、Target Intake Policy、Canonical File Manifestとfreshnessを検査する。source-readyでないleadをCandidateへ補完せず、frontier外のSelection Contextを受理しない。
+- Candidateへ渡すupdate activityはfrontier ref、revision範囲、changeset数、PHP変更file occurrence数、added line数とnavigation signal familyに限定する。private evidence ref、path、added source、既知advisory、patch、PoCまたはaffected functionを渡さない。
 - AIはpool外またはhard gate不合格のTargetをProposalへ入れられない。
 - fixed rank、Research Value Band、reason code、diversity facetをAI判断の代用にしない。
 - Research History Snapshotへsource identity、source receipt、Campaign coverage、Finding、Case status、submission、outcome、CVE、脆弱性class、claim、route、affected file / function、PoC、patchまたはreport本文を保存せず、Researchへ渡さない。履歴取得不能を未探索へ丸めない。

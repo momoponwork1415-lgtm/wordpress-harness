@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc" style="width:100%;max-width:1600px;height:auto;text-rendering:optimizeLegibility">
+  <title id="title">WordPress脆弱性探索システムの全体像</title>
+  <desc id="desc">友人への共有と全体把握に使えるPCブラウザ向けの一枚図。更新監視による広いTarget選定と、一つのpluginを深く調べるAI Researchを組み合わせ、人間の承認、独立検証、隔離再現、提出判断までを示す。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#06101d"/><stop offset=".55" stop-color="#0a1525"/><stop offset="1" stop-color="#111827"/></linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#173653"/><stop offset="1" stop-color="#10263d"/></linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#123f38"/><stop offset="1" stop-color="#0e2b30"/></linearGradient>
+    <linearGradient id="purple" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34265e"/><stop offset="1" stop-color="#211f45"/></linearGradient>
+    <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%"><feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#000" flood-opacity=".28"/></filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#78aaff"/></marker>
+    <style>
+      .sans{font-family:Inter,"Noto Sans JP",system-ui,-apple-system,"Segoe UI",sans-serif}.mono{font-family:"SFMono-Regular",Consolas,monospace}
+      .title{fill:#f7f9fc;font-size:42px;font-weight:800;letter-spacing:-1px}.subtitle{fill:#adbbce;font-size:19px}.section{fill:#f7f9fc;font-size:25px;font-weight:760}.card{fill:#f7f9fc;font-size:20px;font-weight:730}.body{fill:#c8d4e3;font-size:16px}.small{fill:#a9b7c9;font-size:14px}.tiny{fill:#9aaac0;font-size:13px}.eyebrow{font-size:13px;font-weight:780;letter-spacing:1.2px}.number{fill:#78aaff;font-size:22px;font-weight:800}.flow{fill:none;stroke:#78aaff;stroke-width:3;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/><circle cx="1500" cy="10" r="270" fill="#17345c" opacity=".27"/><circle cx="20" cy="880" r="210" fill="#123f38" opacity=".18"/>
+  <g class="sans">
+    <text x="48" y="46" class="mono eyebrow" fill="#78aaff">ONE-PAGE OVERVIEW · SHAREABLE</text>
+    <text x="48" y="96" class="title">WordPress脆弱性探索システム — 全体像</text>
+    <text x="48" y="132" class="subtitle">全pluginを同じ深さで読むのではなく、更新から広く候補を拾い、有望なTargetをAIが深く調べる。</text>
+
+    <rect x="48" y="160" width="1504" height="66" rx="22" fill="#13243a" stroke="#365d86"/>
+    <text x="74" y="188" class="mono eyebrow" fill="#78aaff">CORE IDEA</text><text x="210" y="198" class="card">高いhit率を装うのではなく、安い高recall探索 → 人間の判断 → 独立検証でfalse positiveを落とす</text>
+
+    <g filter="url(#shadow)">
+      <rect x="48" y="278" width="342" height="326" rx="24" fill="url(#blue)" stroke="#47749c" stroke-width="1.5"/>
+      <text x="74" y="316" class="number">01</text><text x="116" y="316" class="mono eyebrow" fill="#a9d6ff">SELECT TARGETS</text>
+      <text x="74" y="364" class="section">更新から広く拾う</text>
+      <text x="74" y="398" class="body">WordPress.orgのrecent updateを監視</text><text x="74" y="427" class="body">PHP変更 + current installs / version</text><text x="74" y="456" class="body">同じversionのsourceを再取得</text>
+      <rect x="74" y="484" width="290" height="66" rx="14" fill="#183451" stroke="#416c94"/><text x="96" y="512" class="card">Candidate Pool</text><text x="96" y="536" class="small">変更量などのoracle-free factだけ</text>
+      <text x="74" y="580" class="tiny">exact path / patch / known CVEはprivate</text>
+    </g>
+    <path d="M392 441H430" class="flow"/>
+
+    <g filter="url(#shadow)">
+      <rect x="436" y="258" width="388" height="366" rx="24" fill="url(#green)" stroke="#328669" stroke-width="1.5"/>
+      <text x="462" y="296" class="number" fill="#68d8a2">02</text><text x="504" y="296" class="mono eyebrow" fill="#b8f2d4">RESEARCH DEEPLY</text>
+      <text x="462" y="344" class="section">一つのpluginを深く追う</text>
+      <text x="462" y="378" class="body">AI Rootがraw sourceをfirst principlesで読む</text><text x="462" y="407" class="body">input → guard → transform → effectを追跡</text><text x="462" y="436" class="body">native subagentで異なる仮説と反証を並列化</text>
+      <rect x="462" y="466" width="336" height="82" rx="14" fill="#163b35" stroke="#2e7a5c"/><text x="484" y="495" class="card">Breadth × Depth</text><text x="484" y="521" class="small">sibling feature・shared code・chainも確認</text><text x="484" y="542" class="tiny">sink一致をFindingにしない</text>
+      <rect x="462" y="562" width="336" height="38" rx="12" fill="#3d3526" stroke="#9b7545"/><text x="630" y="587" text-anchor="middle" class="small">Human：次のGrantへ進むか判断</text>
+    </g>
+    <path d="M826 441H864" class="flow"/>
+
+    <g filter="url(#shadow)">
+      <rect x="870" y="278" width="326" height="326" rx="24" fill="#392f22" stroke="#c99652" stroke-width="1.5"/>
+      <text x="896" y="316" class="number" fill="#f0bd78">03</text><text x="938" y="316" class="mono eyebrow" fill="#f0bd78">CHALLENGE + VALIDATE</text>
+      <text x="896" y="364" class="section">候補を鵜呑みにしない</text>
+      <text x="896" y="398" class="body">人間がCandidateをadmit</text><text x="896" y="427" class="body">別のfresh AI sessionが独立検証</text><text x="896" y="456" class="body">同じsourceからreachabilityを再導出</text>
+      <rect x="896" y="484" width="274" height="66" rx="14" fill="#332b22" stroke="#9b7545"/><text x="918" y="512" class="card">Finding</text><text x="918" y="536" class="small">source-validatedだけを生成</text>
+      <text x="896" y="580" class="tiny">failure・timeout・不明はnegativeへ丸めない</text>
+    </g>
+    <path d="M1198 441H1236" class="flow"/>
+
+    <g filter="url(#shadow)">
+      <rect x="1242" y="278" width="310" height="326" rx="24" fill="url(#purple)" stroke="#826bd2" stroke-width="1.5"/>
+      <text x="1268" y="316" class="number" fill="#b39aff">04</text><text x="1310" y="316" class="mono eyebrow" fill="#ded6ff">VERIFY + DECIDE</text>
+      <text x="1268" y="364" class="section">隔離環境で確かめる</text>
+      <text x="1268" y="398" class="body">fresh WordPress / MySQL lab</text><text x="1268" y="427" class="body">Finding-bound Recipeを1回replay</text><text x="1268" y="456" class="body">別環境で人間も確認</text>
+      <rect x="1268" y="484" width="258" height="66" rx="14" fill="#352c5c" stroke="#745fc0"/><text x="1290" y="512" class="card">Draft + Authorization</text><text x="1290" y="536" class="small">最後のSubmitは人間だけ</text>
+      <text x="1268" y="580" class="tiny">Harnessは外部送信しない</text>
+    </g>
+
+    <g filter="url(#shadow)">
+      <rect x="48" y="664" width="954" height="158" rx="22" fill="#101d30" stroke="#36516f" stroke-width="1.4"/>
+      <text x="74" y="698" class="mono eyebrow" fill="#78aaff">WHAT THE RESEARCH AGENT SEES</text>
+      <rect x="74" y="720" width="540" height="76" rx="14" fill="#163b35" stroke="#2e7a5c"/><text x="98" y="748" class="card">渡す：固定版のsource world</text><text x="98" y="772" class="small">plugin全source · WordPress / companion · Threat Context · Programme境界</text><text x="98" y="792" class="tiny">Research Prompt · Permission Profile · 残Budget（継続時のみprivate Checkpoint）</text>
+      <rect x="636" y="720" width="340" height="76" rx="14" fill="#392f22" stroke="#9b7545"/><text x="660" y="748" class="card">渡さない：答えのoracle</text><text x="660" y="772" class="small">CVE · advisory · patch · known file / function</text><text x="660" y="792" class="tiny">既知route · payload · 正解ラベル</text>
+    </g>
+
+    <g filter="url(#shadow)">
+      <rect x="1030" y="664" width="522" height="158" rx="22" fill="#101d30" stroke="#36516f" stroke-width="1.4"/>
+      <text x="1056" y="698" class="mono eyebrow" fill="#78aaff">NOW / NEXT</text>
+      <circle cx="1064" cy="735" r="6" fill="#68d8a2"/><text x="1082" y="741" class="body">実装済み：Update Frontier → Candidate Pool</text>
+      <circle cx="1064" cy="769" r="6" fill="#68d8a2"/><text x="1082" y="775" class="body">実装済み：deep Research → independent validation</text>
+      <circle cx="1064" cy="803" r="6" fill="#e6aa68"/><text x="1082" y="809" class="body">次：定期起動・context自動収集・横展開handoff</text>
+    </g>
+    <text x="800" y="872" text-anchor="middle" class="small">目的：件数を増やすことではなく、high-impactなbroken security semanticsを高recallで見つけ、独立した証拠で閉じること</text>
+  </g>
+</svg>

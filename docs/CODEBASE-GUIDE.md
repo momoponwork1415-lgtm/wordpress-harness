@@ -1,6 +1,6 @@
 # Codebase Guide
 
-Status: current implementation map, 2026-09-12
+Status: current implementation map, 2026-09-15
 
 現在動くproduction seam、owner、failure semantics、Behavior Testを示す。設計理由は[ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)、[ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)、[ADR 0131](adr/0131-place-human-reviews-between-research-and-validation.md)、[ADR 0132](adr/0132-treat-provider-cost-as-observational-telemetry.md)、research policyは[Research Design](RESEARCH-DESIGN.md)を参照する。
 
@@ -10,10 +10,12 @@ Status: current implementation map, 2026-09-12
 
 | Capability | State | Important gap |
 | --- | --- | --- |
-| local / WordPress.org source acquisition | implemented | Candidate Pool組立serviceは未実装 |
+| local / WordPress.org source acquisition | implemented | update外の一般Candidate Pool resolverは未実装 |
+| WordPress.org Update Frontier | caller-boundedなofficial SVN revision windowから`trunk` PHP変更を収集し、current metadataとdigest-boundなoracle-free frontierを作成・inspect可能 | recurring triggerは未実装 |
+| Update Candidate Pool assembly | Frontierへbindした同一version sourceを再取得し、caller-supplied Selection Contextとfreshnessを検査して既存Candidate Poolへ接続 | Selection Contextの自動resolverとCLIは未実装 |
 | Programme / disclosure observations | implemented | 全Programmeを一つのCandidate Poolへ組み立てるapplication serviceは未実装 |
 | Target Research History | 二つのlegacy research workspaceの既探索plugin/versionを最小のimmutable Snapshotへ正規化し、same version / prior versionをinspect可能 | 現行Campaign履歴の自動取込とCandidate Pool組立serviceへの接続は未実装 |
-| AI Target Proposal | exact Grok transportをadmitするproduction Adapterまでimplemented | CLIとCandidate Pool組立serviceが未実装 |
+| AI Target Proposal | exact Grok transportをadmitするproduction Adapterまでimplemented。Update Frontier由来Candidate Poolをそのまま入力可能 | CLIと一般Candidate Pool resolverは未実装 |
 | human Approved Target Batch | implemented | Target Selection全体のCLIは未実装 |
 | approved Target Campaign dispatch | fresh observation、Target Intake、Campaign Policy、WordPress core、Threat Contextをsealして一Campaignを`conduct`まで接続 | 複数Targetの中央schedulerは意図的に持たない |
 | wp2shell-derived Research Prompt v2 | positive oracle、RCE / `/flag`到達の強制と最低6時間を除く全研究要素をPromptへ反映 | 反復roundとadversarial double-checkの実Target再評価は未実施 |
@@ -42,6 +44,34 @@ known-positive実測のstage別内訳は[2026-09-08 Native Agent evaluation](kno
 **Failure semantics:** acquisition、identity、provenance、archive policy failureをready packetへ丸めない。
 
 **Code / Tests:** [`src/target-intelligence/acquisition`](../src/target-intelligence/acquisition) · [`local-directory-target-intake.test.ts`](../tests/target-intelligence/local-directory-target-intake.test.ts) · [`wordpress-org-target-source.test.ts`](../tests/target-intelligence/wordpress-org-target-source.test.ts)
+
+## WordPress.org Update Frontier
+
+**Purpose:** WordPress.org全pluginを同じ深さで読む前に、recent source changeをoracle-freeなTarget選定frontierへ変換する。これはTarget Selectionの入口であり、別Research modeまたは脆弱性verdictではない。
+
+**Interface:** `WordPressOrgUpdateFrontiers.refresh / inspect`、`WordPressOrgChangesetSource.retrieve`。production Adapterはofficial read-only SVNへexact argumentで接続し、caller指定cursorから有限revision数だけを読む。schedulerはこのModuleの外に置く。
+
+**Owned state:** content-addressedなprivate SVN log / diff evidenceと、revision cursor、current WordPress.org observation、active install / version fact、変更PHP file数、added line数、high-level navigation signalだけを持つdigest-bound Update Frontier。
+
+**Invariants:** `trunk`のPHP変更は明示active-install policyを満たせばnavigation signalが空でもfrontierへ残す。dangerous function一致を探索空間またはFindingにせず、exact pathとadded lineをTarget Proposal / Researchへ渡さない。Target package script、autoload、WordPress bootstrapを実行しない。
+
+**Failure semantics:** source command failure、timeout、byte ceiling、malformed log / diff、revision binding、artifact digest mismatchを空frontierへ丸めない。個別pluginのmetadata failureはplugin identity、revision、reasonをunresolved observationとして残す。同じfrontier revisionへの異なるinputはconflictにする。
+
+**Code / Tests:** [`update-frontier`](../src/target-intelligence/update-frontier) · [`wordpress-org-update-frontier.test.ts`](../tests/target-intelligence/wordpress-org-update-frontier.test.ts)
+
+## Update Candidate Pool assembly
+
+**Purpose:** WordPress.org Update Frontierを、既存Target Proposalが受け取るoracle-free Candidate Poolへ変換する。これはTarget供給経路であり、別Research modeまたは差分だけを読む探索命令ではない。
+
+**Interface:** `WordPressOrgUpdateCandidatePools.assemble / inspect`。callerはimmutable Update Frontier ref、Target Intake Policy、freshness policyと各leadのSelection Contextを渡す。
+
+**Owned state:** input digest、Frontier / Policy refs、assembly status、source-readyなCandidate Poolとunresolved gapを持つdigest-boundなprivate Assembly Record。Candidateのupdate activityはfrontier ref、revision範囲、changeset数、PHP変更file occurrence数、added line数とhigh-level navigation signal familyに限定する。
+
+**Invariants:** frontier観測へbindした同一version sourceを`WordPressOrgTargetSource.acquire`で再取得し、Plugin Identity、version、observation ref、Target Intake Policy、Canonical File ManifestとTarget / Selection Observationのfreshnessを検査する。frontier外のSelection Contextを拒否する。private SVN evidence ref、exact path、added source、既知advisory、patch、PoCまたはaffected functionをCandidate Pool / Researchへ渡さない。
+
+**Failure semantics:** missing / stale Selection Context、stale Target Observation、source acquisition failureとsource binding mismatchをunresolved gapとして残す。source-readyなCandidateが一件もなければ`assembly-pending`にし、空Candidate Poolまたは未探索へ丸めない。同じassembly revisionへの異なるinput、artifact digest mismatchまたはref mismatchを拒否する。
+
+**Code / Tests:** [`candidate-pool`](../src/target-intelligence/candidate-pool) · [`wordpress-org-update-candidate-pools.test.ts`](../tests/target-intelligence/wordpress-org-update-candidate-pools.test.ts)
 
 ## Target observations
 

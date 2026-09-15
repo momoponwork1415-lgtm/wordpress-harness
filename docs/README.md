@@ -4,12 +4,14 @@
 
 | Question | Canonical document |
 | --- | --- |
-| 全体像を図で見る | [System Architecture SVG](visuals/system-architecture.svg) |
+| 初見の人へ1枚で共有する | [One-page Overview SVG](visuals/wordpress-security-research-overview.svg) |
+| Contextとhandoffを詳しく図で見る | [System Architecture SVG](visuals/system-architecture.svg) |
 | 診断coreだけを見る | [Diagnosis Core SVG](visuals/diagnosis-architecture.svg) |
 | 探索・検証loopを詳しく見る | [Discovery + Validation SVG](visuals/discovery-validation-architecture.svg) |
 | 現在どこが動き、どこが未接続か | [Codebase Guide](CODEBASE-GUIDE.md) |
 | systemのownershipとhandoff | [Architecture](ARCHITECTURE.md) |
 | 一件のTargetの処理順 | [System Walkthrough](SYSTEM-WALKTHROUGH.md) |
+| 探索Agentへ何を渡すかと具体例 | [System Walkthrough: 探索Agentへ渡す情報](SYSTEM-WALKTHROUGH.md#探索agentへ渡す情報) |
 | 探索、停止、Validationの原則 | [Research Design](RESEARCH-DESIGN.md) |
 | domain language | [Context Map](../CONTEXT-MAP.md) |
 | agent-led移行と診断coreの成功条件 | [ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md) · [ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md) |

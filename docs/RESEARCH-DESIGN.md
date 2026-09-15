@@ -45,6 +45,8 @@ Claude Code、Codex、Grok等が既に提供するmodel loop、context管理、s
 
 Target Intelligenceはoracle-freeなSelection Factから、AIがResearch価値を比較してTarget Proposalを作る。利用規模、更新状況、integration、source scale、Programme Eligibility、Disclosure Route、Research Historyは判断材料にできるが、全候補のrank、固定Band、固定facetのdiversityまたは列挙済み理由を要求しない。
 
+Target供給は一種類のheuristicへ寄せない。通常のCandidate Poolに加え、caller-boundedなWordPress.org更新windowから`trunk` PHP変更をUpdate Frontierとして観測し、同じversionのsourceを再取得してCandidate Poolへ組み立てられる。更新差分は「どこを読めば脆弱性があるか」というoracleではなく、Targetを今読む価値を示すprospective factである。exact path、added source、既知advisory、patch、PoCまたはaffected functionはprivate evidenceに留める。signalがないPHP変更もfrontier membershipから落とさず、source取得不能、stale observation、selection fact欠損またはbinding不一致を未探索やeligibleへ補完しない。
+
 Harnessのhard gateは次に限定する。
 
 - sourceを正規に取得できる。

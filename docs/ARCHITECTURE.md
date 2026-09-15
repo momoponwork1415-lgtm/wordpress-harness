@@ -4,6 +4,12 @@ Status: accepted whole-system view, 2026-09-10
 
 WordPress Targetの選定からagent-led Research、Independent Validation、fresh verification、人間の外部提出判断までのownershipを示す。実装状態は[Codebase Guide](CODEBASE-GUIDE.md)を正本とする。
 
+初見向けの共有資料は[一枚でわかる全体像](visuals/wordpress-security-research-overview.svg)を使う。
+
+![一枚でわかるWordPress脆弱性探索システム](visuals/wordpress-security-research-overview.svg)
+
+以下はContext境界とhandoffを詳しくした図である。
+
 ![全体アーキテクチャ](visuals/system-architecture.svg)
 
 ## Architecture rule
@@ -21,6 +27,10 @@ Harnessが固定するのはTarget identity、source provenance、Prompt、Permi
 Context間は図に示したversioned handoffだけを渡す。Target Intelligenceはadmit済みCampaign InputへTarget / Dependency Snapshots、compactなCampaign Threat ContextとProgramme Research Boundaryをbindするが、Finding、既知脆弱性、patch、既知のaffected file / function、固定routeまたは探索手順をResearchへ渡さない。Researchはselection policyを再評価しない。Human OSはResearch storageを直接更新しない。用語と関係の正本は[Context Map](../CONTEXT-MAP.md)に置く。
 
 ## Deep modules
+
+### Update Candidate Pools
+
+`WordPressOrgUpdateCandidatePools.assemble / inspect`は、Update Frontierを既存のCandidate Poolへ接続する。frontierの観測にbindした同一versionのsourceをWordPress.orgから再取得し、identity、provenance、Canonical File Manifest、Target / Selection Observationのfreshnessを検査する。Candidateへ渡す更新factはrevision範囲、changeset数、PHP変更file occurrence数、added line数とhigh-level navigation signal familyだけである。private SVN evidenceのpath、added source、既知advisory、patch、PoCまたはaffected functionをSelection Run / Researchへ渡さない。取得不能、stale、binding不一致はunresolved assembly gapとして残し、未探索またはeligibleへ補完しない。
 
 ### Target Proposals
 

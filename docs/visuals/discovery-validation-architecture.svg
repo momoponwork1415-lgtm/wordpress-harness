@@ -1,187 +1,64 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1120" viewBox="0 0 1200 1120" role="img" aria-labelledby="title desc" style="width:100%;max-width:1200px;height:auto">
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc" style="width:100%;max-width:1600px;height:auto;text-rendering:optimizeLegibility">
   <title id="title">Discovery and Independent Validation architecture</title>
-  <desc id="desc">独立Campaignのsealed input、最大1時間のResearch Grant、人間によるResearch継続とCandidate admission、fresh Independent Source Validation、Finding-bound Dynamic Reproductionまでを示す現在の詳細アーキテクチャ。</desc>
+  <desc id="desc">PCブラウザ向けの横長詳細図。独立Campaign、sealed input、Research Grant、人間による二つのreview、fresh Independent Validation、Validation結果とDynamic Reproductionを示す。</desc>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#06101d"/>
-      <stop offset=".55" stop-color="#0a1525"/>
-      <stop offset="1" stop-color="#111827"/>
-    </linearGradient>
-    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#123f38"/>
-      <stop offset="1" stop-color="#0e2b30"/>
-    </linearGradient>
-    <linearGradient id="purple" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#34265e"/>
-      <stop offset="1" stop-color="#211f45"/>
-    </linearGradient>
-    <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%">
-      <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#000" flood-opacity=".28"/>
-    </filter>
-    <marker id="arrowBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M0 0L10 5L0 10Z" fill="#78aaff"/>
-    </marker>
-    <marker id="arrowGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M0 0L10 5L0 10Z" fill="#68d8a2"/>
-    </marker>
-    <marker id="arrowPurple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M0 0L10 5L0 10Z" fill="#b39aff"/>
-    </marker>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#06101d"/><stop offset=".55" stop-color="#0a1525"/><stop offset="1" stop-color="#111827"/></linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#123f38"/><stop offset="1" stop-color="#0e2b30"/></linearGradient>
+    <linearGradient id="purple" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34265e"/><stop offset="1" stop-color="#211f45"/></linearGradient>
+    <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%"><feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#000" flood-opacity=".28"/></filter>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#78aaff"/></marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#68d8a2"/></marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#b39aff"/></marker>
     <style>
-      .sans{font-family:Inter,"Noto Sans JP",system-ui,-apple-system,"Segoe UI",sans-serif}
-      .mono{font-family:"SFMono-Regular",Consolas,monospace}
-      .title{fill:#f7f9fc;font-size:38px;font-weight:780;letter-spacing:-1px}
-      .subtitle{fill:#adbbce;font-size:17px}
-      .section{fill:#f7f9fc;font-size:23px;font-weight:740}
-      .card{fill:#f7f9fc;font-size:17px;font-weight:710}
-      .body{fill:#c8d4e3;font-size:14px}
-      .small{fill:#a9b7c9;font-size:12px}
-      .tiny{fill:#91a2b8;font-size:11px}
-      .eyebrow{font-size:12px;font-weight:780;letter-spacing:1.15px}
-      .panel{fill:#101d30;stroke:#36516f;stroke-width:1.4}
-      .mini{fill:#15263b;stroke:#355270;stroke-width:1}
-      .flowBlue{fill:none;stroke:#78aaff;stroke-width:2.5;marker-end:url(#arrowBlue)}
-      .flowGreen{fill:none;stroke:#68d8a2;stroke-width:2.4;marker-end:url(#arrowGreen)}
-      .flowPurple{fill:none;stroke:#b39aff;stroke-width:2.4;marker-end:url(#arrowPurple)}
-      .dashed{stroke-dasharray:7 6}
+      .sans{font-family:Inter,"Noto Sans JP",system-ui,-apple-system,"Segoe UI",sans-serif}.mono{font-family:"SFMono-Regular",Consolas,monospace}
+      .title{fill:#f7f9fc;font-size:42px;font-weight:780;letter-spacing:-1px}.subtitle{fill:#adbbce;font-size:19px}.section{fill:#f7f9fc;font-size:25px;font-weight:750}.card{fill:#f7f9fc;font-size:19px;font-weight:720}.body{fill:#c8d4e3;font-size:16px}.small{fill:#a9b7c9;font-size:14px}.tiny{fill:#9aaac0;font-size:13px}.eyebrow{font-size:13px;font-weight:780;letter-spacing:1.2px}.panel{fill:#101d30;stroke:#36516f;stroke-width:1.4}.mini{fill:#15263b;stroke:#355270;stroke-width:1}.flowBlue{fill:none;stroke:#78aaff;stroke-width:3;marker-end:url(#arrowBlue)}.flowGreen{fill:none;stroke:#68d8a2;stroke-width:2.6;marker-end:url(#arrowGreen)}.flowPurple{fill:none;stroke:#b39aff;stroke-width:2.8;marker-end:url(#arrowPurple)}.dashed{stroke-dasharray:8 7}
     </style>
   </defs>
-
-  <rect width="1200" height="1120" fill="url(#bg)"/>
-  <circle cx="1110" cy="10" r="230" fill="#17345c" opacity=".27"/>
-  <circle cx="30" cy="1090" r="210" fill="#123f38" opacity=".18"/>
-
+  <rect width="1600" height="900" fill="url(#bg)"/><circle cx="1500" cy="10" r="260" fill="#17345c" opacity=".27"/><circle cx="30" cy="880" r="200" fill="#123f38" opacity=".18"/>
   <g class="sans">
-    <text x="46" y="48" class="mono eyebrow" fill="#78aaff">DISCOVERY + VALIDATION · DESKTOP</text>
-    <text x="46" y="94" class="title">探索・検証アーキテクチャ</text>
-    <text x="46" y="124" class="subtitle">Researchは人間のreviewでGrantを区切り、Candidateだけをfreshな別sessionで検証する。</text>
+    <text x="48" y="46" class="mono eyebrow" fill="#78aaff">DISCOVERY + VALIDATION · DESKTOP 1600</text>
+    <text x="48" y="96" class="title">探索・検証アーキテクチャ</text>
+    <text x="48" y="132" class="subtitle">ResearchをHuman Reviewで区切り、admitされたCandidateだけをfreshな別sessionで検証する。</text>
 
-    <!-- Campaign scope -->
     <g filter="url(#shadow)">
-      <rect x="46" y="166" width="380" height="150" rx="22" class="panel"/>
-      <text x="68" y="198" class="mono eyebrow" fill="#78aaff">PARALLELISM UNIT</text>
-      <text x="68" y="231" class="section">Targetごとに独立Campaign</text>
-      <rect x="68" y="252" width="94" height="38" rx="12" fill="#17304e" stroke="#39658f"/>
-      <text x="115" y="276" text-anchor="middle" class="small">Campaign A</text>
-      <rect x="179" y="252" width="94" height="38" rx="12" fill="#17304e" stroke="#39658f"/>
-      <text x="226" y="276" text-anchor="middle" class="small">Campaign B</text>
-      <rect x="290" y="252" width="94" height="38" rx="12" fill="#17304e" stroke="#39658f"/>
-      <text x="337" y="276" text-anchor="middle" class="small">Campaign C</text>
-      <text x="68" y="304" class="tiny">中央schedulerなし。process / Target / Checkpointを共有しない。</text>
+      <rect x="48" y="166" width="464" height="136" rx="22" class="panel"/><text x="72" y="198" class="mono eyebrow" fill="#78aaff">PARALLELISM UNIT</text><text x="72" y="236" class="section">Targetごとに独立Campaign</text>
+      <rect x="72" y="254" width="112" height="28" rx="12" fill="#17304e" stroke="#39658f"/><text x="128" y="273" text-anchor="middle" class="small">Campaign A</text><rect x="198" y="254" width="112" height="28" rx="12" fill="#17304e" stroke="#39658f"/><text x="254" y="273" text-anchor="middle" class="small">Campaign B</text><rect x="324" y="254" width="112" height="28" rx="12" fill="#17304e" stroke="#39658f"/><text x="380" y="273" text-anchor="middle" class="small">Campaign C</text>
     </g>
-
-    <path d="M428 241H466" class="flowBlue"/>
-
+    <path d="M514 234H558" class="flowBlue"/>
     <g filter="url(#shadow)">
-      <rect x="470" y="166" width="684" height="150" rx="22" class="panel"/>
-      <text x="492" y="198" class="mono eyebrow" fill="#78aaff">SEALED CAMPAIGN INPUT</text>
-      <text x="492" y="231" class="section">Harnessが固定するもの</text>
-      <rect x="492" y="249" width="640" height="48" rx="13" class="mini"/>
-      <text x="512" y="269" class="small">Target / Dependency Snapshots · Threat Context · Programme Boundary</text>
-      <text x="512" y="288" class="small">Prompt · Runtime · Permission · Budget</text>
-      <text x="492" y="307" class="tiny">sourceはread-only。既知脆弱性、patch、固定route、読む順序は渡さない。</text>
-    </g>
-
-    <!-- Research loop -->
-    <g filter="url(#shadow)">
-      <rect x="46" y="364" width="690" height="352" rx="24" fill="url(#green)" stroke="#328669" stroke-width="1.5"/>
-      <rect x="68" y="386" width="80" height="26" rx="13" fill="#1f5a45"/>
-      <text x="83" y="404" class="mono tiny" fill="#b8f2d4">AI OWNS</text>
-      <text x="68" y="450" class="section">1. Agent-led Research Grant</text>
-      <text x="68" y="478" class="body">RootはTargetとpinned Dependency sourceを直接読み、必要なnative subagentを起動する。</text>
-
-      <rect x="68" y="507" width="190" height="112" rx="15" fill="#163b35" stroke="#2e7a5c"/>
-      <text x="88" y="536" class="card">Security semantics</text>
-      <text x="88" y="562" class="body">attacker control</text>
-      <text x="88" y="585" class="body">guard / transform / effect</text>
-      <text x="88" y="606" class="tiny">sink checklistに閉じない</text>
-
-      <path d="M260 563H292" class="flowGreen"/>
-
-      <rect x="296" y="507" width="190" height="112" rx="15" fill="#163b35" stroke="#2e7a5c"/>
-      <text x="316" y="536" class="card">Source-bound work</text>
-      <text x="316" y="562" class="body">仮説 · 読む順序 · 反証</text>
-      <text x="316" y="585" class="body">最大4 active agents</text>
-      <text x="316" y="606" class="tiny">実数・role・waveはRootが決定</text>
-
-      <path d="M488 563H520" class="flowGreen"/>
-
-      <rect x="524" y="507" width="190" height="112" rx="15" fill="#163b35" stroke="#2e7a5c"/>
-      <text x="544" y="536" class="card">Research Report</text>
-      <text x="544" y="562" class="body">Candidate · Parked Lead</text>
-      <text x="544" y="585" class="body">Checkpoint · next action</text>
-      <text x="544" y="606" class="tiny">最大1時間で必ず区切る</text>
-
-      <rect x="68" y="642" width="646" height="52" rx="14" fill="#3d3526" stroke="#9b7545"/>
-      <text x="88" y="664" class="mono eyebrow" fill="#f0bd78">HUMAN RESEARCH REVIEW</text>
-      <text x="288" y="664" class="body">continue-research → 同じCheckpointから次Grant</text>
-      <text x="288" y="685" class="body">proceed-to-candidate-review → Researchを区切る</text>
-      <path d="M188 641V628H391V622" class="flowGreen dashed"/>
-    </g>
-
-    <path d="M738 540H776" class="flowBlue"/>
-
-    <!-- Human admission and fresh validation -->
-    <g filter="url(#shadow)">
-      <rect x="780" y="364" width="374" height="170" rx="22" fill="#392f22" stroke="#c99652" stroke-width="1.5"/>
-      <text x="802" y="396" class="mono eyebrow" fill="#f0bd78">HUMAN CANDIDATE REVIEW</text>
-      <text x="802" y="431" class="section">Exact Candidate setをadmit</text>
-      <text x="802" y="460" class="body">advance-to-independent-validation</text>
-      <text x="802" y="484" class="body">return-to-research · park OOS · hold ambiguity</text>
-      <text x="802" y="514" class="tiny">returnがあれば全Validationより先にResearchへ戻す。</text>
-    </g>
-
-    <path d="M967 536V566" class="flowPurple"/>
-
-    <g filter="url(#shadow)">
-      <rect x="780" y="570" width="374" height="260" rx="22" fill="url(#purple)" stroke="#826bd2" stroke-width="1.5"/>
-      <rect x="802" y="592" width="90" height="26" rx="13" fill="#4b367f"/>
-      <text x="816" y="610" class="mono tiny" fill="#ded6ff">FRESH AI</text>
-      <text x="802" y="654" class="section">2. Independent Source Validation</text>
-      <text x="802" y="683" class="body">Candidateごとに別provider home / scratch / session</text>
-
-      <rect x="802" y="706" width="330" height="92" rx="14" fill="#2d2755" stroke="#745fc0"/>
-      <text x="822" y="733" class="card">同じsourceから独立に再導出</text>
-      <text x="822" y="758" class="body">reachability · attacker control · defense · effect</text>
-      <text x="822" y="781" class="small">Research transcript / verdict / Boundaryは共有しない</text>
-    </g>
-
-    <!-- Validation dispositions -->
-    <g filter="url(#shadow)">
-      <rect x="46" y="760" width="690" height="160" rx="22" class="panel"/>
-      <text x="68" y="792" class="mono eyebrow" fill="#78aaff">VALIDATION DISPOSITION</text>
-      <rect x="68" y="814" width="150" height="72" rx="14" fill="#153b30"/>
-      <text x="88" y="841" class="card">source-validated</text>
-      <text x="88" y="866" class="small">Findingを生成</text>
-      <rect x="232" y="814" width="150" height="72" rx="14" fill="#292b40"/>
-      <text x="252" y="841" class="card">disproven</text>
-      <text x="252" y="866" class="small">source反証を保存</text>
-      <rect x="396" y="814" width="150" height="72" rx="14" fill="#18354a"/>
-      <text x="416" y="841" class="card">needs-research</text>
-      <text x="416" y="866" class="small">具体的gapを返す</text>
-      <rect x="560" y="814" width="154" height="72" rx="14" fill="#362d25"/>
-      <text x="580" y="841" class="card">validation-pending</text>
-      <text x="580" y="866" class="small">failure ≠ negative</text>
-    </g>
-
-    <path d="M967 832V940H311V960" class="flowPurple"/>
-
-    <!-- Human OS follow-up -->
-    <g filter="url(#shadow)">
-      <rect x="46" y="964" width="530" height="112" rx="22" fill="#2b281f" stroke="#c99652" stroke-width="1.5"/>
-      <text x="68" y="996" class="mono eyebrow" fill="#f0bd78">3. FRESH DYNAMIC REPRODUCTION</text>
-      <text x="68" y="1029" class="card">Finding-bound Recipeを実WordPress / MySQLで1回replay</text>
-      <text x="68" y="1055" class="small">runtime-confirmed / incompleteをFindingへappend。再探索はしない。</text>
+      <rect x="564" y="166" width="988" height="136" rx="22" class="panel"/><text x="588" y="198" class="mono eyebrow" fill="#78aaff">SEALED CAMPAIGN INPUT</text><text x="588" y="236" class="section">Harnessが固定するもの</text>
+      <rect x="588" y="252" width="940" height="32" rx="12" class="mini"/><text x="608" y="274" class="small">Target / Dependencies · Threat Context · Programme Boundary · Prompt · Runtime · Permission · Budget</text><text x="1508" y="226" text-anchor="end" class="tiny">read-only source · known patch / fixed routeなし</text>
     </g>
 
     <g filter="url(#shadow)">
-      <rect x="610" y="964" width="544" height="112" rx="22" fill="#13243a" stroke="#3d6590" stroke-width="1.4"/>
-      <text x="632" y="996" class="mono eyebrow" fill="#78aaff">APPEND-ONLY RECORD</text>
-      <text x="632" y="1029" class="body">Campaign seal · Receipts · usage / failure · Checkpoint refs · Human Reviews</text>
-      <text x="632" y="1055" class="small">Candidate · Parked Lead · Finding · Coverage · runtime / human assurance</text>
+      <rect x="48" y="350" width="900" height="344" rx="24" fill="url(#green)" stroke="#328669" stroke-width="1.5"/><rect x="72" y="374" width="90" height="28" rx="14" fill="#1f5a45"/><text x="88" y="393" class="mono tiny" fill="#b8f2d4">AI OWNS</text>
+      <text x="72" y="444" class="section">1. Agent-led Research Grant</text><text x="72" y="476" class="body">RootがTargetとpinned Dependency sourceを直接読み、最大1時間の中で仮説とnative subagentを動的に選ぶ。</text>
+      <rect x="72" y="510" width="250" height="100" rx="15" fill="#163b35" stroke="#2e7a5c"/><text x="94" y="542" class="card">Broken security semantics</text><text x="94" y="570" class="body">control → guard → effect</text><text x="94" y="596" class="tiny">source-to-impact / sink checklistに閉じない</text>
+      <path d="M324 560H358" class="flowGreen"/>
+      <rect x="364" y="510" width="250" height="100" rx="15" fill="#163b35" stroke="#2e7a5c"/><text x="386" y="542" class="card">Source-bound work</text><text x="386" y="570" class="body">仮説 · 読む順序 · 反証 · chain</text><text x="386" y="596" class="tiny">Root込み最大4 active agents</text>
+      <path d="M616 560H650" class="flowGreen"/>
+      <rect x="656" y="510" width="268" height="100" rx="15" fill="#163b35" stroke="#2e7a5c"/><text x="678" y="542" class="card">Research Report</text><text x="678" y="570" class="body">Candidate · Parked Lead</text><text x="678" y="596" class="tiny">Checkpoint · next actionへbind</text>
+      <rect x="72" y="626" width="852" height="46" rx="14" fill="#3d3526" stroke="#9b7545"/><text x="94" y="655" class="mono eyebrow" fill="#f0bd78">HUMAN RESEARCH REVIEW</text><text x="348" y="655" class="body">continue → 同じCheckpointから次Grant　／　proceed → Candidate Review</text><path d="M224 625V616H489V612" class="flowGreen dashed"/>
     </g>
 
-    <text x="600" y="1102" text-anchor="middle" class="tiny">AI内部の仮説・role・tool順序はdomain stateにしない。外部行動は別のhuman authorizationでgateする。</text>
+    <path d="M950 522H994" class="flowBlue"/>
+    <g filter="url(#shadow)">
+      <rect x="1000" y="350" width="552" height="144" rx="22" fill="#392f22" stroke="#c99652" stroke-width="1.5"/><text x="1024" y="382" class="mono eyebrow" fill="#f0bd78">HUMAN CANDIDATE REVIEW</text><text x="1024" y="422" class="section">Exact Candidate setをadmit</text><text x="1024" y="454" class="body">advance-to-validation · return-to-research</text><text x="1024" y="480" class="small">park OOS · hold ambiguity（returnを先に処理）</text>
+    </g>
+    <path d="M1276 496V526" class="flowPurple"/>
+    <g filter="url(#shadow)">
+      <rect x="1000" y="532" width="552" height="162" rx="22" fill="url(#purple)" stroke="#826bd2" stroke-width="1.5"/><rect x="1024" y="556" width="92" height="28" rx="14" fill="#4b367f"/><text x="1040" y="575" class="mono tiny" fill="#ded6ff">FRESH AI</text><text x="1024" y="622" class="section">2. Independent Source Validation</text><text x="1024" y="654" class="body">Candidateごとに別home / scratch / sessionで独立再導出</text><text x="1024" y="680" class="small">Research transcript / verdict / Programme Boundaryは共有しない</text>
+    </g>
+
+    <g filter="url(#shadow)">
+      <rect x="48" y="744" width="900" height="108" rx="22" class="panel"/><text x="72" y="776" class="mono eyebrow" fill="#78aaff">VALIDATION DISPOSITION</text>
+      <rect x="72" y="794" width="190" height="38" rx="12" fill="#153b30"/><text x="167" y="819" text-anchor="middle" class="small">source-validated → Finding</text><rect x="278" y="794" width="174" height="38" rx="12" fill="#292b40"/><text x="365" y="819" text-anchor="middle" class="small">disproven</text><rect x="468" y="794" width="190" height="38" rx="12" fill="#18354a"/><text x="563" y="819" text-anchor="middle" class="small">needs-research</text><rect x="674" y="794" width="250" height="38" rx="12" fill="#362d25"/><text x="799" y="819" text-anchor="middle" class="small">validation-pending ≠ negative</text>
+    </g>
+    <path d="M1276 696V738" class="flowPurple"/>
+    <g filter="url(#shadow)">
+      <rect x="1000" y="744" width="552" height="108" rx="22" fill="#2b281f" stroke="#c99652" stroke-width="1.5"/><text x="1024" y="776" class="mono eyebrow" fill="#f0bd78">3. FRESH DYNAMIC REPRODUCTION</text><text x="1024" y="811" class="card">Finding-bound Recipeを実WordPress / MySQLで1回replay</text><text x="1024" y="837" class="small">runtime assuranceをappend。再探索と外部送信はしない。</text>
+    </g>
+    <text x="800" y="884" text-anchor="middle" class="tiny">Campaign seal · Receipts · Checkpoint refs · Human Reviews · Candidate · Finding · Coverageはappend-only recordへ保存</text>
   </g>
 </svg>

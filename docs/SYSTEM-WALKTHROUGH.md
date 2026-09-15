@@ -6,13 +6,39 @@
 
 ## 1. Select and approve
 
-Target Intelligenceが取得可能性、identity、provenance、freshnessを検査したCandidate Poolを作る。AIは固定rankやreason codeなしにTarget Proposalを返す。人間はProposalの一部または全部をApproved Target Batchとして承認する。
+Target Intelligenceが取得可能性、identity、provenance、freshnessを検査したCandidate Poolを作る。候補の入口には通常のecosystem observationに加え、callerが有限cursorを与えるWordPress.org Update Frontierを使える。後者は`trunk` PHP変更をcurrent metadataへ結び付け、同じversionのsourceを再取得してからCandidate Poolへ組み立てる。Proposalへ渡すのは更新量とhigh-level navigation signal familyまでで、exact path、added source、既知advisory、patch、PoCまたはaffected functionはprivate evidenceに留める。欠損、staleまたはsource binding failureはassembly gapとして残る。
+
+AIは固定rankやreason codeなしにTarget Proposalを返す。人間はProposalの一部または全部をApproved Target Batchとして承認する。
 
 Targetごとにordinary configuration、attacker position、security objective、trust boundary、high-value transition、必要なWordPress core / companion sourceと不確実性をCampaign Threat Contextへまとめる。この段階でもCVE、known file、known route、patch narrativeまたは固定探索手順をResearchへ渡さない。
 
 Programme指定のCampaignでは、公式scopeからeligible attacker position、priority impact、短い除外category、excluded assetと不確実性だけをProgramme Research Boundaryへまとめる。researcher tier、install threshold等のTarget eligibilityはTarget Intelligenceのadmissionで消費し、Researchへ渡さない。公開既知脆弱性のPoC、patch、affected file / functionも含めない。
 
 ## 2. Seal and conduct
+
+### 探索Agentへ渡す情報
+
+Research Rootは次のsource worldとplanning dataだけを受け取る。
+
+- exact versionへbindしたread-only Target Snapshotとplugin全source
+- WordPress core、required / active companion、runtime library、protocol reference等のread-only Dependency Snapshots
+- ordinary configuration、attacker position、security objective、trust boundary、high-value transition、不確実性を持つCampaign Threat Context
+- eligible attacker position、priority impact、明示的除外とscope uncertaintyを持つProgramme Research Boundary
+- Research Prompt、Agent Runtime Profile、Permission Profile、そのGrantのwall-time allowance
+- 二回目以降のGrantだけ、同じbindingのprivate Agent Checkpointと人間が承認したsource-bound next action
+
+CVE、advisory、changelog、Git history、patch diff、既知のaffected file / function、既知route、payloadまたは正解のValidation verdictは渡さない。Target / Dependency内のinstruction-like fileもuntrusted dataとして扱う。Agentはread-only sourceと隔離scratchだけを使い、internet、ambient shell、credential、host pathまたは外部送信権限を持たない。
+
+公開可能な具体例は次にある。
+
+- 探索方針本文: [`prompts/wordpress-plugin-research-v2.md`](../prompts/wordpress-plugin-research-v2.md)
+- Agentへ最終的に組み立てるprompt: [`agentResearchPrompt`](../src/research/agent-led/gvisor-agent-sandbox.ts)
+- `CampaignInput`、Threat Context、Programme Boundary、Checkpointのschema: [`contracts.ts`](../src/research/agent-led/contracts.ts)
+- Target / WordPress sourceとplanning dataを含む完全なtest example: [`campaign-threat-context.test.ts`](../tests/research/campaign-threat-context.test.ts)
+- 最小の`CampaignInput` example: [`research-campaigns.test.ts`](../tests/research/research-campaigns.test.ts)
+- Human-approved Targetから`CampaignInput`を組み立てる例: [`approved-target-campaigns.test.ts`](../tests/target-intelligence/approved-target-campaigns.test.ts)
+
+実Target source、provider conversation、Checkpoint本文、credential、payloadと未公開Findingは`.private`等のGit外へ置くため、repositoryに実Campaignの完全なprivate input bundleは置かない。
 
 通常経路のCLI `campaign conduct-approved`は、Approved Target Batch、fresh Target Observation、Target Intake、Campaign Policy、Dependency Snapshots、Campaign Threat ContextとProgramme Research Boundaryを検査してResearch `CampaignInput`を作る。ResearchはTarget Snapshot、WordPress core等のDependency Snapshots、Campaign Threat Context、Programme Research Boundary、Research Prompt、Validation Prompt、Agent Runtime Profile、Permission Profile、Budget Envelopeをdigest bindする。profileが指定するGrok Build、Claude Code、Claude Code process上のGLM 5.3、またはmanaged read-only source readerを持つCodex Daybreak Adapterだけを使う。低水準の`campaign conduct`は、既にsealした`CampaignInput`を直接実行する。
 

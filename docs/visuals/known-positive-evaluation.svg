@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600" role="img" aria-labelledby="title desc" style="width:100%;max-width:1200px;height:auto">
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="800" viewBox="0 0 1200 600" role="img" aria-labelledby="title desc" style="width:100%;max-width:1600px;height:auto;text-rendering:optimizeLegibility">
   <title id="title">Known-positive 4件の評価結果</title>
   <desc id="desc">Discoveryは4件中4件、Independent Source Validationは4件中4件、Dynamic Reproductionは4件中3件。prospective latest-version Campaignは未実施であることをstage別に示すデスクトップ向けの図。</desc>
   <defs>

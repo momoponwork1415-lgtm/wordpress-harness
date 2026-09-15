@@ -40,6 +40,7 @@ private Target source、prompt、provider output、credential、payload、transc
 
 ## Docs
 
+- [One-page Overview](docs/visuals/wordpress-security-research-overview.svg) — 友人への共有と全体把握用の1枚図
 - [Documentation](docs/README.md) — 目的別の入口
 - [Architecture](docs/ARCHITECTURE.md) — ownershipとhandoff
 - [Research Design](docs/RESEARCH-DESIGN.md) — 探索・停止・Validationの原則
