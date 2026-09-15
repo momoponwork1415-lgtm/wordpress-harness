@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { canonicalDigest } from "../../infrastructure/canonical-json.js";
+import { wordPressOrgUpdateNavigationSignalSchema } from "../update-frontier/contracts.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const identifierSchema = z
@@ -46,6 +47,17 @@ const selectionFactsSchema = z.strictObject({
       fileCount: z.number().int().positive(),
       byteCount: z.number().int().positive(),
       languages: z.array(termSchema).min(1),
+    })
+    .optional(),
+  updateActivity: z
+    .strictObject({
+      frontierRef: immutableRefSchema,
+      fromRevisionExclusive: z.number().int().nonnegative(),
+      toRevisionInclusive: z.number().int().nonnegative(),
+      changesetCount: z.number().int().positive(),
+      changedPhpFileOccurrences: z.number().int().positive(),
+      addedPhpLines: z.number().int().nonnegative(),
+      navigationSignals: z.array(wordPressOrgUpdateNavigationSignalSchema),
     })
     .optional(),
 });
@@ -167,7 +179,6 @@ const agentRuntimeProfileSchema = z.strictObject({
 const budgetEnvelopeSchema = z.strictObject({
   id: identifierSchema,
   maxWallTimeMs: z.number().int().positive(),
-  maxEstimatedCostUsd: z.number().positive(),
   digest: digestSchema,
 });
 

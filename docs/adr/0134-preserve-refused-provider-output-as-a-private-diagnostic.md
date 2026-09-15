@@ -1,0 +1,13 @@
+---
+status: accepted
+---
+
+# Preserve refused provider output as a private diagnostic
+
+Runtime Adapterがprocessとしては正常終了したrunをpolicy denialまたはinvalid outputとして退ける場合も、credential-redactedなprovider outputをprivate Agent Run Diagnosticへ保存し、そのopaque refをReceiptへ記録する。これまでこの経路のReceiptはsummaryだけを残し、providerのoutputを破棄していたため、記録からは判定を検証できなかった。
+
+Diagnosticを保存できなければ、証跡のないpolicy denial / invalid outputとして記録せず、diagnostic persistence failureを明示する`provider-failed` Receiptへ倒す。
+
+あわせてsealed session bindingの失敗をmodelのpolicy違反と区別する。Research runがCheckpointを持たない、またはproviderのsession identityがCheckpointと一致しない場合は「unbound Research session」として記録し、tool / model policy違反はそれとは別のsummaryで記録する。両者はどちらもretryableにしないが、原因が異なるため同じ文言へ丸めない。
+
+これによりpolicy denialは人間が反証できる記録になり、Adapter側のbinding問題をAgentのpolicy違反として誤って記録しない。代償としてdiagnostic capsuleの本数と保存量が増えるため、scratch rootの保持期間は運用側で管理する。

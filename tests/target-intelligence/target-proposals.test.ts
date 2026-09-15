@@ -121,7 +121,6 @@ function input(
     budgetEnvelope: {
       id: "target-proposal-budget-v1",
       maxWallTimeMs: 300_000,
-      maxEstimatedCostUsd: 5,
       digest:
         "sha256:3333333333333333333333333333333333333333333333333333333333333333",
     },

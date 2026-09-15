@@ -9,6 +9,7 @@ import type { CampaignInput } from "../../src/research/index.js";
 import type {
   AgentCheckpointRef,
   NativeAgentRuntime,
+  ResearchCampaigns,
   SealedAgentRun,
 } from "../../src/research/agent-led/contracts.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
@@ -73,7 +74,7 @@ const input: CampaignInput = {
     id: "budget-agent-led-v1",
     maxNativeRuns: 1,
     maxWallTimeMs: 600_000,
-    maxEstimatedCostUsd: 10,
+    researchGrantWallTimeMs: 600_000,
     digest:
       "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
   },
@@ -98,6 +99,78 @@ function checkpointFor(run: SealedAgentRun): AgentCheckpointRef {
       ? {}
       : { dependencySnapshotsDigest: canonicalDigest(dependencySnapshots) }),
   };
+}
+
+async function conductWithHumanAdvance(
+  campaigns: ResearchCampaigns,
+  campaignInput: CampaignInput,
+) {
+  let outcome = await campaigns.conduct(campaignInput);
+  while (
+    outcome.status === "research-review-pending" ||
+    outcome.status === "candidate-review-pending"
+  ) {
+    const view = await campaigns.inspect({
+      campaignId: campaignInput.campaignId,
+    });
+    if (outcome.status === "research-review-pending") {
+      const request = view.pendingResearchContinuationReview;
+      if (request === undefined) {
+        throw new Error("missing Research continuation review request");
+      }
+      const reviewBody = {
+        kind: "human-research-continuation-review" as const,
+        schemaVersion: 1 as const,
+        reviewId: `research-review:${request.researchRunId}`,
+        campaignId: campaignInput.campaignId,
+        campaignInputDigest: request.campaignInputDigest,
+        researchRunId: request.researchRunId,
+        checkpointId: request.checkpoint.checkpointId,
+        checkpointStateDigest: request.checkpoint.stateDigest,
+        candidateSetDigest: request.candidateSetDigest,
+        parkedProgrammeLeadSetDigest: request.parkedProgrammeLeadSetDigest,
+        researchContinuationReviewRequestDigest: request.digest,
+        operator: {
+          identity: "test-human-reviewer",
+          decidedAt: "2026-09-09T00:00:00.000Z",
+        },
+        decision: "continue-research" as const,
+        reason: "The source-bound next actions warrant another Research Grant.",
+      };
+      outcome = await campaigns.conduct({
+        ...reviewBody,
+        digest: canonicalDigest(reviewBody),
+      });
+      continue;
+    }
+    const request = view.pendingCandidateReview;
+    if (request === undefined)
+      throw new Error("missing Candidate review request");
+    const reviewBody = {
+      kind: "human-candidate-review" as const,
+      schemaVersion: 1 as const,
+      reviewId: `review:${request.terminalResearchRunId}`,
+      campaignId: campaignInput.campaignId,
+      campaignInputDigest: request.campaignInputDigest,
+      terminalResearchRunId: request.terminalResearchRunId,
+      candidateSetDigest: request.candidateSetDigest,
+      candidateReviewRequestDigest: request.digest,
+      operator: {
+        identity: "test-human-reviewer",
+        decidedAt: "2026-09-09T00:00:00.000Z",
+      },
+      decisions: request.candidates.map((candidate) => ({
+        candidateId: candidate.candidateId,
+        disposition: "advance-to-independent-validation" as const,
+        reason: "The Candidate warrants fresh independent source validation.",
+      })),
+    };
+    outcome = await campaigns.conduct({
+      ...reviewBody,
+      digest: canonicalDigest(reviewBody),
+    });
+  }
+  return outcome;
 }
 
 describe("ResearchCampaigns", () => {
@@ -241,6 +314,157 @@ describe("ResearchCampaigns", () => {
     reopened.close();
   });
 
+  it("does not retry a sandbox policy denial that the runtime did not mark retryable", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "research-policy-denied-"));
+    temporaryDirectories.push(directory);
+    const deniedInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-policy-denied-1",
+    };
+    let invocations = 0;
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "agent-led.sqlite"),
+      runtime: {
+        async execute(run) {
+          invocations += 1;
+          return {
+            schemaVersion: 1,
+            runId: run.runId,
+            runtimeProfileDigest: run.agentRuntimeProfile.digest,
+            terminal: "policy-denied",
+            startedAt: "2026-09-07T02:00:00.000Z",
+            completedAt: "2026-09-07T02:00:01.000Z",
+            usage: { wallTimeMs: 1_000 },
+            activity: { subagents: null, tools: null },
+            failure: {
+              summary:
+                "The mounted Target source does not match its sealed source tree.",
+              stage: "sandbox-preflight",
+            },
+          };
+        },
+      },
+    });
+
+    await expect(campaigns.conduct(deniedInput)).resolves.toMatchObject({
+      status: "incomplete",
+    });
+    await expect(campaigns.conduct(deniedInput)).resolves.toMatchObject({
+      status: "incomplete",
+    });
+    expect(invocations).toBe(1);
+    campaigns.close();
+  });
+
+  it("resumes a Campaign whose provider authentication failed before any model work", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "research-unauthenticated-"),
+    );
+    temporaryDirectories.push(directory);
+    const unauthenticatedInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-unauthenticated-1",
+      budgetEnvelope: {
+        ...input.budgetEnvelope,
+        maxNativeRuns: 3,
+      },
+    };
+    let invocations = 0;
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "agent-led.sqlite"),
+      runtime: {
+        async execute(run) {
+          invocations += 1;
+          return {
+            schemaVersion: 1,
+            runId: run.runId,
+            runtimeProfileDigest: run.agentRuntimeProfile.digest,
+            terminal: "provider-unauthenticated",
+            startedAt: "2026-09-07T02:00:00.000Z",
+            completedAt: "2026-09-07T02:00:01.000Z",
+            usage: { wallTimeMs: 1_000 },
+            activity: { subagents: null, tools: null },
+            isolation: gvisorIsolation,
+            failure: {
+              summary: "Claude Code could not authenticate with the provider.",
+              stage: "provider-execution",
+              retryable: true,
+            },
+          };
+        },
+      },
+    });
+
+    await expect(
+      campaigns.conduct(unauthenticatedInput),
+    ).resolves.toMatchObject({ status: "incomplete" });
+    await expect(
+      campaigns.conduct(unauthenticatedInput),
+    ).resolves.toMatchObject({ status: "incomplete" });
+    await expect(
+      campaigns.conduct(unauthenticatedInput),
+    ).resolves.toMatchObject({ status: "incomplete" });
+    expect(invocations).toBe(2);
+    campaigns.close();
+  });
+
+  it("does not repeat a Research Grant into an exhausted provider quota", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "research-quota-"));
+    temporaryDirectories.push(directory);
+    const quotaInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-quota-exhausted-1",
+      budgetEnvelope: {
+        ...input.budgetEnvelope,
+        maxNativeRuns: 2,
+      },
+    };
+    let invocations = 0;
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "agent-led.sqlite"),
+      runtime: {
+        async execute(run) {
+          invocations += 1;
+          return {
+            schemaVersion: 1,
+            runId: run.runId,
+            runtimeProfileDigest: run.agentRuntimeProfile.digest,
+            terminal: "provider-quota-exhausted",
+            startedAt: "2026-09-07T02:00:00.000Z",
+            completedAt: "2026-09-07T02:20:00.000Z",
+            usage: { wallTimeMs: 1_200_000, estimatedCostUsd: 6.5 },
+            activity: { subagents: null, tools: null },
+            isolation: gvisorIsolation,
+            failure: {
+              summary: "Claude Code reached the provider usage limit.",
+              stage: "provider-execution",
+            },
+          };
+        },
+      },
+    });
+
+    await expect(campaigns.conduct(quotaInput)).resolves.toMatchObject({
+      status: "incomplete",
+    });
+    await expect(campaigns.conduct(quotaInput)).resolves.toMatchObject({
+      status: "incomplete",
+    });
+    expect(invocations).toBe(1);
+    await expect(
+      campaigns.inspect({ campaignId: "campaign-quota-exhausted-1" }),
+    ).resolves.toMatchObject({
+      status: "incomplete",
+      nativeRuns: [
+        {
+          terminal: "provider-quota-exhausted",
+          usage: { estimatedCostUsd: 6.5 },
+        },
+      ],
+    });
+    campaigns.close();
+  });
+
   it("records invalid provider output as an incomplete Campaign", async () => {
     const directory = await mkdtemp(join(tmpdir(), "research-invalid-output-"));
     temporaryDirectories.push(directory);
@@ -343,7 +567,7 @@ describe("ResearchCampaigns", () => {
     campaigns.close();
   });
 
-  it("continues autonomously until the agent reports no actionable frontier", async () => {
+  it("continues only after a human accepts the next Research Grant", async () => {
     const directory = await mkdtemp(join(tmpdir(), "research-continues-"));
     temporaryDirectories.push(directory);
     const continuingInput: CampaignInput = {
@@ -425,8 +649,12 @@ describe("ResearchCampaigns", () => {
     });
 
     await expect(campaigns.conduct(continuingInput)).resolves.toMatchObject({
-      status: "coverage-closed",
+      status: "research-review-pending",
     });
+    expect(invocation).toBe(1);
+    await expect(
+      conductWithHumanAdvance(campaigns, continuingInput),
+    ).resolves.toMatchObject({ status: "coverage-closed" });
     await expect(
       campaigns.inspect({ campaignId: "campaign-continues-1" }),
     ).resolves.toMatchObject({
@@ -439,6 +667,9 @@ describe("ResearchCampaigns", () => {
           checkpoint: { checkpointId: "checkpoint-2" },
           report: { decision: { kind: "stop" } },
         },
+      ],
+      researchContinuationReviews: [
+        { decision: "continue-research", researchRunId: expect.any(String) },
       ],
     });
     campaigns.close();
@@ -485,7 +716,9 @@ describe("ResearchCampaigns", () => {
       },
     });
 
-    await expect(campaigns.conduct(budgetInput)).resolves.toMatchObject({
+    await expect(
+      conductWithHumanAdvance(campaigns, budgetInput),
+    ).resolves.toMatchObject({
       status: "incomplete",
     });
     await expect(
@@ -573,6 +806,7 @@ describe("ResearchCampaigns", () => {
         ...input.budgetEnvelope,
         maxNativeRuns: 2,
         maxWallTimeMs: 50_000,
+        researchGrantWallTimeMs: 50_000,
       },
     };
     const campaigns = openResearchCampaigns({
@@ -615,16 +849,17 @@ describe("ResearchCampaigns", () => {
     campaigns.close();
   });
 
-  it("keeps a terminal report incomplete when it exceeds the cost budget", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "research-cost-budget-"));
+  it("records reported cost without using it as a Campaign stop condition", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "research-cost-observation-"),
+    );
     temporaryDirectories.push(directory);
-    const costBudgetInput: CampaignInput = {
+    const costObservationInput = {
       ...input,
-      campaignId: "campaign-cost-budget-1",
+      campaignId: "campaign-cost-observation-1",
       budgetEnvelope: {
         ...input.budgetEnvelope,
         maxNativeRuns: 2,
-        maxEstimatedCostUsd: 1,
       },
     };
     const campaigns = openResearchCampaigns({
@@ -655,19 +890,20 @@ describe("ResearchCampaigns", () => {
       },
     });
 
-    await expect(campaigns.conduct(costBudgetInput)).resolves.toMatchObject({
-      status: "incomplete",
+    await expect(
+      campaigns.conduct(costObservationInput),
+    ).resolves.toMatchObject({
+      status: "coverage-closed",
     });
     await expect(
-      campaigns.inspect({ campaignId: "campaign-cost-budget-1" }),
+      campaigns.inspect({ campaignId: "campaign-cost-observation-1" }),
     ).resolves.toMatchObject({
-      interruption: { reason: "budget-exhausted" },
       nativeRuns: [{ usage: { estimatedCostUsd: 1.25 } }],
     });
     campaigns.close();
   });
 
-  it("gives each run only the remaining wall-time and cost allowance", async () => {
+  it("gives each run only the remaining wall-time allowance", async () => {
     const directory = await mkdtemp(join(tmpdir(), "research-allowance-"));
     temporaryDirectories.push(directory);
     const allowanceInput: CampaignInput = {
@@ -677,7 +913,7 @@ describe("ResearchCampaigns", () => {
         ...input.budgetEnvelope,
         maxNativeRuns: 2,
         maxWallTimeMs: 100_000,
-        maxEstimatedCostUsd: 2,
+        researchGrantWallTimeMs: 100_000,
       },
     };
     const seenRuns: SealedAgentRun[] = [];
@@ -729,20 +965,20 @@ describe("ResearchCampaigns", () => {
       },
     });
 
-    await expect(campaigns.conduct(allowanceInput)).resolves.toMatchObject({
+    await expect(
+      conductWithHumanAdvance(campaigns, allowanceInput),
+    ).resolves.toMatchObject({
       status: "coverage-closed",
     });
     expect(seenRuns).toMatchObject([
       {
         budgetAllowance: {
           maxWallTimeMs: 100_000,
-          maxEstimatedCostUsd: 2,
         },
       },
       {
         budgetAllowance: {
           maxWallTimeMs: 60_000,
-          maxEstimatedCostUsd: 1.25,
         },
       },
     ]);
@@ -807,7 +1043,9 @@ describe("ResearchCampaigns", () => {
       },
     });
 
-    await expect(campaigns.conduct(candidateInput)).resolves.toMatchObject({
+    await expect(
+      conductWithHumanAdvance(campaigns, candidateInput),
+    ).resolves.toMatchObject({
       status: "incomplete",
     });
     await expect(
@@ -957,7 +1195,9 @@ describe("ResearchCampaigns", () => {
       runtime,
     });
 
-    await expect(campaigns.conduct(candidateInput)).resolves.toMatchObject({
+    await expect(
+      conductWithHumanAdvance(campaigns, candidateInput),
+    ).resolves.toMatchObject({
       status: "coverage-closed",
     });
     await expect(
@@ -1134,7 +1374,9 @@ describe("ResearchCampaigns", () => {
       },
     });
 
-    await expect(campaigns.conduct(proofGapInput)).resolves.toMatchObject({
+    await expect(
+      conductWithHumanAdvance(campaigns, proofGapInput),
+    ).resolves.toMatchObject({
       status: "coverage-closed",
     });
     await expect(

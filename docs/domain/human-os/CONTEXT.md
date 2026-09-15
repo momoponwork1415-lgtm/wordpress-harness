@@ -14,6 +14,9 @@ Human OSはTarget選定、Research探索、source ValidationまたはFinding生�
 **Dynamic Reproduction Recipe**
 : exact Finding IDとTarget Snapshot digestへbindしたversionedなprivate attack script。探索・source Validationで得た手順を再探索せずfresh labで一度だけreplayする。
 
+**Dynamic Reproduction Lab Setup**
+: exact Finding ID、Target Snapshot digest、Dependency Snapshot集合へbindしたversionedなordinary configuration script。全てのpinned companion pluginを有効化した後、attack Recipeより前に一度だけ適用する。
+
 **Isolated Environment**
 : FindingのTarget Snapshotとruntime profile digestへbindしたfresh、disposable、runsc-backed environment identity。host Target execution、ambient credential、arbitrary network、fallbackを許さない。
 
@@ -45,6 +48,7 @@ Human OSはTarget選定、Research探索、source ValidationまたはFinding生�
 - human disprovalまたはruntime failureでもFindingを削除しない。
 - provider、setup、Budget、ambiguous observationをdisprovedへ丸めない。
 - Dynamic ReproductionはFinding-bound Recipeを一度だけ実行し、source再探索、AI再判断、追加experimentまたはpatched controlを行わない。
+- companion pluginはFindingにbindされたDependency Snapshotだけから解決し、canonical source treeを一致させる。Lab Setupも同じFindingとDependency集合へdigest-bindする。
 - 効果未観測またはRecipe / fixture不足を`disproved`へ丸めない。
 - Private EvidenceをGit、Finding、Draftへ展開しない。
 - external actionはhuman-confirmed verificationとexact Draft / destination authorizationを要求する。

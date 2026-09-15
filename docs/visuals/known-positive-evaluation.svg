@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="390" height="1080" viewBox="0 0 390 1080" role="img" aria-labelledby="title desc" style="width:100%;max-width:390px;height:auto">
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="800" viewBox="0 0 1200 600" role="img" aria-labelledby="title desc" style="width:100%;max-width:1600px;height:auto;text-rendering:optimizeLegibility">
   <title id="title">Known-positive 4件の評価結果</title>
-  <desc id="desc">Discoveryは4件中4件、Independent Source Validationは4件中4件、Dynamic Reproductionは4件中3件、prospective latest-version Campaignは未実施であることを示すスマートフォン向けの図。</desc>
+  <desc id="desc">Discoveryは4件中4件、Independent Source Validationは4件中4件、Dynamic Reproductionは4件中3件。prospective latest-version Campaignは未実施であることをstage別に示すデスクトップ向けの図。</desc>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#07111f"/>
       <stop offset="1" stop-color="#111827"/>
     </linearGradient>
     <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%">
-      <feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#000" flood-opacity=".28"/>
+      <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#000" flood-opacity=".28"/>
     </filter>
     <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
       <path d="M0 0L10 5L0 10Z" fill="#78aaff"/>
@@ -16,85 +16,75 @@
     <style>
       .sans{font-family:Inter,"Noto Sans JP",system-ui,-apple-system,"Segoe UI",sans-serif}
       .mono{font-family:"SFMono-Regular",Consolas,monospace}
-      .title{fill:#f7f9fc;font-size:28px;font-weight:780;letter-spacing:-.8px}
-      .subtitle{fill:#adbbce;font-size:14px}
-      .number{fill:#f7f9fc;font-size:34px;font-weight:800}
-      .card{fill:#f7f9fc;font-size:18px;font-weight:720}
-      .body{fill:#c8d4e3;font-size:13px}
-      .small{fill:#a9b7c9;font-size:11.5px}
-      .tiny{fill:#91a2b8;font-size:10.5px}
-      .eyebrow{font-size:10.5px;font-weight:780;letter-spacing:1.05px}
-      .flow{fill:none;stroke:#78aaff;stroke-width:2.4;marker-end:url(#arrow)}
+      .title{fill:#f7f9fc;font-size:38px;font-weight:780;letter-spacing:-1px}
+      .subtitle{fill:#adbbce;font-size:17px}
+      .number{fill:#f7f9fc;font-size:46px;font-weight:800}
+      .card{fill:#f7f9fc;font-size:20px;font-weight:720}
+      .body{fill:#c8d4e3;font-size:14px}
+      .small{fill:#a9b7c9;font-size:12px}
+      .tiny{fill:#91a2b8;font-size:11px}
+      .eyebrow{font-size:12px;font-weight:780;letter-spacing:1.15px}
+      .flow{fill:none;stroke:#78aaff;stroke-width:2.5;marker-end:url(#arrow)}
     </style>
   </defs>
 
-  <rect width="390" height="1080" fill="url(#bg)"/>
-  <circle cx="350" cy="25" r="115" fill="#17345c" opacity=".36"/>
+  <rect width="1200" height="600" fill="url(#bg)"/>
+  <circle cx="1110" cy="10" r="225" fill="#17345c" opacity=".28"/>
 
   <g class="sans">
-    <text x="22" y="38" class="mono eyebrow" fill="#78aaff">EVALUATION · 2026-09-08</text>
-    <text x="22" y="76" class="title">Known-positive 4件</text>
-    <text x="22" y="105" class="subtitle">stageを混ぜずに、到達点を数える。</text>
+    <text x="46" y="48" class="mono eyebrow" fill="#78aaff">EVALUATION · 2026-09-08 · DESKTOP</text>
+    <text x="46" y="94" class="title">Known-positive 4件</text>
+    <text x="46" y="124" class="subtitle">stageを混ぜずに到達点を数える。4/4はsource-level recoveryであり、未知脆弱性のrecallではない。</text>
 
-    <rect x="22" y="130" width="346" height="52" rx="17" fill="#13243a" stroke="#365d86"/>
-    <text x="42" y="152" class="small">4/4はsource-level recovery。</text>
-    <text x="42" y="171" class="tiny">未知脆弱性のrecallやsubmission readinessではない。</text>
-
-    <!-- Discovery -->
     <g filter="url(#shadow)">
-      <rect x="22" y="218" width="346" height="174" rx="20" fill="#123f38" stroke="#328669" stroke-width="1.5"/>
-      <text x="42" y="248" class="mono eyebrow" fill="#68d8a2">1 · DISCOVERY</text>
-      <text x="42" y="289" class="number">4 / 4</text>
-      <text x="42" y="320" class="card">Candidate recovered</text>
-      <circle cx="52" cy="356" r="8" fill="#68d8a2"/>
-      <circle cx="82" cy="356" r="8" fill="#68d8a2"/>
-      <circle cx="112" cy="356" r="8" fill="#68d8a2"/>
-      <circle cx="142" cy="356" r="8" fill="#68d8a2"/>
-      <text x="174" y="361" class="small">oracleなしで既知identityへ到達</text>
+      <rect x="46" y="172" width="326" height="242" rx="22" fill="#123f38" stroke="#328669" stroke-width="1.5"/>
+      <text x="70" y="207" class="mono eyebrow" fill="#68d8a2">1 · DISCOVERY</text>
+      <text x="70" y="265" class="number">4 / 4</text>
+      <text x="70" y="303" class="card">Candidate recovered</text>
+      <circle cx="82" cy="346" r="9" fill="#68d8a2"/>
+      <circle cx="116" cy="346" r="9" fill="#68d8a2"/>
+      <circle cx="150" cy="346" r="9" fill="#68d8a2"/>
+      <circle cx="184" cy="346" r="9" fill="#68d8a2"/>
+      <text x="70" y="386" class="small">oracleなしで既知identityへ到達</text>
     </g>
 
-    <path d="M195 394V425" class="flow"/>
+    <path d="M374 293H420" class="flow"/>
 
-    <!-- Source Validation -->
     <g filter="url(#shadow)">
-      <rect x="22" y="429" width="346" height="174" rx="20" fill="#33265c" stroke="#826bd2" stroke-width="1.5"/>
-      <text x="42" y="459" class="mono eyebrow" fill="#b9a7ff">2 · FRESH SOURCE VALIDATION</text>
-      <text x="42" y="500" class="number">4 / 4</text>
-      <text x="42" y="531" class="card">Finding generated</text>
-      <circle cx="52" cy="567" r="8" fill="#b39aff"/>
-      <circle cx="82" cy="567" r="8" fill="#b39aff"/>
-      <circle cx="112" cy="567" r="8" fill="#b39aff"/>
-      <circle cx="142" cy="567" r="8" fill="#b39aff"/>
-      <text x="174" y="572" class="small">別sessionがsourceから再導出</text>
+      <rect x="424" y="172" width="326" height="242" rx="22" fill="#33265c" stroke="#826bd2" stroke-width="1.5"/>
+      <text x="448" y="207" class="mono eyebrow" fill="#b9a7ff">2 · FRESH SOURCE VALIDATION</text>
+      <text x="448" y="265" class="number">4 / 4</text>
+      <text x="448" y="303" class="card">Finding generated</text>
+      <circle cx="460" cy="346" r="9" fill="#b39aff"/>
+      <circle cx="494" cy="346" r="9" fill="#b39aff"/>
+      <circle cx="528" cy="346" r="9" fill="#b39aff"/>
+      <circle cx="562" cy="346" r="9" fill="#b39aff"/>
+      <text x="448" y="386" class="small">別sessionがsourceから独立再導出</text>
     </g>
 
-    <path d="M195 605V636" class="flow"/>
+    <path d="M752 293H798" class="flow"/>
 
-    <!-- Dynamic -->
     <g filter="url(#shadow)">
-      <rect x="22" y="640" width="346" height="190" rx="20" fill="#392f22" stroke="#c99652" stroke-width="1.5"/>
-      <text x="42" y="670" class="mono eyebrow" fill="#f0bd78">3 · DYNAMIC REPRODUCTION</text>
-      <text x="42" y="711" class="number">3 / 4</text>
-      <text x="42" y="742" class="card">Runtime effect observed</text>
-      <circle cx="52" cy="778" r="8" fill="#e6aa68"/>
-      <circle cx="82" cy="778" r="8" fill="#e6aa68"/>
-      <circle cx="112" cy="778" r="8" fill="#e6aa68"/>
-      <circle cx="142" cy="778" r="8" fill="none" stroke="#8b7355" stroke-width="2"/>
-      <text x="174" y="777" class="small">Brizy / SSA + TranslatePress ATO</text>
-      <text x="174" y="798" class="tiny">ATOは現行Recipe Adapterでfresh確認</text>
+      <rect x="802" y="172" width="352" height="242" rx="22" fill="#392f22" stroke="#c99652" stroke-width="1.5"/>
+      <text x="826" y="207" class="mono eyebrow" fill="#f0bd78">3 · DYNAMIC REPRODUCTION</text>
+      <text x="826" y="265" class="number">3 / 4</text>
+      <text x="826" y="303" class="card">Runtime effect observed</text>
+      <circle cx="838" cy="346" r="9" fill="#e6aa68"/>
+      <circle cx="872" cy="346" r="9" fill="#e6aa68"/>
+      <circle cx="906" cy="346" r="9" fill="#e6aa68"/>
+      <circle cx="940" cy="346" r="9" fill="none" stroke="#8b7355" stroke-width="2"/>
+      <text x="826" y="386" class="small">各stageは別のassurance</text>
     </g>
 
-    <!-- Prospective -->
     <g filter="url(#shadow)">
-      <rect x="22" y="866" width="346" height="120" rx="20" fill="#182536" stroke="#45566c" stroke-width="1.4"/>
-      <text x="42" y="896" class="mono eyebrow" fill="#9cafc4">NEXT MEASUREMENT</text>
-      <text x="42" y="930" class="card">Prospective latest-version Campaign</text>
-      <rect x="42" y="950" width="83" height="24" rx="12" fill="#604724"/>
-      <text x="83" y="966" text-anchor="middle" class="tiny" fill="#ffe0ad">未実施</text>
-      <text x="138" y="966" class="tiny">ここから新規発見能力を測る</text>
+      <rect x="46" y="458" width="1108" height="86" rx="22" fill="#182536" stroke="#45566c" stroke-width="1.4"/>
+      <text x="70" y="491" class="mono eyebrow" fill="#9cafc4">NEXT MEASUREMENT</text>
+      <text x="70" y="522" class="card">Prospective latest-version Campaign</text>
+      <rect x="500" y="491" width="94" height="28" rx="14" fill="#604724"/>
+      <text x="547" y="510" text-anchor="middle" class="small" fill="#ffe0ad">未実施</text>
+      <text x="1130" y="510" text-anchor="end" class="body">ここから新規発見能力を測る</text>
     </g>
 
-    <text x="195" y="1032" text-anchor="middle" class="small">Discovery 4/4 → Source 4/4 → Dynamic 3/4</text>
-    <text x="195" y="1054" text-anchor="middle" class="tiny">各stageは別のassurance。合算して「4件確認済み」と呼ばない。</text>
+    <text x="600" y="580" text-anchor="middle" class="tiny">Discovery 4/4 → Source Validation 4/4 → Dynamic observation 3/4</text>
   </g>
 </svg>

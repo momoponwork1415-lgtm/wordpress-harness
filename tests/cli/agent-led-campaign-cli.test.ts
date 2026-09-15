@@ -9,6 +9,7 @@ import { runCli } from "../../src/cli.js";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import type { CampaignInput } from "../../src/research/index.js";
+import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 
@@ -110,7 +111,7 @@ describe("agent-led campaign CLI", () => {
         id: "agent-led-budget-v1",
         maxNativeRuns: 2,
         maxWallTimeMs: 600_000,
-        maxEstimatedCostUsd: 5,
+        researchGrantWallTimeMs: 600_000,
         digest: digest("d"),
       },
     };
@@ -213,7 +214,515 @@ exit 90
 
     expect(exit).toBe(1);
     expect(errors.join("")).toContain(
-      "Usage: wordpress-harness campaign <conduct|conduct-approved|inspect>",
+      "Usage: wordpress-harness campaign <conduct|conduct-approved|review-research|review-candidates|retry-validation|inspect>",
     );
+  });
+
+  it("submits a digest-bound Human Candidate Review through conduct", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "candidate-review-cli-"));
+    const sourceDirectory = join(directory, "source");
+    const providerConfigDirectory = join(directory, "provider");
+    const scratchRootDirectory = join(directory, "scratch");
+    await Promise.all([
+      mkdir(sourceDirectory),
+      mkdir(providerConfigDirectory),
+      mkdir(scratchRootDirectory),
+    ]);
+    await writeFile(join(sourceDirectory, "plugin.php"), "<?php\n", "utf8");
+    const sourceTreeDigest = canonicalDigest({
+      kind: "canonical-file-manifest",
+      schemaVersion: 1,
+      entries: [
+        {
+          path: "plugin.php",
+          digest: `sha256:${createHash("sha256").update("<?php\n").digest("hex")}`,
+          size: 6,
+        },
+      ],
+    });
+    const researchPrompt = "Research broken security semantics from source.";
+    const validationPrompt =
+      "Independently validate the Candidate from source.";
+    const researchPromptPath = join(directory, "research-prompt.txt");
+    const validationPromptPath = join(directory, "validation-prompt.txt");
+    await Promise.all([
+      writeFile(researchPromptPath, researchPrompt, "utf8"),
+      writeFile(validationPromptPath, validationPrompt, "utf8"),
+    ]);
+    const input: CampaignInput = {
+      kind: "agent-led-campaign",
+      schemaVersion: 1,
+      campaignId: "campaign-cli-candidate-review",
+      targetSnapshot: {
+        id: "example-1.0.0",
+        pluginSlug: "example",
+        version: "1.0.0",
+        digest: digest("a"),
+        sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
+      },
+      promptSet: {
+        id: "agent-led-research-v1",
+        digest: promptTextDigest(researchPrompt),
+      },
+      validationPromptSet: {
+        id: "independent-validation-v1",
+        digest: promptTextDigest(validationPrompt),
+      },
+      agentRuntimeProfile: {
+        id: "glm-5.3-claude-code-native-v1",
+        kind: "glm-claude-code-native/v1",
+        executableVersion: "2.1.220",
+        model: "glm-5.3",
+        effort: "max",
+        digest: digest("b"),
+      },
+      permissionProfile: { id: "source-only-v1", digest: digest("c") },
+      budgetEnvelope: {
+        id: "agent-led-budget-v1",
+        maxNativeRuns: 3,
+        maxWallTimeMs: 600_000,
+        researchGrantWallTimeMs: 600_000,
+        digest: digest("d"),
+      },
+    };
+    const databasePath = join(directory, "research.sqlite");
+    const campaigns = openResearchCampaigns({
+      databasePath,
+      runtime: {
+        async execute(run) {
+          if (run.kind !== "sealed-native-research-run") {
+            throw new Error("initial setup only runs Research");
+          }
+          return {
+            schemaVersion: 1,
+            runId: run.runId,
+            runtimeProfileDigest: run.agentRuntimeProfile.digest,
+            terminal: "completed",
+            startedAt: "2026-09-09T01:00:00.000Z",
+            completedAt: "2026-09-09T01:01:00.000Z",
+            usage: { wallTimeMs: 60_000 },
+            activity: { subagents: 1, tools: ["source.read"] },
+            isolation: {
+              backend: "gvisor",
+              runtime: "runsc",
+              fallbackUsed: false,
+            },
+            checkpoint: {
+              kind: "agent-checkpoint",
+              schemaVersion: 1,
+              checkpointId: `${run.runId}:checkpoint`,
+              stateDigest: digest("1"),
+              stateEntries: 1,
+              stateBytes: 1,
+              sessionId: "12121212-1212-4121-8121-121212121212",
+              targetSnapshotDigest: run.targetSnapshot.digest,
+              promptSetDigest: run.promptSet.digest,
+              runtimeProfileDigest: run.agentRuntimeProfile.digest,
+              permissionProfileDigest: run.permissionProfile.digest,
+            },
+            report: {
+              schemaVersion: 1,
+              candidates: [
+                {
+                  candidateId: "candidate-cli-review-1",
+                  attackerPremise:
+                    "An unauthenticated visitor controls a request value.",
+                  brokenSecurityProperty:
+                    "Public input must not cross an admin trust boundary.",
+                  claim:
+                    "A public value reaches privileged output without escaping.",
+                  evidence: [
+                    {
+                      path: "plugin.php",
+                      location: "render:10",
+                      observation: "Outputs the request value.",
+                    },
+                  ],
+                },
+              ],
+              decision: {
+                kind: "stop",
+                basis: "No separate frontier remains.",
+              },
+            },
+          };
+        },
+      },
+    });
+    await campaigns.conduct(input);
+    const request = (await campaigns.inspect({ campaignId: input.campaignId }))
+      .pendingCandidateReview;
+    campaigns.close();
+    if (request === undefined) throw new Error("missing review request");
+    const reviewBody = {
+      kind: "human-candidate-review" as const,
+      schemaVersion: 1 as const,
+      reviewId: "review-cli-1",
+      campaignId: input.campaignId,
+      campaignInputDigest: request.campaignInputDigest,
+      terminalResearchRunId: request.terminalResearchRunId,
+      candidateSetDigest: request.candidateSetDigest,
+      candidateReviewRequestDigest: request.digest,
+      operator: {
+        identity: "human-operator-1",
+        decidedAt: "2026-09-09T01:02:00.000Z",
+      },
+      decisions: [
+        {
+          candidateId: "candidate-cli-review-1",
+          disposition: "advance-to-independent-validation" as const,
+          reason: "The trust-boundary impact warrants independent validation.",
+        },
+      ],
+    };
+    const reviewPath = join(directory, "candidate-review.json");
+    await writeFile(
+      reviewPath,
+      JSON.stringify({ ...reviewBody, digest: canonicalDigest(reviewBody) }),
+      "utf8",
+    );
+    const dockerExecutablePath = join(directory, "fake-docker");
+    await writeFile(
+      dockerExecutablePath,
+      `#!/bin/sh
+set -eu
+if [ "\${1:-}" = "info" ]; then
+  printf '%s' '{}'
+  exit 0
+fi
+if [ "\${1:-}" = "image" ]; then
+  exit 0
+fi
+exit 90
+`,
+      { encoding: "utf8", mode: 0o700 },
+    );
+    await chmod(dockerExecutablePath, 0o700);
+    const output: string[] = [];
+    const errors: string[] = [];
+    const io = {
+      stdout: (text: string) => output.push(text),
+      stderr: (text: string) => errors.push(text),
+    };
+
+    try {
+      const exit = await runCli(
+        [
+          "campaign",
+          "review-candidates",
+          "--database",
+          databasePath,
+          "--review",
+          reviewPath,
+          "--docker",
+          dockerExecutablePath,
+          "--image",
+          digest("f"),
+          "--source",
+          sourceDirectory,
+          "--provider-config",
+          providerConfigDirectory,
+          "--scratch",
+          scratchRootDirectory,
+          "--research-prompt",
+          researchPromptPath,
+          "--validation-prompt",
+          validationPromptPath,
+        ],
+        io,
+      );
+      expect({ exit, errors }).toEqual({ exit: 0, errors: [] });
+      expect(JSON.parse(output[0] ?? "null")).toMatchObject({
+        campaignId: input.campaignId,
+        status: "incomplete",
+      });
+      const recorded = openResearchCampaigns({
+        databasePath,
+        runtime: { execute: () => Promise.reject(new Error("inspect only")) },
+      });
+      const failedView = await recorded.inspect({
+        campaignId: input.campaignId,
+      });
+      expect(failedView).toMatchObject({
+        candidateReviews: [{ reviewId: "review-cli-1" }],
+      });
+      recorded.close();
+
+      const retryBody = {
+        kind: "human-validation-retry" as const,
+        schemaVersion: 1 as const,
+        retryId: "validation-retry-cli-1",
+        campaignId: input.campaignId,
+        campaignInputDigest: failedView.inputDigest,
+        failedValidationRunIds: failedView.validationRuns.map(
+          (record) => record.receipt.runId,
+        ),
+        operator: {
+          identity: "human-operator-1",
+          decidedAt: "2026-09-09T01:03:00.000Z",
+        },
+        reason: "The provider constraint is resolved; retry the failed run.",
+      };
+      const retryPath = join(directory, "validation-retry.json");
+      await writeFile(
+        retryPath,
+        JSON.stringify({ ...retryBody, digest: canonicalDigest(retryBody) }),
+        "utf8",
+      );
+      const retryExit = await runCli(
+        [
+          "campaign",
+          "retry-validation",
+          "--database",
+          databasePath,
+          "--retry",
+          retryPath,
+          "--docker",
+          dockerExecutablePath,
+          "--image",
+          digest("f"),
+          "--source",
+          sourceDirectory,
+          "--provider-config",
+          providerConfigDirectory,
+          "--scratch",
+          scratchRootDirectory,
+          "--research-prompt",
+          researchPromptPath,
+          "--validation-prompt",
+          validationPromptPath,
+        ],
+        io,
+      );
+      expect({ retryExit, errors }).toEqual({ retryExit: 0, errors: [] });
+      const retried = openResearchCampaigns({
+        databasePath,
+        runtime: { execute: () => Promise.reject(new Error("inspect only")) },
+      });
+      await expect(
+        retried.inspect({ campaignId: input.campaignId }),
+      ).resolves.toMatchObject({
+        validationRuns: [{}, {}],
+        validationRetries: [{ retryId: "validation-retry-cli-1" }],
+      });
+      retried.close();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("submits a digest-bound Human Research continuation review", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "research-review-cli-"));
+    const sourceDirectory = join(directory, "source");
+    const providerConfigDirectory = join(directory, "provider");
+    const scratchRootDirectory = join(directory, "scratch");
+    await Promise.all([
+      mkdir(sourceDirectory),
+      mkdir(providerConfigDirectory),
+      mkdir(scratchRootDirectory),
+    ]);
+    await writeFile(join(sourceDirectory, "plugin.php"), "<?php\n", "utf8");
+    const sourceTreeDigest = canonicalDigest({
+      kind: "canonical-file-manifest",
+      schemaVersion: 1,
+      entries: [
+        {
+          path: "plugin.php",
+          digest: `sha256:${createHash("sha256").update("<?php\n").digest("hex")}`,
+          size: 6,
+        },
+      ],
+    });
+    const researchPrompt = "Research broken security semantics from source.";
+    const validationPrompt =
+      "Independently validate the Candidate from source.";
+    const researchPromptPath = join(directory, "research-prompt.txt");
+    const validationPromptPath = join(directory, "validation-prompt.txt");
+    await Promise.all([
+      writeFile(researchPromptPath, researchPrompt, "utf8"),
+      writeFile(validationPromptPath, validationPrompt, "utf8"),
+    ]);
+    const input: CampaignInput = {
+      kind: "agent-led-campaign",
+      schemaVersion: 1,
+      campaignId: "campaign-cli-research-review",
+      targetSnapshot: {
+        id: "example-1.0.0",
+        pluginSlug: "example",
+        version: "1.0.0",
+        digest: digest("a"),
+        sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
+      },
+      promptSet: {
+        id: "agent-led-research-v1",
+        digest: promptTextDigest(researchPrompt),
+      },
+      validationPromptSet: {
+        id: "independent-validation-v1",
+        digest: promptTextDigest(validationPrompt),
+      },
+      agentRuntimeProfile: {
+        id: "glm-5.3-claude-code-native-v1",
+        kind: "glm-claude-code-native/v1",
+        executableVersion: "2.1.220",
+        model: "glm-5.3",
+        effort: "max",
+        digest: digest("b"),
+      },
+      permissionProfile: { id: "source-only-v1", digest: digest("c") },
+      budgetEnvelope: {
+        id: "agent-led-budget-v1",
+        maxNativeRuns: 2,
+        maxWallTimeMs: 600_000,
+        researchGrantWallTimeMs: 60_000,
+        digest: digest("d"),
+      },
+    };
+    const databasePath = join(directory, "research.sqlite");
+    const campaigns = openResearchCampaigns({
+      databasePath,
+      runtime: {
+        async execute(run) {
+          if (run.kind !== "sealed-native-research-run") {
+            throw new Error("initial setup only runs Research");
+          }
+          return {
+            schemaVersion: 1,
+            runId: run.runId,
+            runtimeProfileDigest: run.agentRuntimeProfile.digest,
+            terminal: "completed",
+            startedAt: "2026-09-09T06:00:00.000Z",
+            completedAt: "2026-09-09T06:00:50.000Z",
+            usage: { wallTimeMs: 50_000 },
+            activity: { subagents: 1, tools: ["source.read"] },
+            isolation: {
+              backend: "gvisor",
+              runtime: "runsc",
+              fallbackUsed: false,
+            },
+            checkpoint: {
+              kind: "agent-checkpoint",
+              schemaVersion: 1,
+              checkpointId: `${run.runId}:checkpoint`,
+              stateDigest: digest("1"),
+              stateEntries: 1,
+              stateBytes: 1,
+              sessionId: "12121212-1212-4121-8121-121212121212",
+              targetSnapshotDigest: run.targetSnapshot.digest,
+              promptSetDigest: run.promptSet.digest,
+              runtimeProfileDigest: run.agentRuntimeProfile.digest,
+              permissionProfileDigest: run.permissionProfile.digest,
+            },
+            report: {
+              schemaVersion: 1,
+              candidates: [],
+              decision: {
+                kind: "continue",
+                reason: "One eligible authorization route remains open.",
+                nextActions: [
+                  {
+                    question:
+                      "Can the public callback update an administrator option?",
+                    sourcePointers: ["plugin.php"],
+                  },
+                ],
+              },
+            },
+          };
+        },
+      },
+    });
+    await campaigns.conduct(input);
+    const request = (await campaigns.inspect({ campaignId: input.campaignId }))
+      .pendingResearchContinuationReview;
+    campaigns.close();
+    if (request === undefined)
+      throw new Error("missing Research review request");
+    const reviewBody = {
+      kind: "human-research-continuation-review" as const,
+      schemaVersion: 1 as const,
+      reviewId: "research-review-cli-1",
+      campaignId: input.campaignId,
+      campaignInputDigest: request.campaignInputDigest,
+      researchRunId: request.researchRunId,
+      checkpointId: request.checkpoint.checkpointId,
+      checkpointStateDigest: request.checkpoint.stateDigest,
+      candidateSetDigest: request.candidateSetDigest,
+      parkedProgrammeLeadSetDigest: request.parkedProgrammeLeadSetDigest,
+      researchContinuationReviewRequestDigest: request.digest,
+      operator: {
+        identity: "human-operator-1",
+        decidedAt: "2026-09-09T06:01:00.000Z",
+      },
+      decision: "continue-research" as const,
+      reason: "The exact source-bound next action warrants another grant.",
+    };
+    const reviewPath = join(directory, "research-review.json");
+    await writeFile(
+      reviewPath,
+      JSON.stringify({ ...reviewBody, digest: canonicalDigest(reviewBody) }),
+      "utf8",
+    );
+    const dockerExecutablePath = join(directory, "fake-docker");
+    await writeFile(
+      dockerExecutablePath,
+      `#!/bin/sh
+set -eu
+if [ "\${1:-}" = "info" ]; then
+  printf '%s' '{}'
+  exit 0
+fi
+if [ "\${1:-}" = "image" ]; then exit 0; fi
+exit 90
+`,
+      { encoding: "utf8", mode: 0o700 },
+    );
+    await chmod(dockerExecutablePath, 0o700);
+    const output: string[] = [];
+    const errors: string[] = [];
+    const exit = await runCli(
+      [
+        "campaign",
+        "review-research",
+        "--database",
+        databasePath,
+        "--review",
+        reviewPath,
+        "--docker",
+        dockerExecutablePath,
+        "--image",
+        digest("f"),
+        "--source",
+        sourceDirectory,
+        "--provider-config",
+        providerConfigDirectory,
+        "--scratch",
+        scratchRootDirectory,
+        "--research-prompt",
+        researchPromptPath,
+        "--validation-prompt",
+        validationPromptPath,
+      ],
+      {
+        stdout: (text: string) => output.push(text),
+        stderr: (text: string) => errors.push(text),
+      },
+    );
+    expect({ exit, errors }).toEqual({ exit: 0, errors: [] });
+    expect(JSON.parse(output[0] ?? "null")).toMatchObject({
+      campaignId: input.campaignId,
+      status: "incomplete",
+    });
+    const recorded = openResearchCampaigns({
+      databasePath,
+      runtime: { execute: () => Promise.reject(new Error("inspect only")) },
+    });
+    await expect(
+      recorded.inspect({ campaignId: input.campaignId }),
+    ).resolves.toMatchObject({
+      researchContinuationReviews: [{ reviewId: "research-review-cli-1" }],
+    });
+    recorded.close();
+    await rm(directory, { recursive: true, force: true });
   });
 });

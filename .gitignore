@@ -12,9 +12,11 @@ coverage/
 
 # Private Campaign state and evidence
 .private/
-docs/visuals/
 campaigns/
 artifacts/
+
+# Local visualization prototypes; published SVG documentation is tracked
+docs/visuals/*.html
 
 # Bootstrap Target staging inputs (move to the private workspace later)
 /cff-4.12.0.zip

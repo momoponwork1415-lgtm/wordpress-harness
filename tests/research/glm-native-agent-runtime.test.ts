@@ -18,6 +18,7 @@ import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import { openGlmNativeAgentRuntime } from "../../src/research/agent-led/claude-code-native-agent-runtime.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
 import type { CampaignInput } from "../../src/research/index.js";
+import { conductWithHumanAdvance } from "./support/candidate-review.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -66,6 +67,7 @@ describe("GLM Native Agent Runtime", () => {
       directory,
       "corrected-validation-result.txt",
     );
+    const correctionErrorPath = join(directory, "correction-error");
     await writeFile(providerResultPath, missingClosuresResult, "utf8");
     await writeFile(correctedProviderResultPath, validCandidateResult, "utf8");
     await writeFile(validationResultPath, malformedValidation, "utf8");
@@ -116,6 +118,8 @@ if [ "\${1:-}" = "image" ]; then exit 0; fi
 has_runsc=0
 has_interactive=0
 has_provider_env=0
+has_subagent_concurrency_limit=0
+has_subagent_depth_limit=0
 has_json_schema=0
 has_cost_cap=0
 has_alias=0
@@ -134,6 +138,8 @@ for argument in "$@"; do
   [ "$argument" != "--runtime=runsc" ] || has_runsc=1
   [ "$argument" != "--interactive" ] || has_interactive=1
   [ "$argument" != "--env=CLAUDE_CONFIG_DIR=/provider" ] || has_provider_env=1
+  [ "$argument" != "--env=CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=3" ] || has_subagent_concurrency_limit=1
+  [ "$argument" != "--env=CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1" ] || has_subagent_depth_limit=1
   [ "$argument" != "--json-schema" ] || has_json_schema=1
   [ "$argument" != "--max-budget-usd" ] || has_cost_cap=1
   [ "$argument" != "--version" ] || is_version_probe=1
@@ -152,6 +158,8 @@ if [ "$is_version_probe" -eq 1 ]; then
   exit 0
 fi
 [ "$has_provider_env" -eq 1 ] || exit 92
+[ "$has_subagent_concurrency_limit" -eq 1 ] || exit 88
+[ "$has_subagent_depth_limit" -eq 1 ] || exit 87
 [ "$has_json_schema" -eq 0 ] || exit 93
 [ "$has_cost_cap" -eq 0 ] || exit 94
 [ "$has_alias" -eq 1 ] || exit 95
@@ -174,6 +182,10 @@ if [ "$is_validation" -eq 1 ]; then
 fi
 case "$prompt:$is_validation" in
   *'The prior response was invalid'*:0)
+    if [ -f '${correctionErrorPath}' ]; then
+      node -e 'const body={type:"result",subtype:"success",is_error:true,terminal_reason:"api_error",api_error_status:429,result:"API Error: Usage limit reached for 5 hour.",session_id:process.argv[1],duration_ms:1000,num_turns:0,permission_denials:[],usage:{server_tool_use:{web_search_requests:0,web_fetch_requests:0}},modelUsage:{}};process.stdout.write(JSON.stringify(body));' "$session"
+      exit 1
+    fi
     result_path='${correctedProviderResultPath}'
     subagents=0
     ;;
@@ -228,7 +240,7 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
         id: "agent-led-budget-v1",
         maxNativeRuns: 2,
         maxWallTimeMs: 600_000,
-        maxEstimatedCostUsd: 5,
+        researchGrantWallTimeMs: 600_000,
         digest:
           "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       },
@@ -280,7 +292,9 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
       runtime,
     });
 
-    await expect(campaigns.conduct(input)).resolves.toMatchObject({
+    await expect(
+      conductWithHumanAdvance(campaigns, input),
+    ).resolves.toMatchObject({
       status: "coverage-closed",
     });
     await expect(
@@ -357,6 +371,19 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
     ).resolves.toMatchObject({
       nativeRuns: [{ terminal: "invalid-output" }],
     });
+    await writeFile(correctionErrorPath, "quota", "utf8");
+    await expect(
+      campaigns.conduct({
+        ...input,
+        campaignId: "campaign-glm-correction-quota-1",
+      }),
+    ).resolves.toMatchObject({ status: "incomplete" });
+    await expect(
+      campaigns.inspect({ campaignId: "campaign-glm-correction-quota-1" }),
+    ).resolves.toMatchObject({
+      nativeRuns: [{ terminal: "provider-quota-exhausted" }],
+    });
+    await rm(correctionErrorPath);
     await writeFile(providerResultPath, ambiguousStop, "utf8");
     await writeFile(correctedProviderResultPath, validStop, "utf8");
     await expect(

@@ -192,7 +192,6 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"selection-session",
       budgetEnvelope: {
         id: "selection-budget-v1",
         maxWallTimeMs: 300_000,
-        maxEstimatedCostUsd: 5,
         digest: digest("2"),
       },
     };

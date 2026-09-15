@@ -490,4 +490,257 @@ describe("gVisor WordPress Dynamic Reproduction", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it("activates pinned dependencies before the Target and then applies the ordinary configuration", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "gvisor-reproduction-deps-"),
+    );
+    const sourceDirectory = join(directory, "source");
+    const dependencyDirectory = join(directory, "dependency");
+    const scratchRootDirectory = join(directory, "scratch");
+    const privateEvidenceDirectory = join(directory, "private-evidence");
+    await Promise.all([
+      mkdir(sourceDirectory),
+      mkdir(dependencyDirectory),
+      mkdir(scratchRootDirectory),
+      mkdir(privateEvidenceDirectory),
+    ]);
+    await writeFile(join(sourceDirectory, "example.php"), "<?php\n", "utf8");
+    await writeFile(
+      join(dependencyDirectory, "companion.php"),
+      "<?php\n// companion\n",
+      "utf8",
+    );
+    const limits = { maxEntries: 10, maxBytes: 1_000 };
+    const sourceTree = await measureCanonicalSourceTree(
+      sourceDirectory,
+      limits,
+    );
+    const dependencyTree = await measureCanonicalSourceTree(
+      dependencyDirectory,
+      limits,
+    );
+    const dependencySnapshot = {
+      id: "companion-1.0.0",
+      mountName: "companion",
+      version: "1.0.0",
+      digest: digest("f"),
+      sourceTree: dependencyTree,
+    };
+    const finding: SourceValidatedFinding = {
+      kind: "source-validated-finding",
+      schemaVersion: 1,
+      findingId: "campaign-runtime:finding:with-dependency",
+      candidateId: "with-dependency",
+      targetSnapshot: {
+        id: "example-1.0.0",
+        pluginSlug: "example",
+        version: "1.0.0",
+        digest: digest("a"),
+        sourceTree,
+      },
+      dependencySnapshots: [dependencySnapshot],
+      attackerPremise: "An unauthenticated visitor controls a public value.",
+      brokenSecurityProperty: "The public value must remain inert.",
+      claim: "The public value reaches a privileged filesystem operation.",
+      assurance: "source-validated",
+      validation: {
+        runId: "campaign-runtime:validation:with-dependency",
+        promptSet: { id: "validation-v1", digest: digest("b") },
+        runtimeProfileDigest: digest("c"),
+        permissionProfileDigest: digest("d"),
+      },
+      evidence: [
+        {
+          path: "example.php",
+          location: "save:44",
+          observation: "Stores the visitor-controlled value.",
+        },
+      ],
+    };
+    const ordinaryConfiguration = 'update_option( "companion_ready", "yes" );';
+    const labSetupBody = {
+      kind: "dynamic-reproduction-lab-setup" as const,
+      schemaVersion: 1 as const,
+      findingId: finding.findingId,
+      targetSnapshotDigest: finding.targetSnapshot.digest,
+      dependencySnapshotsDigest: canonicalDigest(
+        finding.dependencySnapshots ?? [],
+      ),
+      script: ordinaryConfiguration,
+    };
+    const images = {
+      database: "database.invalid/mariadb@" + digest("1"),
+      wordpress: "wordpress.invalid/core@" + digest("2"),
+      wordpressCli: "wordpress.invalid/cli@" + digest("3"),
+      worker: "worker.invalid/reproduction@" + digest("4"),
+    };
+    const requests: ContainerProcessRequest[] = [];
+    const processRunner = {
+      run: async (
+        request: ContainerProcessRequest,
+      ): Promise<ContainerProcessResult> => {
+        requests.push(request);
+        if (request.args[0] === "info") {
+          return { exitCode: 0, stdout: '{"runsc":{}}', stderr: "" };
+        }
+        if (request.args[0] === "inspect") {
+          return {
+            exitCode: 0,
+            stdout: request.args.at(-1)?.endsWith("-database")
+              ? "172.18.0.2"
+              : "172.18.0.3",
+            stderr: "",
+          };
+        }
+        if (request.args.includes(images.worker)) {
+          return { exitCode: 0, stdout: "effect-observed", stderr: "" };
+        }
+        return { exitCode: 0, stdout: "ok", stderr: "" };
+      },
+    };
+    const agent: DynamicReproductionAgent = {
+      execute: async ({ experiment }) => {
+        await experiment.run({
+          script: "console.log('probe')",
+          timeoutMs: 1_000,
+        });
+        return {
+          status: "runtime-confirmed",
+          summary: "The Target acted inside its ordinary configuration.",
+          preconditionsMatched: true,
+          recipeCompleted: true,
+          effectObserved: true,
+        };
+      },
+    };
+
+    try {
+      const runtime = openGvisorWordPressDynamicReproductionRuntime({
+        dockerExecutablePath: "/usr/bin/docker",
+        images,
+        sourceResolver: {
+          resolve: async () => ({
+            sourceDirectory,
+            dependencies: [
+              {
+                dependencySnapshotId: dependencySnapshot.id,
+                pluginSlug: "companion",
+                sourceDirectory: dependencyDirectory,
+              },
+            ],
+            labSetup: {
+              ...labSetupBody,
+              digest: canonicalDigest(labSetupBody),
+            },
+          }),
+        },
+        processRunner,
+        agent,
+        scratchRootDirectory,
+        privateEvidenceDirectory,
+        clock: () => new Date("2026-09-11T10:00:00.000Z"),
+      });
+      await expect(runtime.execute({ finding })).resolves.toMatchObject({
+        status: "runtime-confirmed",
+      });
+
+      const step = (predicate: (args: readonly string[]) => boolean): number =>
+        requests.findIndex((request) => predicate(request.args));
+      const dependencyActivated = step(
+        (args) => args.includes("activate") && args.includes("companion"),
+      );
+      const targetActivated = step(
+        (args) => args.includes("activate") && args.includes("example"),
+      );
+      const configured = step(
+        (args) => args.includes("eval") && args.includes(ordinaryConfiguration),
+      );
+      expect(dependencyActivated).toBeGreaterThanOrEqual(0);
+      // The Target runs inside the configuration it expects, never before it.
+      expect(dependencyActivated).toBeLessThan(targetActivated);
+      expect(targetActivated).toBeLessThan(configured);
+      expect(
+        requests.some(
+          (request) =>
+            request.args[0] === "cp" &&
+            request.args.includes(`${dependencyDirectory}/.`),
+        ),
+      ).toBe(true);
+
+      // A Dependency whose pinned tree no longer matches never reaches a Lab.
+      await writeFile(
+        join(dependencyDirectory, "companion.php"),
+        "<?php\n// changed companion\n",
+        "utf8",
+      );
+      const rejectedRequests: ContainerProcessRequest[] = [];
+      const mismatchedRuntime = openGvisorWordPressDynamicReproductionRuntime({
+        dockerExecutablePath: "/usr/bin/docker",
+        images,
+        sourceResolver: {
+          resolve: async () => ({
+            sourceDirectory,
+            dependencies: [
+              {
+                dependencySnapshotId: dependencySnapshot.id,
+                pluginSlug: "companion",
+                sourceDirectory: dependencyDirectory,
+              },
+            ],
+          }),
+        },
+        processRunner: {
+          run: async (request) => {
+            rejectedRequests.push(request);
+            return { exitCode: 0, stdout: "ok", stderr: "" };
+          },
+        },
+        agent,
+        scratchRootDirectory,
+        privateEvidenceDirectory,
+      });
+      await expect(mismatchedRuntime.execute({ finding })).rejects.toThrowError(
+        "Dynamic Reproduction Dependency source mismatch",
+      );
+      expect(
+        rejectedRequests.some((request) => request.args[0] === "run"),
+      ).toBe(false);
+      expect(await readdir(scratchRootDirectory)).toEqual([]);
+
+      const wrongSetupBody = {
+        ...labSetupBody,
+        findingId: "another-finding",
+      };
+      const setupRequests: ContainerProcessRequest[] = [];
+      const wrongSetupRuntime = openGvisorWordPressDynamicReproductionRuntime({
+        dockerExecutablePath: "/usr/bin/docker",
+        images,
+        sourceResolver: {
+          resolve: async () => ({
+            sourceDirectory,
+            labSetup: {
+              ...wrongSetupBody,
+              digest: canonicalDigest(wrongSetupBody),
+            },
+          }),
+        },
+        processRunner: {
+          run: async (request) => {
+            setupRequests.push(request);
+            return { exitCode: 0, stdout: "ok", stderr: "" };
+          },
+        },
+        agent,
+        scratchRootDirectory,
+        privateEvidenceDirectory,
+      });
+      await expect(wrongSetupRuntime.execute({ finding })).rejects.toThrowError(
+        "Dynamic Reproduction Lab Setup does not match Finding",
+      );
+      expect(setupRequests).toEqual([]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });

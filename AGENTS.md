@@ -4,9 +4,9 @@
 
 ## Mission
 
-- Productの到達点は、oracle-freeなprospective Campaignで**high-impactなbroken security semanticsを高recallで発見し、独立ValidationからFindingを作り、fresh runtime verificationと人間の提出判断まで閉じること**。Finding生成を人間専用gateにせず、外部提出だけを人間の明示承認で許可する。
+- Productの到達点は、oracle-freeなprospective Campaignで**high-impactなbroken security semanticsを高recallで発見し、人間がadmitしたCandidateの独立ValidationからFindingを作り、fresh runtime verificationと人間の提出判断まで閉じること**。人間はCandidate admissionを判断するが技術的Validation verdictやFinding本文を手作業で生成せず、外部提出は別の明示承認で許可する。
 - RCEやsite-wide compromiseは最上位impactだが唯一の成功条件ではない。
-- 通常運転はClaude Code Rootと必要に応じたnative subagentによるraw-source-firstの連続Research loop。source-boundで具体的な次手があればAIが継続し、有望なactionable frontierがなければ根拠付きで停止する。
+- 通常運転はprovider-native Rootと必要に応じたnative subagentによるraw-source-firstのResearch loop。各Research Grantは最大1時間で止まり、source-boundで具体的な次手があればAIが継続を提案し、人間のreview後に同じCheckpointから次のGrantを開始する。有望なactionable frontierがなければ根拠付きで停止を提案する。
 - **Do not optimize for sinks. Optimize for broken security semantics.**
 - **Harness owns the research process; agents own research decisions.**
 
@@ -37,12 +37,13 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 
 - strict TypeScriptのmodular monolithとし、`Target Intelligence -> Research -> Human OS`をprimary flowとする。
 - context間はversioned handoff contractだけを渡し、別contextのstorageや内部moduleを直接参照しない。
-- Target Intelligenceはoracle-freeな事実からAIがTarget Proposalを作る。固定rank、diversity cap、Research Value Bandまたはreason codeを要求しない。人間がApproved Target Batchを作るまでResearchへdispatchせず、実行直前にversionとsourceのfreshnessを再確認する。
-- Researchのexternal seamは`conduct`と`inspect`だけを持つdeepなResearch Campaigns Moduleに置き、Agent-led Research、Independent Validation、Finding、Coverage、BudgetとResearch Recordを隠す。
-- Native Agent Runtimeはprovider/process/session/tool bindingとreceiptを所有するが研究判断を所有しない。Grok Buildを探索評価の第一選択とし、Claude Codeも独立Adapterとして使う。provider-neutralなtool DSLを作らない。
-- Root AIはnative subagent、仮説、読む順序、synthesis、critique、candidate、継続と停止を所有する。HarnessはFinder数、role、Wave、Lease、Depth、Approach Familyまたは固定手順を実装しない。
+- Target Intelligenceはoracle-freeな事実からAIがTarget Proposalを作る。固定rank、diversity cap、Research Value Bandまたはreason codeを要求しない。人間がApproved Target Batchを作るまでResearchへdispatchせず、実行直前にversionとsourceのfreshnessを再確認する。Programme指定Campaignは公式scopeを既知脆弱性oracleと分離したProgramme Research Boundaryへbindする。eligible impactへの具体的なsource edgeがないOOS primitiveは軽量なParked Programme Leadとして保存し、subagent adversarial reviewやValidationへ流さない。具体的な昇格経路だけを継続し、scopeが曖昧なCandidateを人間とのchallenge用に保存する。BoundaryはIndependent Validationへ渡さない。
+- Researchのexternal seamは`conduct`と`inspect`だけを持つdeepなResearch Campaigns Moduleに置き、Agent-led Research、両Human Review、Independent Validation、Finding、Coverage、BudgetとResearch Recordを隠す。
+- Research designは[Research DesignのDesign lineage](docs/RESEARCH-DESIGN.md#design-lineage)に定めるArgusの10動詞とwp2shell / Cycle Double Cover Promptを出発点にする。wp2shell promptの研究手法はすべてResearch Promptへ取り入れ、持ち込まないのはtask固有の「脆弱性が存在してRCE / `/flag`へ必ず到達する」というpositive-oracle goalと最低6時間の指定だけとする。最大4体は固定assignmentではなくresource ceiling、Approach Family RegistryはHarness stateではなくRootのscratchとする。このProductのmission、isolation、human gateへ適応しても、残るprompt要素を黙って省略しない。
+- Native Agent Runtimeはprovider/process/session/tool bindingとreceiptを所有するが研究判断を所有しない。Grok Buildを探索評価の第一選択とし、Claude Code、Codex等も独立Adapterとして使う。providerが既に持つmodel loop、context management、session resume、native subagent scheduling、message routingまたはtool orchestrationをprovider-neutral codeで再実装しない。Adapterはnative機能の設定、制限、integrity bindingとreceipt変換に留め、利用不能時はtyped failureにする。
+- Root AIはnative subagent、仮説、読む順序、synthesis、critique、Candidate、parked Lead、継続と停止の提案を所有する。人間は次のResearch GrantとCandidate admissionを所有する。HarnessはRootを含む同時active agent最大4体のresource ceilingだけをprovider runtimeで強制し、Finder数、role、Wave、Lease、Depth、Approach Familyまたは固定手順を実装しない。
 - staticまたは派生解析の出力があってもnavigationとevidenceの補助に限り、探索空間またはcompletion proofにしない。
-- ResearchのValidationはcandidateごとに一つのfreshなsource-only runを行う。固定rubricまたはclass別Adapterを要求せず、Research Root自身ではなくIndependent Validationだけがsource-validated Findingを生成できる。
+- ResearchのValidationはHuman Candidate ReviewでadvanceされたCandidateごとに一つのfreshなsource-only runを行う。固定rubricまたはclass別Adapterを要求せず、Research Root自身ではなくIndependent Validationだけがsource-validated Findingを生成できる。
 - Human OSはFindingをfreshな隔離環境でAI Reproductionし、runtime / human Verification Recordをappend-onlyに追加する。runtime失敗や人間の反証はFindingを削除せず、disprovedまたは理由付きincompleteとして残す。
 - AIは脆弱性の理解とSubmission Draft作成を支援できるが、External Action Authorization、Draft承認、最後のSubmitを代行しない。
 - SQLi、XSS等のclassはReproduction Recipeのsuccess criterionを助けるが、固定Adapterへの対応をcandidate admissionの条件にしない。
@@ -54,7 +55,7 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 - public CLI、versioned schema、Module ownership、domain term、security invariantの変更は対応するTestと正本docを同じ変更で更新する。
 - private helperや局所algorithmの変更をdocへ文章で複製しない。
 - hard-to-reverseで実在するtrade-offがある判断だけADRにする。判断変更は新ADRでsupersedeする。
-- cost削減はrecall baseline確立後のablationで行い、high-impact recallを落とす最適化を採用しない。Validationのbudget exhaustionをfalse positiveまたはrejectedへ読み替えない。
+- provider報告costは観測するがCampaignのhard limitにしない。cost削減はrecall baseline確立後のablationで行い、high-impact recallを落とす最適化を採用しない。Validationのbudget exhaustionをfalse positiveまたはrejectedへ読み替えない。
 
 ## Documentation
 
@@ -81,7 +82,7 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 - mockはprovider CLI、clock、filesystem等のsystem seamへ限定する。
 - fixtureへprivate Target、未公開Finding、credentialを入れない。
 - commit前のrepository gateは`pnpm check`。
-- Target/Prompt/Runtime/Permission/Budget binding、Rootとnative subagentの権限制約、single fresh Validation、Independent ValidationだけがFindingを生成すること、FindingとCoverageの分離、AI failureを棄却へ丸めないこと、external actionのhuman gateは回帰対象とする。旧schema、legacy replay、固定role orchestrationまたは未使用Adapterを新binaryへ残さない。
+- Target/Prompt/Runtime/Permission/Budget binding、最大1時間のResearch Grant、両Human Review、Parked Programme LeadのValidation除外、Rootとnative subagentの権限制約、Root込み最大4体の同時実行上限、single fresh Validation、Independent ValidationだけがFindingを生成すること、FindingとCoverageの分離、AI failureを棄却へ丸めないこと、external actionのhuman gateは回帰対象とする。旧schema、legacy replay、固定role orchestrationまたは未使用Adapterを新binaryへ残さない。
 
 ## TypeScript
 

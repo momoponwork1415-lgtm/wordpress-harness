@@ -122,4 +122,79 @@ describe("repository documentation check", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it("rejects local absolute paths in public Markdown", async () => {
+    const directory = await createDocsFixture();
+
+    try {
+      await writeFile(
+        join(directory, "README.md"),
+        "Private input came from `D:\\\\research-workspace`.\n",
+        "utf8",
+      );
+
+      const result = await runDocsCheck(directory);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr + result.stdout).toContain(
+        "public documentation contains a local absolute path",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an ADR retained after a later ADR supersedes it", async () => {
+    const directory = await createDocsFixture();
+
+    try {
+      await mkdir(join(directory, "docs", "adr"), { recursive: true });
+      await writeFile(
+        join(directory, "docs", "adr", "0001-old.md"),
+        "---\nstatus: accepted\n---\n\n# Old\n",
+        "utf8",
+      );
+      await writeFile(
+        join(directory, "docs", "adr", "0002-new.md"),
+        "---\nstatus: accepted\nsupersedes: 0001\n---\n\n# New\n",
+        "utf8",
+      );
+
+      const result = await runDocsCheck(directory);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr + result.stdout).toContain(
+        "superseded ADR remains in the current documentation set",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the canonical CLI command list synchronized", async () => {
+    const directory = await createDocsFixture();
+
+    try {
+      await mkdir(join(directory, "src"), { recursive: true });
+      await writeFile(
+        join(directory, "src", "cli.ts"),
+        'const usage = "Usage: wordpress-harness campaign <conduct|inspect|retry>";\n',
+        "utf8",
+      );
+      await writeFile(
+        join(directory, "docs", "CODEBASE-GUIDE.md"),
+        "# Guide\n\n`wordpress-harness campaign conduct | inspect`\n",
+        "utf8",
+      );
+
+      const result = await runDocsCheck(directory);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr + result.stdout).toContain(
+        "CLI command list does not match src/cli.ts",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });

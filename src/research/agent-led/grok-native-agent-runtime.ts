@@ -7,6 +7,7 @@ import {
 import {
   failedNativeRunReceipt,
   GvisorAgentSandbox,
+  refusedNativeRunReceipt,
   type GvisorAgentRuntimeOptions,
 } from "./gvisor-agent-sandbox.js";
 import {
@@ -46,8 +47,18 @@ const grokResultSchema = z.object({
       costUSD: z.number().finite().nonnegative().optional(),
     }),
   ),
-  structuredOutput: z.unknown(),
+  structuredOutput: z.unknown().optional(),
 });
+
+const grokManagedConfig = `[subagents.models]
+general-purpose = "grok-4.6"
+explore = "grok-4.6"
+plan = "grok-4.6"
+`;
+
+const grokRequirements = `[models]
+allowed_models = ["grok-4.6"]
+`;
 
 function parseJson(value: string): unknown {
   try {
@@ -55,6 +66,58 @@ function parseJson(value: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+function parseJsonOrTrailingObject(value: string): unknown {
+  const whole = parseJson(value);
+  if (whole !== undefined) return whole;
+
+  const text = value.trim();
+  if (!text.endsWith("}")) return undefined;
+  let depth = 0;
+  let insideString = false;
+  for (let index = text.length - 1; index >= 0; index -= 1) {
+    const character = text[index];
+    if (character === '"') {
+      let precedingBackslashes = 0;
+      for (
+        let escapeIndex = index - 1;
+        escapeIndex >= 0 && text[escapeIndex] === "\\";
+        escapeIndex -= 1
+      ) {
+        precedingBackslashes += 1;
+      }
+      if (precedingBackslashes % 2 === 0) insideString = !insideString;
+      continue;
+    }
+    if (insideString) continue;
+    if (character === "}") {
+      depth += 1;
+      continue;
+    }
+    if (character !== "{") continue;
+    depth -= 1;
+    if (depth === 0) return parseJson(text.slice(index));
+    if (depth < 0) return undefined;
+  }
+  return undefined;
+}
+
+function grokPrompt(run: SealedAgentRun, sandboxPrompt: string): string {
+  const reportSchema =
+    run.kind === "sealed-native-research-run"
+      ? researchReportSchema
+      : validationReportSchema;
+  const reportName =
+    run.kind === "sealed-native-research-run"
+      ? "Research Report"
+      : "Validation Report";
+  return `${sandboxPrompt}
+
+Grok final ${reportName} JSON Schema:
+${JSON.stringify(z.toJSONSchema(reportSchema))}
+
+Use the source tools for the investigation before producing the final answer. At the end, return exactly one JSON object matching this schema in the response text. Do not wrap it in Markdown or add prose outside the JSON object.`;
 }
 
 class GrokNativeAgentRuntime implements NativeAgentRuntime {
@@ -94,7 +157,22 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
       versionTokenIndex: 1,
       providerEnvironment: [
         "--env=GROK_HOME=/provider",
+        "--env=GROK_MAX_CONCURRENT_SUBAGENTS=3",
+        "--env=GROK_SUBAGENTS_MAX_DEPTH=1",
+        "--env=GROK_SUBAGENT_LIMIT_BEHAVIOR=fail",
         "--env=HOME=/tmp/home",
+      ],
+      supportFiles: [
+        {
+          filename: "grok-managed-config.toml",
+          text: grokManagedConfig,
+          containerMountPath: "/etc/grok/managed_config.toml",
+        },
+        {
+          filename: "grok-requirements.toml",
+          text: grokRequirements,
+          containerMountPath: "/etc/grok/requirements.toml",
+        },
       ],
       ephemeralProviderCredentialFiles: ["auth.json", "agent_id"],
       ephemeralProviderHomeMount: { path: "/provider", mode: "rw" },
@@ -117,6 +195,8 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         run.agentRuntimeProfile.model,
         "--reasoning-effort",
         run.agentRuntimeProfile.effort,
+        "--output-format",
+        "json",
         "--cwd",
         "/workspace",
         "--sandbox",
@@ -132,18 +212,13 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         "Grep(/provider/**)",
         "--permission-mode",
         "bypassPermissions",
-        "--json-schema",
-        JSON.stringify(
-          z.toJSONSchema(
-            run.kind === "sealed-native-research-run"
-              ? researchReportSchema
-              : validationReportSchema,
-          ),
-        ),
         "--prompt-file",
         "/workspace/research/prompt.txt",
       ],
-      prompt: { kind: "file", text: this.#sandbox.prompt(run) },
+      prompt: {
+        kind: "file",
+        text: grokPrompt(run, this.#sandbox.prompt(run)),
+      },
     });
     if (execution.status === "failed") return execution.receipt;
     if (execution.status === "exited-nonzero") {
@@ -155,6 +230,8 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         execution.completedAt,
         true,
         execution.checkpoint,
+        execution.diagnostic,
+        execution.failureStage,
       );
     }
 
@@ -162,18 +239,31 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
       parseJson(execution.stdout),
     );
     if (!decodedEnvelope.success) {
-      return failedNativeRunReceipt(
+      const summary = "Grok Build returned an unsupported result envelope.";
+      return refusedNativeRunReceipt(
         run,
+        execution,
         "invalid-output",
-        "Grok Build returned an unsupported result envelope.",
-        execution.startedAt,
-        execution.completedAt,
-        true,
+        summary,
         execution.checkpoint,
       );
     }
     const envelope = decodedEnvelope.data;
     const modelUsage = envelope.modelUsage["grok-4.6-build"];
+    if (
+      run.kind === "sealed-native-research-run" &&
+      (execution.checkpoint === undefined ||
+        envelope.sessionId !== execution.checkpoint.sessionId)
+    ) {
+      const summary = "Grok Build returned an unbound Research session.";
+      return refusedNativeRunReceipt(
+        run,
+        execution,
+        "policy-denied",
+        summary,
+        undefined,
+      );
+    }
     if (
       Object.keys(envelope.modelUsage).length !== 1 ||
       modelUsage === undefined ||
@@ -187,33 +277,34 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         modelUsage.inputTokens +
           modelUsage.cacheReadInputTokens +
           modelUsage.cacheCreationInputTokens +
-          modelUsage.outputTokens ||
-      (run.kind === "sealed-native-research-run" &&
-        (execution.checkpoint === undefined ||
-          envelope.sessionId !== execution.checkpoint.sessionId))
+          modelUsage.outputTokens
     ) {
-      return failedNativeRunReceipt(
+      const summary = "Grok Build violated the sealed model or usage binding.";
+      return refusedNativeRunReceipt(
         run,
+        execution,
         "policy-denied",
-        "Grok Build violated the sealed model or usage binding.",
-        execution.startedAt,
-        execution.completedAt,
-        true,
+        summary,
+        undefined,
       );
     }
-    const report = (
+    const reportSchema =
       run.kind === "sealed-native-research-run"
         ? researchReportSchema
-        : validationReportSchema
-    ).safeParse(envelope.structuredOutput);
+        : validationReportSchema;
+    const textReport = reportSchema.safeParse(
+      parseJsonOrTrailingObject(envelope.text),
+    );
+    const report = textReport.success
+      ? textReport
+      : reportSchema.safeParse(envelope.structuredOutput);
     if (!report.success) {
-      return failedNativeRunReceipt(
+      const summary = "Grok Build returned an unsupported Agent Report.";
+      return refusedNativeRunReceipt(
         run,
+        execution,
         "invalid-output",
-        "Grok Build returned an unsupported Agent Report.",
-        execution.startedAt,
-        execution.completedAt,
-        true,
+        summary,
         execution.checkpoint,
       );
     }

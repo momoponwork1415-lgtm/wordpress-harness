@@ -46,6 +46,31 @@ const ipv4AddressSchema = z.string().refine((value) => {
   );
 }, "Lab container address must be an IPv4 address");
 const boundedSummarySchema = z.string().min(1).max(4_000);
+const dynamicReproductionLabSetupBodySchema = z.strictObject({
+  kind: z.literal("dynamic-reproduction-lab-setup"),
+  schemaVersion: z.literal(1),
+  findingId: z.string().min(1).max(512),
+  targetSnapshotDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  dependencySnapshotsDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  script: z
+    .string()
+    .min(1)
+    .max(128 * 1024),
+});
+
+export const dynamicReproductionLabSetupSchema =
+  dynamicReproductionLabSetupBodySchema
+    .extend({ digest: z.string().regex(/^sha256:[a-f0-9]{64}$/) })
+    .superRefine((setup, context) => {
+      const { digest, ...body } = setup;
+      if (digest !== canonicalDigest(body)) {
+        context.addIssue({
+          code: "custom",
+          path: ["digest"],
+          message: "Dynamic Reproduction Lab Setup digest mismatch",
+        });
+      }
+    });
 
 export const dynamicReproductionAgentOutcomeSchema = z.discriminatedUnion(
   "status",
@@ -92,10 +117,36 @@ export interface ContainerProcessRunner {
   run(request: ContainerProcessRequest): Promise<ContainerProcessResult>;
 }
 
+/**
+ * A companion plugin the Target ordinarily runs inside, mounted from a pinned
+ * Dependency Snapshot. It is installed and activated before the Target so the
+ * Lab matches the Campaign's ordinary configuration.
+ */
+export interface DynamicReproductionDependency {
+  readonly dependencySnapshotId: string;
+  readonly pluginSlug: string;
+  readonly sourceDirectory: string;
+}
+
+export type DynamicReproductionLabSetup = z.infer<
+  typeof dynamicReproductionLabSetupSchema
+>;
+
 export interface DynamicReproductionSourceResolver {
   resolve(input: {
     readonly targetSnapshot: SourceValidatedFinding["targetSnapshot"];
-  }): Promise<{ readonly sourceDirectory: string }>;
+    readonly dependencySnapshots: NonNullable<
+      SourceValidatedFinding["dependencySnapshots"]
+    >;
+  }): Promise<{
+    readonly sourceDirectory: string;
+    readonly dependencies?: readonly DynamicReproductionDependency[];
+    /** Finding-bound ordinary site-owner configuration run once after every
+     * plugin is active. It must not grant the attacker authority that the
+     * ordinary configuration would not.
+     */
+    readonly labSetup?: DynamicReproductionLabSetup;
+  }>;
 }
 
 export interface DynamicReproductionExperiment {
@@ -300,6 +351,7 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
     await chmod(privateEvidenceDirectory, 0o700);
     const resolved = await this.#options.sourceResolver.resolve({
       targetSnapshot: finding.targetSnapshot,
+      dependencySnapshots: finding.dependencySnapshots ?? [],
     });
     const sourceDirectory = await absoluteDirectory(
       resolved.sourceDirectory,
@@ -314,6 +366,58 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
       ).matches
     ) {
       throw new Error("Dynamic Reproduction Target source mismatch");
+    }
+    const dependencySnapshots = new Map(
+      (finding.dependencySnapshots ?? []).map((snapshot) => [
+        snapshot.id,
+        snapshot,
+      ]),
+    );
+    const resolvedDependencyIds = new Set<string>();
+    const dependencies: DynamicReproductionDependency[] = [];
+    for (const dependency of resolved.dependencies ?? []) {
+      const snapshot = dependencySnapshots.get(dependency.dependencySnapshotId);
+      if (
+        snapshot === undefined ||
+        resolvedDependencyIds.has(dependency.dependencySnapshotId)
+      ) {
+        throw new Error(
+          "Dynamic Reproduction Dependency does not match the Finding",
+        );
+      }
+      resolvedDependencyIds.add(dependency.dependencySnapshotId);
+      const dependencyDirectory = await absoluteDirectory(
+        dependency.sourceDirectory,
+        "Dependency source",
+      );
+      if (
+        !(
+          await verifyCanonicalSourceTree(
+            dependencyDirectory,
+            snapshot.sourceTree,
+          )
+        ).matches
+      ) {
+        throw new Error("Dynamic Reproduction Dependency source mismatch");
+      }
+      dependencies.push({
+        dependencySnapshotId: dependency.dependencySnapshotId,
+        pluginSlug: dependency.pluginSlug,
+        sourceDirectory: dependencyDirectory,
+      });
+    }
+    const labSetup =
+      resolved.labSetup === undefined
+        ? undefined
+        : dynamicReproductionLabSetupSchema.parse(resolved.labSetup);
+    if (
+      labSetup !== undefined &&
+      (labSetup.findingId !== finding.findingId ||
+        labSetup.targetSnapshotDigest !== finding.targetSnapshot.digest ||
+        labSetup.dependencySnapshotsDigest !==
+          canonicalDigest(finding.dependencySnapshots ?? []))
+    ) {
+      throw new Error("Dynamic Reproduction Lab Setup does not match Finding");
     }
     await this.#inspectIsolation();
 
@@ -349,6 +453,8 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
           finding.targetSnapshot.pluginSlug,
           databasePassword,
           adminPassword,
+          dependencies,
+          labSetup?.script,
         );
         setupCompleted = true;
         const experiment: DynamicReproductionExperiment = Object.freeze({
@@ -543,6 +649,8 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
     pluginSlug: string,
     databasePassword: string,
     adminPassword: string,
+    dependencies: readonly DynamicReproductionDependency[] = [],
+    ordinaryConfiguration?: string,
   ): Promise<void> {
     await this.#requireDocker([
       "network",
@@ -620,6 +728,36 @@ class GvisorWordPressDynamicReproductionRuntime implements DynamicReproductionRu
       "--admin_email=harness-admin@example.invalid",
       "--skip-email",
     ]);
+    // Companion plugins first: the Target is activated inside the ordinary
+    // configuration it expects, never the other way round.
+    for (const dependency of dependencies) {
+      await this.#installPlugin(
+        resources,
+        databasePassword,
+        dependency.sourceDirectory,
+        dependency.pluginSlug,
+      );
+    }
+    await this.#installPlugin(
+      resources,
+      databasePassword,
+      sourceDirectory,
+      pluginSlug,
+    );
+    if (ordinaryConfiguration !== undefined) {
+      await this.#wpCli(resources, databasePassword, [
+        "eval",
+        ordinaryConfiguration,
+      ]);
+    }
+  }
+
+  async #installPlugin(
+    resources: LabResources,
+    databasePassword: string,
+    sourceDirectory: string,
+    pluginSlug: string,
+  ): Promise<void> {
     await this.#requireDocker([
       "exec",
       resources.wordpressContainer,

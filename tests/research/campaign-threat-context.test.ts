@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import {
   campaignInputSchema,
+  sealedValidationRunSchema,
   type SealedNativeRun,
 } from "../../src/research/agent-led/contracts.js";
 import { agentResearchPrompt } from "../../src/research/agent-led/gvisor-agent-sandbox.js";
@@ -39,6 +40,39 @@ function threatContext() {
   return { ...body, digest: canonicalDigest(body) };
 }
 
+function programmeBoundary() {
+  const body = {
+    kind: "programme-research-boundary" as const,
+    schemaVersion: 1 as const,
+    id: "wordfence-1337-boundary-v1",
+    programmeIdentity: "programme:wordfence",
+    checkedAt: "2026-09-08T00:00:00.000Z",
+    eligibleAttackerPositions: [
+      "Unauthenticated visitor, Subscriber, or customer.",
+    ],
+    priorityImpacts: [
+      "High-impact broken security semantics attributable to the target plugin.",
+    ],
+    explicitExclusions: [
+      "Business logic bugs.",
+      "Basic information disclosure.",
+    ],
+    excludedAssets: [
+      "WordPress core is source closure, not the report target.",
+    ],
+    sourceRefs: [{ id: "wordfence-scope-snapshot", digest: digest("d") }],
+    uncertainties: [
+      "Privilege classification across a multisite trust boundary needs human challenge.",
+    ],
+    handling: {
+      sourceProvenExcluded: "park" as const,
+      concreteEligibleEscalation: "continue" as const,
+      scopeAmbiguity: "human-challenge" as const,
+    },
+  };
+  return { ...body, digest: canonicalDigest(body) };
+}
+
 function sealedRun(): SealedNativeRun {
   return {
     kind: "sealed-native-research-run",
@@ -63,6 +97,7 @@ function sealedRun(): SealedNativeRun {
       },
     ],
     threatContext: threatContext(),
+    programmeBoundary: programmeBoundary(),
     promptSet: { id: "research-prompt-v1", digest: digest("6") },
     agentRuntimeProfile: {
       id: "runtime-v1",
@@ -77,10 +112,10 @@ function sealedRun(): SealedNativeRun {
       id: "budget-v1",
       maxNativeRuns: 1,
       maxWallTimeMs: 300_000,
-      maxEstimatedCostUsd: 5,
+      researchGrantWallTimeMs: 300_000,
       digest: digest("9"),
     },
-    budgetAllowance: { maxWallTimeMs: 300_000, maxEstimatedCostUsd: 5 },
+    budgetAllowance: { maxWallTimeMs: 300_000 },
     validationFeedback: [],
   };
 }
@@ -100,6 +135,55 @@ describe("Campaign Threat Context", () => {
     );
     expect(prompt).toContain(
       '"explorationFreedom":"off-model-findings-allowed"',
+    );
+    expect(prompt).toContain(
+      "Programme Research Boundary (effort and Candidate constraints, not a vulnerability oracle)",
+    );
+    expect(prompt).toContain(
+      "treat every Candidate and parked Programme Lead returned by an earlier completed Research run as immutable",
+    );
+    expect(prompt).toContain("add the revision under a new id");
+    expect(prompt).toContain(
+      "Do not spend a subagent or adversarial Candidate review on that lead",
+    );
+    expect(prompt).toContain(
+      "Stop tool use and reserve at least 60 seconds to synthesize",
+    );
+    expect(prompt).toContain('"sourceProvenExcluded":"park"');
+    expect(prompt).not.toContain("researcherTier");
+    expect(prompt).not.toContain("targetEligibility");
+    expect(prompt).not.toContain("programme:wordfence");
+    expect(prompt).not.toContain("wordfence-scope-snapshot");
+    expect(prompt).toContain(
+      "Resume deep work only when a concrete source-bound edge could reach an eligible impact",
+    );
+    expect(prompt).toContain(
+      "A Research Grant is source investigation time, not a planning turn",
+    );
+  });
+
+  it("tells a resumed Research Root to execute the human-approved next actions", () => {
+    const prompt = agentResearchPrompt("Research from source.", {
+      ...sealedRun(),
+      researchContinuationNextActions: [
+        {
+          question: "Which callback consumes the stored identifier?",
+          sourcePointers: ["inc/callbacks.php"],
+        },
+      ],
+    });
+
+    expect(prompt).toContain(
+      "Human-approved Research continuation source-bound next actions",
+    );
+    expect(prompt).toContain(
+      '"question":"Which callback consumes the stored identifier?"',
+    );
+    expect(prompt).toContain(
+      "Investigate these approved next actions during this Grant",
+    );
+    expect(prompt).toContain(
+      "Do not merely repeat them in decision.nextActions",
     );
   });
 
@@ -129,12 +213,93 @@ describe("Campaign Threat Context", () => {
         targetSnapshot: run.targetSnapshot,
         dependencySnapshots: run.dependencySnapshots,
         threatContext: run.threatContext,
+        programmeBoundary: run.programmeBoundary,
         promptSet: run.promptSet,
         validationPromptSet: { id: "validation-v1", digest: digest("c") },
         agentRuntimeProfile: run.agentRuntimeProfile,
         permissionProfile: run.permissionProfile,
         budgetEnvelope: run.budgetEnvelope,
         resumeFrom: checkpoint,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("does not resume a Checkpoint under a different Programme Research Boundary", () => {
+    const run = sealedRun();
+    const checkpoint = {
+      kind: "agent-checkpoint" as const,
+      schemaVersion: 1 as const,
+      checkpointId: "checkpoint-programme-boundary",
+      stateDigest: digest("a"),
+      stateEntries: 1,
+      stateBytes: 10,
+      sessionId: "13131313-1313-4131-8131-131313131313",
+      targetSnapshotDigest: run.targetSnapshot.digest,
+      promptSetDigest: run.promptSet.digest,
+      runtimeProfileDigest: run.agentRuntimeProfile.digest,
+      permissionProfileDigest: run.permissionProfile.digest,
+      dependencySnapshotsDigest: canonicalDigest(run.dependencySnapshots ?? []),
+      threatContextDigest: run.threatContext?.digest,
+      programmeBoundaryDigest: digest("e"),
+    };
+
+    expect(
+      campaignInputSchema.safeParse({
+        kind: "agent-led-campaign",
+        schemaVersion: 1,
+        campaignId: run.campaignId,
+        targetSnapshot: run.targetSnapshot,
+        dependencySnapshots: run.dependencySnapshots,
+        threatContext: run.threatContext,
+        programmeBoundary: run.programmeBoundary,
+        promptSet: run.promptSet,
+        validationPromptSet: { id: "validation-v1", digest: digest("c") },
+        agentRuntimeProfile: run.agentRuntimeProfile,
+        permissionProfile: run.permissionProfile,
+        budgetEnvelope: run.budgetEnvelope,
+        resumeFrom: checkpoint,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("does not expose the Programme Research Boundary to Independent Validation", () => {
+    const researchRun = sealedRun();
+    const validationRun = {
+      kind: "sealed-native-validation-run" as const,
+      schemaVersion: 1 as const,
+      runId: "campaign-context:validation:1",
+      campaignId: researchRun.campaignId,
+      campaignInputDigest: researchRun.campaignInputDigest,
+      targetSnapshot: researchRun.targetSnapshot,
+      dependencySnapshots: researchRun.dependencySnapshots,
+      promptSet: { id: "validation-prompt-v1", digest: digest("c") },
+      agentRuntimeProfile: researchRun.agentRuntimeProfile,
+      permissionProfile: researchRun.permissionProfile,
+      budgetEnvelope: researchRun.budgetEnvelope,
+      budgetAllowance: researchRun.budgetAllowance,
+      candidate: {
+        candidateId: "candidate-boundary-crossing",
+        attackerPremise: "An unauthenticated visitor submits public input.",
+        brokenSecurityProperty:
+          "Public input must not acquire privileged authority.",
+        claim: "Persisted public input crosses a privileged trust boundary.",
+        evidence: [
+          {
+            path: "plugin.php",
+            location: "public_handler",
+            observation: "The handler persists attacker-controlled input.",
+          },
+        ],
+      },
+    };
+
+    expect(sealedValidationRunSchema.safeParse(validationRun).success).toBe(
+      true,
+    );
+    expect(
+      sealedValidationRunSchema.safeParse({
+        ...validationRun,
+        programmeBoundary: researchRun.programmeBoundary,
       }).success,
     ).toBe(false);
   });

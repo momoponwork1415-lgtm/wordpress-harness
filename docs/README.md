@@ -4,16 +4,20 @@
 
 | Question | Canonical document |
 | --- | --- |
-| 全体像をスマホで見る | [System Architecture SVG](visuals/system-architecture.svg) |
+| 初見の人へ1枚で共有する | [One-page Overview SVG](visuals/wordpress-security-research-overview.svg) |
+| Contextとhandoffを詳しく図で見る | [System Architecture SVG](visuals/system-architecture.svg) |
 | 診断coreだけを見る | [Diagnosis Core SVG](visuals/diagnosis-architecture.svg) |
 | 探索・検証loopを詳しく見る | [Discovery + Validation SVG](visuals/discovery-validation-architecture.svg) |
 | 現在どこが動き、どこが未接続か | [Codebase Guide](CODEBASE-GUIDE.md) |
 | systemのownershipとhandoff | [Architecture](ARCHITECTURE.md) |
 | 一件のTargetの処理順 | [System Walkthrough](SYSTEM-WALKTHROUGH.md) |
+| 探索Agentへ何を渡すかと具体例 | [System Walkthrough: 探索Agentへ渡す情報](SYSTEM-WALKTHROUGH.md#探索agentへ渡す情報) |
 | 探索、停止、Validationの原則 | [Research Design](RESEARCH-DESIGN.md) |
 | domain language | [Context Map](../CONTEXT-MAP.md) |
 | agent-led移行と診断coreの成功条件 | [ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md) · [ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md) |
-| DiscoveryとValidationを分ける理由 | [ADR 0129](adr/0129-keep-validation-out-of-active-discovery.md) |
+| Research GrantとCandidateにhuman reviewを置く理由 | [ADR 0131](adr/0131-place-human-reviews-between-research-and-validation.md) |
+| provider costを停止条件にしない理由 | [ADR 0132](adr/0132-treat-provider-cost-as-observational-telemetry.md) |
+| provider account failureと診断証跡 | [ADR 0133](adr/0133-separate-provider-account-conditions-from-provider-defects.md) · [ADR 0134](adr/0134-preserve-refused-provider-output-as-a-private-diagnostic.md) |
 | Dynamic ReproductionをRecipe replayにする理由 | [ADR 0130](adr/0130-replay-finding-bound-recipes-for-dynamic-reproduction.md) |
 | native探索状態の保存判断 | [ADR 0126](adr/0126-preserve-native-research-checkpoints-opaquely.md) |
 | framework依存sourceを探索へ渡す判断 | [ADR 0128](adr/0128-provide-pinned-dependency-source-to-research.md) |

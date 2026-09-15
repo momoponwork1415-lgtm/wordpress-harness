@@ -31,6 +31,7 @@ export type {
 } from "./human-os-v3.js";
 export {
   dynamicReproductionAgentOutcomeSchema,
+  dynamicReproductionLabSetupSchema,
   openGvisorWordPressDynamicReproductionRuntime,
 } from "./gvisor-wordpress-dynamic-reproduction.js";
 export type {
@@ -40,6 +41,7 @@ export type {
   DynamicReproductionAgent,
   DynamicReproductionAgentOutcome,
   DynamicReproductionExperiment,
+  DynamicReproductionLabSetup,
   DynamicReproductionSourceResolver,
   GvisorWordPressDynamicReproductionOptions,
 } from "./gvisor-wordpress-dynamic-reproduction.js";
