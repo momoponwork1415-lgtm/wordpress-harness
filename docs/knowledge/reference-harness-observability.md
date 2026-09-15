@@ -1,14 +1,12 @@
 # Knowledge: reference harness comparison
 
-Status: official-source comparison, checked 2026-09-10
+Status: official-source comparison; Anthropicの情報設計・評価比較は2026-09-15に更新。他資料は2026-09-10の確認。
 
 ## Conclusion
 
-**Inference:** wp2shell / Cycle Double Cover Promptの強みは、固定pipelineではなく、root agentが複数の考え方を使い、途中の手掛かりを統合・反証し、具体的な次手がある限り探索を続ける点にある。旧local v7はこの過程をFinder、Wave、Depth、typed frontierへ分解しすぎ、agentの研究判断をHarness codeへ戻していた。
+外部Harnessは、入力の出典、証拠の独立性、失敗の記録、権限の境界を比較する材料になる。file数、Promptの長さ、pipeline段数から診断品質は推定できない。
 
-現行Local Harnessはその分解を撤回した。Provider-native root / subagentへ探索判断を戻し、HarnessにはTarget / Prompt / Runtime / Permission / Budget binding、gVisor、append-only Receipt、fresh Independent Validation、Finding / Coverage分離、人間の外部行動gateだけを残す。この単純化で探索力が維持されたかは設計からは分からず、oracle-separated boundary testとprospective Campaignで測る必要がある。
-
-このnoteは外部根拠と推論を記録する。採用設計は[Architecture](../ARCHITECTURE.md)、現在の実装は[Codebase Guide](../CODEBASE-GUIDE.md)、次のworkはGitHub Issuesを正本とする。
+このnoteは外部根拠と推論だけを記録する。採用方針は[Research Design](../RESEARCH-DESIGN.md)、構成は[Architecture](../ARCHITECTURE.md)、現在の実装状態・source path・Behavior Testは[Codebase Guide](../CODEBASE-GUIDE.md)、次の有限workはGitHub Issuesを正本とする。
 
 ## Evidence boundary
 
@@ -18,7 +16,7 @@ Status: official-source comparison, checked 2026-09-10
 | --- | --- | --- |
 | wp2shell / CDC | [wp2shell exact prompt](https://www.slcyber.io/research/exploit-brokers-pay-500000-for-a-wordpress-rce-i-found-one-with-gpt5-6#the-story-of-wp2shell)、[Cycle Double Cover Prompt](https://cdn.openai.com/pdf/04d1d1e4-bc75-476a-97cf-49055cd98d31/cdc_prompt.pdf) | 肯定解とRCE goalを持つ実験。oracle-free prospective recallを直接示さない。 |
 | OpenAI Codex Security | [`c8296885f`](https://github.com/openai/codex-security/tree/c8296885fbbf593edc1b405dc49859496b2bd8e4) | 公開SDK / pluginの構造。WordPressでの性能を示さない。 |
-| Anthropic Defending Code Reference Harness | [`d3bea6b57`](https://github.com/anthropics/defending-code-reference-harness/tree/d3bea6b5793b5f3d59a75ebe69a58efa88383145) | 保守終了済みのC/C++ memory-safety reference。 |
+| Anthropic Defending Code Reference Harness | [`d3bea6b57`](https://github.com/anthropics/defending-code-reference-harness/tree/d3bea6b5793b5f3d59a75ebe69a58efa88383145) | 保守終了済み。autonomous harnessはC/C++ memory safety向け。interactiveなsource review資料もある。 |
 | Google / Mandiant AVDH | [公式記事](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review) | 内部architectureの説明。公開codeやdurability testはない。 |
 | Cloudflare VDH / VVS | [Harness記事](https://blog.cloudflare.com/build-your-own-vulnerability-harness/)、[VDR記事](https://blog.cloudflare.com/vulnerability-discovery-remediation/) | 内部運用の説明。非公開implementationは検証できない。 |
 | Aikido known-CVE benchmark | [2026-08-21 benchmark](https://www.aikido.dev/blog/ai-model-benchmarks-aug-21-2026) | 固定したAikido Harness内で探索modelだけを比較。dataset、target revision、prompt、tool、判定記録は非公開で、Harness間比較ではない。 |
@@ -36,41 +34,59 @@ Status: official-source comparison, checked 2026-09-10
 
 **Inference:** agentic Harnessはstatic analysisやfuzzerを単にLLMへ置換したものではない。manual researcherが頭の中で持つfrontierをagent conversation、packet、cellまたはdurable artifactへ移す。どの表現を選んでも「全fileを触れた」「全cellが一度空になった」「runをunionした」は未知のbroken security semanticsを尽くした証明にならない。
 
-## wp2shell, old local v7, current local harness
+## wp2shell / CDC: evidence limits
 
-| Concern | wp2shell / CDC | Old local v7 | Current local harness |
-| --- | --- | --- | --- |
-| Goal | 肯定解を保証し、wp2shellはpre-auth RCEへ到達する | oracle-free、SQLi / Stored XSSも保持 | oracle-free、SQLi / Stored XSSは単独でValidation Candidate |
-| Agent topology | rootが最大数の範囲でagentを動的利用 | HarnessがFinder数、role、Wave、Depthをmaterialize | provider-native rootがsubagent数と役割を決める |
-| Frontier | root conversation内のapproach、blocked route、missing link | Hypothesis、Fragment、Family、Gap等をHarness schema化 | Research Reportのcandidate、next action、Validation feedbackだけをdurableに渡す |
-| Iteration | rootがsynthesize、challenge、redirect | fixed Wave / Depth transition | AIの`continue` / `stop`だけ。Depthというphaseはない |
-| Validation | adversarial reviewと最終的な人間のruntime確認 | fixed evaluation / rubricを複数stageへ分解 | 一つのfresh source-only Validation。`source-validated`だけがFindingを作る |
-| Isolation / record | Prompt自身はhost authorityやdurabilityを保証しない | Harness-owned tools、Ledger / CAS、gVisor Lab | runsc、read-only source、ephemeral provider home、SQLite Receipt、no fallback |
-| Main risk | positive oracleへ過適合 | AIの判断をcodeで固め、LOCと内部stateが増える | agent varianceとblind spotが見えにくい。実Target evaluationが必須 |
+**Observed:** [wp2shellの公開記録](https://www.slcyber.io/research/exploit-brokers-pay-500000-for-a-wordpress-rce-i-found-one-with-gpt5-6#the-story-of-wp2shell)は、脆弱性の存在とRCEへの到達を前提にした一つの成功例である。最新WordPressのsourceと依存sourceを用意し、途中で人間が実効性を確認して追加の目標を与えている。最初のPromptだけで最後まで無人だったわけではない。公開された約10時間 / 約USD 25には、複数Target、negative control、miss、run varianceの比較がない。
 
-**Inference:** 現行方式は「Promptだけ」に戻したのではない。研究判断はPrompt / native agentへ戻すが、Promptだけでは保証できないauthority、source integrity、failure、freshness、resume、external human gateをHarnessに残している。
-
-## What wp2shell actually did
-
-| Concern | Observed |
-| --- | --- |
-| Input layout | latest stable WordPressを`main/`へ置き、`.git`を削除し、必要なPHP / MySQL等を取得する空の`third_party/`を併設した。[Exact setup](https://www.slcyber.io/research/exploit-brokers-pay-500000-for-a-wordpress-rce-i-found-one-with-gpt5-6#the-story-of-wp2shell) |
-| Prompt | vulnerabilityの存在、typical MySQL deployment、pre-authからRCE、`/flag`読取というgoalを先に与えた。最大4 agent、最低6時間、approach-family registry、divergent route、blocked route、adversarial check、rootによるsynthesis / redirect / next roundも指定した。 |
-| Agent loop | 最初の長時間runがpre-auth SQLiを出した後、人間がstock WordPressでadmin email読取を試させた。その後、人間がRCEへ昇格できるかを追加で質問し、約4時間後にchainが完成した。最初のpromptだけで最後まで無人だったわけではない。 |
-| Validation | 人間がremoteのstock installでSQLi effectを確認し、翌日にchainを解読してreportを準備した。公開された約10時間 / 約USD 25は一成功例で、複数target、negative control、miss、run varianceはない。 |
-
-**Inference:** wp2shell promptの研究手法は[WordPress Plugin Research v2](../../prompts/wordpress-plugin-research-v2.md)へすべて取り入れる。最大4 native agentは固定起動や固定roleではなくresource ceilingとし、Approach Family RegistryはRootのscratchへ置く。持ち込まないのはtask固有のpositive oracle、RCE / `/flag`到達の強制と最低6時間の指定だけである。
+**Inference:** 研究判断をagentが持つ構成と、人間の関与・検証証拠を分けて評価する必要がある。Promptだけではauthority、source integrity、durabilityを保証しない。wp2shell / CDCからの採用内容と適応理由は[Design lineage](../RESEARCH-DESIGN.md#design-lineage)を正本とし、ここへ複製しない。
 
 ## Public agentic harnesses
 
-| Reference | Search and iteration | Validation / coverage | Reusable lesson |
-| --- | --- | --- | --- |
-| Anthropic reference harness | optional Reconがfocus areaを作り、parallel Finderがslice内を探索する。[Pipeline](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/pipeline.md#L40-L68) | fresh containerでPoCをgradeし、複数runのvarianceをunionする。[Best practices](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L114-L147) | Harnessがpartitionとruntime oracle、agentがslice内のpathを所有する。semantic WordPress reviewへそのまま移植しない。 |
-| Codex Security | parentがbaselineとsource-backed investigation packetを作り、workerはpacket外のpromising evidenceも追う。[Core scan](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/plugins/codex-security/references/core-scan.md#L7-L39) | unique findingごとにfresh local-source Validation。coverageはauthorized inventoryとの対応を残す。 | packetは開始点でありscopeではない。FindingとCoverageを別々にsealする。 |
-| Mandiant AVDH | Explorer / Specialist、entry-point enrichment、Access Control / Data Flow agentsへrouteする。[Architecture](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review#architecting-the-pipeline) | 複数Validation agentとSynthesis後、人間がdynamic PoCを確認する。[Validation](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review#hypothesis-generation) | file / entry-point coverageとsemantic validityは別。記事の固定pipelineをInterface根拠にしない。 |
-| Cloudflare VDH / VVS | area × attack-class cell、micro-fork、Gapfill、producer-consumer loop。[Stages](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#codifying-the-skill-into-a-pipeline) | original code上のPoCと別model review。[Validation](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#making-findings-you-can-trust) | explicit gapとfresh validationは有用。cell taxonomyを未知semantic bugのclosureにしない。 |
-| Wordfence PRISM / Argus | PRISMはWordPress specialist agentsで広い短いpath、Argusは一targetの長いmulti-step chainを追う。両者ともdangerous operationから逆向き、untrusted inputから順向きにtraceする。[Breadth / depth](https://www.wordfence.com/blog/2026/08/wordfence-argus-finds-complex-6-step-critical-rce-in-avada-theme-with-1-million-sales/#breadth-and-depth) | PRISMはPoC実行を掲げ、ArgusのAvada 6-step chainはisolated targetで人間がend-to-end確認した。 | short-hop / long-chainを別の評価層として持つ価値を示す成功例。二つのproduction engineを作る根拠やrecall比較ではない。 |
-| Unit 42 NOVA | scoping後にparallel discoveryがranked candidateを作り、failed validationを次waveへ戻す。reviewed / ruled-out / proof-pending pathを記録する。[Harness](https://unit42.paloaltonetworks.com/frontier-ai-vulnerability-burst/#how-the-autonomous-research-harness-works) | PoC、clean environmentでのdeterministic replay、adversarial gateを使う。14 projectsでは各modelが他modelにないFindingを多数追加した。 | 複数modelのunionが発見集合を広げる証拠。ただしknown-CVE recallではなく、fixed role、ranking、runtime、patch / protection生成は現行診断coreの根拠にならない。 |
+以下の「示唆」は設計比較からの推論であり、採用決定ではない。
+
+| Reference | 公開されている証拠・責任分担 | 示唆と限界 |
+| --- | --- | --- |
+| Anthropic | runtime harnessとinteractive source reviewが併存する。[README](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/README.md#contents) | repository全体を単一方式として評価しない。詳細比較は次節。 |
+| Codex Security | 調査packetとfresh local-source Validationを分け、coverageはauthorized inventoryとの対応で記録する。[Core scan](https://github.com/openai/codex-security/blob/c8296885fbbf593edc1b405dc49859496b2bd8e4/plugins/codex-security/references/core-scan.md#L7-L39) | packet、Finding、Coverageの責任を区別できる。WordPressでの性能証拠ではない。 |
+| Mandiant AVDH | 複数agentのValidationとSynthesis後、人間がdynamic evidenceを確認する。[Architecture and validation](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review#hypothesis-generation) | file / entry-point coverageとsemantic validityは別。記事の段階構成をそのままpublic Interfaceにしない。 |
+| Cloudflare VDH / VVS | original code上の実効性確認、別model review、freshなproduction contextの確認を説明する。[Validation](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#making-findings-you-can-trust)、[Contextual judgment](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#contextual-judgment) | 検証の独立性と現在の適用可能性を分ける。独自のcoverage cellは未知問題の不存在証明ではない。 |
+| Wordfence PRISM / Argus | 広い調査と長いchainの調査を区別し、Avadaの6-step chainは隔離環境で人間が確認した。[Breadth / depth](https://www.wordfence.com/blog/2026/08/wordfence-argus-finds-complex-6-step-critical-rce-in-avada-theme-with-1-million-sales/#breadth-and-depth) | 異なる複雑さの事例を評価する参考になる。二つのproduction engineを作る根拠やrecall比較ではない。 |
+| Unit 42 NOVA | clean environmentでのreplayと反証確認を使う。14 projectsの比較ではmodelごとに異なるFindingも報告した。[Harness and comparison](https://unit42.paloaltonetworks.com/frontier-ai-vulnerability-burst/#how-the-autonomous-research-harness-works) | model間の差を示す観測であり、known-CVE recallや特定の段階構成の因果効果を示さない。 |
+
+## Anthropic: information design and evidence quality
+
+### 比較範囲と限界
+
+参照revisionは[`d3bea6b5793b5f3d59a75ebe69a58efa88383145`](https://github.com/anthropics/defending-code-reference-harness/tree/d3bea6b5793b5f3d59a75ebe69a58efa88383145)。READMEとdocs一覧から本件に関係する資料を選び、入力・artifactの小さなsourceで補った。対象全体の実行や性能検証はしていない。
+
+| 読む目的 | 一次資料 |
+| --- | --- |
+| 入口、用途、変更箇所の案内 | [README](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/README.md)、[Harness README](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/README.md)、[Customizing](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/customizing.md) |
+| 入力とcontextの責任 | [Prompting](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/prompting.md)、[Threat model](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/threat-model.md)、[System prompt construction](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/prompts/system_prompt.py)、[Target config](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/config.py) |
+| 証拠、独立性、失敗 | [Best practices](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md)、[Pipeline](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/pipeline.md)、[Data contracts](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/artifacts.py)、[Triage](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/triage.md) |
+| 実行境界と権限 | [Security](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/security.md)、[Agent sandbox](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/agent-sandbox.md) |
+
+[README](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/README.md#contents)は、保守終了したreference implementationであり、autonomous harnessはC/C++のmemory safety向けだと明示する。資料にはinteractiveなsource reviewもあるため、repository全体をruntime方式一つとして扱わない。以下は設計比較であり、WordPressでのrecallや他modelでの効果を示す実測ではない。
+
+### 情報設計とSSoTへの示唆
+
+| 観察 | このrepositoryで検討すること |
+| --- | --- |
+| [Harness README](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/README.md)はdemoの入口、[Customizing](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/customizing.md#where-the-cc-specifics-live-concretely)は変更箇所の案内として目的を示す。ただしREADMEとPipelineには手順・段階説明の重複もある。 | **提案:** docを読む人の質問から入口を分ける。外部repoのfile分割自体をSSoTの模範とはしない。変更箇所・Interface・Behavior Testの正本は既存の[Codebase Guide](../CODEBASE-GUIDE.md)を使う。 |
+| [System prompt construction](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/prompts/system_prompt.py#L37-L85)はcontextを一度解決し、その同じ値を出典表示とagent入力へ渡す。固定の環境説明と利用者のcontextも分ける。 | **提案:** 重複点検では「同じ情報が二度見えるか」より「同じ事実を二箇所で編集するか」を調べる。JSONと文章の併存だけでは不具合と断定せず、正本・派生表示・更新責任・不一致時の扱いを確認する。 |
+| [Prompting](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/prompting.md#share-existing-mitigations)はsourceだけでは分からない環境上の防御をcontextとして扱う。[Best practices](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#before-you-scan-map-scope-equip)は資料を全て直接投入する代わりに参照手段を用意する。 | **提案:** repositoryの開発案内、実行入力、外部資料の役割を区別する。必要な事実を消して短縮する前に、その出典と参照権限を確かめる。外部資料の推奨を現在のPrompt変更の承認とは扱わない。 |
+
+### 評価・検証・権限の比較
+
+「一致」は[Research Design](../RESEARCH-DESIGN.md)と[repository rules](../../AGENTS.md)に既にある方針との一致を指す。実装完了の意味ではない。現在の実装状態は[Codebase Guide](../CODEBASE-GUIDE.md)を参照する。
+
+| 観点 | 一次資料の要点 | このrepositoryとの関係 |
+| --- | --- | --- |
+| 証拠品質 | [Best practices](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#verification-the-load-bearing-component)は説明だけでなく観測可能な証拠を重視する。 | **一致:** source上の成立、runtime確認、人間の確認を区別する。**不一致:** runtime証明をsource Findingの成立条件へ戻さない。 |
+| 独立性 | [Pipeline](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/pipeline.md#what-each-stage-does)はfreshな検証環境と限定したhandoffを説明する。 | **一致:** ResearchのconversationやscratchをIndependent Validationへ引き継がない。**不一致:** class別graderや繰り返し採点をsingle fresh source-only Validationの代わりにしない。 |
+| 失敗 | [Data contracts](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/artifacts.py#L135-L174)は不検出、棄却、agent/build failureを別statusにする。[Pipeline](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/pipeline.md#watching-a-run)は失敗・中断時もtranscriptを残す。 | **一致:** failureをnegativeへ丸めず、既存証拠を保持する。**境界:** 外部資料の自動retry方針は、人間のGrant reviewやValidation Retryの権限を置き換えない。 |
+| 隔離 | [Security](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/security.md#why-the-sandbox-is-necessary)はPrompt上の禁止だけでは能力制限にならないとする。 | **一致:** filesystem、network、credential、toolの制限を実行境界で保証する。**不一致:** 外部repoのsandbox opt-outやsource reviewへの弱い隔離を取り込まない。 |
+| 人間の権限 | [Triage](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/triage.md#run-it)は人間にtrust boundaryと判断基準を確認する。[Security](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/security.md#rules-for-running-autonomous-agents)は外部へのwrite権限を制限する。 | **一致:** 人間がscopeと権限を決める。**境界:** 現repoのCandidate admission、exact Draft revisionとdestinationへの承認、最後のSubmitは独自の必須gateとして保つ。 |
 
 ## Known-CVE recall evidence
 
@@ -78,37 +94,17 @@ Status: official-source comparison, checked 2026-09-10
 
 **Limit:** これはmodel比較であり、Mandiant、Cloudflare、Wordfence、NOVA、Anthropic Harness、Codex Securityの比較ではない。8月版はtarget、revision、prompt、tool、candidate判定を公開せず、既知箇所をagentへ与えたかも不明である。公開dataset、patched negative、secure repoがないため、full-repository navigation、prospective recall、false-positive率は再現できない。
 
-**Inference:** 現行Harnessに直接使える最も強い結果は、単一runをrecall baselineにせず、同一の凍結条件でfresh runを反復し、single-run、union、再現率、Validation rejectionを別々に測ることである。長いturn数、aggressive candidate、model ensembleのどれが因果的に効いたかは示されていない。
+**Inference:** single-run、union、再現率、Validation rejectionは異なる評価量である。この記事はmodel間・run間の差を示すが、長いturn数や特定の構成の因果効果を示していない。
 
-## Comparison-guided priorities
+## Comparison proposals and policy boundaries
 
-| Priority | Concrete next behavior | Why / boundary |
-| --- | --- | --- |
-| P0 | oracleをagentから隔離したWordPress boundary corpusで、同じTarget / Prompt / Runtime / Permissionを当面3 fresh Campaignずつ実行し、single-run recovery、3-run union、3 / 3 consistency、Validation rejection / pending、patched negativeを記録する。 | Aikidoが直接示したrecall改善はfresh-run union。3は初期比較条件であってproduction Campaignの固定round数ではない。 |
-| P0 | source-validated Finding後、外部提出候補へ上げる直前にofficial latest releaseをfresh取得し、同じcausal issueが残るかを別のlatest-source checkで確認する。残存時だけsubmission candidateとし、消失時も元Findingを削除せず`not-present-in-latest`観測をappendする。 | ユーザーの提出条件に対応する。Cloudflare VVSもfresh production contextと[latest mainのsourceを再確認](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#contextual-judgment)してapplicabilityを判定する。WordPressではGit mainではなく、配布対象のofficial latest packageを正本にする。Discovery oracleへは戻さない。 |
-| P0 | short-hop Findingを保持したまま、source-boundなchain gapが残れば同じRootが継続できることをknown-positiveで確認する。RCEへ伸びなくてもSQLi / Stored XSS等は独立成功とする。 | wp2shell / Argusは途中primitiveを長いchainへつなぐ価値を示す。現行`candidate + nextActions + continue`で表現でき、新しいDepth subsystemは不要。 |
-| P1 | wp2shellの全研究要素を持つv2 Promptをknown-positiveとprospective Campaignで評価し、diverse approach、stalled route、adversarial check、root synthesisと追加roundが実際に起きたかを観測する。必要なら評価専用ablationで因果を調べる。 | production Promptから要素を落とす選別には使わない。Approach RegistryはRoot scratch、最大4体はresource ceilingであり、Harness-owned fixed round / roleへしない。 |
-| P1 | Grok / GLM等を同一Campaign内で混ぜず、同じ凍結caseの別Runtime Profile Campaignとして比較し、評価側だけでunionする。 | AikidoとNOVAはrun / model complementarityを示す。現行のno-silent-fallbackとFinding provenanceを保つ。 |
-| P1 | source Findingとは別にfresh runtime reproductionをHuman OSへ接続し、提出判断のassuranceを増やす。 | wp2shell、Anthropic、Cloudflare、Wordfence、NOVAはruntime witnessを重視する。ただしResearch / Independent ValidationでTarget codeを実行せず、source Findingの成立条件にも戻さない。 |
+下表は参考案であり、implementation planや優先順位の正本ではない。採用には[Change gate](../RESEARCH-DESIGN.md#change-gate)と個別Issueを使う。
 
-### Do not import now
+| 参考案 | 根拠と既採用方針との境界 |
+| --- | --- |
+| 正本・派生表示・更新責任を区別してdocと入力の重複を点検する。 | Anthropicのcontext出典一貫性が参考になる。JSONと文章の併存だけで不具合と断定せず、独立した編集点があるかを確認する。 |
+| 評価の記録で、固定条件、確認段階、判断不能の理由を識別できるようにする。 | Aikido / NOVAの限界を踏まえ、model比較とHarness比較、既知positiveとprospective evidenceを混同しない。具体的な評価caseと受入条件はIssueへ置く。 |
+| 提出判断では過去のFindingと最新配布版への適用可能性を分ける。 | Cloudflareの[latest source確認](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#contextual-judgment)が参考になる。WordPressではGit mainとofficial配布packageを同一視しない。再確認結果で元のFindingを削除せず、Researchのoracleへ戻さない。 |
+| 観測できる証拠を増やす時も、source成立・runtime確認・人間の判断を分ける。 | 各資料は検証を重視するが、runtimeをsource Finding成立の必須条件にする根拠にはならない。既採用の責任分担は[Independent Validation](../RESEARCH-DESIGN.md#independent-validation)を参照する。 |
 
-- positive RCE oracle、`/flag`到達の強制と6時間の固定下限を通常Promptへ入れない。CVE / patch / historyはoracleとして使わない。Rootを含む最大4 native agentという同時実行上限と、その他のwp2shell研究要素はPromptへ置く。
-- PRISMの固定class specialist、AVDHのwaterfall / Confidence Filter、Cloudflareのarea × attack-class cell、NOVAのranking / gatekeeperをHarness-owned research decisionへしない。
-- multi-agent voteや支持数でminority candidateを落とさない。Independent Validation一回とcandidateごとのcounterevidenceを維持する。
-- cross-repo scheduler、fleet queue、Feedback prompt rewrite、patch生成、virtual protection、publication gateを診断coreへ入れない。
-- runtime PoC、target build / test、project historyをsource-only Research / Independent Validationへ混ぜない。
-- file、entry-point、cell coverageを`coverage-closed`の代用にしない。
-
-## Current local implementation
-
-| Concern | Current behavior | Evidence |
-| --- | --- | --- |
-| Search space | Agentはimmutable Target全体をreadでき、v2 Promptはwp2shell由来のidea promptsと探索heuristicsを与えるが、担当file、CWE、固定roleまたは固定roundを割り当てない。 | [`wordpress-plugin-research-v2.md`](../../prompts/wordpress-plugin-research-v2.md) · [`gvisor-agent-sandbox.ts`](../../src/research/agent-led/gvisor-agent-sandbox.ts) |
-| Iteration | Reportが具体的next action付き`continue`でもHuman Research Continuation Reviewまで停止し、承認後だけprivate Agent Checkpointからprovider session / scratchを再開する。terminal CandidateもHuman Candidate ReviewでadmitされたものだけをValidationする。 | [`research-campaigns.ts`](../../src/research/agent-led/research-campaigns.ts) · [`human-research-continuation-review.test.ts`](../../tests/research/human-research-continuation-review.test.ts) · [`human-candidate-review.test.ts`](../../tests/research/human-candidate-review.test.ts) |
-| Native agents | Grok Build、Claude Code、Claude Code process上のGLM 5.3、managed read-only source readerを持つCodex Daybreakをprovider固有Adapterで実行し、別profileへsilent fallbackしない。 | [`grok-native-agent-runtime.ts`](../../src/research/agent-led/grok-native-agent-runtime.ts) · [`claude-code-native-agent-runtime.ts`](../../src/research/agent-led/claude-code-native-agent-runtime.ts) · [`codex-native-agent-runtime.ts`](../../src/research/agent-led/codex-native-agent-runtime.ts) |
-| Evidence shell | Target / source tree / Prompt / Runtime / Permission / Budgetをbindし、runsc、non-root、read-only source、credential-free private Checkpointを要求する。 | [`contracts.ts`](../../src/research/agent-led/contracts.ts) · [`gvisor-agent-sandbox.ts`](../../src/research/agent-led/gvisor-agent-sandbox.ts) |
-| Validation | 人間がadmitしたCandidateをResearchとは別scratch / sessionで一度再導出し、外部制約で未決のrunだけをHuman Validation Retryでfreshに再試行する。 | [`independent-validation.test.ts`](../../tests/research/independent-validation.test.ts) |
-| Finding / Coverage | `source-validated`だけがFindingを作り、Coverageとfailureを別々に復元する。 | [`research-campaigns.test.ts`](../../tests/research/research-campaigns.test.ts) |
-
-Claudeのexact imageでは、Root / native subagent双方についてprovider read、Target write、shell、Webの拒否とscratch writeを実測し、public Campaign smokeも完走した。さらに同じprivate Checkpointとsession IDを使う`continue -> resume -> stop`を実processで確認した。Grok Target Proposal Adapterもproduction seamへ接続し、Approved Target BatchからCampaignへのadmissionは`ApprovedTargetCampaigns.conduct`へ接続した。Human OSはFinding-bound Private Recipeのsingle replayとfresh runsc WordPress / MySQL labを持つ。現在の弱点は、Grokのcompleted capability / resume probeがprovider HTTP 402で未完了なこと、GLM Validationのformat補正再実行がsingle-fresh-run policyと未整合なこと、Research FindingからPrivate Recipeへの自動handoffが未接続なことである。構造が小さくなったこと自体は探索性能の証明ではない。
+外部資料のpositive oracle、既知脆弱性情報、固定partition、投票、class別grader、自動retry、sandbox opt-outは個別の前提を持つ。現repoのoracle-free、source-only、single fresh Validation、人間の承認、no-silent-fallbackを置き換える提案ではない。研究手法とresource ceilingの正本は[Research Design](../RESEARCH-DESIGN.md)、実行境界は[repository rules](../../AGENTS.md)にある。

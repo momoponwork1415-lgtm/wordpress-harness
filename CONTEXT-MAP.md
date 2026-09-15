@@ -1,22 +1,24 @@
 # Context Map
 
+**3 contextは、それぞれの記録を所有し、versioned handoff contractで接続する。**
+
 ## Contexts
 
-- [Target Intelligence](docs/domain/target-intelligence/CONTEXT.md) — ecosystemを観測し、Targetを自律選定して人間のBatch承認後にResearchへdispatchする
-- [Research](CONTEXT.md) — 固定Target Snapshotを探索し、source-only Independent Validation、Finding、Coverage、記録を管理する
-- [Human OS](docs/domain/human-os/CONTEXT.md) — FindingのAI / human runtime verification、理解支援、report承認、外部行動を管理する
+| Context / 用語集 | 所有する責務 |
+| --- | --- |
+| [Target Intelligence](docs/domain/target-intelligence/CONTEXT.md) | ecosystem観測、Target Proposal、人間のApproved Target Batch、dispatch |
+| [Research](CONTEXT.md) | 一TargetのCampaign、Research Grant、両Human Review、Independent Validation、Finding、Coverage |
+| [Human OS](docs/domain/human-os/CONTEXT.md) | runtime / human Verification、理解支援、Draft、submission staging、外部行動のauthorization |
 
 ## Relationships
 
-```text
-Target Intelligence -- admitted Campaign Input ----> Research
-Target Intelligence <-- Campaign Coverage Receipt -- Research
-Research            -- Finding ---------------------> Human OS
-Research            <-- Evidence Request ----- Human OS
-```
+| From → To | Handoff | 受け手の責務 |
+| --- | --- | --- |
+| Target Intelligence → Research | admitted Campaign Input | 固定sourceと条件からCampaignを開始する。選定policyは再評価しない |
+| Research → Target Intelligence | Campaign Coverage Receipt | CandidateやFindingの詳細から切り離し、重複防止・resume・follow-upに使う |
+| Research → Human OS | immutable Finding | source claimへfresh verificationの観測を追記する |
+| Human OS → Research | Evidence Request | 具体的なproof gapを新しいResearch workとして扱う |
 
-- **Target Intelligence -> Research**: Target IntelligenceはAIがoracle-freeなTarget Proposalを作り、人間のApproved Target Batchへまとめる。`ApprovedTargetCampaigns.conduct`は実行直前のfreshness、Target Intake、Campaign Policy、WordPress core等のDependency Snapshots、compactなCampaign Threat ContextとProgramme Research Boundaryを検査し、admit済み`CampaignInput`だけをResearchへ渡す。Threat ContextとBoundaryはknown vulnerabilityや固定探索手順を含めず、BoundaryはIndependent Validationへ渡さない。Researchは選定policyを再評価しない。
-- **Research -> Target Intelligence**: ResearchはCampaign lifecycleをcandidate detailsやFindingから切り離した`Campaign Coverage Receipt`として返す。Target IntelligenceはResearch Ledgerを直接読まず、重複防止、resume、follow-upにだけ使う。
-- **Research -> Human OS**: ResearchはIndependent Validationを通過したsource claimをimmutableな`Finding`として渡す。Human OSはResearch storageを直接読まず、Findingと公開Evidence参照だけからfresh AI / human verificationを行い、append-only Verification Recordを作る。raw model transcriptまたはwritable worker stateをcontext間handoffにしない。
-- **Human OS -> Research**: 不足証拠は既存Review PacketまたはResearch Ledgerを書き換えず、具体的なproof gapを`Evidence Request`として新しいResearch workへ要求する。
-- **Ownership**: Target IntelligenceはBatchとdispatch、Researchは一TargetのCampaign、Finding、Coverage、model capacity、Human OSはruntime / human Verification、理解、report、submission stagingを所有する。物理的に同じprocessまたはSQLite databaseを使っても、別contextのtable、event、内部Moduleを直接更新しない。
+物理的に同じprocessやdatabaseを使っても、別contextのstorageや内部Moduleを直接参照・更新しない。raw model transcriptやwritable worker stateをhandoffにしない。
+
+関係を図で見るには[Architecture](docs/ARCHITECTURE.md)、現在のModuleとhandoffの接続状況は[Codebase Guide](docs/CODEBASE-GUIDE.md)、oracle-freeな入力と独立Validationの制約は[Research Design](docs/RESEARCH-DESIGN.md)へ進む。

@@ -1,81 +1,40 @@
-# Target Intelligence Context
+# Target Intelligence — 対象の準備と承認
 
-Target IntelligenceはWordPress ecosystemを観測し、oracle-freeなCandidate PoolからAI Target Proposalを作り、人間のBatch承認後にfresh sourceをResearchへ渡すBounded Contextである。
+WordPressの公開情報を観測し、AIが調査対象を提案する領域。**人間が対象を承認した後、ソースが最新の観測と一致することを確認してResearchへ渡す。**
 
-## Boundary
+## 担当する範囲
 
-Target IntelligenceはResearch仮説、candidate、Finding、runtime verificationまたはsubmissionを所有しない。CVE、known route、patch narrative、known affected file / functionをTarget Intake Packet、Campaign Threat ContextまたはProgramme Research Boundaryへ含めない。
+対象の観測、ソースの取得、候補集合、AIの提案、人間の対象承認、実行直前の確認を担当する。研究上の仮説、検証候補、Finding、実環境での確認、提出は担当しない。
 
-## Ubiquitous language
+## 用語
 
-**Target Observation**
-: plugin identity、version、acquisition、provenance、freshnessを持つ時点付きfact。
+英語名はコードと照合するための正式な名前。説明はこの領域での意味を示す。
 
-**WordPress.org Update Frontier**
-: callerが指定したexclusive SVN cursorからbounded revision windowを観測し、`trunk`のPHP変更をcurrent Target Observationへ結び付けたoracle-freeな選定artifact。exact pathとadded lineはprivate evidenceに留め、frontierは変更file数、added line数とoptionalなnavigation signal familyだけを持つ。signal一致はmembership条件にしない。
+| 用語 | 意味 |
+| --- | --- |
+| **Target Observation** | プラグインの識別情報、版、取得可能性、出所、鮮度を、観測時刻とともに記録した事実。 |
+| **WordPress.org Update Frontier** | 呼び出し側が指定したSVNの開始位置より後の有限範囲から、`trunk`のPHP変更と現在の対象情報を結び付けた記録。後段には変更量と大まかな手がかりだけを渡し、具体的なパスや追加ソースは非公開の証拠に残す。手がかりとの一致を収録条件にしない。 |
+| **Update Candidate Pool Assembly** | 更新の観測、取得方針、鮮度の条件、選定の背景情報を固定し、同じ版のソースを再取得して候補集合を作った記録。利用可能な候補と、欠落・古い観測・取得失敗・不一致を分ける。 |
+| **Programme Observation** | 報奨金制度や脆弱性報告制度の識別情報、参加・対象条件、機会の目安、鮮度を記録した事実。 |
+| **Disclosure Route** | 開発元、委託先、セキュリティ窓口など、観測済みの提出経路。技術的な調査の可否そのものではない。 |
+| **Candidate Pool** | 一回の対象選定に渡す、内容をハッシュで固定した候補集合。ソースの識別情報、選定の材料、制度、提出経路、公開脆弱性の集計、調査履歴を持ち得る。既知の答えは渡さない。 |
+| **Research History Fact** | 同じ版、または以前の版を調査したことがあるかという事実。再調査を一律に拒否する条件ではなく、AIの判断材料。 |
+| **Research History Snapshot** | 調査済みのプラグイン識別情報と版の組だけを保持する非公開記録。旧環境の設計、ソース識別情報、調査・提出結果、脆弱性本文は引き継がない。 |
+| **Selection Run** | 候補集合、指示、実行方式、権限、予算を固定してAIの提案を得る一回の実行。 |
+| **Target Proposal** | AIが選んだ候補ID、理由、不確実性を、入力と実行結果に結び付けて保存した提案。全候補の順位表ではない。 |
+| **Approved Target Batch** | 提案から人間が承認した対象範囲、順序、予算、実行可能な期間。 |
+| **Dispatch Admission** | 承認内容と現在の観測を照合し、実行直前の識別情報、版、ファイル一覧のハッシュ、鮮度を確認する判断。 |
+| **Target Intake Packet** | 実行前の確認に使う版付きソース情報。対象の識別情報、ファイル一覧、出所を持ち、既知脆弱性や探索手順は含めない。 |
+| **Campaign Threat Context** | 提案時に把握した通常構成、攻撃者の立場、守る性質、信頼の境界、重要な状態変化、依存関係、不確実性をまとめた判断材料。読む順序、役割、停止条件を命令しない。 |
+| **Programme Research Boundary** | 公式資料に基づく対象範囲、優先する影響、除外条件、不確実性、その扱いを固定した記録。参加者の資格や導入数などの対象選定条件は含めず、独立検証へも渡さない。 |
+| **Approved Target Campaign Request** | 一件の承認済み対象について、現在の観測、取得情報、調査方針、依存ソース、背景情報、制度の対象範囲を結び付け、実行前の確認と調査開始を求める入力。 |
+| **Campaign Coverage Receipt** | Researchから戻る対象単位の進行状況。Findingの内容と分けて、終了、未完了、再開条件を伝える。 |
 
-**Update Candidate Pool Assembly**
-: Update Frontier、Target Intake Policy、freshness policyとcaller-supplied Selection Contextをbindし、各leadの同一version sourceを再取得してCandidate Poolへ変換したprivate record。source-readyなCandidateと、欠損、stale、acquisition failureまたはbinding mismatchのunresolved gapを分離する。
+## 守るべき区別
 
-**Programme Observation**
-: bounty / VDP programmeのidentity、eligibility、opportunity band、freshnessを持つfact。
+- 対象を選ぶための事実と、既知脆弱性の答えを分ける。CVE、既知の経路、修正差分、影響を受けるファイルや関数をResearchの入力にしない。
+- 取得不能や履歴不明を、利用可能・未探索として扱わない。
+- AIの提案と、人間による対象承認を分ける。
+- 制度の対象条件と、技術的な脆弱性の検証を分ける。
 
-**Disclosure Route**
-: first-party、delegated、security contact等の観測済み提出経路。技術的Researchの可否そのものではない。
-
-**Candidate Pool**
-: 一つのSelection Runへ渡すoracle-free Target Candidateのdigest-bound集合。Candidateはsource identity、selection facts、Programme、Disclosure Route、公開脆弱性のaggregate、Research History Factを持ち得る。
-
-**Research History Fact**
-: same versionまたはprior versionの既探索有無を示す入力fact。再投入を決定的に拒否せず、AIの判断材料にする。
-
-**Research History Snapshot**
-: same versionとprior versionを区別するため、既探索のplugin identityとversionの組だけを保持するdigest-boundなprivate artifact。legacy importerは元workspaceのsource identity、旧設計、探索結果、提出結果または脆弱性本文を再利用しない。
-
-**Selection Run**
-: Candidate Pool、guidance、Agent Runtime、Permission、BudgetをsealしてAI proposalを得る一回のversioned run。
-
-**Target Proposal**
-: AIが選んだCandidate ID、理由、不確実性とinput / receipt bindingを持つdurable artifact。全候補rankingではない。
-
-**Approved Target Batch**
-: 人間がProposalから選んだResearch対象範囲、順序、Budget、execution window。
-
-**Dispatch Admission**
-: Batchと現在のTarget Observationを照合し、実行直前のidentity、version、manifest digest、freshnessが一致するかを返す判断。
-
-**Target Intake Packet**
-: Approved Target Campaignのadmissionに使うversioned source artifact。Target identity、source manifest、provenanceを持ち、known vulnerabilityや探索手順を含めない。
-
-**Campaign Threat Context**
-: Target ProposalからResearch価値に関係するordinary configuration、attacker position、security objective、trust boundary、high-value transition、Dependency roleと不確実性だけを抽出したversioned planning artifact。Rootへfocusとmotivationを渡すが、既知脆弱性、固定route、脆弱性class、読む順序、agent roleまたは停止quotaを命令しない。
-
-**Programme Research Boundary**
-: 公式Programme source、eligible attacker position、priority impact、短い除外category、excluded asset、scope uncertaintyとhandlingをexact bodyへdigest-bindしたversioned artifact。Research effortとCandidate preservationを制約するが、researcher tier、install threshold等のTarget eligibility、脆弱性仮説または既知脆弱性oracleを与えず、Independent Validationへは渡さない。
-
-**Approved Target Campaign Request**
-: Approved Target Batchの一Target、fresh Target Observation、Target Intake Packet、Campaign Policy、Dependency Snapshots、Campaign Threat Context、Programme Research Boundaryをbindし、一Campaignのadmissionと開始を要求するversioned command。
-
-**Campaign Coverage Receipt**
-: Researchから戻るTarget-level lifecycle handoff。Finding内容とは別に、closed、incomplete、resume条件をTarget Intelligenceへ伝える。
-
-## Invariants
-
-- Candidate PoolとProposalのinputをdigest bindする。
-- WordPress.org Update Frontierはrevision cursor、明示policy、official SVN log / diff evidenceとcurrent Target Observationをdigest bindする。source failure、timeout、quota超過、malformed outputを空の成功artifactへ丸めない。
-- `trunk`のPHP変更はactive-install policyを満たす限りnavigation signalの有無にかかわらずUpdate Frontierへ残す。exact added lineとpathをTarget ProposalまたはResearchへ渡さない。
-- Update Candidate Pool AssemblyはfrontierへbindしたPlugin Identity、version、observation ref、Target Intake Policy、Canonical File Manifestとfreshnessを検査する。source-readyでないleadをCandidateへ補完せず、frontier外のSelection Contextを受理しない。
-- Candidateへ渡すupdate activityはfrontier ref、revision範囲、changeset数、PHP変更file occurrence数、added line数とnavigation signal familyに限定する。private evidence ref、path、added source、既知advisory、patch、PoCまたはaffected functionを渡さない。
-- AIはpool外またはhard gate不合格のTargetをProposalへ入れられない。
-- fixed rank、Research Value Band、reason code、diversity facetをAI判断の代用にしない。
-- Research History Snapshotへsource identity、source receipt、Campaign coverage、Finding、Case status、submission、outcome、CVE、脆弱性class、claim、route、affected file / function、PoC、patchまたはreport本文を保存せず、Researchへ渡さない。履歴取得不能を未探索へ丸めない。
-- 人間のApproved Target BatchなしにResearchへdispatchしない。
-- dispatch直前にsourceとversionのfreshnessを再確認する。
-- exactly oneのWordPress coreを含むDependency source closureとCampaign Threat Contextの全roleを一致させる。
-- Campaign Threat Contextからoff-model Findingを禁止しない。
-- Programme Research Boundaryのsource refとexact body digestを検証し、Campaign input、sealed Research run、Checkpointを同じdigestへbindする。
-- sourceで最大効果まで明確にProgramme対象外と示された経路だけをparkし、eligible impactへの具体的なsource-bound escalationが残る経路は継続する。scopeが実質的に曖昧なCandidateは人間とのchallenge用に保存する。
-- Target-levelのProgramme対象外、Disclosure Route不明、既探索だけを汎用的な技術Researchの決定的拒否条件にしない。Programme指定CampaignではProgramme Research BoundaryがResearch effortを制約する。
-- Target package script、autoload、WordPress bootstrapをhost上で実行しない。
-
-現在の実装と未接続箇所は[Codebase Guide](../../CODEBASE-GUIDE.md)、Context間の関係は[Context Map](../../../CONTEXT-MAP.md)を参照する。
+選定・受け渡しの設計原則は[Research Design](../../RESEARCH-DESIGN.md#target-selection)、現在のModuleと回帰テストは[Codebase Guide](../../CODEBASE-GUIDE.md)、領域間の関係は[Context Map](../../../CONTEXT-MAP.md)を参照する。

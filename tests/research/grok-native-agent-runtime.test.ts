@@ -156,7 +156,7 @@ for argument in "$@"; do
   [ "$argument" != "--env=GROK_MAX_CONCURRENT_SUBAGENTS=3" ] || has_subagent_concurrency_limit=1
   [ "$argument" != "--env=GROK_SUBAGENTS_MAX_DEPTH=1" ] || has_subagent_depth_limit=1
   [ "$argument" != "--env=GROK_SUBAGENT_LIMIT_BEHAVIOR=fail" ] || has_subagent_fail_limit=1
-  [ "$argument" != "read_file,grep,list_dir,task" ] || has_read_only_tools=1
+  [ "$argument" != "GrokBuild:read_file,GrokBuild:grep,GrokBuild:list_dir,GrokBuild:task,GrokBuild:get_task_output,GrokBuild:kill_task" ] || has_read_only_tools=1
   [ "$argument" != "Read(/provider/**)" ] || denies_provider_read=1
   [ "$argument" != "Grep(/provider/**)" ] || denies_provider_grep=1
   [ "$argument" != "--json-schema" ] || exit 110
