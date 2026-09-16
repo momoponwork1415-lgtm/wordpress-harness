@@ -65,38 +65,6 @@ export const programmeEligibilitySchema = z.strictObject({
   directoryEligibilityRules: z.array(directoryEligibilityRuleSchema).optional(),
 });
 
-const programmeRewardRouteTermSchema = z.strictObject({
-  key: policyTermSchema,
-  value: z.union([z.string().min(1).max(512), z.number(), z.boolean()]),
-});
-
-export const programmeRewardRouteSchema = z.strictObject({
-  id: policyTermSchema,
-  kind: policyTermSchema,
-  currency: z.string().regex(/^[A-Z]{3}$/),
-  factors: z.array(policyTermSchema).min(1),
-  terms: z.array(programmeRewardRouteTermSchema),
-});
-
-const programmeAggregateCountSchema = z.strictObject({
-  key: policyTermSchema,
-  count: z.number().int().nonnegative(),
-});
-
-export const programmeMonthlyAggregateSchema = z.strictObject({
-  period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
-  cweCategories: z.array(programmeAggregateCountSchema),
-  authenticationLevels: z.array(programmeAggregateCountSchema),
-  activeInstallBands: z.array(programmeAggregateCountSchema),
-  submissionDispositions: z.array(programmeAggregateCountSchema),
-  reward: z.strictObject({
-    currency: z.string().regex(/^[A-Z]{3}$/),
-    total: z.number().nonnegative(),
-    average: z.number().nonnegative(),
-    highest: z.number().nonnegative(),
-  }),
-});
-
 export const normalizedProgrammePolicySchema = z.strictObject({
   programmeIdentity: programmeIdentitySchema,
   eligibility: programmeEligibilitySchema,
@@ -105,13 +73,6 @@ export const normalizedProgrammePolicySchema = z.strictObject({
     "high-impact-only",
     "research-only",
   ]),
-  rewardEstimateInput: z.strictObject({
-    kind: z.literal("finding-only-reward-estimate-input"),
-    currency: z.string().regex(/^[A-Z]{3}$/),
-    factors: z.array(policyTermSchema).min(1),
-    routes: z.array(programmeRewardRouteSchema).optional(),
-  }),
-  monthlyAggregates: z.array(programmeMonthlyAggregateSchema).optional(),
 });
 
 export const programmePolicyConflictSignalSchema = z.strictObject({
@@ -135,7 +96,7 @@ export const programmePolicySourceDescriptorSchema = z.strictObject({
 
 export const programmeEligibilitySnapshotSchema = z.strictObject({
   kind: z.literal("programme-eligibility-snapshot"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   programmeIdentity: programmeIdentitySchema,
   retrievedAt: z.string().datetime({ offset: true }),
   sources: z.array(programmePolicySourceSnapshotSchema).min(1),

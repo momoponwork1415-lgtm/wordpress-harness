@@ -3,8 +3,8 @@ import { join } from "node:path";
 
 import { canonicalDigest } from "../../infrastructure/canonical-json.js";
 import { canonicalJson } from "../acquisition/canonical-json.js";
+import { isCurrentTargetCandidate } from "../candidate-pool/candidate-pools.js";
 import {
-  targetCandidatePoolSchema,
   targetProposalRefSchema,
   targetProposalRunReceiptSchema,
   targetProposalSchema,
@@ -12,11 +12,11 @@ import {
   targetSelectionRunSchema,
   type OpenTargetProposalsOptions,
   type SealedTargetSelectionRun,
-  type TargetCandidate,
-  type TargetCandidatePool,
   type TargetProposal,
   type TargetProposalOutcomeRef,
   type TargetProposalQuery,
+  type TargetProposalRef,
+  type TargetProposalResolution,
   type TargetProposalRunReceipt,
   type TargetProposals,
   type TargetProposalView,
@@ -31,22 +31,6 @@ function hasErrorCode(error: unknown, code: string): boolean {
     "code" in error &&
     error.code === code
   );
-}
-
-export function defineTargetCandidatePool(input: {
-  readonly id: string;
-  readonly candidates: readonly TargetCandidate[];
-}): TargetCandidatePool {
-  const body = {
-    kind: "target-candidate-pool" as const,
-    schemaVersion: 1 as const,
-    id: input.id,
-    candidates: input.candidates,
-  };
-  return targetCandidatePoolSchema.parse({
-    ...body,
-    digest: canonicalDigest(body),
-  });
 }
 
 type FailedReceipt = Extract<
@@ -84,18 +68,6 @@ function failedReceipt(
   };
 }
 
-function candidatePassesHardGate(
-  candidate: TargetCandidate,
-  now: Date,
-): boolean {
-  return (
-    candidate.targetObservation.acquisition === "available" &&
-    candidate.targetObservation.provenance === "verified" &&
-    candidate.targetObservation.identity === "verified" &&
-    Date.parse(candidate.targetObservation.currentUntil) >= now.getTime()
-  );
-}
-
 function proposalRef(proposal: TargetProposal) {
   return targetProposalRefSchema.parse({
     kind: "target-proposal-ref",
@@ -105,6 +77,62 @@ function proposalRef(proposal: TargetProposal) {
     selectionKey: proposal.selectionKey,
     revision: proposal.revision,
   });
+}
+
+export function resolveTargetProposal(
+  view: TargetProposalView | undefined,
+  reference: TargetProposalRef,
+): TargetProposalResolution {
+  if (view?.status !== "proposed" || view.proposal === undefined) {
+    return { status: "unavailable" };
+  }
+  const parsedProposal = targetProposalSchema.safeParse(view.proposal);
+  const parsedRun = targetSelectionRunSchema.safeParse(view.run);
+  if (
+    !parsedProposal.success ||
+    !parsedRun.success ||
+    parsedRun.data.status !== "proposed"
+  ) {
+    return { status: "conflict" };
+  }
+  const proposal = parsedProposal.data;
+  const run = parsedRun.data;
+  const { id: _id, digest: _digest, ...body } = proposal;
+  if (
+    proposal.id !== reference.id ||
+    proposal.digest !== reference.digest ||
+    proposal.digest !== canonicalDigest(body) ||
+    run.inputDigest !== canonicalDigest(run.input) ||
+    run.proposal.id !== proposal.id ||
+    run.proposal.digest !== proposal.digest ||
+    proposal.inputDigest !== run.inputDigest ||
+    proposal.selectionKey !== run.input.selectionKey ||
+    proposal.revision !== run.input.revision ||
+    proposal.candidatePool.id !== run.input.candidatePool.id ||
+    proposal.candidatePool.digest !== run.input.candidatePool.digest
+  ) {
+    return { status: "conflict" };
+  }
+  const candidates = new Map(
+    run.input.candidatePool.candidates.map((candidate) => [
+      candidate.candidateId,
+      candidate,
+    ]),
+  );
+  for (const proposed of proposal.targets) {
+    const candidate = candidates.get(proposed.candidateId);
+    if (
+      candidate === undefined ||
+      canonicalJson(candidate) !== canonicalJson(proposed.candidate)
+    ) {
+      return { status: "conflict" };
+    }
+  }
+  return {
+    status: "resolved",
+    proposal,
+    candidatePool: run.input.candidatePool,
+  };
 }
 
 function outcome(run: TargetSelectionRun): TargetProposalOutcomeRef {
@@ -245,7 +273,8 @@ class FileTargetProposals implements TargetProposals {
       if (
         selectedCandidates.some(
           (candidate) =>
-            candidate === undefined || !candidatePassesHardGate(candidate, now),
+            candidate === undefined ||
+            !isCurrentTargetCandidate(candidate, now.getTime()),
         )
       ) {
         receipt = failedReceipt(

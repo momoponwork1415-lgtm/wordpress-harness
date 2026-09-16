@@ -4,13 +4,18 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import {
   defineTargetCandidatePool,
-  openTargetProposals,
-  type SealedTargetSelectionRun,
   type TargetCandidate,
+} from "../../src/target-intelligence/candidate-pool/index.js";
+import {
+  openTargetProposals,
+  resolveTargetProposal,
+  type SealedTargetSelectionRun,
   type TargetProposalAgent,
   type TargetProposalRunReceipt,
+  type TargetProposalView,
   type TargetSelectionRunInput,
 } from "../../src/target-intelligence/target-proposal/index.js";
 import {
@@ -238,6 +243,126 @@ describe("TargetProposals", () => {
 
     await proposals.propose(request);
     expect(executions).toBe(1);
+  });
+
+  it("resolves a bound proposal with its full original candidate pool", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "proposal-binding-"));
+    temporaryDirectories.push(directory);
+    const selected = candidate("candidate-selected", "wporg:selected");
+    const unselected = candidate("candidate-unselected", "wporg:unselected");
+    const request = input([selected, unselected]);
+    const proposals = openTargetProposals({
+      storageDirectory: directory,
+      agent: {
+        execute: async (run) => completedReceipt(run, selected.candidateId),
+      },
+      clock: () => new Date("2026-09-07T03:02:00.000Z"),
+    });
+    const outcome = await proposals.propose(request);
+    if (outcome.proposalRef === undefined)
+      throw new Error("Expected a proposal");
+    const view = await proposals.inspect(request);
+
+    expect(resolveTargetProposal(view, outcome.proposalRef)).toEqual({
+      status: "resolved",
+      proposal: view.proposal,
+      candidatePool: request.candidatePool,
+    });
+    expect(resolveTargetProposal(undefined, outcome.proposalRef)).toEqual({
+      status: "unavailable",
+    });
+    expect(
+      resolveTargetProposal(
+        { ...view, status: "selection-pending" },
+        outcome.proposalRef,
+      ),
+    ).toEqual({ status: "unavailable" });
+    expect(
+      resolveTargetProposal(view, {
+        ...outcome.proposalRef,
+        id: "different-proposal",
+      }),
+    ).toEqual({ status: "conflict" });
+  });
+
+  it("rejects changed proposal records even when the candidate copy is rehashed", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "proposal-record-conflict-"),
+    );
+    temporaryDirectories.push(directory);
+    const selected = candidate("candidate-record", "wporg:record");
+    const request = input([selected]);
+    const proposals = openTargetProposals({
+      storageDirectory: directory,
+      agent: {
+        execute: async (run) => completedReceipt(run, selected.candidateId),
+      },
+      clock: () => new Date("2026-09-07T03:02:00.000Z"),
+    });
+    const outcome = await proposals.propose(request);
+    const view = await proposals.inspect(request);
+    if (
+      outcome.proposalRef === undefined ||
+      view.proposal === undefined ||
+      view.run.status !== "proposed"
+    ) {
+      throw new Error("Expected a completed proposal record");
+    }
+    const changes: readonly TargetProposalView[] = [
+      {
+        ...view,
+        proposal: {
+          ...view.proposal,
+          basis: "changed without updating its digest",
+        },
+      },
+      {
+        ...view,
+        run: { ...view.run, input: { ...view.run.input, revision: 2 } },
+      },
+      {
+        ...view,
+        run: {
+          ...view.run,
+          proposal: { ...view.run.proposal, id: "different-proposal" },
+        },
+      },
+    ];
+    for (const changed of changes) {
+      expect(resolveTargetProposal(changed, outcome.proposalRef)).toEqual({
+        status: "conflict",
+      });
+    }
+
+    const { id, digest: _digest, ...body } = view.proposal;
+    const changedBody = {
+      ...body,
+      targets: body.targets.map((target) => ({
+        ...target,
+        candidate: {
+          ...target.candidate,
+          selectionFacts: {
+            ...target.candidate.selectionFacts,
+            activeInstallCount: 1,
+          },
+        },
+      })),
+    };
+    const changedProposal = {
+      ...changedBody,
+      id,
+      digest: canonicalDigest(changedBody),
+    };
+    expect(
+      resolveTargetProposal(
+        {
+          ...view,
+          proposal: changedProposal,
+          run: { ...view.run, proposal: changedProposal },
+        },
+        { ...outcome.proposalRef, digest: changedProposal.digest },
+      ),
+    ).toEqual({ status: "conflict" });
   });
 
   it("requires a human decision before a Target Proposal becomes an Approved Target Batch", async () => {

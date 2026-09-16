@@ -9,7 +9,6 @@ export {
   programmePolicyConflictSignalSchema,
   programmePolicySourceDescriptorSchema,
   programmePolicySourceSnapshotSchema,
-  programmeRewardRouteSchema,
 } from "./contracts.js";
 export type {
   CurrentProgrammeEligibilitySnapshot,

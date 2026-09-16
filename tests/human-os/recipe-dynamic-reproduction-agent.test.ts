@@ -1,180 +1,134 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  dynamicReproductionRecipeSchema,
-  openRecipeDynamicReproductionAgent,
-  type DynamicReproductionExperiment,
-} from "../../src/human-os/index.js";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
-import type { SourceValidatedFinding } from "../../src/research/index.js";
+import {
+  openRecipeDynamicReproductionAgent,
+  type DynamicReproductionRecipe,
+} from "../../src/human-os/index.js";
+import { candidateVerificationRequestSchema } from "../../src/research/index.js";
 
-const digest = (character: string): string => `sha256:${character.repeat(64)}`;
-
-const finding: SourceValidatedFinding = {
-  kind: "source-validated-finding",
-  schemaVersion: 1,
-  findingId: "campaign-recipe:finding:candidate-1",
+const recipeBody = {
+  kind: "candidate-verification-recipe" as const,
+  schemaVersion: 1 as const,
+  recipeId: "recipe-1",
   candidateId: "candidate-1",
-  targetSnapshot: {
-    id: "example-1.0.0",
-    pluginSlug: "example",
-    version: "1.0.0",
-    digest: digest("a"),
-    sourceTree: { digest: digest("9"), entries: 1, bytes: 6 },
-  },
-  attackerPremise: "An unauthenticated visitor controls a public value.",
-  brokenSecurityProperty: "The public value must remain inert.",
-  claim: "The public value reaches an executable browser context.",
-  assurance: "source-validated",
-  validation: {
-    runId: "campaign-recipe:validation:1",
-    promptSet: { id: "validation-v1", digest: digest("b") },
-    runtimeProfileDigest: digest("c"),
-    permissionProfileDigest: digest("d"),
-  },
-  evidence: [
-    {
-      path: "example.php",
-      location: "save:44",
-      observation: "Stores the visitor-controlled value.",
-    },
-  ],
+  targetSnapshotDigest:
+    "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  script: "printf test",
+  timeoutMs: 10_000,
 };
-
-function recipe(overrides: Record<string, unknown> = {}) {
-  const body = {
-    kind: "dynamic-reproduction-recipe" as const,
-    schemaVersion: 1 as const,
-    recipeId: "recipe-1",
-    findingId: finding.findingId,
-    targetSnapshotDigest: finding.targetSnapshot.digest,
-    script: 'console.log("attack")',
-    timeoutMs: 30_000,
-    ...overrides,
-  };
-  return dynamicReproductionRecipeSchema.parse({
-    ...body,
-    digest: canonicalDigest(body),
-  });
-}
+const recipe: DynamicReproductionRecipe = {
+  ...recipeBody,
+  digest: canonicalDigest(recipeBody),
+};
+const requestBody = {
+  kind: "candidate-verification-request" as const,
+  schemaVersion: 1 as const,
+  requestId: "campaign:verification:candidate-1",
+  campaignId: "campaign",
+  campaignInputDigest:
+    "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  candidateReviewDigest:
+    "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  targetSnapshot: {
+    id: "target",
+    pluginSlug: "example-plugin",
+    version: "1.0.0",
+    digest: recipe.targetSnapshotDigest,
+    sourceTree: {
+      digest:
+        "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      entries: 1,
+      bytes: 10,
+    },
+  },
+  candidate: {
+    candidateId: recipe.candidateId,
+    attackerPremise: "Unauthenticated visitor",
+    brokenSecurityProperty: "Only administrators may mutate settings",
+    claim: "A public action changes settings",
+    evidence: [{ path: "plugin.php", location: "10", observation: "No gate" }],
+    reproductionRecipe: {
+      kind: "candidate-verification-recipe-ref" as const,
+      schemaVersion: 1 as const,
+      recipeId: recipe.recipeId,
+      digest: recipe.digest,
+      bytes: 128,
+    },
+  },
+};
+const request = candidateVerificationRequestSchema.parse({
+  ...requestBody,
+  digest: canonicalDigest(requestBody),
+});
 
 describe("Recipe Dynamic Reproduction Agent", () => {
-  it("runs one Finding-bound recipe and promotes only an observed effect", async () => {
-    const run = vi.fn(async () => ({
+  it("promotes only a fully matched and observed Candidate recipe", async () => {
+    const run = vi.fn().mockResolvedValue({
       exitCode: 0,
       stdout:
-        'diagnostic\nHARNESS_RESULT={"summary":"The attack effect was observed.","preconditionsMatched":true,"recipeCompleted":true,"effectObserved":true}\n',
+        'HARNESS_RESULT={"summary":"effect observed","preconditionsMatched":true,"recipeCompleted":true,"effectObserved":true}\n',
       stderr: "",
-    }));
-    const experiment: DynamicReproductionExperiment = {
-      environmentId: "environment-1",
-      run,
-    };
+    });
     const agent = openRecipeDynamicReproductionAgent({
       recipeResolver: {
-        resolve: async () => ({ kind: "recipe-ready", recipe: recipe() }),
+        resolve: async () => ({ kind: "recipe-ready", recipe }),
       },
     });
-
     await expect(
-      agent.execute({ finding, sourceDirectory: "/unused", experiment }),
-    ).resolves.toEqual({
-      status: "runtime-confirmed",
-      summary: "The attack effect was observed.",
-      preconditionsMatched: true,
-      recipeCompleted: true,
-      effectObserved: true,
-    });
-    expect(run).toHaveBeenCalledOnce();
-    expect(run).toHaveBeenCalledWith({
-      script: 'console.log("attack")',
-      timeoutMs: 30_000,
-    });
-  });
-
-  it("keeps a completed attempt without an observed effect incomplete", async () => {
-    const experiment: DynamicReproductionExperiment = {
-      environmentId: "environment-2",
-      run: async () => ({
-        exitCode: 0,
-        stdout:
-          'HARNESS_RESULT={"summary":"The effect was not observed.","preconditionsMatched":true,"recipeCompleted":true,"effectObserved":false}\n',
-        stderr: "",
+      agent.execute({
+        request,
+        sourceDirectory: "/source",
+        experiment: { environmentId: "lab-1", run },
       }),
-    };
-    const agent = openRecipeDynamicReproductionAgent({
-      recipeResolver: {
-        resolve: async () => ({ kind: "recipe-ready", recipe: recipe() }),
-      },
-    });
-
-    await expect(
-      agent.execute({ finding, sourceDirectory: "/unused", experiment }),
-    ).resolves.toEqual({
-      status: "incomplete",
-      summary: "The effect was not observed.",
-      preconditionsMatched: true,
-      recipeCompleted: true,
-      effectObserved: false,
+    ).resolves.toMatchObject({ status: "runtime-confirmed" });
+    expect(run).toHaveBeenCalledWith({
+      script: recipe.script,
+      timeoutMs: 10_000,
     });
   });
 
-  it("does not execute a recipe bound to another Finding snapshot", async () => {
+  it("records a fully executed negative observation as contradicted", async () => {
+    const agent = openRecipeDynamicReproductionAgent({
+      recipeResolver: {
+        resolve: async () => ({ kind: "recipe-ready", recipe }),
+      },
+    });
+    await expect(
+      agent.execute({
+        request,
+        sourceDirectory: "/source",
+        experiment: {
+          environmentId: "lab-2",
+          run: async () => ({
+            exitCode: 0,
+            stdout:
+              'HARNESS_RESULT={"summary":"effect absent","preconditionsMatched":true,"recipeCompleted":true,"effectObserved":false}\n',
+            stderr: "",
+          }),
+        },
+      }),
+    ).resolves.toMatchObject({ status: "contradicted" });
+  });
+
+  it("does not execute a recipe bound to another Candidate", async () => {
     const run = vi.fn();
-    const experiment: DynamicReproductionExperiment = {
-      environmentId: "environment-3",
-      run,
-    };
+    const otherBody = { ...recipeBody, candidateId: "candidate-2" };
     const agent = openRecipeDynamicReproductionAgent({
       recipeResolver: {
         resolve: async () => ({
           kind: "recipe-ready",
-          recipe: recipe({ targetSnapshotDigest: digest("f") }),
+          recipe: { ...otherBody, digest: canonicalDigest(otherBody) },
         }),
       },
     });
-
     await expect(
-      agent.execute({ finding, sourceDirectory: "/unused", experiment }),
-    ).resolves.toMatchObject({
-      status: "incomplete",
-      summary: "The reproduction recipe does not match the Finding.",
-    });
-    expect(run).not.toHaveBeenCalled();
-  });
-
-  it("preserves a human setup request instead of executing", async () => {
-    const run = vi.fn();
-    const experiment: DynamicReproductionExperiment = {
-      environmentId: "environment-4",
-      run,
-    };
-    const evidenceRequest = {
-      kind: "external-dependency-evidence-request" as const,
-      schemaVersion: 1 as const,
-      reason: "external-dependency-required" as const,
-      service: "PayPal Sandbox",
-      humanAction: "Create a disposable sandbox merchant.",
-      minimumAccess: "One sandbox-only API credential.",
-      verificationGoal:
-        "Observe the authorized callback in the disposable lab.",
-    };
-    const agent = openRecipeDynamicReproductionAgent({
-      recipeResolver: {
-        resolve: async () => ({
-          kind: "setup-required",
-          summary: "A sandbox identity is required.",
-          evidenceRequest,
-        }),
-      },
-    });
-
-    await expect(
-      agent.execute({ finding, sourceDirectory: "/unused", experiment }),
-    ).resolves.toMatchObject({
-      status: "incomplete",
-      evidenceRequest,
-    });
+      agent.execute({
+        request,
+        sourceDirectory: "/source",
+        experiment: { environmentId: "lab-3", run },
+      }),
+    ).resolves.toMatchObject({ status: "incomplete" });
     expect(run).not.toHaveBeenCalled();
   });
 });

@@ -6,7 +6,6 @@ const identifierSchema = z
   .min(1)
   .max(160)
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
-const slugSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/);
 const pluginIdentitySchema = z
   .string()
   .regex(
@@ -38,21 +37,6 @@ export const targetResearchHistorySnapshotRefSchema = z.strictObject({
   historyEntries: z.number().int().nonnegative(),
 });
 
-export const buildLegacyResearchHistoryRequestSchema = z.strictObject({
-  kind: z.literal("build-legacy-research-history"),
-  schemaVersion: z.literal(1),
-  snapshotId: identifierSchema,
-  sources: z.strictObject({
-    whitebox: z.strictObject({
-      auditLedgerPath: z.string().min(1),
-    }),
-    wordfence: z.strictObject({
-      wp2shellLabsRoot: z.string().min(1),
-    }),
-  }),
-  identityOverrides: z.record(slugSchema, pluginIdentitySchema).optional(),
-});
-
 export const targetResearchHistoryQuerySchema = z.strictObject({
   snapshotId: identifierSchema,
   pluginIdentity: pluginIdentitySchema,
@@ -74,9 +58,6 @@ export const targetResearchHistoryViewSchema = z.strictObject({
 });
 
 export interface TargetResearchHistories {
-  buildFromLegacyData(
-    request: BuildLegacyResearchHistoryRequest,
-  ): Promise<TargetResearchHistorySnapshotRef>;
   inspect(
     query: TargetResearchHistoryQuery,
   ): Promise<TargetResearchHistoryView>;
@@ -84,12 +65,8 @@ export interface TargetResearchHistories {
 
 export interface OpenTargetResearchHistoriesOptions {
   readonly storageDirectory: string;
-  readonly clock?: () => Date;
 }
 
-export type BuildLegacyResearchHistoryRequest = z.infer<
-  typeof buildLegacyResearchHistoryRequestSchema
->;
 export type TargetResearchHistoryQuery = z.infer<
   typeof targetResearchHistoryQuerySchema
 >;

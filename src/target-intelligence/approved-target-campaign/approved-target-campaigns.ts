@@ -5,11 +5,11 @@ import {
   type CampaignInput,
 } from "../../research/index.js";
 import { canonicalJson } from "../acquisition/canonical-json.js";
-import { admitTargetDispatch } from "../approved-target-batch/approved-target-batches.js";
 import {
-  approvedTargetBatchRefSchema,
+  admitTargetDispatch,
+  approvedTargetBatchReference,
   type ApprovedTargetBatch,
-} from "../approved-target-batch/contracts.js";
+} from "../approved-target-batch/index.js";
 import {
   approvedTargetCampaignRequestSchema,
   type ApprovedTargetCampaignRequest,
@@ -27,17 +27,6 @@ export class ApprovedTargetCampaignError extends Error {
     super(`Approved Target Campaign ${code}`);
     this.name = "ApprovedTargetCampaignError";
   }
-}
-
-function batchRef(batch: ApprovedTargetBatch) {
-  return approvedTargetBatchRefSchema.parse({
-    kind: "approved-target-batch-ref",
-    schemaVersion: 3,
-    id: batch.id,
-    digest: batch.digest,
-    batchKey: batch.batchKey,
-    revision: batch.revision,
-  });
 }
 
 function expectedPluginSlug(pluginIdentity: string): string {
@@ -126,7 +115,7 @@ export function admitApprovedTargetCampaign(
   admitTargetDispatch(batch, {
     kind: "target-dispatch-admission-request",
     schemaVersion: 1,
-    batchRef: batchRef(batch),
+    batchRef: approvedTargetBatchReference(batch),
     candidateId: request.candidateId,
     target: approved.candidate.target,
     targetObservation: request.targetObservation,
@@ -156,7 +145,6 @@ export function admitApprovedTargetCampaign(
     threatContext: request.threatContext,
     programmeBoundary: request.programmeBoundary,
     promptSet: policy.promptSet,
-    validationPromptSet: policy.validationPromptSet,
     agentRuntimeProfile: policy.agentRuntimeProfile,
     permissionProfile: policy.permissionProfile,
     budgetEnvelope: policy.budgetEnvelope,

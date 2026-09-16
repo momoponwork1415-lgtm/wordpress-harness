@@ -36,38 +36,20 @@ const sources = [
     sourceUrl: "https://www.wordfence.com/threat-intel/vulnerabilities/submit/",
     fixture: "report-form.json",
   },
-  {
-    sourceKind: "payout",
-    sourceUrl:
-      "https://www.wordfence.com/threat-intel/bug-bounty-program/#payout-schedule",
-    fixture: "payout.json",
-  },
-  {
-    sourceKind: "promotion",
-    sourceUrl:
-      "https://www.wordfence.com/threat-intel/bug-bounty-program/promotions/july-2030/",
-    fixture: "promotion.json",
-  },
-  {
-    sourceKind: "monthly-report",
-    sourceUrl:
-      "https://www.wordfence.com/blog/2030/08/wordfence-bug-bounty-program-monthly-report-july-2030/",
-    fixture: "monthly-report.json",
-  },
 ] as const;
 
 function fixturePageAdapters(): readonly WordfenceProgrammePageAdapter[] {
   return sources.map((source) => ({
     sourceKind: source.sourceKind,
     sourceUrl: source.sourceUrl,
-    parserVersion: `wordfence-${source.sourceKind}-v1`,
+    parserVersion: `wordfence-${source.sourceKind}-v2`,
     retrieve: () => readFile(join(fixtureDirectory, source.fixture)),
     parse: (bytes) => JSON.parse(Buffer.from(bytes).toString("utf8")),
   }));
 }
 
 describe("Wordfence Programme Adapter", () => {
-  it("normalizes current scope, Finding-only payout input, and only monthly aggregates", async () => {
+  it("normalizes current scope using only programme, terms, and report form", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordfence-programme-"));
     try {
       const intelligence = openProgrammeIntelligence({
@@ -97,13 +79,14 @@ describe("Wordfence Programme Adapter", () => {
       expect(refreshed).toMatchObject({
         status: "current",
         snapshot: {
+          schemaVersion: 2,
           programmeIdentity: "programme:wordfence",
           retrievedAt: "2030-08-15T00:00:00.000Z",
           sources: sources.map((source, index) => ({
             sourceId: `programme:wordfence:0${index + 1}-${source.sourceKind}`,
             sourceUrl: source.sourceUrl,
             contentDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
-            parserVersion: `wordfence-${source.sourceKind}-v1`,
+            parserVersion: `wordfence-${source.sourceKind}-v2`,
           })),
           policy: {
             eligibility: {
@@ -115,57 +98,16 @@ describe("Wordfence Programme Adapter", () => {
               ]),
               limits: [{ key: "pending-submission-cap", value: 10 }],
             },
-            rewardEstimateInput: {
-              kind: "finding-only-reward-estimate-input",
-              currency: "USD",
-              routes: expect.arrayContaining([
-                expect.objectContaining({
-                  id: "standard-bounty",
-                  terms: expect.arrayContaining([
-                    { key: "base-reward", value: 100 },
-                    { key: "minimum-reward", value: 50 },
-                    { key: "range-maximum", value: 10000 },
-                    { key: "payout-guaranteed", value: false },
-                  ]),
-                }),
-                expect.objectContaining({
-                  id: "july-2030-promotion",
-                  kind: "time-limited-promotion",
-                  terms: expect.arrayContaining([
-                    { key: "bonus-maximum-percent", value: 25 },
-                    {
-                      key: "promotion-start",
-                      value: "2030-07-01T00:00:00Z",
-                    },
-                    {
-                      key: "promotion-end",
-                      value: "2030-07-31T23:59:59Z",
-                    },
-                    { key: "payout-guaranteed", value: false },
-                  ]),
-                }),
-              ]),
-            },
-            monthlyAggregates: [
-              expect.objectContaining({
-                period: "2030-07",
-                cweCategories: expect.arrayContaining([
-                  { key: "cwe-79", count: 12 },
-                ]),
-                authenticationLevels: expect.any(Array),
-                activeInstallBands: expect.any(Array),
-                submissionDispositions: expect.any(Array),
-                reward: {
-                  currency: "USD",
-                  total: 2500,
-                  average: 156.25,
-                  highest: 750,
-                },
-              }),
-            ],
           },
         },
       });
+      if (refreshed.status !== "current") {
+        throw new Error("Expected current eligibility without reward data");
+      }
+      expect(Object.keys(refreshed.snapshot.policy).sort()).toEqual([
+        "eligibility",
+        "programmeOpportunityBand",
+      ]);
       expect(JSON.stringify(refreshed)).not.toMatch(
         /named-plugin|CVE-|affected-version|known-route|researcher-name/i,
       );
@@ -268,7 +210,7 @@ describe("Wordfence Programme Adapter", () => {
   it("returns stale when any required Wordfence source cannot be refreshed", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordfence-stale-"));
     const pages = fixturePageAdapters().map((page) =>
-      page.sourceKind === "promotion"
+      page.sourceKind === "terms"
         ? {
             ...page,
             retrieve: () => Promise.reject(new Error("fixture unavailable")),
@@ -303,7 +245,7 @@ describe("Wordfence Programme Adapter", () => {
         requiredSources: sources.map((source, index) => ({
           sourceId: `programme:wordfence:0${index + 1}-${source.sourceKind}`,
           sourceUrl: source.sourceUrl,
-          parserVersion: `wordfence-${source.sourceKind}-v1`,
+          parserVersion: `wordfence-${source.sourceKind}-v2`,
         })),
       });
     } finally {
@@ -311,17 +253,16 @@ describe("Wordfence Programme Adapter", () => {
     }
   });
 
-  it("rejects monthly page drift and Oracle records without an old default", async () => {
+  it("rejects Oracle records in required scope sources", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wordfence-drift-"));
     const pages = fixturePageAdapters().map((page) =>
-      page.sourceKind === "monthly-report"
+      page.sourceKind === "report-form"
         ? {
             ...page,
             parse: async (bytes: Uint8Array) => {
               const document = JSON.parse(
                 Buffer.from(bytes).toString("utf8"),
               ) as { assertions: Record<string, unknown> };
-              delete document.assertions.monthlyAggregates;
               return {
                 ...document,
                 oracleRecords: [

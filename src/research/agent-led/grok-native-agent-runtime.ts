@@ -12,13 +12,11 @@ import {
 } from "./gvisor-agent-sandbox.js";
 import {
   nativeRunReceiptSchema,
-  researchReportSchema,
-  validationReportSchema,
-  validationRunReceiptSchema,
   type NativeAgentRuntime,
-  type NativeAgentReceipt,
-  type SealedAgentRun,
+  type NativeRunReceipt,
+  type SealedNativeRun,
 } from "./contracts.js";
+import { providerResearchReportSchema } from "./provider-research-report.js";
 
 const grokUsageSchema = z.strictObject({
   input_tokens: z.number().int().nonnegative(),
@@ -103,19 +101,11 @@ function parseJsonOrTrailingObject(value: string): unknown {
   return undefined;
 }
 
-function grokPrompt(run: SealedAgentRun, sandboxPrompt: string): string {
-  const reportSchema =
-    run.kind === "sealed-native-research-run"
-      ? researchReportSchema
-      : validationReportSchema;
-  const reportName =
-    run.kind === "sealed-native-research-run"
-      ? "Research Report"
-      : "Validation Report";
+function grokPrompt(sandboxPrompt: string): string {
   return `${sandboxPrompt}
 
-Grok final ${reportName} JSON Schema:
-${JSON.stringify(z.toJSONSchema(reportSchema))}
+Grok final Research Report JSON Schema:
+${JSON.stringify(z.toJSONSchema(providerResearchReportSchema))}
 
 Use the source tools for the investigation before producing the final answer. At the end, return exactly one JSON object matching this schema in the response text. Do not wrap it in Markdown or add prose outside the JSON object.`;
 }
@@ -131,7 +121,7 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
       grokBuildTransportEligibility.imageDigest;
   }
 
-  async execute(run: SealedAgentRun): Promise<NativeAgentReceipt> {
+  async execute(run: SealedNativeRun): Promise<NativeRunReceipt> {
     if (
       run.agentRuntimeProfile.kind !== "grok-build-native/v1" ||
       !this.#transportAdmitted ||
@@ -176,20 +166,10 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
       ],
       ephemeralProviderCredentialFiles: ["auth.json", "agent_id"],
       ephemeralProviderHomeMount: { path: "/provider", mode: "rw" },
-      ...(run.kind === "sealed-native-research-run"
-        ? {
-            researchSession: {
-              newSessionArguments: (sessionId: string) => [
-                "--session-id",
-                sessionId,
-              ],
-              resumeSessionArguments: (sessionId: string) => [
-                "--resume",
-                sessionId,
-              ],
-            },
-          }
-        : {}),
+      researchSession: {
+        newSessionArguments: (sessionId: string) => ["--session-id", sessionId],
+        resumeSessionArguments: (sessionId: string) => ["--resume", sessionId],
+      },
       args: [
         "--model",
         run.agentRuntimeProfile.model,
@@ -217,7 +197,7 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
       ],
       prompt: {
         kind: "file",
-        text: grokPrompt(run, this.#sandbox.prompt(run)),
+        text: grokPrompt(this.#sandbox.prompt(run)),
       },
     });
     if (execution.status === "failed") return execution.receipt;
@@ -251,9 +231,8 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
     const envelope = decodedEnvelope.data;
     const modelUsage = envelope.modelUsage["grok-4.6-build"];
     if (
-      run.kind === "sealed-native-research-run" &&
-      (execution.checkpoint === undefined ||
-        envelope.sessionId !== execution.checkpoint.sessionId)
+      execution.checkpoint === undefined ||
+      envelope.sessionId !== execution.checkpoint.sessionId
     ) {
       const summary = "Grok Build returned an unbound Research session.";
       return refusedNativeRunReceipt(
@@ -288,23 +267,31 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         undefined,
       );
     }
-    const reportSchema =
-      run.kind === "sealed-native-research-run"
-        ? researchReportSchema
-        : validationReportSchema;
-    const textReport = reportSchema.safeParse(
+    const textReport = providerResearchReportSchema.safeParse(
       parseJsonOrTrailingObject(envelope.text),
     );
-    const report = textReport.success
-      ? textReport
-      : reportSchema.safeParse(envelope.structuredOutput);
-    if (!report.success) {
+    const providerReport = textReport.success
+      ? textReport.data
+      : providerResearchReportSchema.safeParse(envelope.structuredOutput).data;
+    if (providerReport === undefined) {
       const summary = "Grok Build returned an unsupported Agent Report.";
       return refusedNativeRunReceipt(
         run,
         execution,
         "invalid-output",
         summary,
+        execution.checkpoint,
+      );
+    }
+    let report;
+    try {
+      report = await this.#sandbox.materializeReport(run, providerReport);
+    } catch {
+      return refusedNativeRunReceipt(
+        run,
+        execution,
+        "invalid-output",
+        "Grok Build returned an invalid Candidate Recipe.",
         execution.checkpoint,
       );
     }
@@ -335,15 +322,10 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         runtime: "runsc",
         fallbackUsed: false,
       },
-      ...(run.kind === "sealed-native-research-run" &&
-      execution.checkpoint !== undefined
-        ? { checkpoint: execution.checkpoint }
-        : {}),
-      report: report.data,
+      checkpoint: execution.checkpoint,
+      report,
     };
-    return run.kind === "sealed-native-research-run"
-      ? nativeRunReceiptSchema.parse(receipt)
-      : validationRunReceiptSchema.parse(receipt);
+    return nativeRunReceiptSchema.parse(receipt);
   }
 }
 

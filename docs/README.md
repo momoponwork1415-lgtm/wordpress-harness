@@ -9,7 +9,7 @@
 | 全体の責務と受け渡し | [Architecture](ARCHITECTURE.md) — 3 contextの関係を1枚で見る |
 | 一件の処理順と人間の判断点 | [System Walkthrough](SYSTEM-WALKTHROUGH.md) |
 | 変更箇所・契約・テスト・未接続箇所 | [Codebase Guide](CODEBASE-GUIDE.md) |
-| 探索・停止・Validationの設計原則 | [Research Design](RESEARCH-DESIGN.md) |
+| 探索・停止・Candidate Verificationの設計原則 | [Research Design](RESEARCH-DESIGN.md) |
 | 用語の意味 | [Context Map](../CONTEXT-MAP.md)から担当contextの用語集へ |
 | 次の有限workと受入条件 | [GitHub Issues](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues) |
 

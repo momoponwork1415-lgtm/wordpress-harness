@@ -1,6 +1,6 @@
 # Harness Architecture
 
-**Target Intelligenceが対象を準備し、ResearchがFindingを作り、Human OSが検証記録と提出前の判断を扱う。**
+**Target Intelligenceが対象を準備し、ResearchがCandidateを作り、Human OSが動的検証・programme scope・提出前の判断を扱う。**
 
 ![3 contextの責務とversioned handoff](visuals/wordpress-security-research-overview.svg)
 
@@ -19,7 +19,7 @@
 | AI・Harness・人間の権限をどこに置くか | [Research Design: Decision ownership](RESEARCH-DESIGN.md#decision-ownership) |
 | Research Campaignsの外部Interfaceに何を隠すか | [Codebase Guide: Research Campaigns](CODEBASE-GUIDE.md#research-campaigns) |
 | native機能とHarnessの分担 | [Research Design: Agent-led Research](RESEARCH-DESIGN.md#agent-led-research) |
-| 独立ValidationとFindingの条件 | [Research Design: Independent Validation](RESEARCH-DESIGN.md#independent-validation) |
+| Candidate VerificationとVerified Vulnerabilityの条件 | [Research Design: Candidate Verification](RESEARCH-DESIGN.md#candidate-verification) |
 | trust・isolation・failureの共通原則 | [Research Design: Trust and versioning](RESEARCH-DESIGN.md#trust-and-versioning) |
 
 設計理由が必要なときだけ、対応する設計節からADRへ進む。

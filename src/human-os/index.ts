@@ -1,38 +1,44 @@
 export {
-  aiReproductionRecordSchema,
-  defineAIReproductionRecord,
+  candidateVerificationRecordSchema,
+  candidateVerificationViewSchema,
+  defineCandidateVerificationRecord,
   defineExternalActionAuthorization,
-  defineHumanVerificationRecord,
+  defineProgrammeScopeAssessment,
+  defineSubmissionCandidate,
   defineSubmissionDraft,
   externalActionAuthorizationSchema,
   externalActionRequestSchema,
   externalDependencyEvidenceRequestSchema,
-  humanOsFindingViewSchema,
-  humanVerificationRecordSchema,
   isolatedEnvironmentSchema,
+  programmeScopeAssessmentSchema,
+  submissionCandidateSchema,
   submissionDraftSchema,
+  verifiedVulnerabilitySchema,
 } from "./contracts-v3.js";
 export type {
-  AIReproductionRecord,
+  CandidateVerificationRecord,
+  CandidateVerificationView,
   ExternalActionAuthorization,
   ExternalActionRequest,
   ExternalDependencyEvidenceRequest,
-  HumanOsFindingView,
-  HumanVerificationRecord,
   IsolatedEnvironment,
+  ProgrammeScopeAssessment,
+  SubmissionCandidate,
   SubmissionDraft,
+  VerifiedVulnerability,
 } from "./contracts-v3.js";
 export { openHumanOs } from "./human-os-v3.js";
 export type {
-  DynamicReproductionRuntime,
+  CandidateVerificationRuntime,
   ExternalActionAdmission,
   HumanOs,
   OpenHumanOsOptions,
+  ProgrammeScopeEvaluator,
 } from "./human-os-v3.js";
 export {
   dynamicReproductionAgentOutcomeSchema,
   dynamicReproductionLabSetupSchema,
-  openGvisorWordPressDynamicReproductionRuntime,
+  openGvisorWordPressCandidateVerificationRuntime,
 } from "./gvisor-wordpress-dynamic-reproduction.js";
 export type {
   ContainerProcessRequest,
@@ -43,16 +49,18 @@ export type {
   DynamicReproductionExperiment,
   DynamicReproductionLabSetup,
   DynamicReproductionSourceResolver,
-  GvisorWordPressDynamicReproductionOptions,
+  GvisorWordPressCandidateVerificationOptions,
 } from "./gvisor-wordpress-dynamic-reproduction.js";
 export {
   dynamicReproductionRecipeResolutionSchema,
   dynamicReproductionRecipeSchema,
+  openFileCandidateVerificationRecipeResolver,
   openRecipeDynamicReproductionAgent,
 } from "./recipe-dynamic-reproduction-agent.js";
 export type {
   DynamicReproductionRecipe,
   DynamicReproductionRecipeResolution,
   DynamicReproductionRecipeResolver,
+  FileCandidateVerificationRecipeResolverOptions,
   RecipeDynamicReproductionAgentOptions,
 } from "./recipe-dynamic-reproduction-agent.js";

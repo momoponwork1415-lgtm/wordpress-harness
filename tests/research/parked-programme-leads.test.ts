@@ -6,10 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import type { CampaignInput } from "../../src/research/index.js";
-import type {
-  SealedAgentRun,
-  SealedNativeRun,
-} from "../../src/research/agent-led/contracts.js";
+import type { SealedNativeRun } from "../../src/research/agent-led/contracts.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
 
 const temporaryDirectories: string[] = [];
@@ -65,7 +62,6 @@ function inputFor(campaignId: string, withBoundary = true): CampaignInput {
       sourceTree: { digest: digest("9"), entries: 10, bytes: 1_024 },
     },
     promptSet: { id: "research-v1", digest: digest("b") },
-    validationPromptSet: { id: "validation-v1", digest: digest("c") },
     agentRuntimeProfile: {
       id: "runtime-v1",
       kind: "scripted-native-agent/v1",
@@ -214,7 +210,7 @@ describe("parked Programme Leads", () => {
     );
   });
 
-  it("preserves an OOS primitive without Candidate review or Validation", async () => {
+  it("preserves an OOS primitive without Candidate review or verification handoff", async () => {
     const directory = await mkdtemp(join(tmpdir(), "parked-lead-"));
     temporaryDirectories.push(directory);
     const input = inputFor("campaign-parked-lead-1");
@@ -226,7 +222,7 @@ describe("parked Programme Leads", () => {
           invocations += 1;
           if (run.kind !== "sealed-native-research-run") {
             throw new Error(
-              "A parked Programme Lead must not enter Validation",
+              "A parked Programme Lead must not enter Candidate Verification",
             );
           }
           return parkedLeadReceipt(run);
@@ -247,8 +243,6 @@ describe("parked Programme Leads", () => {
         },
       ],
       candidateReviews: [],
-      validationRuns: [],
-      findings: [],
     });
     expect(view.pendingCandidateReview).toBeUndefined();
     expect(invocations).toBe(1);
@@ -262,10 +256,10 @@ describe("parked Programme Leads", () => {
     const campaigns = openResearchCampaigns({
       databasePath: join(directory, "research.sqlite"),
       runtime: {
-        async execute(run: SealedAgentRun) {
+        async execute(run: SealedNativeRun) {
           if (run.kind !== "sealed-native-research-run") {
             throw new Error(
-              "A parked Programme Lead must not enter Validation",
+              "A parked Programme Lead must not enter Candidate Verification",
             );
           }
           return parkedLeadReceipt(run);
@@ -304,7 +298,7 @@ describe("parked Programme Leads", () => {
         async execute(run) {
           if (run.kind !== "sealed-native-research-run") {
             throw new Error(
-              "A parked Programme Lead must not enter Validation",
+              "A parked Programme Lead must not enter Candidate Verification",
             );
           }
           invocations += 1;
@@ -374,7 +368,6 @@ describe("parked Programme Leads", () => {
       parkedProgrammeLeads: [{ leadId: "lead-profile-label-read" }],
       nativeRuns: [{ terminal: "completed" }, { terminal: "provider-failed" }],
       candidateReviews: [],
-      validationRuns: [],
     });
     campaigns.close();
   });

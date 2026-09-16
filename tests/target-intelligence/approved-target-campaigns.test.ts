@@ -8,7 +8,7 @@ import {
   type ResearchCampaignPolicy,
 } from "../../src/target-intelligence/approved-target-campaign/index.js";
 import type { ApprovedTargetBatch } from "../../src/target-intelligence/approved-target-batch/index.js";
-import type { TargetCandidate } from "../../src/target-intelligence/target-proposal/index.js";
+import type { TargetCandidate } from "../../src/target-intelligence/candidate-pool/index.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 
@@ -53,10 +53,6 @@ function policy(): ResearchCampaignPolicy {
     schemaVersion: 1 as const,
     id: "research-campaign-policy-v1",
     promptSet: { id: "research-prompt-v1", digest: digest("e") },
-    validationPromptSet: {
-      id: "validation-prompt-v1",
-      digest: digest("f"),
-    },
     agentRuntimeProfile: {
       id: "claude-code-research-v1",
       kind: "claude-code-native/v1",

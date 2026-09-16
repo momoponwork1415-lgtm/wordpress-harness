@@ -12,7 +12,7 @@ Target Intelligenceは取得したsourceと観測factからCandidate Poolを組�
 
 Researchは一回最大1時間のResearch Grantを実行する。AIの継続提案を受けた人間は、同じCheckpointから次のGrantへ進むか、Candidate Reviewへ移るかを判断する。
 
-人間がCandidateを確認し、Independent Validationへ進めるものを選ぶ。Researchへ戻すCandidateがあれば、Validationより先に戻る。Parked Programme LeadはValidationへ進まない。
+人間がCandidateを確認し、Candidate Verificationへ進めるものを選ぶ。Researchへ戻すCandidateがあれば、動的検証より先に戻る。Parked Programme LeadはCandidate Reviewへ進まない。
 
 ### 探索Agentへ渡す情報
 
@@ -23,26 +23,27 @@ Researchは一回最大1時間のResearch Grantを実行する。AIの継続提�
 | 実行条件 | Prompt、Agent Runtime Profile、Permission Profile、Grantの許容時間 |
 | 承認済みの継続 | 同じbindingのprivate Agent Checkpointと人間が承認したnext action |
 
-oracle-free入力と権限制約の正本は[Research Design](RESEARCH-DESIGN.md#trust-and-versioning)。schema、prompt組立、入力例は[GuideのResearch Campaigns](CODEBASE-GUIDE.md#research-campaigns)から辿る。
+RootはCandidateを返すとき、同じsource理解から最小の動的recipeも作る。Runtime Adapterはrecipe本文をGit外のprivate CASへ退避し、Research Recordには参照だけを残す。recipeがなければ`verification-preparation-needed`となる。
 
-## 3. Validate independently
+oracle-free入力と権限制約の正本は[Research Design](RESEARCH-DESIGN.md#trust-and-versioning)。schema、prompt組立、入力例、recipeの保存場所は[GuideのAgent input](CODEBASE-GUIDE.md#agent-input)から辿る。
 
-Independent ValidationはResearchと別のfresh sessionで、同じread-only sourceからCandidateを再検討する。Researchのconversation、Checkpoint、Programme Research Boundaryを共有しない。
+## 3. Verify dynamically
+
+Human OSは人間がadmitしたCandidateだけをfreshな使い捨てWordPress / MySQL環境で検証する。Candidate-bound recipeを実Target interfaceへ一度だけ実行し、ソースから脆弱性を再導出する別runは置かない。
 
 | 結果 | 次の状態 |
 | --- | --- |
-| `source-validated` | immutable Findingを作る |
-| `needs-research` | concrete next actionをResearchへ返す |
-| `disproven` | source evidenceによる反証を残す |
-| `validation-pending` | 判断不能のReceiptを残す。retryは人間の別判断を必要とする |
+| `runtime-confirmed` | Verified Vulnerabilityを作る |
+| `contradicted` | 通常前提とrecipeは完了したがeffectを観測しなかった記録を残す |
+| `incomplete` | 環境、依存、recipe、観測、cleanup、証拠の不足をnegativeと分けて残す |
 
-FindingとCoverageは別artifact。Findingの有無で探索の完了状態を決めない。
+Verified VulnerabilityとResearch Coverageは別artifact。動的検証の結果で探索の完了状態を決めない。
 
-## 4. Verify and decide
+## 4. Assess scope and decide
 
-Human OSはFindingを受け取り、freshな隔離環境でのAI reproductionと、別のfresh環境でのhuman verificationを記録する。失敗や反証も追記し、元のFindingを削除しない。
+Human OSはVerified Vulnerabilityを全configured programmeの最新scope snapshotへ照合する。`in-scope`だけにSubmission Candidateを作る。全programmeでOOS、scopeが曖昧、またはscope評価自体が失敗しても技術的なVerified Vulnerabilityは保持する。
 
-AIはSubmission Draftの作成を支援する。人間がexact Draft revisionとdestinationに対する外部行動を承認し、最後のSubmitも行う。
+AIはSubmission Draftの作成を支援する。人間が一つのSubmission Candidateを選び、exact Draft revisionとdestinationに対する外部行動を承認し、最後のSubmitも行う。
 
 ## 再開・失敗を調べる
 

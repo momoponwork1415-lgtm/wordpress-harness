@@ -9,7 +9,7 @@ import {
   campaignInputSchema,
   type CampaignInput,
 } from "../../src/research/index.js";
-import type { SealedAgentRun } from "../../src/research/agent-led/contracts.js";
+import type { SealedNativeRun } from "../../src/research/agent-led/contracts.js";
 import {
   HumanResearchContinuationReviewConflictError,
   openResearchCampaigns,
@@ -26,7 +26,7 @@ afterEach(async () => {
   );
 });
 
-function checkpointFor(run: SealedAgentRun) {
+function checkpointFor(run: SealedNativeRun) {
   return {
     kind: "agent-checkpoint" as const,
     schemaVersion: 1 as const,
@@ -55,7 +55,6 @@ function campaignInput(campaignId: string): CampaignInput {
       sourceTree: { digest: digest("9"), entries: 10, bytes: 1_024 },
     },
     promptSet: { id: "research-v1", digest: digest("b") },
-    validationPromptSet: { id: "validation-v1", digest: digest("c") },
     agentRuntimeProfile: {
       id: "runtime-v1",
       kind: "scripted-native-agent/v1",
@@ -103,7 +102,9 @@ describe("Human Research Continuation Review", () => {
           expect(run.kind).toBe("sealed-native-research-run");
           expect(run.budgetAllowance).toEqual({ maxWallTimeMs: 60_000 });
           if (run.kind !== "sealed-native-research-run") {
-            throw new Error("Validation must not start during Research review");
+            throw new Error(
+              "A second Research run must not start during review",
+            );
           }
           return {
             schemaVersion: 1,
@@ -167,7 +168,6 @@ describe("Human Research Continuation Review", () => {
     });
     expect(pendingView).toMatchObject({
       status: "research-review-pending",
-      validationRuns: [],
       pendingResearchContinuationReview: {
         kind: "research-continuation-review-request",
         schemaVersion: 1,
@@ -197,7 +197,9 @@ describe("Human Research Continuation Review", () => {
       runtime: {
         async execute(run) {
           if (run.kind !== "sealed-native-research-run") {
-            throw new Error("Validation is not part of this scenario");
+            throw new Error(
+              "A second Research run is not part of this scenario",
+            );
           }
           invocations += 1;
           if (invocations === 2) {
@@ -310,7 +312,9 @@ describe("Human Research Continuation Review", () => {
       runtime: {
         async execute(run) {
           if (run.kind !== "sealed-native-research-run") {
-            throw new Error("Validation is not part of this scenario");
+            throw new Error(
+              "A second Research run is not part of this scenario",
+            );
           }
           invocations += 1;
           if (invocations === 2) {
@@ -460,7 +464,9 @@ describe("Human Research Continuation Review", () => {
       runtime: {
         async execute(run) {
           if (run.kind !== "sealed-native-research-run") {
-            throw new Error("Validation is not part of this scenario");
+            throw new Error(
+              "A second Research run is not part of this scenario",
+            );
           }
           invocations += 1;
           if (invocations === 2) {
@@ -689,7 +695,6 @@ describe("Human Research Continuation Review", () => {
           decision: "proceed-to-candidate-review",
         },
       ],
-      validationRuns: [],
       pendingCandidateReview: {
         terminalResearchRunId: `${input.campaignId}:native:1`,
         candidates: [{ candidateId: "candidate-resource-idor" }],
@@ -711,7 +716,7 @@ describe("Human Research Continuation Review", () => {
       runtime: {
         async execute(run) {
           if (run.kind !== "sealed-native-research-run") {
-            throw new Error("Validation must not start");
+            throw new Error("A second Research run must not start");
           }
           invocations += 1;
           return {
@@ -817,7 +822,6 @@ describe("Human Research Continuation Review", () => {
     ).resolves.toMatchObject({
       status: "research-review-pending",
       researchContinuationReviews: [],
-      validationRuns: [],
     });
     campaigns.close();
   });

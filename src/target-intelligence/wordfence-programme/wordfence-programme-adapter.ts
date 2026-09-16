@@ -19,9 +19,6 @@ const sourceOrder: readonly WordfenceProgrammeSourceKind[] = [
   "programme",
   "terms",
   "report-form",
-  "payout",
-  "promotion",
-  "monthly-report",
 ];
 
 function sourceId(kind: WordfenceProgrammeSourceKind): string {
@@ -82,12 +79,6 @@ async function normalizePages(
     if (document.sourceKind !== expectedKind) {
       throw new Error("Wordfence Programme source binding is invalid");
     }
-    if (
-      expectedKind !== "monthly-report" &&
-      document.assertions.monthlyAggregates !== undefined
-    ) {
-      throw new Error("Wordfence monthly aggregates have an invalid source");
-    }
     documents.push(document);
   }
 
@@ -105,8 +96,7 @@ async function normalizePages(
     !eligibilityResult.data.limits.some(
       (limit) => limit.key === "pending-submission-cap",
     ) ||
-    programme.assertions.programmeOpportunityBand === undefined ||
-    programme.assertions.rewardFactors === undefined
+    programme.assertions.programmeOpportunityBand === undefined
   ) {
     throw new Error("Wordfence Programme source is incomplete");
   }
@@ -128,101 +118,12 @@ async function normalizePages(
     ) {
       return conflictSignal();
     }
-    if (
-      document.assertions.rewardFactors !== undefined &&
-      canonicalJson(document.assertions.rewardFactors) !==
-        canonicalJson(programme.assertions.rewardFactors)
-    ) {
-      return conflictSignal();
-    }
-  }
-
-  const routes = new Map<
-    string,
-    NonNullable<
-      WordfenceProgrammePageDocument["assertions"]["rewardRoutes"]
-    >[number]
-  >();
-  for (const document of documents) {
-    for (const route of document.assertions.rewardRoutes ?? []) {
-      const existing = routes.get(route.id);
-      if (
-        existing !== undefined &&
-        canonicalJson(existing) !== canonicalJson(route)
-      ) {
-        return conflictSignal();
-      }
-      routes.set(route.id, route);
-    }
-  }
-  if (routes.size === 0) {
-    throw new Error("Wordfence reward route is missing");
-  }
-  const currencies = new Set(
-    [...routes.values()].map((route) => route.currency),
-  );
-  if (currencies.size !== 1) {
-    return conflictSignal();
-  }
-  const currency = [...currencies][0];
-  if (currency === undefined) {
-    throw new Error("Wordfence reward currency is missing");
-  }
-  if (
-    [...routes.values()].some(
-      (route) =>
-        !route.terms.some(
-          (term) => term.key === "payout-guaranteed" && term.value === false,
-        ),
-    )
-  ) {
-    throw new Error("Wordfence payout must remain an estimate");
-  }
-
-  const promotion = documents.find(
-    (document) => document.sourceKind === "promotion",
-  );
-  const promotionRoutes = promotion?.assertions.rewardRoutes;
-  if (
-    promotionRoutes === undefined ||
-    !promotionRoutes.some(
-      (route) =>
-        route.kind === "time-limited-promotion" &&
-        route.terms.some((term) => term.key === "promotion-start") &&
-        route.terms.some((term) => term.key === "promotion-end"),
-    )
-  ) {
-    throw new Error("Wordfence promotion source is incomplete");
-  }
-
-  const monthlyReport = documents.find(
-    (document) => document.sourceKind === "monthly-report",
-  );
-  const monthlyAggregates = monthlyReport?.assertions.monthlyAggregates;
-  if (monthlyAggregates === undefined) {
-    throw new Error("Wordfence monthly aggregate is missing");
-  }
-  if (
-    monthlyAggregates.some(
-      (aggregate) => aggregate.reward.currency !== currency,
-    )
-  ) {
-    return conflictSignal();
   }
 
   return normalizedProgrammePolicySchema.parse({
     programmeIdentity: "programme:wordfence",
     eligibility: eligibilityResult.data,
     programmeOpportunityBand: programme.assertions.programmeOpportunityBand,
-    rewardEstimateInput: {
-      kind: "finding-only-reward-estimate-input",
-      currency,
-      factors: programme.assertions.rewardFactors,
-      routes: [...routes.values()].sort((left, right) =>
-        left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
-      ),
-    },
-    monthlyAggregates,
   });
 }
 
@@ -239,7 +140,7 @@ export function createWordfenceProgrammeAdapters(
       (kind) => pages.filter((page) => page.sourceKind === kind).length !== 1,
     )
   ) {
-    throw new Error("Wordfence Programme requires exactly six source pages");
+    throw new Error("Wordfence Programme requires exactly three source pages");
   }
   return sourceOrder.map((kind) => {
     const page = pages.find((candidate) => candidate.sourceKind === kind);

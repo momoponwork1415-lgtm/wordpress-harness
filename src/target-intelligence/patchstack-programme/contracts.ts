@@ -1,31 +1,24 @@
 import { z } from "zod";
 
-import {
-  policyTermSchema,
-  programmeEligibilitySchema,
-  programmeRewardRouteSchema,
-} from "../programme-intelligence/contracts.js";
+import { programmeEligibilitySchema } from "../programme-intelligence/contracts.js";
 
 export const patchstackProgrammeSourceKindSchema = z.enum([
   "rules",
   "report-form",
-  "leaderboard",
   "mvdp-directory",
   "marketing",
 ]);
 
 export const patchstackProgrammePageDocumentSchema = z.strictObject({
   kind: z.literal("patchstack-programme-page"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   sourceKind: patchstackProgrammeSourceKindSchema,
-  precedence: z.number().int().min(1).max(5),
+  precedence: z.number().int().min(1).max(4),
   assertions: z.strictObject({
     eligibility: programmeEligibilitySchema.partial().optional(),
     programmeOpportunityBand: z
       .enum(["broad", "high-impact-only", "research-only"])
       .optional(),
-    rewardFactors: z.array(policyTermSchema).min(1).optional(),
-    rewardRoutes: z.array(programmeRewardRouteSchema).optional(),
     directoryEligibilityRules: z
       .array(
         z.strictObject({

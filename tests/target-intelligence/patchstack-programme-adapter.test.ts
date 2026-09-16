@@ -30,11 +30,7 @@ const sources = [
     sourceUrl: "https://patchstack.com/database/report",
     fixture: "report-form.json",
   },
-  {
-    sourceKind: "leaderboard",
-    sourceUrl: "https://patchstack.com/database/leaderboard",
-    fixture: "leaderboard.json",
-  },
+
   {
     sourceKind: "mvdp-directory",
     sourceUrl: "https://patchstack.com/database/managed-vdp/",
@@ -51,14 +47,14 @@ function fixturePageAdapters(): readonly PatchstackProgrammePageAdapter[] {
   return sources.map((source) => ({
     sourceKind: source.sourceKind,
     sourceUrl: source.sourceUrl,
-    parserVersion: `patchstack-${source.sourceKind}-v1`,
+    parserVersion: `patchstack-${source.sourceKind}-v2`,
     retrieve: () => readFile(join(fixtureDirectory, source.fixture)),
     parse: (bytes) => JSON.parse(Buffer.from(bytes).toString("utf8")),
   }));
 }
 
 describe("Patchstack Programme Adapter", () => {
-  it("normalizes ordered current sources into separate Monthly Competition and Zeroday routes", async () => {
+  it("normalizes current scope and membership conditions without reward routes", async () => {
     const directory = await mkdtemp(join(tmpdir(), "patchstack-programme-"));
     try {
       const intelligence = openProgrammeIntelligence({
@@ -87,13 +83,14 @@ describe("Patchstack Programme Adapter", () => {
       expect(refreshed).toMatchObject({
         status: "current",
         snapshot: {
+          schemaVersion: 2,
           programmeIdentity: "programme:patchstack",
           retrievedAt: "2030-09-01T00:00:00.000Z",
           sources: sources.map((source, index) => ({
             sourceId: `programme:patchstack:0${index + 1}-${source.sourceKind}`,
             sourceUrl: source.sourceUrl,
             contentDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
-            parserVersion: `patchstack-${source.sourceKind}-v1`,
+            parserVersion: `patchstack-${source.sourceKind}-v2`,
           })),
           policy: {
             eligibility: {
@@ -121,41 +118,16 @@ describe("Patchstack Programme Adapter", () => {
               ],
             },
             programmeOpportunityBand: "broad",
-            rewardEstimateInput: {
-              kind: "finding-only-reward-estimate-input",
-              currency: "USD",
-              factors: [
-                "cvss-base-score",
-                "active-install-band",
-                "attacker-role",
-                "vulnerability-type",
-                "mvdp-status",
-              ],
-              routes: [
-                {
-                  id: "monthly-competition",
-                  kind: "monthly-competition",
-                  factors: expect.arrayContaining([
-                    "contribution-share",
-                    "rejection-rate-reduction",
-                  ]),
-                  terms: expect.arrayContaining([
-                    { key: "minimum-monthly-pool", value: 10000 },
-                  ]),
-                },
-                {
-                  id: "zeroday",
-                  kind: "fixed-zeroday-table",
-                  factors: expect.arrayContaining([
-                    "attacker-role",
-                    "full-site-compromise",
-                  ]),
-                },
-              ],
-            },
           },
         },
       });
+      if (refreshed.status !== "current") {
+        throw new Error("Expected current eligibility without reward data");
+      }
+      expect(Object.keys(refreshed.snapshot.policy).sort()).toEqual([
+        "eligibility",
+        "programmeOpportunityBand",
+      ]);
       expect(JSON.stringify(refreshed)).not.toMatch(
         /named-plugin|CVE-|known-vulnerability|leaderboard-researcher/i,
       );
@@ -256,9 +228,8 @@ describe("Patchstack Programme Adapter", () => {
         requiredSources: [
           { sourceId: "programme:patchstack:01-rules" },
           { sourceId: "programme:patchstack:02-report-form" },
-          { sourceId: "programme:patchstack:03-leaderboard" },
-          { sourceId: "programme:patchstack:04-mvdp-directory" },
-          { sourceId: "programme:patchstack:05-marketing" },
+          { sourceId: "programme:patchstack:03-mvdp-directory" },
+          { sourceId: "programme:patchstack:04-marketing" },
         ],
       });
     } finally {
@@ -367,7 +338,7 @@ describe("Patchstack Programme Adapter", () => {
     }
   });
 
-  it("rejects required-rule drift and Oracle fields without reusing an old default", async () => {
+  it("rejects Oracle fields without reusing an old default", async () => {
     const directory = await mkdtemp(join(tmpdir(), "patchstack-drift-"));
     const pages = fixturePageAdapters().map((page) =>
       page.sourceKind === "rules"
@@ -379,7 +350,6 @@ describe("Patchstack Programme Adapter", () => {
               ) as {
                 assertions: Record<string, unknown>;
               };
-              delete document.assertions.rewardFactors;
               return {
                 ...document,
                 oracleFacts: {

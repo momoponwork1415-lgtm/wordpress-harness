@@ -15,7 +15,7 @@ const immutableRefSchema = z.strictObject({
   digest: digestSchema,
 });
 
-const targetSnapshotRefSchema = z.strictObject({
+export const targetSnapshotRefSchema = z.strictObject({
   id: identifierSchema,
   pluginSlug: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
   version: z.string().min(1).max(64),
@@ -197,7 +197,6 @@ const researchCampaignPolicyBodySchema = z.strictObject({
   schemaVersion: z.literal(1),
   id: identifierSchema,
   promptSet: immutableRefSchema,
-  validationPromptSet: immutableRefSchema,
   agentRuntimeProfile: agentRuntimeProfileSchema,
   permissionProfile: immutableRefSchema,
   budgetEnvelope: budgetEnvelopeSchema,
@@ -247,7 +246,6 @@ export const campaignInputSchema = z
     threatContext: campaignThreatContextSchema.optional(),
     programmeBoundary: programmeResearchBoundarySchema.optional(),
     promptSet: immutableRefSchema,
-    validationPromptSet: immutableRefSchema,
     agentRuntimeProfile: agentRuntimeProfileSchema,
     permissionProfile: immutableRefSchema,
     budgetEnvelope: budgetEnvelopeSchema,
@@ -301,7 +299,7 @@ export const campaignInputSchema = z
     }
   });
 
-const sourceEvidenceSchema = z.strictObject({
+export const sourceEvidenceSchema = z.strictObject({
   path: z.string().min(1),
   location: z.string().min(1),
   observation: z.string().min(1),
@@ -316,12 +314,56 @@ export const parkedProgrammeLeadSchema = z.strictObject({
   evidence: z.array(sourceEvidenceSchema).min(1),
 });
 
-export const validationCandidateSchema = z.strictObject({
+export const candidateVerificationRecipeRefSchema = z.strictObject({
+  kind: z.literal("candidate-verification-recipe-ref"),
+  schemaVersion: z.literal(1),
+  recipeId: identifierSchema,
+  digest: digestSchema,
+  bytes: z.number().int().positive(),
+});
+
+const candidateVerificationRecipeBodySchema = z.strictObject({
+  kind: z.literal("candidate-verification-recipe"),
+  schemaVersion: z.literal(1),
+  recipeId: identifierSchema,
+  candidateId: identifierSchema,
+  targetSnapshotDigest: digestSchema,
+  script: z
+    .string()
+    .min(1)
+    .max(128 * 1024),
+  timeoutMs: z
+    .number()
+    .int()
+    .positive()
+    .max(5 * 60_000),
+});
+
+export const candidateVerificationRecipeSchema =
+  candidateVerificationRecipeBodySchema
+    .extend({ digest: digestSchema })
+    .superRefine((recipe, context) => {
+      const { digest, ...body } = recipe;
+      if (digest !== canonicalDigest(body)) {
+        context.addIssue({
+          code: "custom",
+          path: ["digest"],
+          message: "Candidate Verification Recipe digest must bind its body",
+        });
+      }
+    });
+
+export const researchCandidateSchema = z.strictObject({
   candidateId: identifierSchema,
   attackerPremise: z.string().min(1),
   brokenSecurityProperty: z.string().min(1),
   claim: z.string().min(1),
   evidence: z.array(sourceEvidenceSchema).min(1),
+  reproductionRecipe: candidateVerificationRecipeRefSchema.optional(),
+});
+
+const verifiableResearchCandidateSchema = researchCandidateSchema.extend({
+  reproductionRecipe: candidateVerificationRecipeRefSchema,
 });
 
 export const candidateReviewRequestSchema = z
@@ -332,7 +374,7 @@ export const candidateReviewRequestSchema = z
     campaignInputDigest: digestSchema,
     terminalResearchRunId: identifierSchema,
     candidateSetDigest: digestSchema,
-    candidates: z.array(validationCandidateSchema).min(1),
+    candidates: z.array(researchCandidateSchema).min(1),
     digest: digestSchema,
   })
   .superRefine((request, context) => {
@@ -369,7 +411,7 @@ export const researchContinuationReviewRequestSchema = z
     researchRunId: identifierSchema,
     checkpoint: agentCheckpointRefSchema,
     candidateSetDigest: digestSchema,
-    candidates: z.array(validationCandidateSchema),
+    candidates: z.array(researchCandidateSchema),
     parkedProgrammeLeadSetDigest: digestSchema,
     parkedProgrammeLeads: z.array(parkedProgrammeLeadSchema),
     nextActions: z.array(nextActionSchema).min(1),
@@ -424,7 +466,7 @@ export const researchContinuationReviewRequestSchema = z
 const humanCandidateReviewDecisionSchema = z.discriminatedUnion("disposition", [
   z.strictObject({
     candidateId: identifierSchema,
-    disposition: z.literal("advance-to-independent-validation"),
+    disposition: z.literal("advance-to-candidate-verification"),
     reason: z.string().min(1).max(4_000),
   }),
   z.strictObject({
@@ -432,16 +474,6 @@ const humanCandidateReviewDecisionSchema = z.discriminatedUnion("disposition", [
     disposition: z.literal("return-to-research"),
     reason: z.string().min(1).max(4_000),
     nextActions: z.array(nextActionSchema).min(1).max(32),
-  }),
-  z.strictObject({
-    candidateId: identifierSchema,
-    disposition: z.literal("park-programme-oos"),
-    reason: z.string().min(1).max(4_000),
-  }),
-  z.strictObject({
-    candidateId: identifierSchema,
-    disposition: z.literal("hold-scope-ambiguous"),
-    reason: z.string().min(1).max(4_000),
   }),
 ]);
 
@@ -520,49 +552,10 @@ export const humanResearchContinuationReviewSchema =
       }
     });
 
-const humanValidationRetryBodySchema = z.strictObject({
-  kind: z.literal("human-validation-retry"),
-  schemaVersion: z.literal(1),
-  retryId: identifierSchema,
-  campaignId: identifierSchema,
-  campaignInputDigest: digestSchema,
-  failedValidationRunIds: z.array(identifierSchema).min(1).max(64),
-  operator: z.strictObject({
-    identity: identifierSchema,
-    decidedAt: z.iso.datetime(),
-  }),
-  reason: z.string().min(1).max(4_000),
-});
-
-export const humanValidationRetrySchema = humanValidationRetryBodySchema
-  .extend({ digest: digestSchema })
-  .superRefine((retry, context) => {
-    const { digest, ...body } = retry;
-    if (digest !== canonicalDigest(body)) {
-      context.addIssue({
-        code: "custom",
-        path: ["digest"],
-        message: "Human Validation Retry digest must bind its exact body",
-      });
-    }
-    const runIds = new Set<string>();
-    for (const [index, runId] of retry.failedValidationRunIds.entries()) {
-      if (runIds.has(runId)) {
-        context.addIssue({
-          code: "custom",
-          path: ["failedValidationRunIds", index],
-          message: "Human Validation Retry run ids must be unique",
-        });
-      }
-      runIds.add(runId);
-    }
-  });
-
 export const campaignCommandSchema = z.discriminatedUnion("kind", [
   campaignInputSchema,
   humanCandidateReviewSchema,
   humanResearchContinuationReviewSchema,
-  humanValidationRetrySchema,
 ]);
 
 const researchDecisionSchema = z.discriminatedUnion("kind", [
@@ -579,42 +572,10 @@ const researchDecisionSchema = z.discriminatedUnion("kind", [
 
 export const researchReportSchema = z.strictObject({
   schemaVersion: z.literal(1),
-  candidates: z.array(validationCandidateSchema),
+  candidates: z.array(researchCandidateSchema),
   parkedProgrammeLeads: z.array(parkedProgrammeLeadSchema).optional(),
   decision: researchDecisionSchema,
 });
-
-export const validationReportSchema = z.discriminatedUnion("disposition", [
-  z.strictObject({
-    schemaVersion: z.literal(1),
-    candidateId: identifierSchema,
-    disposition: z.literal("source-validated"),
-    reason: z.string().min(1),
-    evidence: z.array(sourceEvidenceSchema).min(1),
-  }),
-  z.strictObject({
-    schemaVersion: z.literal(1),
-    candidateId: identifierSchema,
-    disposition: z.literal("needs-research"),
-    reason: z.string().min(1),
-    evidence: z.array(sourceEvidenceSchema),
-    nextActions: z.array(nextActionSchema).min(1),
-  }),
-  z.strictObject({
-    schemaVersion: z.literal(1),
-    candidateId: identifierSchema,
-    disposition: z.literal("disproven"),
-    reason: z.string().min(1),
-    evidence: z.array(sourceEvidenceSchema).min(1),
-  }),
-  z.strictObject({
-    schemaVersion: z.literal(1),
-    candidateId: identifierSchema,
-    disposition: z.literal("validation-pending"),
-    reason: z.string().min(1),
-    evidence: z.array(sourceEvidenceSchema),
-  }),
-]);
 
 const nativeRunUsageSchema = z.strictObject({
   wallTimeMs: z.number().int().nonnegative(),
@@ -692,28 +653,6 @@ export const nativeRunReceiptSchema = z.discriminatedUnion("terminal", [
   }),
 ]);
 
-export const validationRunReceiptSchema = z.discriminatedUnion("terminal", [
-  z.strictObject({
-    ...agentRunReceiptShape,
-    terminal: z.literal("completed"),
-    isolation: agentRunIsolationSchema,
-    report: validationReportSchema,
-  }),
-  z.strictObject({
-    ...agentRunReceiptShape,
-    terminal: z.enum([
-      "provider-failed",
-      "provider-unauthenticated",
-      "provider-quota-exhausted",
-      "budget-exhausted",
-      "policy-denied",
-      "invalid-output",
-    ]),
-    isolation: agentRunIsolationSchema.optional(),
-    failure: agentRunFailureSchema,
-  }),
-]);
-
 export const sealedNativeRunSchema = z.strictObject({
   kind: z.literal("sealed-native-research-run"),
   schemaVersion: z.literal(1),
@@ -735,13 +674,6 @@ export const sealedNativeRunSchema = z.strictObject({
     .min(1)
     .max(32)
     .optional(),
-  validationFeedback: z.array(
-    z.strictObject({
-      runId: identifierSchema,
-      candidateId: identifierSchema,
-      report: validationReportSchema,
-    }),
-  ),
   candidateReviewNextActions: z
     .array(
       z.strictObject({
@@ -753,57 +685,41 @@ export const sealedNativeRunSchema = z.strictObject({
     .optional(),
 });
 
-export const sealedValidationRunSchema = z.strictObject({
-  kind: z.literal("sealed-native-validation-run"),
-  schemaVersion: z.literal(1),
-  runId: identifierSchema,
-  campaignId: identifierSchema,
-  campaignInputDigest: digestSchema,
-  targetSnapshot: targetSnapshotRefSchema,
-  dependencySnapshots: dependencySnapshotsSchema.optional(),
-  promptSet: immutableRefSchema,
-  agentRuntimeProfile: agentRuntimeProfileSchema,
-  permissionProfile: immutableRefSchema,
-  budgetEnvelope: budgetEnvelopeSchema,
-  budgetAllowance: runBudgetAllowanceSchema,
-  candidate: validationCandidateSchema,
-});
-
 export const campaignInterruptionSchema = z.strictObject({
   reason: z.literal("budget-exhausted"),
   summary: z.string().min(1),
 });
 
-export const sourceValidatedFindingSchema = z.strictObject({
-  kind: z.literal("source-validated-finding"),
-  schemaVersion: z.literal(1),
-  findingId: z.string().min(1).max(512),
-  candidateId: identifierSchema,
-  targetSnapshot: targetSnapshotRefSchema,
-  dependencySnapshots: dependencySnapshotsSchema.optional(),
-  attackerPremise: z.string().min(1),
-  brokenSecurityProperty: z.string().min(1),
-  claim: z.string().min(1),
-  assurance: z.literal("source-validated"),
-  validation: z.strictObject({
-    runId: identifierSchema,
-    promptSet: immutableRefSchema,
-    runtimeProfileDigest: digestSchema,
-    permissionProfileDigest: digestSchema,
-  }),
-  evidence: z.array(sourceEvidenceSchema).min(1),
-});
-
-export interface ValidationRunRecord {
-  readonly candidateId: string;
-  readonly receipt: ValidationRunReceipt;
-}
+export const candidateVerificationRequestSchema = z
+  .strictObject({
+    kind: z.literal("candidate-verification-request"),
+    schemaVersion: z.literal(1),
+    requestId: identifierSchema,
+    campaignId: identifierSchema,
+    campaignInputDigest: digestSchema,
+    candidateReviewDigest: digestSchema,
+    targetSnapshot: targetSnapshotRefSchema,
+    dependencySnapshots: dependencySnapshotsSchema.optional(),
+    candidate: verifiableResearchCandidateSchema,
+    digest: digestSchema,
+  })
+  .superRefine((request, context) => {
+    const { digest, ...body } = request;
+    if (digest !== canonicalDigest(body)) {
+      context.addIssue({
+        code: "custom",
+        path: ["digest"],
+        message: "Candidate Verification Request digest must bind its body",
+      });
+    }
+  });
 
 export type CampaignStatus =
   | "research-continues"
   | "research-review-pending"
   | "candidate-review-pending"
-  | "validation-pending"
+  | "verification-preparation-needed"
+  | "candidate-verification-ready"
   | "coverage-closed"
   | "incomplete";
 
@@ -812,7 +728,7 @@ export interface CampaignCoverage {
 }
 
 export interface NativeAgentRuntime {
-  execute(run: SealedAgentRun): Promise<NativeAgentReceipt>;
+  execute(run: SealedNativeRun): Promise<NativeRunReceipt>;
 }
 
 export interface ResearchCampaigns {
@@ -836,12 +752,11 @@ export interface CampaignOutcomeRef {
 export interface ResearchCampaignView extends CampaignOutcomeRef {
   readonly input: CampaignInput;
   readonly nativeRuns: readonly NativeRunReceipt[];
-  readonly validationRuns: readonly ValidationRunRecord[];
   readonly candidateReviews: readonly HumanCandidateReview[];
   readonly researchContinuationReviews: readonly HumanResearchContinuationReview[];
-  readonly validationRetries?: readonly HumanValidationRetry[];
   readonly parkedProgrammeLeads: readonly ParkedProgrammeLead[];
-  readonly findings: readonly SourceValidatedFinding[];
+  readonly candidateVerificationRequests: readonly CandidateVerificationRequest[];
+  readonly verificationPreparationNeeded: readonly ResearchCandidate[];
   readonly coverage: CampaignCoverage;
   readonly pendingCandidateReview?: CandidateReviewRequest;
   readonly pendingResearchContinuationReview?: ResearchContinuationReviewRequest;
@@ -871,9 +786,14 @@ export type CampaignInterruption = z.infer<typeof campaignInterruptionSchema>;
 export type NativeRunReceipt = z.infer<typeof nativeRunReceiptSchema>;
 export type ParkedProgrammeLead = z.infer<typeof parkedProgrammeLeadSchema>;
 export type SealedNativeRun = z.infer<typeof sealedNativeRunSchema>;
-export type SealedValidationRun = z.infer<typeof sealedValidationRunSchema>;
-export type SealedAgentRun = SealedNativeRun | SealedValidationRun;
-export type ValidationCandidate = z.infer<typeof validationCandidateSchema>;
+export type ResearchCandidate = z.infer<typeof researchCandidateSchema>;
+export type CandidateVerificationRecipeRef = z.infer<
+  typeof candidateVerificationRecipeRefSchema
+>;
+export type CandidateVerificationRecipe = z.infer<
+  typeof candidateVerificationRecipeSchema
+>;
+export type ResearchReport = z.infer<typeof researchReportSchema>;
 export type CandidateReviewRequest = z.infer<
   typeof candidateReviewRequestSchema
 >;
@@ -881,12 +801,9 @@ export type HumanCandidateReview = z.infer<typeof humanCandidateReviewSchema>;
 export type HumanResearchContinuationReview = z.infer<
   typeof humanResearchContinuationReviewSchema
 >;
-export type HumanValidationRetry = z.infer<typeof humanValidationRetrySchema>;
 export type ResearchContinuationReviewRequest = z.infer<
   typeof researchContinuationReviewRequestSchema
 >;
-export type ValidationRunReceipt = z.infer<typeof validationRunReceiptSchema>;
-export type NativeAgentReceipt = NativeRunReceipt | ValidationRunReceipt;
-export type SourceValidatedFinding = z.infer<
-  typeof sourceValidatedFindingSchema
+export type CandidateVerificationRequest = z.infer<
+  typeof candidateVerificationRequestSchema
 >;

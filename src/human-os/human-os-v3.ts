@@ -3,41 +3,52 @@ import { z } from "zod";
 
 import {
   canonicalDigest,
-  encodeCanonicalJson,
+  canonicalJson,
 } from "../infrastructure/canonical-json.js";
 import {
-  sourceValidatedFindingSchema,
-  type SourceValidatedFinding,
+  candidateVerificationRequestSchema,
+  type CandidateVerificationRequest,
 } from "../research/index.js";
 import {
-  aiReproductionRecordSchema,
-  defineAIReproductionRecord,
+  candidateVerificationRecordSchema,
+  candidateVerificationViewSchema,
+  defineCandidateVerificationRecord,
+  defineSubmissionCandidate,
   externalActionAuthorizationSchema,
   externalActionRequestSchema,
-  humanOsFindingViewSchema,
-  humanVerificationRecordSchema,
+  programmeScopeAssessmentSchema,
+  submissionCandidateSchema,
   submissionDraftSchema,
-  type AIReproductionRecord,
+  verifiedVulnerabilitySchema,
+  type CandidateVerificationRecord,
+  type CandidateVerificationView,
   type ExternalActionAuthorization,
   type ExternalActionRequest,
-  type HumanOsFindingView,
-  type HumanVerificationRecord,
+  type ProgrammeScopeAssessment,
   type SubmissionDraft,
+  type VerifiedVulnerability,
 } from "./contracts-v3.js";
 
 const eventSchema = z.discriminatedUnion("kind", [
   z.strictObject({
-    kind: z.literal("finding-received"),
-    finding: sourceValidatedFindingSchema,
+    kind: z.literal("candidate-verification-request-received"),
+    request: candidateVerificationRequestSchema,
     receivedAt: z.iso.datetime(),
   }),
   z.strictObject({
-    kind: z.literal("ai-reproduction-recorded"),
-    record: aiReproductionRecordSchema,
+    kind: z.literal("candidate-verification-completed"),
+    record: candidateVerificationRecordSchema,
+    verifiedVulnerability: verifiedVulnerabilitySchema.nullable(),
   }),
   z.strictObject({
-    kind: z.literal("human-verification-recorded"),
-    record: humanVerificationRecordSchema,
+    kind: z.literal("programme-scope-assessed"),
+    scopeAssessments: z.array(programmeScopeAssessmentSchema),
+    submissionCandidates: z.array(submissionCandidateSchema),
+  }),
+  z.strictObject({
+    kind: z.literal("programme-scope-assessment-incomplete"),
+    reason: z.literal("scope-evaluation-failed"),
+    recordedAt: z.iso.datetime(),
   }),
   z.strictObject({
     kind: z.literal("submission-draft-saved"),
@@ -59,26 +70,32 @@ export type ExternalActionAdmission =
   | {
       readonly status: "not-authorized";
       readonly reason:
-        | "finding-not-found"
+        | "vulnerability-not-found"
+        | "submission-candidate-not-found"
         | "draft-not-found"
-        | "human-verification-required"
         | "exact-authorization-required";
     };
 
-export interface DynamicReproductionRuntime {
+export interface CandidateVerificationRuntime {
   execute(input: {
-    readonly finding: SourceValidatedFinding;
-  }): Promise<AIReproductionRecord>;
+    readonly request: CandidateVerificationRequest;
+  }): Promise<CandidateVerificationRecord>;
+}
+
+export interface ProgrammeScopeEvaluator {
+  readonly programmeIdentities: readonly string[];
+  assess(input: {
+    readonly vulnerability: VerifiedVulnerability;
+    readonly verification: CandidateVerificationRecord;
+  }): Promise<readonly ProgrammeScopeAssessment[]>;
 }
 
 export interface HumanOs {
-  receiveFinding(input: {
-    readonly finding: SourceValidatedFinding;
+  receiveCandidateVerification(input: {
+    readonly request: CandidateVerificationRequest;
     readonly receivedAt: string;
-  }): Promise<HumanOsFindingView>;
-  reproduceFinding(findingId: string): Promise<AIReproductionRecord>;
-  recordAIReproduction(record: AIReproductionRecord): Promise<void>;
-  recordHumanVerification(record: HumanVerificationRecord): Promise<void>;
+  }): Promise<CandidateVerificationView>;
+  verifyCandidate(requestId: string): Promise<CandidateVerificationView>;
   saveSubmissionDraft(draft: SubmissionDraft): Promise<void>;
   authorizeExternalAction(
     authorization: ExternalActionAuthorization,
@@ -86,158 +103,248 @@ export interface HumanOs {
   admitExternalAction(
     request: ExternalActionRequest,
   ): Promise<ExternalActionAdmission>;
-  inspect(findingId: string): Promise<HumanOsFindingView>;
+  inspect(requestId: string): Promise<CandidateVerificationView>;
   close(): void;
 }
 
 export interface OpenHumanOsOptions {
   readonly databasePath: string;
-  readonly dynamicReproductionRuntime?: DynamicReproductionRuntime;
+  readonly candidateVerificationRuntime?: CandidateVerificationRuntime;
+  readonly programmeScopeEvaluator?: ProgrammeScopeEvaluator;
   readonly clock?: () => Date;
-}
-
-function encode(value: unknown): string {
-  return encodeCanonicalJson(z.json().parse(value));
 }
 
 class SqliteHumanOs implements HumanOs {
   readonly #database: Database.Database;
-  readonly #dynamicReproductionRuntime: DynamicReproductionRuntime | undefined;
+  readonly #runtime: CandidateVerificationRuntime | undefined;
+  readonly #scopeEvaluator: ProgrammeScopeEvaluator | undefined;
   readonly #clock: () => Date;
 
   constructor(options: OpenHumanOsOptions) {
-    this.#dynamicReproductionRuntime = options.dynamicReproductionRuntime;
+    this.#runtime = options.candidateVerificationRuntime;
+    this.#scopeEvaluator = options.programmeScopeEvaluator;
+    if (this.#scopeEvaluator !== undefined) {
+      const identities = z
+        .array(z.string().min(1).max(512))
+        .min(1)
+        .parse([...this.#scopeEvaluator.programmeIdentities]);
+      if (new Set(identities).size !== identities.length) {
+        throw new Error("Configured Programme identities must be unique");
+      }
+    }
     this.#clock = options.clock ?? (() => new Date());
     this.#database = new Database(options.databasePath);
     this.#database.pragma("journal_mode = WAL");
     this.#database.exec(`
-      CREATE TABLE IF NOT EXISTS human_os_events_v3 (
+      CREATE TABLE IF NOT EXISTS candidate_verification_events (
         global_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-        finding_id TEXT NOT NULL,
-        finding_sequence INTEGER NOT NULL,
+        request_id TEXT NOT NULL,
+        request_sequence INTEGER NOT NULL,
         event_json TEXT NOT NULL,
         event_digest TEXT NOT NULL,
-        UNIQUE (finding_id, finding_sequence)
+        UNIQUE (request_id, request_sequence)
       ) STRICT;
     `);
   }
 
-  async receiveFinding(input: {
-    readonly finding: SourceValidatedFinding;
+  async receiveCandidateVerification(input: {
+    readonly request: CandidateVerificationRequest;
     readonly receivedAt: string;
-  }): Promise<HumanOsFindingView> {
-    const finding = sourceValidatedFindingSchema.parse(input.finding);
+  }): Promise<CandidateVerificationView> {
+    const request = candidateVerificationRequestSchema.parse(input.request);
     const receivedAt = z.iso.datetime().parse(input.receivedAt);
-    const existing = this.#read(finding.findingId);
+    const existing = this.#read(request.requestId);
     if (existing !== undefined) {
-      if (canonicalDigest(existing.finding) !== canonicalDigest(finding)) {
-        throw new Error(`Human OS Finding conflict: ${finding.findingId}`);
+      if (canonicalDigest(existing.request) !== canonicalDigest(request)) {
+        throw new Error(
+          `Candidate Verification Request conflict: ${request.requestId}`,
+        );
       }
       return existing;
     }
-    this.#append(finding.findingId, {
-      kind: "finding-received",
-      finding,
+    this.#append(request.requestId, {
+      kind: "candidate-verification-request-received",
+      request,
       receivedAt,
     });
-    return this.#require(finding.findingId);
+    return this.#require(request.requestId);
   }
 
-  async reproduceFinding(findingId: string): Promise<AIReproductionRecord> {
-    const finding = this.#require(findingId).finding;
+  async verifyCandidate(requestId: string): Promise<CandidateVerificationView> {
+    let view = this.#require(requestId);
+
+    if (view.verificationRecords.length === 0) {
+      let record: CandidateVerificationRecord;
+      try {
+        if (this.#runtime === undefined) {
+          throw new Error("Candidate Verification Runtime is unavailable");
+        }
+        record = candidateVerificationRecordSchema.parse(
+          await this.#runtime.execute({ request: view.request }),
+        );
+        if (
+          record.requestId !== view.request.requestId ||
+          record.candidateId !== view.request.candidate.candidateId ||
+          (record.environment !== null &&
+            record.environment.targetSnapshotDigest !==
+              view.request.targetSnapshot.digest)
+        ) {
+          throw new Error("Candidate Verification binding mismatch");
+        }
+      } catch {
+        record = defineCandidateVerificationRecord({
+          kind: "candidate-verification-record",
+          schemaVersion: 1,
+          requestId: view.request.requestId,
+          candidateId: view.request.candidate.candidateId,
+          environment: null,
+          status: "incomplete",
+          summary:
+            "Dynamic verification could not produce a Candidate-bound runtime result.",
+          evidenceRequest: null,
+          privateEvidence: [],
+          recordedAt: this.#clock().toISOString(),
+        });
+      }
+
+      const verifiedVulnerability =
+        record.status === "runtime-confirmed"
+          ? verifiedVulnerabilitySchema.parse({
+              kind: "verified-vulnerability",
+              schemaVersion: 1,
+              vulnerabilityId: `${view.request.campaignId}:vulnerability:${view.request.candidate.candidateId}`,
+              candidateId: view.request.candidate.candidateId,
+              targetSnapshot: view.request.targetSnapshot,
+              ...(view.request.dependencySnapshots === undefined
+                ? {}
+                : { dependencySnapshots: view.request.dependencySnapshots }),
+              attackerPremise: view.request.candidate.attackerPremise,
+              brokenSecurityProperty:
+                view.request.candidate.brokenSecurityProperty,
+              claim: view.request.candidate.claim,
+              assurance: "runtime-confirmed",
+              candidateVerificationRef: {
+                id: record.id,
+                digest: canonicalDigest(record),
+              },
+              evidence: view.request.candidate.evidence,
+            })
+          : null;
+
+      this.#append(requestId, {
+        kind: "candidate-verification-completed",
+        record,
+        verifiedVulnerability,
+      });
+      view = this.#require(requestId);
+    }
+
+    if (
+      view.verifiedVulnerability === null ||
+      this.#scopeEvaluator === undefined ||
+      view.programmeScopeStatus === "completed"
+    ) {
+      return view;
+    }
+
     try {
-      if (this.#dynamicReproductionRuntime === undefined) {
-        throw new Error("Dynamic Reproduction Runtime is unavailable");
-      }
-      const record = aiReproductionRecordSchema.parse(
-        await this.#dynamicReproductionRuntime.execute({ finding }),
+      const scopeAssessments = await this.#assessScope(
+        view.verifiedVulnerability,
+        view.verificationRecords[0]!,
       );
-      if (record.findingId !== finding.findingId) {
-        throw new Error("Dynamic Reproduction Finding binding mismatch");
-      }
-      await this.recordAIReproduction(record);
-      return record;
+      const submissionCandidates = scopeAssessments.flatMap((assessment) =>
+        assessment.status === "in-scope"
+          ? [
+              defineSubmissionCandidate({
+                kind: "submission-candidate",
+                schemaVersion: 1,
+                vulnerabilityId: view.verifiedVulnerability!.vulnerabilityId,
+                programmeIdentity: assessment.programmeIdentity,
+                scopeAssessmentId: assessment.id,
+                destination: assessment.destination,
+              }),
+            ]
+          : [],
+      );
+      this.#append(requestId, {
+        kind: "programme-scope-assessed",
+        scopeAssessments: [...scopeAssessments],
+        submissionCandidates,
+      });
     } catch {
-      const incomplete = defineAIReproductionRecord({
-        kind: "ai-reproduction-record",
-        schemaVersion: 3,
-        findingId: finding.findingId,
-        environment: null,
-        status: "incomplete",
-        summary:
-          "Dynamic Reproduction could not produce a Finding-bound runtime result.",
-        evidenceRequest: null,
-        privateEvidence: [],
+      this.#append(requestId, {
+        kind: "programme-scope-assessment-incomplete",
+        reason: "scope-evaluation-failed",
         recordedAt: this.#clock().toISOString(),
       });
-      await this.recordAIReproduction(incomplete);
-      return incomplete;
     }
+    return this.#require(requestId);
   }
 
-  async recordAIReproduction(record: AIReproductionRecord): Promise<void> {
-    const value = aiReproductionRecordSchema.parse(record);
-    const view = this.#require(value.findingId);
+  async #assessScope(
+    vulnerability: VerifiedVulnerability,
+    verification: CandidateVerificationRecord,
+  ): Promise<readonly ProgrammeScopeAssessment[]> {
+    if (this.#scopeEvaluator === undefined) return [];
+    const assessments = z
+      .array(programmeScopeAssessmentSchema)
+      .parse(
+        await this.#scopeEvaluator.assess({ vulnerability, verification }),
+      );
+    const expected = new Set(this.#scopeEvaluator.programmeIdentities);
+    const observed = new Set(assessments.map((item) => item.programmeIdentity));
     if (
-      value.environment !== null &&
-      value.environment.targetSnapshotDigest !==
-        view.finding.targetSnapshot.digest
-    ) {
-      throw new Error("AI Reproduction Target binding mismatch");
-    }
-    if (view.aiReproductions.some((item) => item.id === value.id)) return;
-    this.#append(value.findingId, {
-      kind: "ai-reproduction-recorded",
-      record: value,
-    });
-  }
-
-  async recordHumanVerification(
-    record: HumanVerificationRecord,
-  ): Promise<void> {
-    const value = humanVerificationRecordSchema.parse(record);
-    const view = this.#require(value.findingId);
-    const reproduction = view.aiReproductions.find(
-      (item) => item.id === value.aiReproductionId,
-    );
-    if (
-      reproduction === undefined ||
-      reproduction.environment === null ||
-      value.environment.targetSnapshotDigest !==
-        view.finding.targetSnapshot.digest ||
-      value.environment.environmentId === reproduction.environment.environmentId
+      expected.size === 0 ||
+      expected.size !== observed.size ||
+      assessments.length !== observed.size ||
+      [...expected].some((identity) => !observed.has(identity)) ||
+      assessments.some(
+        (assessment) =>
+          assessment.vulnerabilityId !== vulnerability.vulnerabilityId,
+      )
     ) {
       throw new Error(
-        "Human Verification requires its bound AI Reproduction and a separate fresh environment",
+        "Programme Scope Evaluator did not assess every configured programme exactly once",
       );
     }
-    if (view.humanVerifications.some((item) => item.id === value.id)) return;
-    this.#append(value.findingId, {
-      kind: "human-verification-recorded",
-      record: value,
-    });
+    return assessments;
   }
 
   async saveSubmissionDraft(draft: SubmissionDraft): Promise<void> {
     const value = submissionDraftSchema.parse(draft);
-    const view = this.#require(value.findingId);
-    const existingRevision = view.drafts.find(
-      (item) => item.revision === value.revision,
+    const located = this.#findByVulnerability(value.vulnerabilityId);
+    if (
+      !located.view.submissionCandidates.some(
+        (candidate) =>
+          candidate.id === value.submissionCandidateId &&
+          candidate.destination === value.destination,
+      )
+    ) {
+      throw new Error("Submission Draft requires an in-scope destination");
+    }
+    const existing = located.view.drafts.find(
+      (item) =>
+        item.submissionCandidateId === value.submissionCandidateId &&
+        item.revision === value.revision,
     );
-    if (existingRevision !== undefined) {
-      if (existingRevision.id !== value.id) {
+    if (existing !== undefined) {
+      if (existing.id !== value.id) {
         throw new Error("Submission Draft revision conflict");
       }
       return;
     }
     const latestRevision = Math.max(
       0,
-      ...view.drafts.map((item) => item.revision),
+      ...located.view.drafts
+        .filter(
+          (item) => item.submissionCandidateId === value.submissionCandidateId,
+        )
+        .map((item) => item.revision),
     );
     if (value.revision !== latestRevision + 1) {
       throw new Error("Submission Draft revisions must be contiguous");
     }
-    this.#append(value.findingId, {
+    this.#append(located.requestId, {
       kind: "submission-draft-saved",
       draft: value,
     });
@@ -247,23 +354,26 @@ class SqliteHumanOs implements HumanOs {
     authorization: ExternalActionAuthorization,
   ): Promise<void> {
     const value = externalActionAuthorizationSchema.parse(authorization);
-    const view = this.#require(value.findingId);
-    const draft = view.drafts.find((item) => item.id === value.draftId);
-    const humanConfirmed = view.humanVerifications.some(
-      (item) => item.status === "human-confirmed",
+    const located = this.#findByVulnerability(value.vulnerabilityId);
+    const candidate = located.view.submissionCandidates.find(
+      (item) => item.id === value.submissionCandidateId,
     );
+    const draft = located.view.drafts.find((item) => item.id === value.draftId);
     if (
+      candidate === undefined ||
       draft === undefined ||
+      draft.submissionCandidateId !== candidate.id ||
       canonicalDigest(draft) !== value.draftDigest ||
       draft.destination !== value.destination ||
-      !humanConfirmed
+      candidate.destination !== value.destination
     ) {
       throw new Error(
-        "External Action Authorization requires an exact Draft and human-confirmed verification",
+        "External Action Authorization requires an exact in-scope Submission Candidate and Draft",
       );
     }
-    if (view.authorizations.some((item) => item.id === value.id)) return;
-    this.#append(value.findingId, {
+    if (located.view.authorizations.some((item) => item.id === value.id))
+      return;
+    this.#append(located.requestId, {
       kind: "external-action-authorized",
       authorization: value,
     });
@@ -273,25 +383,26 @@ class SqliteHumanOs implements HumanOs {
     candidate: ExternalActionRequest,
   ): Promise<ExternalActionAdmission> {
     const request = externalActionRequestSchema.parse(candidate);
-    const view = this.#read(request.findingId);
-    if (view === undefined) {
-      return { status: "not-authorized", reason: "finding-not-found" };
-    }
-    if (!view.drafts.some((draft) => draft.id === request.draftId)) {
-      return { status: "not-authorized", reason: "draft-not-found" };
+    const located = this.#tryFindByVulnerability(request.vulnerabilityId);
+    if (located === undefined) {
+      return { status: "not-authorized", reason: "vulnerability-not-found" };
     }
     if (
-      !view.humanVerifications.some(
-        (verification) => verification.status === "human-confirmed",
+      !located.view.submissionCandidates.some(
+        (item) => item.id === request.submissionCandidateId,
       )
     ) {
       return {
         status: "not-authorized",
-        reason: "human-verification-required",
+        reason: "submission-candidate-not-found",
       };
     }
-    const authorization = view.authorizations.find(
+    if (!located.view.drafts.some((draft) => draft.id === request.draftId)) {
+      return { status: "not-authorized", reason: "draft-not-found" };
+    }
+    const authorization = located.view.authorizations.find(
       (item) =>
+        item.submissionCandidateId === request.submissionCandidateId &&
         item.draftId === request.draftId &&
         item.draftDigest === request.draftDigest &&
         item.destination === request.destination,
@@ -301,17 +412,17 @@ class SqliteHumanOs implements HumanOs {
       : { status: "authorized", authorizationId: authorization.id };
   }
 
-  async inspect(findingId: string): Promise<HumanOsFindingView> {
-    return this.#require(findingId);
+  async inspect(requestId: string): Promise<CandidateVerificationView> {
+    return this.#require(requestId);
   }
 
   close(): void {
     this.#database.close();
   }
 
-  #append(findingId: string, event: z.infer<typeof eventSchema>): void {
+  #append(requestId: string, event: z.infer<typeof eventSchema>): void {
     const value = eventSchema.parse(event);
-    const eventJson = encode(value);
+    const eventJson = canonicalJson(value);
     const sequence = z
       .number()
       .int()
@@ -319,51 +430,85 @@ class SqliteHumanOs implements HumanOs {
       .parse(
         this.#database
           .prepare(
-            `SELECT COALESCE(MAX(finding_sequence), 0) + 1
-             FROM human_os_events_v3 WHERE finding_id = ?`,
+            `SELECT COALESCE(MAX(request_sequence), 0) + 1
+           FROM candidate_verification_events WHERE request_id = ?`,
           )
           .pluck()
-          .get(findingId),
+          .get(requestId),
       );
     this.#database
       .prepare(
-        `INSERT INTO human_os_events_v3 (
-           finding_id, finding_sequence, event_json, event_digest
+        `INSERT INTO candidate_verification_events (
+           request_id, request_sequence, event_json, event_digest
          ) VALUES (?, ?, ?, ?)`,
       )
-      .run(findingId, sequence, eventJson, canonicalDigest(value));
+      .run(requestId, sequence, eventJson, canonicalDigest(value));
   }
 
-  #read(findingId: string): HumanOsFindingView | undefined {
+  #read(requestId: string): CandidateVerificationView | undefined {
     const rows = z.array(rowSchema).parse(
       this.#database
         .prepare(
-          `SELECT event_json, event_digest FROM human_os_events_v3
-             WHERE finding_id = ? ORDER BY finding_sequence ASC`,
+          `SELECT event_json, event_digest FROM candidate_verification_events
+           WHERE request_id = ? ORDER BY request_sequence ASC`,
         )
-        .all(findingId),
+        .all(requestId),
     );
     if (rows.length === 0) return undefined;
     const events = rows.map((row) => {
       const decoded: unknown = JSON.parse(row.event_json);
       if (canonicalDigest(decoded) !== row.event_digest) {
-        throw new Error(`Human OS event digest mismatch: ${findingId}`);
+        throw new Error(
+          `Candidate Verification event digest mismatch: ${requestId}`,
+        );
       }
       return eventSchema.parse(decoded);
     });
     const first = events[0];
-    if (first?.kind !== "finding-received") {
-      throw new Error(`Human OS Finding handoff is missing: ${findingId}`);
+    if (first?.kind !== "candidate-verification-request-received") {
+      throw new Error(
+        `Candidate Verification handoff is missing: ${requestId}`,
+      );
     }
-    return humanOsFindingViewSchema.parse({
-      finding: first.finding,
+    const completed = events.find(
+      (event) => event.kind === "candidate-verification-completed",
+    );
+    const scopeCompleted = events.find(
+      (event) => event.kind === "programme-scope-assessed",
+    );
+    const scopeIncomplete = events.some(
+      (event) => event.kind === "programme-scope-assessment-incomplete",
+    );
+    return candidateVerificationViewSchema.parse({
+      request: first.request,
       receivedAt: first.receivedAt,
-      aiReproductions: events.flatMap((event) =>
-        event.kind === "ai-reproduction-recorded" ? [event.record] : [],
-      ),
-      humanVerifications: events.flatMap((event) =>
-        event.kind === "human-verification-recorded" ? [event.record] : [],
-      ),
+      verificationRecords:
+        completed?.kind === "candidate-verification-completed"
+          ? [completed.record]
+          : [],
+      verifiedVulnerability:
+        completed?.kind === "candidate-verification-completed"
+          ? completed.verifiedVulnerability
+          : null,
+      programmeScopeStatus:
+        completed?.kind !== "candidate-verification-completed" ||
+        completed.verifiedVulnerability === null
+          ? "not-configured"
+          : scopeCompleted?.kind === "programme-scope-assessed"
+            ? "completed"
+            : scopeIncomplete
+              ? "incomplete"
+              : this.#scopeEvaluator === undefined
+                ? "not-configured"
+                : "pending",
+      scopeAssessments:
+        scopeCompleted?.kind === "programme-scope-assessed"
+          ? scopeCompleted.scopeAssessments
+          : [],
+      submissionCandidates:
+        scopeCompleted?.kind === "programme-scope-assessed"
+          ? scopeCompleted.submissionCandidates
+          : [],
       drafts: events.flatMap((event) =>
         event.kind === "submission-draft-saved" ? [event.draft] : [],
       ),
@@ -375,12 +520,47 @@ class SqliteHumanOs implements HumanOs {
     });
   }
 
-  #require(findingId: string): HumanOsFindingView {
-    const view = this.#read(findingId);
+  #require(requestId: string): CandidateVerificationView {
+    const view = this.#read(requestId);
     if (view === undefined) {
-      throw new Error(`Human OS Finding not found: ${findingId}`);
+      throw new Error(`Candidate Verification Request not found: ${requestId}`);
     }
     return view;
+  }
+
+  #tryFindByVulnerability(
+    vulnerabilityId: string,
+  ):
+    | { readonly requestId: string; readonly view: CandidateVerificationView }
+    | undefined {
+    const requestIds = z
+      .array(z.string())
+      .parse(
+        this.#database
+          .prepare(
+            "SELECT DISTINCT request_id FROM candidate_verification_events",
+          )
+          .pluck()
+          .all(),
+      );
+    for (const requestId of requestIds) {
+      const view = this.#require(requestId);
+      if (view.verifiedVulnerability?.vulnerabilityId === vulnerabilityId) {
+        return { requestId, view };
+      }
+    }
+    return undefined;
+  }
+
+  #findByVulnerability(vulnerabilityId: string): {
+    readonly requestId: string;
+    readonly view: CandidateVerificationView;
+  } {
+    const located = this.#tryFindByVulnerability(vulnerabilityId);
+    if (located === undefined) {
+      throw new Error(`Verified Vulnerability not found: ${vulnerabilityId}`);
+    }
+    return located;
   }
 }
 

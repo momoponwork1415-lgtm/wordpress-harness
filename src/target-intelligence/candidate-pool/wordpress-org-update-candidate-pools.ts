@@ -4,13 +4,11 @@ import { dirname, join } from "node:path";
 import { canonicalDigest } from "../../infrastructure/canonical-json.js";
 import { canonicalJson } from "../acquisition/canonical-json.js";
 import type { WordPressOrgAcquisitionResult } from "../acquisition/index.js";
-import {
-  defineTargetCandidatePool,
-  targetCandidateSchema,
-  type TargetCandidate,
-} from "../target-proposal/index.js";
+import { defineTargetCandidatePool } from "./candidate-pools.js";
 import type { WordPressOrgUpdateFrontier } from "../update-frontier/index.js";
 import {
+  targetCandidateSchema,
+  type TargetCandidate,
   wordPressOrgCandidatePoolFreshnessPolicySchema,
   wordPressOrgUpdateCandidatePoolAssemblyRecordSchema,
   wordPressOrgUpdateCandidatePoolAssemblyRefSchema,

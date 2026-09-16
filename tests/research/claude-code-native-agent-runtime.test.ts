@@ -185,21 +185,16 @@ if [ "$invocation" -eq 2 ]; then
   printf '{"type":"result","subtype":"success","is_error":false,"terminal_reason":"completed","session_id":"%s","structured_output":{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"The remaining frontier was resolved."}},"total_cost_usd":0.3,"duration_ms":45000,"num_turns":3,"permission_denials":[],"usage":{"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}},"modelUsage":{"claude-opus-4-1":{"canonicalModel":"claude-opus-4-1","inputTokens":3000,"outputTokens":500,"cacheReadInputTokens":1000,"cacheCreationInputTokens":250}}}' "$active_session"
   exit 0
 fi
-if [ "$invocation" -eq 4 ]; then
+if [ "$invocation" -eq 3 ]; then
   printf '{"is_error":true,"duration_api_ms":754,"num_turns":1,"stop_reason":null,"session_id":"%s","total_cost_usd":0.25,"usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}},"modelUsage":{"claude-haiku-4-5":{"inputTokens":532,"outputTokens":13,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"canonicalModel":"claude-haiku-4-5"}},"permission_denials":[],"terminal_reason":"budget_exhausted","subtype":"error_max_budget_usd","errors":["Reached maximum budget"],"type":"result","duration_ms":1}' "$active_session"
   exit 1
 fi
-if [ "$invocation" -eq 5 ]; then
+if [ "$invocation" -eq 4 ]; then
   [ -n "$resume_session" ] || exit 76
   printf '{"type":"result","subtype":"success","is_error":false,"terminal_reason":"completed","session_id":"%s","structured_output":{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"The explicitly resumed frontier was resolved."}},"total_cost_usd":0.2,"duration_ms":30000,"num_turns":2,"permission_denials":[],"usage":{"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}},"modelUsage":{"claude-opus-4-1":{"canonicalModel":"claude-opus-4-1","inputTokens":2000,"outputTokens":300,"cacheReadInputTokens":500,"cacheCreationInputTokens":100}}}' "$active_session"
   exit 0
 fi
-printf '%s' "$prompt" | grep -F 'This is one fresh Independent Validation.' >/dev/null
-printf '%s' "$prompt" | grep -F 'Candidate:' >/dev/null
-if printf '%s' "$prompt" | grep -F 'Prior source-bound reports:' >/dev/null; then
-  exit 93
-fi
-printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_reason":"completed","session_id":"11111111-1111-4111-8111-111111111111","structured_output":{"schemaVersion":1,"candidateId":"candidate-claude-stored-xss-1","disposition":"source-validated","reason":"The public write and privileged unescaped output are independently supported.","evidence":[{"path":"admin/view.php","location":"render_value:88","observation":"Emits the persisted value without escaping."}],"nextActions":[{"question":"Transport-only extra action.","sourcePointers":["admin/view.php"]}]},"total_cost_usd":0.5,"duration_ms":60000,"num_turns":5,"permission_denials":[],"usage":{"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}},"modelUsage":{"claude-opus-4-1":{"canonicalModel":"claude-opus-4-1","inputTokens":6000,"outputTokens":900,"cacheReadInputTokens":500,"cacheCreationInputTokens":250}}}'
+exit 75
 `,
       { encoding: "utf8", mode: 0o700 },
     );
@@ -207,8 +202,6 @@ printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_rea
 
     const researchPrompt =
       "Audit the immutable WordPress plugin source from first principles.";
-    const validationPrompt =
-      "Independently validate one source-bound candidate.";
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 1,
@@ -224,10 +217,6 @@ printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_rea
       promptSet: {
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
-      },
-      validationPromptSet: {
-        id: "independent-validation-v1",
-        digest: promptTextDigest(validationPrompt),
       },
       agentRuntimeProfile: {
         id: "claude-code-opus-native-v1",
@@ -263,10 +252,6 @@ printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_rea
       promptSet: {
         digest: input.promptSet.digest,
         text: researchPrompt,
-      },
-      validationPromptSet: {
-        digest: input.validationPromptSet.digest,
-        text: validationPrompt,
       },
       permissionProfileDigest: input.permissionProfile.digest,
       maxOutputBytes: 1_000_000,
@@ -304,7 +289,7 @@ printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_rea
     await expect(
       conductWithHumanAdvance(campaigns, input),
     ).resolves.toMatchObject({
-      status: "coverage-closed",
+      status: "verification-preparation-needed",
     });
     await expect(
       campaigns.inspect({ campaignId: "campaign-claude-native-1" }),
@@ -349,41 +334,14 @@ printf '%s' '{"type":"result","subtype":"success","is_error":false,"terminal_rea
           },
         },
       ],
-      validationRuns: [
-        {
-          candidateId: "candidate-claude-stored-xss-1",
-          receipt: {
-            terminal: "completed",
-            usage: {
-              wallTimeMs: 60_000,
-              inputTokens: 6_750,
-              outputTokens: 900,
-              estimatedCostUsd: 0.5,
-            },
-            activity: { subagents: null },
-            isolation: {
-              backend: "gvisor",
-              runtime: "runsc",
-              fallbackUsed: false,
-            },
-            report: { disposition: "source-validated" },
-          },
-        },
-      ],
-      findings: [
-        {
-          candidateId: "candidate-claude-stored-xss-1",
-          assurance: "source-validated",
-        },
-      ],
     });
     const scratchPaths = (
       await readFile(`${dockerExecutablePath}.scratch`, "utf8")
     )
       .trim()
       .split("\n");
-    expect(scratchPaths).toHaveLength(3);
-    expect(new Set(scratchPaths).size).toBe(3);
+    expect(scratchPaths).toHaveLength(2);
+    expect(new Set(scratchPaths).size).toBe(2);
     const checkpointEntries = await readdir(
       join(scratchRootDirectory, "agent-checkpoints"),
       { recursive: true },
@@ -564,7 +522,6 @@ exit "$(cat '${providerExitPath}')"
     await chmod(dockerExecutablePath, 0o700);
 
     const researchPrompt = "Audit the immutable plugin from first principles.";
-    const validationPrompt = "Independently validate one source-bound claim.";
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 1,
@@ -580,10 +537,6 @@ exit "$(cat '${providerExitPath}')"
       promptSet: {
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
-      },
-      validationPromptSet: {
-        id: "independent-validation-v1",
-        digest: promptTextDigest(validationPrompt),
       },
       agentRuntimeProfile: {
         id: "claude-code-opus-native-v1",
@@ -619,10 +572,6 @@ exit "$(cat '${providerExitPath}')"
         providerConfigDirectory,
         scratchRootDirectory,
         promptSet: { digest: input.promptSet.digest, text: researchPrompt },
-        validationPromptSet: {
-          digest: input.validationPromptSet.digest,
-          text: validationPrompt,
-        },
         permissionProfileDigest: input.permissionProfile.digest,
         maxOutputBytes: 1_000_000,
         clock: () => new Date(clockTick++ * 10_000),

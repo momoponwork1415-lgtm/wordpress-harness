@@ -53,25 +53,14 @@ describe("GLM Native Agent Runtime", () => {
       '{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"No actionable frontier remains."}}';
     const ambiguousStop =
       '{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"Ambiguous stop.","nextActions":[{"question":"Continue?","sourcePointers":["plugin.php"]}]}}';
-    const malformedValidation =
-      '{"schemaVersion":1,"candidateId":"candidate-1","disposition":"source-validated","reason":"The source supports the claim.","evidence":[{"path":"plugin.php","location":"1","observation":"source observation"}],"}';
-    const validValidation =
-      '{"schemaVersion":1,"candidateId":"candidate-1","disposition":"source-validated","reason":"The source supports the claim.","evidence":[{"path":"plugin.php","location":"1","observation":"source observation"}]}';
     const providerResultPath = join(directory, "provider-result.txt");
     const correctedProviderResultPath = join(
       directory,
       "corrected-provider-result.txt",
     );
-    const validationResultPath = join(directory, "validation-result.txt");
-    const correctedValidationResultPath = join(
-      directory,
-      "corrected-validation-result.txt",
-    );
     const correctionErrorPath = join(directory, "correction-error");
     await writeFile(providerResultPath, missingClosuresResult, "utf8");
     await writeFile(correctedProviderResultPath, validCandidateResult, "utf8");
-    await writeFile(validationResultPath, malformedValidation, "utf8");
-    await writeFile(correctedValidationResultPath, validValidation, "utf8");
     const providerSettings = {
       env: {
         ANTHROPIC_AUTH_TOKEN: "test-zai-token",
@@ -128,7 +117,6 @@ provider_mount=''
 scratch=''
 session=''
 is_version_probe=0
-is_validation=0
 previous=''
 for argument in "$@"; do
   if [ "$previous" = "--model" ] && [ "$argument" = "opus" ]; then has_alias=1; fi
@@ -143,7 +131,6 @@ for argument in "$@"; do
   [ "$argument" != "--json-schema" ] || has_json_schema=1
   [ "$argument" != "--max-budget-usd" ] || has_cost_cap=1
   [ "$argument" != "--version" ] || is_version_probe=1
-  [ "$argument" != "--no-session-persistence" ] || is_validation=1
   case "$argument" in
     *:/provider:rw) provider_mount="\${argument%:/provider:rw}" ;;
     *:/provider:ro) provider_mount="\${argument%:/provider:ro}" ;;
@@ -167,7 +154,6 @@ fi
 [ -f "$provider_mount/settings.json" ] || exit 97
 [ ! -e "$provider_mount/.mcp.json" ] || exit 98
 [ -n "$scratch" ] || exit 99
-[ "$is_validation" -eq 0 ] || session='11111111-1111-4111-8111-111111111111'
 [ -n "$session" ] || exit 100
 prompt=$(cat)
 printf '%s' "$prompt" | grep -F 'Return exactly one JSON value matching this schema.' >/dev/null
@@ -176,21 +162,13 @@ printf '%s' '{"checkpoint":true}' > "$provider_mount/session-$session.jsonl"
 printf '%s' 'durable GLM research notes' > "$scratch/state.md"
 result_path='${providerResultPath}'
 subagents=2
-if [ "$is_validation" -eq 1 ]; then
-  result_path='${validationResultPath}'
-  subagents=0
-fi
-case "$prompt:$is_validation" in
-  *'The prior response was invalid'*:0)
+case "$prompt" in
+  *'The prior response was invalid'*)
     if [ -f '${correctionErrorPath}' ]; then
       node -e 'const body={type:"result",subtype:"success",is_error:true,terminal_reason:"api_error",api_error_status:429,result:"API Error: Usage limit reached for 5 hour.",session_id:process.argv[1],duration_ms:1000,num_turns:0,permission_denials:[],usage:{server_tool_use:{web_search_requests:0,web_fetch_requests:0}},modelUsage:{}};process.stdout.write(JSON.stringify(body));' "$session"
       exit 1
     fi
     result_path='${correctedProviderResultPath}'
-    subagents=0
-    ;;
-  *'The prior response was invalid'*:1)
-    result_path='${correctedValidationResultPath}'
     subagents=0
     ;;
 esac
@@ -201,7 +179,6 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
     await chmod(dockerExecutablePath, 0o700);
 
     const researchPrompt = "Audit this immutable plugin from first principles.";
-    const validationPrompt = "Independently validate the source claim.";
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 1,
@@ -217,10 +194,6 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
       promptSet: {
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
-      },
-      validationPromptSet: {
-        id: "independent-validation-v1",
-        digest: promptTextDigest(validationPrompt),
       },
       agentRuntimeProfile: {
         id: "glm-5.3-claude-code-native-v1",
@@ -255,10 +228,6 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
       providerConfigDirectory,
       scratchRootDirectory,
       promptSet: { digest: input.promptSet.digest, text: researchPrompt },
-      validationPromptSet: {
-        digest: input.validationPromptSet.digest,
-        text: validationPrompt,
-      },
       permissionProfileDigest: input.permissionProfile.digest,
       maxOutputBytes: 1_000_000,
     };
@@ -295,7 +264,7 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
     await expect(
       conductWithHumanAdvance(campaigns, input),
     ).resolves.toMatchObject({
-      status: "coverage-closed",
+      status: "verification-preparation-needed",
     });
     await expect(
       campaigns.inspect({ campaignId: input.campaignId }),
@@ -318,20 +287,6 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
           report: { decision: { kind: "stop" } },
         },
       ],
-      validationRuns: [
-        {
-          receipt: {
-            terminal: "completed",
-            usage: {
-              wallTimeMs: 60_000,
-              inputTokens: 8_500,
-              outputTokens: 1_000,
-            },
-            report: { disposition: "source-validated" },
-          },
-        },
-      ],
-      findings: [{ candidateId: "candidate-1" }],
     });
     const checkpointEntries = await readdir(
       join(scratchRootDirectory, "agent-checkpoints"),

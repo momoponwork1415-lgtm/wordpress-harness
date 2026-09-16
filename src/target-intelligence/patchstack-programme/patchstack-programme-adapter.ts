@@ -18,7 +18,6 @@ import {
 const sourceOrder: readonly PatchstackProgrammeSourceKind[] = [
   "rules",
   "report-form",
-  "leaderboard",
   "mvdp-directory",
   "marketing",
 ];
@@ -96,8 +95,7 @@ async function normalizePages(
   if (
     !eligibilityResult.success ||
     eligibilityResult.data.conditions === undefined ||
-    rules.assertions.programmeOpportunityBand === undefined ||
-    rules.assertions.rewardFactors === undefined
+    rules.assertions.programmeOpportunityBand === undefined
   ) {
     throw new Error("Patchstack Rules source is incomplete");
   }
@@ -145,45 +143,6 @@ async function normalizePages(
     ) {
       return conflictSignal();
     }
-    if (
-      document.assertions.rewardFactors !== undefined &&
-      canonicalJson(document.assertions.rewardFactors) !==
-        canonicalJson(rules.assertions.rewardFactors)
-    ) {
-      return conflictSignal();
-    }
-  }
-
-  const routes = new Map<
-    string,
-    NonNullable<
-      PatchstackProgrammePageDocument["assertions"]["rewardRoutes"]
-    >[number]
-  >();
-  for (const document of documents) {
-    for (const route of document.assertions.rewardRoutes ?? []) {
-      const existing = routes.get(route.id);
-      if (
-        existing !== undefined &&
-        canonicalJson(existing) !== canonicalJson(route)
-      ) {
-        return conflictSignal();
-      }
-      routes.set(route.id, route);
-    }
-  }
-  if (routes.size === 0) {
-    throw new Error("Patchstack reward routes are missing");
-  }
-  const currencies = new Set(
-    [...routes.values()].map((route) => route.currency),
-  );
-  if (currencies.size !== 1) {
-    return conflictSignal();
-  }
-  const currency = [...currencies][0];
-  if (currency === undefined) {
-    throw new Error("Patchstack reward currency is missing");
   }
 
   return normalizedProgrammePolicySchema.parse({
@@ -193,14 +152,6 @@ async function normalizePages(
       directoryEligibilityRules: directory.assertions.directoryEligibilityRules,
     },
     programmeOpportunityBand: rules.assertions.programmeOpportunityBand,
-    rewardEstimateInput: {
-      kind: "finding-only-reward-estimate-input",
-      currency,
-      factors: rules.assertions.rewardFactors,
-      routes: [...routes.values()].sort((left, right) =>
-        left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
-      ),
-    },
   });
 }
 
@@ -217,7 +168,7 @@ export function createPatchstackProgrammeAdapters(
       (kind) => pages.filter((page) => page.sourceKind === kind).length !== 1,
     )
   ) {
-    throw new Error("Patchstack Programme requires exactly five source pages");
+    throw new Error("Patchstack Programme requires exactly four source pages");
   }
   return sourceOrder.map((kind) => {
     const page = pages.find((candidate) => candidate.sourceKind === kind);

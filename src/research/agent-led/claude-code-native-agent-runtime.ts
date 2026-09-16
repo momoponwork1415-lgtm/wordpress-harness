@@ -13,16 +13,14 @@ import {
 } from "./gvisor-agent-sandbox.js";
 import {
   nativeRunReceiptSchema,
-  researchReportSchema,
-  validationReportSchema,
-  validationRunReceiptSchema,
   type AgentCheckpointRef,
   type AgentRunDiagnosticRef,
   type AgentRunFailureStage,
   type NativeAgentRuntime,
-  type NativeAgentReceipt,
-  type SealedAgentRun,
+  type NativeRunReceipt,
+  type SealedNativeRun,
 } from "./contracts.js";
+import { providerResearchReportSchema } from "./provider-research-report.js";
 
 const modelUsageSchema = z.record(
   z.string(),
@@ -149,85 +147,6 @@ function parseJson(value: string): unknown {
   }
 }
 
-const providerObjectUnionSchema = z.object({
-  oneOf: z
-    .array(
-      z.object({
-        type: z.literal("object"),
-        properties: z.record(z.string(), z.unknown()),
-        required: z.array(z.string()),
-        additionalProperties: z.literal(false),
-      }),
-    )
-    .min(1),
-});
-const providerDispositionSchema = z.object({
-  type: z.literal("string"),
-  const: z.string().min(1),
-});
-const providerArraySchema = z.looseObject({
-  type: z.literal("array"),
-  items: z.unknown(),
-  minItems: z.number().int().nonnegative().optional(),
-});
-
-function flattenValidationProviderSchema(providerSchema: unknown): unknown {
-  const decoded = providerObjectUnionSchema.parse(providerSchema);
-  const firstBranch = decoded.oneOf[0];
-  if (firstBranch === undefined) {
-    throw new Error("Validation provider schema has no union branches.");
-  }
-  const properties = { ...firstBranch.properties };
-  const dispositions: string[] = [];
-  let weakestEvidence: z.infer<typeof providerArraySchema> | undefined;
-  let nextActions: unknown;
-  for (const branch of decoded.oneOf) {
-    const disposition = providerDispositionSchema.parse(
-      branch.properties.disposition,
-    );
-    dispositions.push(disposition.const);
-    const evidence = providerArraySchema.parse(branch.properties.evidence);
-    if (
-      weakestEvidence === undefined ||
-      (weakestEvidence.minItems !== undefined &&
-        evidence.minItems === undefined)
-    ) {
-      weakestEvidence = evidence;
-    }
-    if (branch.properties.nextActions !== undefined) {
-      nextActions = branch.properties.nextActions;
-    }
-  }
-  if (weakestEvidence === undefined) {
-    throw new Error("Validation provider schema has no evidence property.");
-  }
-  properties.disposition = { type: "string", enum: dispositions };
-  properties.evidence = weakestEvidence;
-  if (nextActions !== undefined) properties.nextActions = nextActions;
-  return {
-    type: "object",
-    properties,
-    required: firstBranch.required.filter((name) =>
-      decoded.oneOf.every((branch) => branch.required.includes(name)),
-    ),
-    additionalProperties: false,
-  };
-}
-
-function normalizeValidationTransportReport(report: unknown): unknown {
-  const decoded = z.record(z.string(), z.unknown()).safeParse(report);
-  if (
-    !decoded.success ||
-    decoded.data.disposition === "needs-research" ||
-    decoded.data.nextActions === undefined
-  ) {
-    return report;
-  }
-  const { nextActions: _transportOnlyNextActions, ...normalized } =
-    decoded.data;
-  return normalized;
-}
-
 function reportIssueSummary(error: z.ZodError): string {
   return error.issues
     .slice(0, 3)
@@ -241,11 +160,7 @@ function reportIssueSummary(error: z.ZodError): string {
 function claudeJsonSchema(schema: z.ZodType): string {
   const providerSchema = { ...z.toJSONSchema(schema) };
   delete providerSchema.$schema;
-  return JSON.stringify(
-    schema === validationReportSchema
-      ? flattenValidationProviderSchema(providerSchema)
-      : providerSchema,
-  );
+  return JSON.stringify(providerSchema);
 }
 
 function terminalJson(value: string): unknown | undefined {
@@ -306,7 +221,7 @@ type SuccessfulEnvelope =
 
 function violatesSealedToolPolicy(
   envelope: SuccessfulEnvelope,
-  run: SealedAgentRun,
+  run: SealedNativeRun,
 ): boolean {
   const usedModels = Object.values(envelope.modelUsage);
   return (
@@ -321,23 +236,21 @@ function violatesSealedToolPolicy(
 
 function returnsUnboundResearchSession(
   envelope: SuccessfulEnvelope,
-  run: SealedAgentRun,
   checkpoint: AgentCheckpointRef | undefined,
 ): boolean {
   return (
-    run.kind === "sealed-native-research-run" &&
-    (checkpoint === undefined || envelope.session_id !== checkpoint.sessionId)
+    checkpoint === undefined || envelope.session_id !== checkpoint.sessionId
   );
 }
 
 function violatesSealedPolicy(
   envelope: SuccessfulEnvelope,
-  run: SealedAgentRun,
+  run: SealedNativeRun,
   checkpoint: AgentCheckpointRef | undefined,
 ): boolean {
   return (
     violatesSealedToolPolicy(envelope, run) ||
-    returnsUnboundResearchSession(envelope, run, checkpoint)
+    returnsUnboundResearchSession(envelope, checkpoint)
   );
 }
 
@@ -390,14 +303,14 @@ function wallTimeMs(
 }
 
 function errorReceipt(
-  run: SealedAgentRun,
+  run: SealedNativeRun,
   envelope: z.infer<typeof claudeErrorResultSchema>,
   startedAt: Date,
   completedAt: Date,
   checkpoint: AgentCheckpointRef | undefined,
   diagnostic: AgentRunDiagnosticRef | undefined,
   failureStage: AgentRunFailureStage,
-): NativeAgentReceipt {
+): NativeRunReceipt {
   const usedModels = Object.values(envelope.modelUsage);
   const violatedPolicy =
     envelope.permission_denials.length > 0 ||
@@ -453,9 +366,7 @@ function errorReceipt(
       runtime: "runsc" as const,
       fallbackUsed: false as const,
     },
-    ...(run.kind === "sealed-native-research-run" && checkpoint !== undefined
-      ? { checkpoint }
-      : {}),
+    ...(checkpoint === undefined ? {} : { checkpoint }),
     failure: {
       summary,
       stage: failureStage,
@@ -465,22 +376,19 @@ function errorReceipt(
       ...(diagnostic === undefined ? {} : { diagnostic }),
     },
   };
-  return run.kind === "sealed-native-research-run"
-    ? nativeRunReceiptSchema.parse(receipt)
-    : validationRunReceiptSchema.parse(receipt);
+  return nativeRunReceiptSchema.parse(receipt);
 }
 
 function nonzeroReceipt(
-  run: SealedAgentRun,
+  run: SealedNativeRun,
   execution: Extract<SandboxedAgentResult, { status: "exited-nonzero" }>,
   startedAt: Date = execution.startedAt,
-): NativeAgentReceipt {
+): NativeRunReceipt {
   const decodedError = claudeErrorResultSchema.safeParse(
     parseJson(execution.stdout),
   );
   if (
     decodedError.success &&
-    run.kind === "sealed-native-research-run" &&
     (execution.checkpoint === undefined ||
       decodedError.data.session_id !== execution.checkpoint.sessionId)
   ) {
@@ -537,14 +445,11 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
   }
 
   #command(
-    run: SealedAgentRun,
+    run: SealedNativeRun,
     glm: boolean,
     prompt: string,
   ): SandboxedAgentCommand {
-    const reportSchema =
-      run.kind === "sealed-native-research-run"
-        ? researchReportSchema
-        : validationReportSchema;
+    const reportSchema = providerResearchReportSchema;
     return {
       executable: "claude",
       versionTokenIndex: 0,
@@ -559,22 +464,12 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
       ],
       ephemeralProviderHomeMount: {
         path: "/provider",
-        mode: run.kind === "sealed-native-research-run" ? "rw" : "ro",
+        mode: "rw",
       },
-      ...(run.kind === "sealed-native-research-run"
-        ? {
-            researchSession: {
-              newSessionArguments: (sessionId: string) => [
-                "--session-id",
-                sessionId,
-              ],
-              resumeSessionArguments: (sessionId: string) => [
-                "--resume",
-                sessionId,
-              ],
-            },
-          }
-        : {}),
+      researchSession: {
+        newSessionArguments: (sessionId: string) => ["--session-id", sessionId],
+        resumeSessionArguments: (sessionId: string) => ["--resume", sessionId],
+      },
       args: [
         "-p",
         "--model",
@@ -605,9 +500,6 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         "--no-chrome",
         "--prompt-suggestions",
         "false",
-        ...(run.kind === "sealed-native-validation-run"
-          ? ["--no-session-persistence"]
-          : []),
         "--output-format",
         "json",
         ...(glm ? [] : ["--json-schema", claudeJsonSchema(reportSchema)]),
@@ -619,7 +511,7 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
     };
   }
 
-  async execute(run: SealedAgentRun): Promise<NativeAgentReceipt> {
+  async execute(run: SealedNativeRun): Promise<NativeRunReceipt> {
     const glm = this.#provider === "zai";
     if (
       run.agentRuntimeProfile.kind !==
@@ -690,9 +582,7 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         : run.budgetAllowance.maxWallTimeMs;
       const remainingWallTime =
         run.budgetAllowance.maxWallTimeMs - firstWallTime;
-      const canCorrectFormat =
-        run.kind === "sealed-native-validation-run" ||
-        execution.checkpoint !== undefined;
+      const canCorrectFormat = execution.checkpoint !== undefined;
       if (
         malformed.success &&
         canCorrectFormat &&
@@ -705,10 +595,9 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         const retryRun = {
           ...run,
           budgetAllowance,
-          ...(run.kind === "sealed-native-research-run" &&
-          execution.checkpoint !== undefined
-            ? { resumeFrom: execution.checkpoint }
-            : {}),
+          ...(execution.checkpoint === undefined
+            ? {}
+            : { resumeFrom: execution.checkpoint }),
         };
         const correction = await this.#sandbox.execute(
           retryRun,
@@ -748,7 +637,7 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
     const policyCheckpoint = execution.checkpoint;
     if (
       accountingEnvelopes.some((candidate) =>
-        returnsUnboundResearchSession(candidate, run, policyCheckpoint),
+        returnsUnboundResearchSession(candidate, policyCheckpoint),
       )
     ) {
       const summary = "Claude Code returned an unbound Research session.";
@@ -776,35 +665,26 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         initialStartedAt,
       );
     }
-    let report = (
-      run.kind === "sealed-native-research-run"
-        ? researchReportSchema
-        : validationReportSchema
-    ).safeParse(
-      run.kind === "sealed-native-validation-run"
-        ? normalizeValidationTransportReport(envelope.structured_output)
-        : envelope.structured_output,
+    let providerReport = providerResearchReportSchema.safeParse(
+      envelope.structured_output,
     );
-    if (!report.success && glm) {
+    if (!providerReport.success && glm) {
       const usedWallTime = accountingEnvelopes.reduce(
         (total, candidate) => total + candidate.duration_ms,
         0,
       );
       const remainingWallTime =
         run.budgetAllowance.maxWallTimeMs - usedWallTime;
-      const canCorrectSchema =
-        run.kind === "sealed-native-validation-run" ||
-        execution.checkpoint !== undefined;
+      const canCorrectSchema = execution.checkpoint !== undefined;
       if (canCorrectSchema && remainingWallTime > 0) {
         const retryRun = {
           ...run,
           budgetAllowance: {
             maxWallTimeMs: remainingWallTime,
           },
-          ...(run.kind === "sealed-native-research-run" &&
-          execution.checkpoint !== undefined
-            ? { resumeFrom: execution.checkpoint }
-            : {}),
+          ...(execution.checkpoint === undefined
+            ? {}
+            : { resumeFrom: execution.checkpoint }),
         };
         const correction = await this.#sandbox.execute(
           retryRun,
@@ -833,25 +713,32 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
           execution = correction;
           envelope = correctedEnvelope;
           accountingEnvelopes.push(rawCorrection.data);
-          report = (
-            run.kind === "sealed-native-research-run"
-              ? researchReportSchema
-              : validationReportSchema
-          ).safeParse(
-            run.kind === "sealed-native-validation-run"
-              ? normalizeValidationTransportReport(envelope.structured_output)
-              : envelope.structured_output,
+          providerReport = providerResearchReportSchema.safeParse(
+            envelope.structured_output,
           );
         }
       }
     }
-    if (!report.success) {
-      const summary = `Claude Code returned an unsupported Agent Report (${reportIssueSummary(report.error)}).`;
+    if (!providerReport.success) {
+      const summary = `Claude Code returned an unsupported Agent Report (${reportIssueSummary(providerReport.error)}).`;
       return refusedNativeRunReceipt(
         run,
         execution,
         "invalid-output",
         summary,
+        execution.checkpoint,
+        initialStartedAt,
+      );
+    }
+    let report;
+    try {
+      report = await this.#sandbox.materializeReport(run, providerReport.data);
+    } catch {
+      return refusedNativeRunReceipt(
+        run,
+        execution,
+        "invalid-output",
+        "Claude Code returned an invalid Candidate Recipe.",
         execution.checkpoint,
         initialStartedAt,
       );
@@ -916,15 +803,10 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         runtime: "runsc",
         fallbackUsed: false,
       },
-      ...(run.kind === "sealed-native-research-run" &&
-      execution.checkpoint !== undefined
-        ? { checkpoint: execution.checkpoint }
-        : {}),
-      report: report.data,
+      checkpoint: execution.checkpoint,
+      report,
     };
-    return run.kind === "sealed-native-research-run"
-      ? nativeRunReceiptSchema.parse(receipt)
-      : validationRunReceiptSchema.parse(receipt);
+    return nativeRunReceiptSchema.parse(receipt);
   }
 }
 

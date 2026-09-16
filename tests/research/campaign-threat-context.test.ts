@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import {
   campaignInputSchema,
-  sealedValidationRunSchema,
   type SealedNativeRun,
 } from "../../src/research/agent-led/contracts.js";
 import { agentResearchPrompt } from "../../src/research/agent-led/gvisor-agent-sandbox.js";
@@ -116,7 +115,6 @@ function sealedRun(): SealedNativeRun {
       digest: digest("9"),
     },
     budgetAllowance: { maxWallTimeMs: 300_000 },
-    validationFeedback: [],
   };
 }
 
@@ -215,7 +213,6 @@ describe("Campaign Threat Context", () => {
         threatContext: run.threatContext,
         programmeBoundary: run.programmeBoundary,
         promptSet: run.promptSet,
-        validationPromptSet: { id: "validation-v1", digest: digest("c") },
         agentRuntimeProfile: run.agentRuntimeProfile,
         permissionProfile: run.permissionProfile,
         budgetEnvelope: run.budgetEnvelope,
@@ -253,53 +250,10 @@ describe("Campaign Threat Context", () => {
         threatContext: run.threatContext,
         programmeBoundary: run.programmeBoundary,
         promptSet: run.promptSet,
-        validationPromptSet: { id: "validation-v1", digest: digest("c") },
         agentRuntimeProfile: run.agentRuntimeProfile,
         permissionProfile: run.permissionProfile,
         budgetEnvelope: run.budgetEnvelope,
         resumeFrom: checkpoint,
-      }).success,
-    ).toBe(false);
-  });
-
-  it("does not expose the Programme Research Boundary to Independent Validation", () => {
-    const researchRun = sealedRun();
-    const validationRun = {
-      kind: "sealed-native-validation-run" as const,
-      schemaVersion: 1 as const,
-      runId: "campaign-context:validation:1",
-      campaignId: researchRun.campaignId,
-      campaignInputDigest: researchRun.campaignInputDigest,
-      targetSnapshot: researchRun.targetSnapshot,
-      dependencySnapshots: researchRun.dependencySnapshots,
-      promptSet: { id: "validation-prompt-v1", digest: digest("c") },
-      agentRuntimeProfile: researchRun.agentRuntimeProfile,
-      permissionProfile: researchRun.permissionProfile,
-      budgetEnvelope: researchRun.budgetEnvelope,
-      budgetAllowance: researchRun.budgetAllowance,
-      candidate: {
-        candidateId: "candidate-boundary-crossing",
-        attackerPremise: "An unauthenticated visitor submits public input.",
-        brokenSecurityProperty:
-          "Public input must not acquire privileged authority.",
-        claim: "Persisted public input crosses a privileged trust boundary.",
-        evidence: [
-          {
-            path: "plugin.php",
-            location: "public_handler",
-            observation: "The handler persists attacker-controlled input.",
-          },
-        ],
-      },
-    };
-
-    expect(sealedValidationRunSchema.safeParse(validationRun).success).toBe(
-      true,
-    );
-    expect(
-      sealedValidationRunSchema.safeParse({
-        ...validationRun,
-        programmeBoundary: researchRun.programmeBoundary,
       }).success,
     ).toBe(false);
   });

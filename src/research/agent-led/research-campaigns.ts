@@ -3,19 +3,18 @@ import { z } from "zod";
 
 import {
   canonicalDigest,
-  encodeCanonicalJson,
+  canonicalJson,
 } from "../../infrastructure/canonical-json.js";
 import {
   campaignInterruptionSchema,
   campaignInputSchema,
   campaignCommandSchema,
+  candidateVerificationRequestSchema,
   candidateReviewRequestSchema,
   humanCandidateReviewSchema,
   humanResearchContinuationReviewSchema,
-  humanValidationRetrySchema,
   nativeRunReceiptSchema,
   researchContinuationReviewRequestSchema,
-  validationRunReceiptSchema,
   type CampaignInput,
   type CampaignCommand,
   type CampaignOutcomeRef,
@@ -24,24 +23,17 @@ import {
   type CandidateReviewRequest,
   type HumanCandidateReview,
   type HumanResearchContinuationReview,
-  type HumanValidationRetry,
+  type CandidateVerificationRequest,
   type ResearchContinuationReviewRequest,
-  type NativeAgentReceipt,
   type NativeAgentRuntime,
   type NativeRunReceipt,
   type OpenResearchCampaignsOptions,
   type ParkedProgrammeLead,
   type ResearchCampaigns,
   type ResearchCampaignView,
-  type SealedAgentRun,
   type SealedNativeRun,
-  type SealedValidationRun,
-  type ValidationCandidate,
-  type ValidationRunReceipt,
-  type ValidationRunRecord,
+  type ResearchCandidate,
 } from "./contracts.js";
-
-const jsonValueSchema = z.json();
 
 const eventRowSchema = z.object({
   kind: z.enum([
@@ -49,8 +41,6 @@ const eventRowSchema = z.object({
     "native-run.recorded",
     "candidate-review.recorded",
     "research-continuation-review.recorded",
-    "validation-retry.recorded",
-    "validation-run.recorded",
     "campaign.interrupted",
   ]),
   occurred_at: z.string(),
@@ -76,17 +66,6 @@ const candidateReviewRecordedPayloadSchema = z.strictObject({
 const researchContinuationReviewRecordedPayloadSchema = z.strictObject({
   inputDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
   review: humanResearchContinuationReviewSchema,
-});
-
-const validationRunRecordedPayloadSchema = z.strictObject({
-  inputDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-  candidateId: z.string().min(1),
-  receipt: validationRunReceiptSchema,
-});
-
-const validationRetryRecordedPayloadSchema = z.strictObject({
-  inputDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-  retry: humanValidationRetrySchema,
 });
 
 const campaignInterruptedPayloadSchema = z.strictObject({
@@ -130,30 +109,17 @@ export class HumanResearchContinuationReviewConflictError extends Error {
   }
 }
 
-export class HumanValidationRetryConflictError extends Error {
-  constructor(readonly campaignId: string) {
-    super(
-      `Human Validation Retry does not match the current failed Validation runs: ${campaignId}`,
-    );
-    this.name = "HumanValidationRetryConflictError";
-  }
-}
-
-function encode(value: unknown): string {
-  return encodeCanonicalJson(jsonValueSchema.parse(value));
-}
-
 function decodeJson(value: string): unknown {
   return JSON.parse(value) as unknown;
 }
 
 type FailedNativeAgentReceipt = Exclude<
-  NativeAgentReceipt,
+  NativeRunReceipt,
   { readonly terminal: "completed" }
 >;
 
 function failedReceipt(
-  run: SealedAgentRun,
+  run: SealedNativeRun,
   startedAt: Date,
   completedAt: Date,
   terminal: FailedNativeAgentReceipt["terminal"],
@@ -176,7 +142,7 @@ function failedReceipt(
 
 function hasRunBudget(
   input: CampaignInput,
-  receipts: readonly NativeAgentReceipt[],
+  receipts: readonly NativeRunReceipt[],
 ): boolean {
   const usage = budgetUsage(receipts);
   return (
@@ -185,7 +151,7 @@ function hasRunBudget(
   );
 }
 
-function budgetUsage(receipts: readonly NativeAgentReceipt[]): Readonly<{
+function budgetUsage(receipts: readonly NativeRunReceipt[]): Readonly<{
   wallTimeMs: number;
 }> {
   const wallTimeMs = receipts.reduce(
@@ -197,25 +163,22 @@ function budgetUsage(receipts: readonly NativeAgentReceipt[]): Readonly<{
 
 function budgetAllowance(
   input: CampaignInput,
-  receipts: readonly NativeAgentReceipt[],
-  researchGrant: boolean,
+  receipts: readonly NativeRunReceipt[],
 ): Readonly<{ maxWallTimeMs: number }> {
   const usage = budgetUsage(receipts);
   const remainingWallTimeMs =
     input.budgetEnvelope.maxWallTimeMs - usage.wallTimeMs;
   return {
-    maxWallTimeMs: researchGrant
-      ? Math.min(
-          remainingWallTimeMs,
-          input.budgetEnvelope.researchGrantWallTimeMs,
-        )
-      : remainingWallTimeMs,
+    maxWallTimeMs: Math.min(
+      remainingWallTimeMs,
+      input.budgetEnvelope.researchGrantWallTimeMs,
+    ),
   };
 }
 
 function exceededBudget(
   input: CampaignInput,
-  receipts: readonly NativeAgentReceipt[],
+  receipts: readonly NativeRunReceipt[],
 ): boolean {
   const usage = budgetUsage(receipts);
   return (
@@ -224,29 +187,20 @@ function exceededBudget(
   );
 }
 
-function allReceipts(
-  view: ResearchCampaignView,
-): readonly NativeAgentReceipt[] {
-  return [
-    ...view.nativeRuns,
-    ...view.validationRuns.map((record) => record.receipt),
-  ];
-}
-
 function candidatesFor(
   nativeRuns: readonly NativeRunReceipt[],
-): readonly ValidationCandidate[] {
-  const candidates = new Map<string, ValidationCandidate>();
+): readonly ResearchCandidate[] {
+  const candidates = new Map<string, ResearchCandidate>();
   for (const receipt of nativeRuns) {
     if (receipt.terminal !== "completed") continue;
     for (const candidate of receipt.report.candidates) {
       const prior = candidates.get(candidate.candidateId);
       if (
         prior !== undefined &&
-        encodeCanonicalJson(prior) !== encodeCanonicalJson(candidate)
+        canonicalJson(prior) !== canonicalJson(candidate)
       ) {
         throw new Error(
-          `Validation Candidate identity was reused with different evidence: ${candidate.candidateId}`,
+          `Research Candidate identity was reused with different evidence: ${candidate.candidateId}`,
         );
       }
       candidates.set(candidate.candidateId, candidate);
@@ -263,10 +217,7 @@ function parkedProgrammeLeadsFor(
     if (receipt.terminal !== "completed") continue;
     for (const lead of receipt.report.parkedProgrammeLeads ?? []) {
       const prior = leads.get(lead.leadId);
-      if (
-        prior !== undefined &&
-        encodeCanonicalJson(prior) !== encodeCanonicalJson(lead)
-      ) {
+      if (prior !== undefined && canonicalJson(prior) !== canonicalJson(lead)) {
         throw new Error(
           `Parked Programme Lead identity was reused with different evidence: ${lead.leadId}`,
         );
@@ -281,7 +232,7 @@ function candidateReviewRequestFor(
   campaignId: string,
   campaignInputDigest: string,
   terminalResearchRun: NativeRunReceipt | undefined,
-  candidates: readonly ValidationCandidate[],
+  candidates: readonly ResearchCandidate[],
   proceedFromContinuationReview = false,
 ): CandidateReviewRequest | undefined {
   if (
@@ -313,7 +264,7 @@ function researchContinuationReviewRequestFor(
   campaignId: string,
   campaignInputDigest: string,
   researchRun: NativeRunReceipt | undefined,
-  candidates: readonly ValidationCandidate[],
+  candidates: readonly ResearchCandidate[],
   parkedProgrammeLeads: readonly ParkedProgrammeLead[],
 ): ResearchContinuationReviewRequest | undefined {
   if (
@@ -433,37 +384,47 @@ function researchContinuationNextActionsFor(
   return request.nextActions;
 }
 
-function latestValidationRuns(
-  records: readonly ValidationRunRecord[],
-): readonly ValidationRunRecord[] {
-  const latest = new Map<string, ValidationRunRecord>();
-  for (const record of records) latest.set(record.candidateId, record);
-  return [...latest.values()];
-}
-
-function isRetryableValidationRun(record: ValidationRunRecord): boolean {
-  return (
-    record.receipt.terminal !== "completed" ||
-    record.receipt.report.disposition === "validation-pending"
+function candidateVerificationRequestsFor(
+  input: CampaignInput,
+  inputDigest: string,
+  candidates: readonly ResearchCandidate[],
+  review: HumanCandidateReview | undefined,
+): readonly CandidateVerificationRequest[] {
+  if (review === undefined) return [];
+  const candidatesById = new Map(
+    candidates.map((candidate) => [candidate.candidateId, candidate]),
   );
-}
-
-function retryableValidationRunIds(
-  records: readonly ValidationRunRecord[],
-): readonly string[] {
-  return latestValidationRuns(records)
-    .filter(isRetryableValidationRun)
-    .map((record) => record.receipt.runId);
-}
-
-function retryAuthorized(
-  retries: readonly HumanValidationRetry[] | undefined,
-  runId: string,
-): boolean {
-  return (
-    retries?.some((retry) => retry.failedValidationRunIds.includes(runId)) ??
-    false
-  );
+  return review.decisions.flatMap((decision) => {
+    if (decision.disposition !== "advance-to-candidate-verification") {
+      return [];
+    }
+    const candidate = candidatesById.get(decision.candidateId);
+    if (candidate === undefined) {
+      throw new Error(
+        `Candidate Verification Request references an unknown Candidate: ${decision.candidateId}`,
+      );
+    }
+    if (candidate.reproductionRecipe === undefined) return [];
+    const body = {
+      kind: "candidate-verification-request" as const,
+      schemaVersion: 1 as const,
+      requestId: `${input.campaignId}:verification:${candidate.candidateId}`,
+      campaignId: input.campaignId,
+      campaignInputDigest: inputDigest,
+      candidateReviewDigest: review.digest,
+      targetSnapshot: input.targetSnapshot,
+      ...(input.dependencySnapshots === undefined
+        ? {}
+        : { dependencySnapshots: input.dependencySnapshots }),
+      candidate,
+    };
+    return [
+      candidateVerificationRequestSchema.parse({
+        ...body,
+        digest: canonicalDigest(body),
+      }),
+    ];
+  });
 }
 
 function hasRetryableResearchRun(view: ResearchCampaignView): boolean {
@@ -521,9 +482,6 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
     }
     if (command.kind === "human-research-continuation-review") {
       return this.#recordResearchContinuationReview(command);
-    }
-    if (command.kind === "human-validation-retry") {
-      return this.#recordValidationRetry(command);
     }
     const input = campaignInputSchema.parse(command);
     const inputDigest = canonicalDigest(input);
@@ -624,39 +582,6 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
     return this.#continueCampaign(view.input);
   }
 
-  #recordValidationRetry(
-    retry: HumanValidationRetry,
-  ): Promise<CampaignOutcomeRef> {
-    const view = this.#requireView(retry.campaignId);
-    const prior = view.validationRetries?.find(
-      (validationRetry) => validationRetry.retryId === retry.retryId,
-    );
-    if (prior !== undefined) {
-      if (prior.digest !== retry.digest) {
-        throw new HumanValidationRetryConflictError(retry.campaignId);
-      }
-      return Promise.resolve(outcomeFor(view));
-    }
-    const retryableRunIds = retryableValidationRunIds(view.validationRuns);
-    const suppliedRunIds = new Set(retry.failedValidationRunIds);
-    if (
-      view.status !== "incomplete" ||
-      view.interruption !== undefined ||
-      view.nativeRuns.some((receipt) => receipt.terminal !== "completed") ||
-      retry.campaignInputDigest !== view.inputDigest ||
-      retryableRunIds.length === 0 ||
-      suppliedRunIds.size !== retryableRunIds.length ||
-      retryableRunIds.some((runId) => !suppliedRunIds.has(runId))
-    ) {
-      throw new HumanValidationRetryConflictError(retry.campaignId);
-    }
-    this.#append(retry.campaignId, "validation-retry.recorded", {
-      inputDigest: view.inputDigest,
-      retry,
-    });
-    return this.#continueCampaign(view.input);
-  }
-
   async #continueCampaign(input: CampaignInput): Promise<CampaignOutcomeRef> {
     const inputDigest = canonicalDigest(input);
     let view = this.#requireView(input.campaignId);
@@ -668,22 +593,7 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         return outcomeFor(view);
       }
 
-      const attemptedCandidates = new Set(
-        latestValidationRuns(view.validationRuns).flatMap((record) =>
-          isRetryableValidationRun(record) &&
-          retryAuthorized(view.validationRetries, record.receipt.runId)
-            ? []
-            : [record.candidateId],
-        ),
-      );
       const activeReview = activeCandidateReviewFor(view);
-      const admittedCandidates = new Set(
-        activeReview?.decisions.flatMap((decision) =>
-          decision.disposition === "advance-to-independent-validation"
-            ? [decision.candidateId]
-            : [],
-        ) ?? [],
-      );
       const candidateReviewNextActions = activeReview?.decisions.flatMap(
         (decision) =>
           decision.disposition === "return-to-research"
@@ -697,59 +607,14 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
       );
       const researchContinuationNextActions =
         researchContinuationNextActionsFor(view);
-      const pendingCandidate = candidatesFor(view.nativeRuns).find(
-        (candidate) =>
-          admittedCandidates.has(candidate.candidateId) &&
-          !attemptedCandidates.has(candidate.candidateId),
-      );
-      if (
-        pendingCandidate !== undefined &&
-        view.status === "validation-pending"
-      ) {
-        if (!hasRunBudget(input, allReceipts(view))) {
-          this.#interruptForBudget(input, inputDigest, true);
-          view = this.#requireView(input.campaignId);
-          continue;
-        }
-        const run: SealedValidationRun = {
-          kind: "sealed-native-validation-run",
-          schemaVersion: 1,
-          runId: `${input.campaignId}:validation:${view.validationRuns.length + 1}`,
-          campaignId: input.campaignId,
-          campaignInputDigest: inputDigest,
-          targetSnapshot: input.targetSnapshot,
-          ...(input.dependencySnapshots === undefined
-            ? {}
-            : { dependencySnapshots: input.dependencySnapshots }),
-          promptSet: input.validationPromptSet,
-          agentRuntimeProfile: input.agentRuntimeProfile,
-          permissionProfile: input.permissionProfile,
-          budgetEnvelope: input.budgetEnvelope,
-          budgetAllowance: budgetAllowance(input, allReceipts(view), false),
-          candidate: pendingCandidate,
-        };
-        const receipt = await this.#execute(run, this.#clock());
-        this.#append(input.campaignId, "validation-run.recorded", {
-          inputDigest,
-          candidateId: pendingCandidate.candidateId,
-          receipt,
-        });
-        view = this.#requireView(input.campaignId);
-        if (exceededBudget(input, allReceipts(view))) {
-          this.#interruptForBudget(input, inputDigest, true, true);
-          view = this.#requireView(input.campaignId);
-        }
-        continue;
-      }
-
       if (
         view.status !== "research-continues" &&
         !hasRetryableResearchRun(view)
       ) {
         return outcomeFor(view);
       }
-      if (!hasRunBudget(input, allReceipts(view))) {
-        this.#interruptForBudget(input, inputDigest, false);
+      if (!hasRunBudget(input, view.nativeRuns)) {
+        this.#interruptForBudget(input, inputDigest);
         view = this.#requireView(input.campaignId);
         continue;
       }
@@ -779,22 +644,11 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         agentRuntimeProfile: input.agentRuntimeProfile,
         permissionProfile: input.permissionProfile,
         budgetEnvelope: input.budgetEnvelope,
-        budgetAllowance: budgetAllowance(input, allReceipts(view), true),
+        budgetAllowance: budgetAllowance(input, view.nativeRuns),
         ...(resumeFrom === undefined ? {} : { resumeFrom }),
         ...(researchContinuationNextActions === undefined
           ? {}
           : { researchContinuationNextActions }),
-        validationFeedback: view.validationRuns.flatMap((record) =>
-          record.receipt.terminal === "completed"
-            ? [
-                {
-                  runId: record.receipt.runId,
-                  candidateId: record.candidateId,
-                  report: record.receipt.report,
-                },
-              ]
-            : [],
-        ),
         ...(candidateReviewNextActions === undefined ||
         candidateReviewNextActions.length === 0
           ? {}
@@ -848,8 +702,8 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         receipt,
       });
       view = this.#requireView(input.campaignId);
-      if (exceededBudget(input, allReceipts(view))) {
-        this.#interruptForBudget(input, inputDigest, false, true);
+      if (exceededBudget(input, view.nativeRuns)) {
+        this.#interruptForBudget(input, inputDigest, true);
         view = this.#requireView(input.campaignId);
       }
       if (receipt.terminal !== "completed") {
@@ -869,22 +723,11 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
   async #execute(
     run: SealedNativeRun,
     startedAt: Date,
-  ): Promise<NativeRunReceipt>;
-  async #execute(
-    run: SealedValidationRun,
-    startedAt: Date,
-  ): Promise<ValidationRunReceipt>;
-  async #execute(
-    run: SealedAgentRun,
-    startedAt: Date,
-  ): Promise<NativeAgentReceipt> {
-    let receipt: NativeAgentReceipt;
+  ): Promise<NativeRunReceipt> {
+    let receipt: NativeRunReceipt;
     try {
       const returnedReceipt = await this.#runtime.execute(run);
-      const decoded =
-        run.kind === "sealed-native-research-run"
-          ? nativeRunReceiptSchema.safeParse(returnedReceipt)
-          : validationRunReceiptSchema.safeParse(returnedReceipt);
+      const decoded = nativeRunReceiptSchema.safeParse(returnedReceipt);
       receipt = decoded.success
         ? decoded.data
         : failedReceipt(
@@ -892,9 +735,7 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
             startedAt,
             this.#clock(),
             "invalid-output",
-            run.kind === "sealed-native-research-run"
-              ? "Native Agent Runtime returned an unsupported output schema."
-              : "Native Agent Runtime returned an unsupported Validation output schema.",
+            "Native Agent Runtime returned an unsupported output schema.",
           );
     } catch {
       receipt = failedReceipt(
@@ -902,27 +743,19 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         startedAt,
         this.#clock(),
         "provider-failed",
-        run.kind === "sealed-native-research-run"
-          ? "Native Agent Runtime failed before returning a receipt."
-          : "Native Agent Runtime failed before returning a Validation receipt.",
+        "Native Agent Runtime failed before returning a receipt.",
       );
     }
     const bindingMismatch =
       receipt.runId !== run.runId ||
-      receipt.runtimeProfileDigest !== run.agentRuntimeProfile.digest ||
-      (run.kind === "sealed-native-validation-run" &&
-        receipt.terminal === "completed" &&
-        "candidateId" in receipt.report &&
-        receipt.report.candidateId !== run.candidate.candidateId);
+      receipt.runtimeProfileDigest !== run.agentRuntimeProfile.digest;
     if (bindingMismatch) {
       return failedReceipt(
         run,
         startedAt,
         this.#clock(),
         "invalid-output",
-        run.kind === "sealed-native-research-run"
-          ? "Native Run Receipt did not match the sealed Campaign binding."
-          : "Validation Run Receipt did not match the sealed Candidate binding.",
+        "Native Run Receipt did not match the sealed Campaign binding.",
       );
     }
     return receipt;
@@ -931,7 +764,6 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
   #interruptForBudget(
     input: CampaignInput,
     inputDigest: string,
-    validationPending: boolean,
     exceeded = false,
   ): void {
     this.#append(input.campaignId, "campaign.interrupted", {
@@ -939,18 +771,14 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
       interruption: {
         reason: "budget-exhausted",
         summary: exceeded
-          ? validationPending
-            ? "Independent Validation exceeded the remaining Campaign budget."
-            : "A Native Run exceeded the remaining Campaign budget."
-          : validationPending
-            ? "The Native Run budget ended before Independent Validation completed."
-            : "The Native Run budget ended with an actionable frontier remaining.",
+          ? "A Native Run exceeded the remaining Campaign budget."
+          : "The Native Run budget ended with an actionable frontier remaining.",
       },
     });
   }
 
   #append(campaignId: string, kind: EventRow["kind"], payload: unknown): void {
-    const payloadJson = encode(payload);
+    const payloadJson = canonicalJson(payload);
     const nextSequence = this.#database
       .prepare(
         `SELECT COALESCE(MAX(campaign_sequence), 0) + 1 AS next_sequence
@@ -1017,12 +845,9 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
     }
 
     const nativeRuns: NativeRunReceipt[] = [];
-    const validationRuns: ValidationRunRecord[] = [];
     const candidateReviews: HumanCandidateReview[] = [];
     const researchContinuationReviews: HumanResearchContinuationReview[] = [];
-    const validationRetries: HumanValidationRetry[] = [];
     let interruption: z.infer<typeof campaignInterruptionSchema> | undefined;
-    let needsResearchAfterLatestNativeRun = false;
     for (const row of rows.slice(1)) {
       const value = decodeJson(row.payload_json);
       if (canonicalDigest(value) !== row.payload_digest) {
@@ -1036,7 +861,6 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
           throw new Error(`Native Run input binding mismatch: ${campaignId}`);
         }
         nativeRuns.push(event.receipt);
-        needsResearchAfterLatestNativeRun = false;
         continue;
       }
       if (row.kind === "research-continuation-review.recorded") {
@@ -1084,80 +908,6 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
           );
         }
         candidateReviews.push(event.review);
-        continue;
-      }
-      if (row.kind === "validation-retry.recorded") {
-        const event = validationRetryRecordedPayloadSchema.parse(value);
-        const retryableRunIds = retryableValidationRunIds(validationRuns);
-        const suppliedRunIds = new Set(event.retry.failedValidationRunIds);
-        if (
-          event.inputDigest !== definition.inputDigest ||
-          event.retry.campaignId !== campaignId ||
-          event.retry.campaignInputDigest !== definition.inputDigest ||
-          retryableRunIds.length === 0 ||
-          suppliedRunIds.size !== retryableRunIds.length ||
-          retryableRunIds.some((runId) => !suppliedRunIds.has(runId))
-        ) {
-          throw new Error(
-            `Human Validation Retry input binding mismatch: ${campaignId}`,
-          );
-        }
-        if (
-          validationRetries.some(
-            (retry) => retry.retryId === event.retry.retryId,
-          )
-        ) {
-          throw new Error(
-            `Duplicate Human Validation Retry: ${event.retry.retryId}`,
-          );
-        }
-        validationRetries.push(event.retry);
-        continue;
-      }
-      if (row.kind === "validation-run.recorded") {
-        const event = validationRunRecordedPayloadSchema.parse(value);
-        if (event.inputDigest !== definition.inputDigest) {
-          throw new Error(
-            `Validation Run input binding mismatch: ${campaignId}`,
-          );
-        }
-        const candidate = candidatesFor(nativeRuns).find(
-          (item) => item.candidateId === event.candidateId,
-        );
-        if (candidate === undefined) {
-          throw new Error(
-            `Validation Run references an unknown Candidate: ${campaignId}`,
-          );
-        }
-        const previousAttempt = [...validationRuns]
-          .reverse()
-          .find((record) => record.candidateId === event.candidateId);
-        if (
-          previousAttempt !== undefined &&
-          !retryAuthorized(validationRetries, previousAttempt.receipt.runId)
-        ) {
-          throw new Error(
-            `Validation Retry is missing for Candidate: ${event.candidateId}`,
-          );
-        }
-        if (
-          event.receipt.terminal === "completed" &&
-          event.receipt.report.candidateId !== event.candidateId
-        ) {
-          throw new Error(
-            `Validation Run Candidate binding mismatch: ${campaignId}`,
-          );
-        }
-        validationRuns.push({
-          candidateId: event.candidateId,
-          receipt: event.receipt,
-        });
-        if (
-          event.receipt.terminal === "completed" &&
-          event.receipt.report.disposition === "needs-research"
-        ) {
-          needsResearchAfterLatestNativeRun = true;
-        }
         continue;
       }
       if (row.kind === "campaign.interrupted") {
@@ -1210,41 +960,31 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
               review.candidateReviewRequestDigest ===
               currentCandidateReviewRequest.digest,
           );
-    const attemptedCandidates = new Set(
-      latestValidationRuns(validationRuns).flatMap((record) =>
-        isRetryableValidationRun(record) &&
-        retryAuthorized(validationRetries, record.receipt.runId)
-          ? []
-          : [record.candidateId],
+    const candidateVerificationRequests = candidateVerificationRequestsFor(
+      definition.input,
+      definition.inputDigest,
+      candidates,
+      activeCandidateReview,
+    );
+    const verificationPreparationNeeded = candidates.filter((candidate) =>
+      activeCandidateReview?.decisions.some(
+        (decision) =>
+          decision.candidateId === candidate.candidateId &&
+          decision.disposition === "advance-to-candidate-verification" &&
+          candidate.reproductionRecipe === undefined,
       ),
-    );
-    const admittedCandidateIds = new Set(
-      activeCandidateReview?.decisions.flatMap((decision) =>
-        decision.disposition === "advance-to-independent-validation"
-          ? [decision.candidateId]
-          : [],
-      ) ?? [],
-    );
-    const hasUnattemptedCandidate = candidates.some(
-      (candidate) =>
-        admittedCandidateIds.has(candidate.candidateId) &&
-        !attemptedCandidates.has(candidate.candidateId),
     );
     const reviewReturnsToResearch = activeCandidateReview?.decisions.some(
       (decision) => decision.disposition === "return-to-research",
     );
     const hasFailedResearchRun =
       latest !== undefined && latest.terminal !== "completed";
-    const hasFailedValidationRun = latestValidationRuns(validationRuns).some(
-      isRetryableValidationRun,
-    );
     let status: CampaignStatus;
     if (interruption !== undefined || hasFailedResearchRun) {
       status = "incomplete";
     } else if (latest === undefined) {
       status = "research-continues";
     } else if (
-      needsResearchAfterLatestNativeRun ||
       reviewReturnsToResearch === true ||
       activeResearchContinuationReview?.decision === "continue-research"
     ) {
@@ -1256,54 +996,16 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
       status = "research-review-pending";
     } else if (
       currentCandidateReviewRequest !== undefined &&
-      activeCandidateReview === undefined &&
-      (validationRuns.length === 0 || candidateReviews.length > 0)
+      activeCandidateReview === undefined
     ) {
       status = "candidate-review-pending";
-    } else if (hasUnattemptedCandidate) {
-      status = "validation-pending";
-    } else if (hasFailedValidationRun) {
-      status = "incomplete";
+    } else if (verificationPreparationNeeded.length > 0) {
+      status = "verification-preparation-needed";
+    } else if (candidateVerificationRequests.length > 0) {
+      status = "candidate-verification-ready";
     } else {
       status = "coverage-closed";
     }
-    const findings = validationRuns.flatMap((record) => {
-      if (
-        record.receipt.terminal !== "completed" ||
-        record.receipt.report.disposition !== "source-validated"
-      ) {
-        return [];
-      }
-      const candidate = candidates.find(
-        (item) => item.candidateId === record.candidateId,
-      );
-      if (candidate === undefined) return [];
-      return [
-        {
-          kind: "source-validated-finding" as const,
-          schemaVersion: 1 as const,
-          findingId: `${campaignId}:finding:${candidate.candidateId}`,
-          candidateId: candidate.candidateId,
-          targetSnapshot: definition.input.targetSnapshot,
-          ...(definition.input.dependencySnapshots === undefined
-            ? {}
-            : {
-                dependencySnapshots: definition.input.dependencySnapshots,
-              }),
-          attackerPremise: candidate.attackerPremise,
-          brokenSecurityProperty: candidate.brokenSecurityProperty,
-          claim: candidate.claim,
-          assurance: "source-validated" as const,
-          validation: {
-            runId: record.receipt.runId,
-            promptSet: definition.input.validationPromptSet,
-            runtimeProfileDigest: definition.input.agentRuntimeProfile.digest,
-            permissionProfileDigest: definition.input.permissionProfile.digest,
-          },
-          evidence: record.receipt.report.evidence,
-        },
-      ];
-    });
 
     return {
       kind: "agent-led-campaign-outcome",
@@ -1313,12 +1015,11 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
       status,
       input: definition.input,
       nativeRuns,
-      validationRuns,
       candidateReviews,
       researchContinuationReviews,
-      ...(validationRetries.length === 0 ? {} : { validationRetries }),
       parkedProgrammeLeads,
-      findings,
+      candidateVerificationRequests,
+      verificationPreparationNeeded,
       ...(status === "candidate-review-pending" &&
       currentCandidateReviewRequest !== undefined
         ? {
@@ -1334,7 +1035,9 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         : {}),
       coverage: {
         status:
-          status === "coverage-closed"
+          status === "coverage-closed" ||
+          status === "candidate-verification-ready" ||
+          status === "verification-preparation-needed"
             ? "closed"
             : status === "incomplete"
               ? "incomplete"

@@ -1,19 +1,22 @@
 {
   "programmeIdentity": "programme:patchstack",
   "eligibility": {
-    "assets": [{ "kind": "wordpress-plugin", "scope": "listed-by-programme" }],
+    "assets": [
+      {
+        "kind": "wordpress-plugin",
+        "scope": "listed-by-programme"
+      }
+    ],
     "vulnerabilityClasses": ["authorization"],
     "attackerRoles": ["unauthenticated"],
-    "activeInstallThreshold": { "kind": "minimum", "value": 1000 },
+    "activeInstallThreshold": {
+      "kind": "minimum",
+      "value": 1000
+    },
     "researcherTiers": ["verified"],
     "exclusions": []
   },
   "programmeOpportunityBand": "broad",
-  "rewardEstimateInput": {
-    "kind": "finding-only-reward-estimate-input",
-    "currency": "USD",
-    "factors": ["technical-impact"]
-  },
   "findingValidity": "confirmed",
   "oracleFacts": {
     "cve": "CVE-2030-0001",

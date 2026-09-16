@@ -63,8 +63,8 @@ export async function conductWithHumanAdvance(
       },
       decisions: request.candidates.map((candidate) => ({
         candidateId: candidate.candidateId,
-        disposition: "advance-to-independent-validation" as const,
-        reason: "The Candidate warrants fresh independent source validation.",
+        disposition: "advance-to-candidate-verification" as const,
+        reason: "The Candidate warrants fresh runtime verification.",
       })),
     };
     outcome = await campaigns.conduct({

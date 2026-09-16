@@ -4,6 +4,8 @@ import {
   targetCandidateSchema,
   targetIdentitySchema,
   targetObservationSchema,
+} from "../candidate-pool/contracts.js";
+import {
   targetProposalRefSchema,
   type TargetProposalView,
 } from "../target-proposal/contracts.js";
