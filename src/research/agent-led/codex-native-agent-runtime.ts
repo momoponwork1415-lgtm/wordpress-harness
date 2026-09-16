@@ -225,6 +225,17 @@ function researchTransportSchema(): Record<string, unknown> {
   delete schema.$schema;
   const properties = jsonObject(schema.properties);
   const required = z.array(z.string()).parse(schema.required);
+  const candidates = jsonObject(properties.candidates);
+  const candidate = jsonObject(candidates.items);
+  const candidateProperties = jsonObject(candidate.properties);
+  const candidateRequired = z.array(z.string()).parse(candidate.required);
+  candidateProperties.reproductionRecipe = nullableJsonSchema(
+    candidateProperties.reproductionRecipe,
+  );
+  candidate.properties = candidateProperties;
+  candidate.required = [...candidateRequired, "reproductionRecipe"];
+  candidates.items = candidate;
+  properties.candidates = candidates;
   const decision = jsonObject(properties.decision);
   const branches = z.array(z.unknown()).min(2).parse(decision.oneOf);
   const continueProperties = jsonObject(jsonObject(branches[0]).properties);
@@ -251,10 +262,19 @@ function codexSchema(): string {
 
 function normalizeTransportReport(value: unknown): unknown {
   const report = jsonObject(value);
+  const candidates = z
+    .array(z.unknown())
+    .parse(report.candidates)
+    .map((value) => {
+      const candidate = jsonObject(value);
+      if (candidate.reproductionRecipe !== null) return candidate;
+      const { reproductionRecipe: _recipe, ...normalizedCandidate } = candidate;
+      return normalizedCandidate;
+    });
   const decision = jsonObject(report.decision);
   if (decision.kind === "continue") {
     const { basis: _basis, ...normalizedDecision } = decision;
-    return { ...report, decision: normalizedDecision };
+    return { ...report, candidates, decision: normalizedDecision };
   }
   if (decision.kind === "stop") {
     const {
@@ -262,13 +282,13 @@ function normalizeTransportReport(value: unknown): unknown {
       nextActions: _nextActions,
       ...normalizedDecision
     } = decision;
-    return { ...report, decision: normalizedDecision };
+    return { ...report, candidates, decision: normalizedDecision };
   }
-  return report;
+  return { ...report, candidates };
 }
 
 function transportPrompt(prompt: string): string {
-  return `${prompt}\n\nTransport requirement: always include parkedProgrammeLeads; use an empty array when there are none. Decision must include kind, reason, nextActions, and basis. For continue, set basis to null. For stop, set reason and nextActions to null. These null placeholders are transport-only.`;
+  return `${prompt}\n\nTransport requirement: always include parkedProgrammeLeads; use an empty array when there are none. Every candidate must include reproductionRecipe; set it to null when no private reproduction recipe is available. Decision must include kind, reason, nextActions, and basis. For continue, set basis to null. For stop, set reason and nextActions to null. These null placeholders are transport-only.`;
 }
 
 const managedRequirements = `allowed_web_search_modes = []
