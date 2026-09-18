@@ -4,11 +4,11 @@ import { join } from "node:path";
 
 import { canonicalDigest } from "../../infrastructure/canonical-json.js";
 import { measureCanonicalSourceTree } from "../../infrastructure/canonical-source-tree.js";
-import type { AgentCheckpointRef, SealedNativeRun } from "./contracts.js";
 import {
   PrivateArtifactStore,
   type PrivateArtifactStaging,
-} from "./private-artifact-store.js";
+} from "../../infrastructure/private-artifact-store.js";
+import type { AgentCheckpointRef, SealedNativeRun } from "./contracts.js";
 
 const checkpointLimits = {
   maxEntries: 20_000,

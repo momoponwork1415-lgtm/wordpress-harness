@@ -5,7 +5,7 @@ import {
   type CandidateVerificationRecipe,
   type CandidateVerificationRequest,
 } from "../research/index.js";
-import { PrivateArtifactStore } from "../research/agent-led/private-artifact-store.js";
+import { PrivateArtifactStore } from "../infrastructure/private-artifact-store.js";
 import { externalDependencyEvidenceRequestSchema } from "./contracts-v3.js";
 import type {
   DynamicReproductionAgent,

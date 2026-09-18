@@ -5,7 +5,8 @@
   "type": "module",
   "bin": {
     "wordpress-harness": "./dist/cli.js",
-    "wordpress-harness-claude-launcher": "./dist/operations/claude-quota-approved-campaign-launcher-cli.js"
+    "wordpress-harness-claude-launcher": "./dist/operations/claude-quota-approved-campaign-launcher-cli.js",
+    "wordpress-harness-doctor": "./dist/operations/campaign-readiness-doctor-cli.js"
   },
   "engines": {
     "node": ">=22.0.0"

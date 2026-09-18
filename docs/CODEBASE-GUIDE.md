@@ -206,14 +206,14 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 ## Private Research Artifact Store
 
 <details>
-<summary>Research runtime infrastructure — private artifactのfilesystem規律を共有する</summary>
+<summary>Shared infrastructure — private artifactのfilesystem規律を共有する</summary>
 
 - **目的:** Checkpoint、Agent Run Diagnostic、Native Run Receipt、Candidate Recipeの異なるdomain意味を保ったまま、private filesystemの保存・解決規則を一つのdeep Moduleへ隠す。
-- **Interface:** Research内部の`PrivateArtifactStore.stage / commit / resolve / readFile / inspectOrphans`。domain間handoffは既存のCheckpoint、Diagnostic、Receipt、Recipe refだけを使い、このstoreのmanifestやpathを渡さない。
+- **Interface:** infrastructureの`PrivateArtifactStore.stage / commit / resolve / readFile / inspectOrphans`。domain間handoffは既存のCheckpoint、Diagnostic、Receipt、Recipe refだけを使い、このstoreのmanifestやpathを渡さない。
 - **所有する記録・不変条件:** artifactごとの`manifest.json`とboundedなcanonical content tree。stagingはstore root内、promotionは同一filesystem上のrename、root・manifest・contentはno-follow、regular-file、hard-link、path collision、entry / byte ceilingを検査する。Domain Adapterは既存refのdigest、byte count、run / Candidate bindingを引き続き所有する。
 - **失敗時:** missing、integrity mismatch、size limit、unsafe pathをtyped resolutionとして返し、invalid identity、unsafe staging / rootはtyped error、同じidentityへの異なるcontentはconflictにする。orphaned stagingはread-onlyに列挙し、自動repair、削除、garbage collectionを行わない。unsafeなCheckpoint stateをDiagnosticへ取り込めない場合も、redacted process evidenceだけを`statePreserved: false`で保存する。
 
-**Source / Behavior Test:** [`private-artifact-store.ts`](../src/research/agent-led/private-artifact-store.ts) · [`private-artifact-store.test.ts`](../tests/research/private-artifact-store.test.ts) · [`research-checkpoints.ts`](../src/research/agent-led/research-checkpoints.ts) · [`agent-run-diagnostics.ts`](../src/research/agent-led/agent-run-diagnostics.ts) · [`native-run-receipts.ts`](../src/research/agent-led/native-run-receipts.ts) · [`provider-research-report.ts`](../src/research/agent-led/provider-research-report.ts)
+**Source / Behavior Test:** [`private-artifact-store.ts`](../src/infrastructure/private-artifact-store.ts) · [`private-artifact-store.test.ts`](../tests/infrastructure/private-artifact-store.test.ts) · [`research-checkpoints.ts`](../src/research/agent-led/research-checkpoints.ts) · [`agent-run-diagnostics.ts`](../src/research/agent-led/agent-run-diagnostics.ts) · [`native-run-receipts.ts`](../src/research/agent-led/native-run-receipts.ts) · [`provider-research-report.ts`](../src/research/agent-led/provider-research-report.ts)
 
 </details>
 
@@ -287,6 +287,20 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 - **失敗時:** readinessの欠落・stale・unauthenticated・unavailableと、quota観測の欠落・stale・各window reset・各windowのreserve不足を別のtyped reasonでfail closedにする。loginまたはreset後もfresh observationがなければ一件も起動しない。active runが返すprovider account failureはNative Runtime Receiptのまま扱い、Operationsから書き換えない。中断されたclaimはactiveとして扱い、重複起動より手動確認を優先する。process spawnまたはprivate artifact保存の失敗はnon-zeroで返す。
 
 **Source / Behavior Test:** [`claude-quota-approved-campaign-launcher.ts`](../src/operations/claude-quota-approved-campaign-launcher.ts) · [`claude-quota-approved-campaign-launcher-runtime.ts`](../src/operations/claude-quota-approved-campaign-launcher-runtime.ts) · [`claude-quota-approved-campaign-launcher-cli.ts`](../src/operations/claude-quota-approved-campaign-launcher-cli.ts) · [`claude-quota-approved-campaign-launcher.test.ts`](../tests/operations/claude-quota-approved-campaign-launcher.test.ts)
+
+</details>
+
+## Campaign Readiness Doctor
+
+<details>
+<summary>Composition / Operations — model quotaを使う前にread-only preflightを説明する</summary>
+
+- **目的:** 承認済みCampaignについて、起動前のinfrastructure、subscription、binding、storageとprivate artifactの状態を一つのread-only reportで確認する。
+- **Interface:** `CampaignReadinessDoctor.inspect`、versioned `CampaignReadinessInput / CampaignReadinessReport`、installed CLI `wordpress-harness-doctor inspect --input ... [--human]`。machine reportはDocker、runsc、image、provider version、account、quota、launch capacity、Target、Dependency、prompt、database、scratch、disk、private artifactの各checkをexactly once返す。human表示は同じreportから導く。
+- **所有する記録・不変条件:** stateを所有しない。全checkが`ready / blocked / unknown`のいずれかを返し、overallは`blocked`を優先し、次に`unknown`、全件readyの場合だけ`ready`とする。TargetとDependencyはsealed canonical tree、promptはdigest、resume Checkpointはshared Private Artifact Storeで照合する。provider version確認はlocal pinned imageを`runsc`、`network=none`、`pull=never`、read-onlyで`--version`実行するだけで、Target、provider config、credential、promptをmountしない。理由は[ADR 0140](adr/0140-keep-campaign-readiness-doctor-read-only.md)を参照する。
+- **失敗時:** 明確な不一致・不足・unauthenticatedは`blocked`、観測欠落・stale・unavailable・依存check未成立は`unknown`にする。missingなdatabaseはparentがwrite可能ならreadyだが作成せず、missingなscratchはblockedにする。Doctorはlogin、repair、directory / database / receipt作成、Campaign mutation、Target実行、model invocationを行わない。input schema不正またはCLI I/O失敗だけをnon-zeroにする。
+
+**Source / Behavior Test:** [`campaign-readiness-doctor.ts`](../src/operations/campaign-readiness-doctor.ts) · [`campaign-readiness-doctor-cli.ts`](../src/operations/campaign-readiness-doctor-cli.ts) · [`campaign-readiness-doctor.test.ts`](../tests/operations/campaign-readiness-doctor.test.ts)
 
 </details>
 

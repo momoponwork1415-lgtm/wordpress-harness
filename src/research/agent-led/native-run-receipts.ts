@@ -7,12 +7,12 @@ import {
   canonicalDigest,
   canonicalJson,
 } from "../../infrastructure/canonical-json.js";
+import { PrivateArtifactStore } from "../../infrastructure/private-artifact-store.js";
 import {
   nativeRunReceiptSchema,
   type NativeRunReceipt,
   type SealedNativeRun,
 } from "./contracts.js";
-import { PrivateArtifactStore } from "./private-artifact-store.js";
 
 const MAX_RECEIPT_ARTIFACT_BYTES = 8 * 1024 * 1024;
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);

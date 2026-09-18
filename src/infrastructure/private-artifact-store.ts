@@ -17,8 +17,8 @@ import { z } from "zod";
 import {
   measureCanonicalSourceTree,
   verifyCanonicalSourceTree,
-} from "../../infrastructure/canonical-source-tree.js";
-import { canonicalJson } from "../../infrastructure/canonical-json.js";
+} from "./canonical-source-tree.js";
+import { canonicalJson } from "./canonical-json.js";
 
 const artifactIdSchema = z
   .string()

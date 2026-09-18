@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   PrivateArtifactStore,
   PrivateArtifactStoreError,
-} from "../../src/research/agent-led/private-artifact-store.js";
+} from "../../src/infrastructure/private-artifact-store.js";
 
 const directories: string[] = [];
 

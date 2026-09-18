@@ -2,13 +2,13 @@ import { createHash } from "node:crypto";
 import { rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { PrivateArtifactStore } from "../../infrastructure/private-artifact-store.js";
 import type { NativeModelProcessResult } from "../../infrastructure/native-model-process.js";
 import type {
   AgentRunDiagnosticRef,
   AgentRunFailureStage,
   SealedNativeRun,
 } from "./contracts.js";
-import { PrivateArtifactStore } from "./private-artifact-store.js";
 
 const diagnosticLimits = {
   maxEntries: 20_000,

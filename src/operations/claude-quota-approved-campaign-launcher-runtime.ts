@@ -71,8 +71,6 @@ function processIsActive(pid: number): boolean {
 export async function inspectLaunchReceipts(
   receiptRoot: string,
 ): Promise<LaunchReceiptView> {
-  await mkdir(receiptRoot, { recursive: true, mode: 0o700 });
-  const entries = await readdir(receiptRoot, { withFileTypes: true });
   const claimedPlanIds = new Set<string>();
   const activePlanIds = new Set<string>();
   const quotaReservations: Array<{
@@ -80,6 +78,15 @@ export async function inspectLaunchReceipts(
     estimatedFiveHourPercentage: number;
     estimatedSevenDayPercentage: number;
   }> = [];
+  let entries;
+  try {
+    entries = await readdir(receiptRoot, { withFileTypes: true });
+  } catch (error: unknown) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return { claimedPlanIds, activePlanIds, quotaReservations };
+    }
+    throw error;
+  }
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     claimedPlanIds.add(entry.name);
@@ -339,6 +346,9 @@ export async function dispatchApprovedCampaignLaunches(options: {
     throw new Error(
       "A launch decision requires account readiness and quota observation bindings",
     );
+  }
+  if (decision.selectedPlanIds.length > 0) {
+    await mkdir(options.receiptRoot, { recursive: true, mode: 0o700 });
   }
   for (const planId of decision.selectedPlanIds) {
     const plan = plansById.get(planId);

@@ -7,6 +7,7 @@ import {
   canonicalDigest,
   canonicalJson,
 } from "../../infrastructure/canonical-json.js";
+import { PrivateArtifactStore } from "../../infrastructure/private-artifact-store.js";
 import {
   candidateVerificationRecipeSchema,
   researchCandidateSchema,
@@ -14,7 +15,6 @@ import {
   type ResearchReport,
   type SealedNativeRun,
 } from "./contracts.js";
-import { PrivateArtifactStore } from "./private-artifact-store.js";
 
 const MAX_CANDIDATE_RECIPE_BYTES = 256 * 1024;
 
