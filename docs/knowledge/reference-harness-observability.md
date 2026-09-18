@@ -55,12 +55,13 @@ Status: official-source comparison; Cloudflare security-audit-skillとAikido / D
 
 ## Cloudflare security-audit-skill: adoption decision
 
-参照revisionは[`c1c8a8c1471069fb0e188eeaff69b8e8db6564a8`](https://github.com/cloudflare/security-audit-skill/tree/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8)。公開skillとCloudflareのproduction harnessを同一視せず、[`SKILL.md`](https://github.com/cloudflare/security-audit-skill/blob/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8/skills/security-audit/SKILL.md)、[`HUNTING.md`](https://github.com/cloudflare/security-audit-skill/blob/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8/skills/security-audit/HUNTING.md)、[`VALIDATION.md`](https://github.com/cloudflare/security-audit-skill/blob/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8/skills/security-audit/VALIDATION.md)とschemaを確認した。
+参照revisionは[`c1c8a8c1471069fb0e188eeaff69b8e8db6564a8`](https://github.com/cloudflare/security-audit-skill/tree/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8)。公開skillとCloudflareのproduction harnessを同一視せず、[`SKILL.md`](https://github.com/cloudflare/security-audit-skill/blob/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8/skills/security-audit/SKILL.md)、[`RECONNAISSANCE.md`](https://github.com/cloudflare/security-audit-skill/blob/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8/skills/security-audit/RECONNAISSANCE.md)、[`HUNTING.md`](https://github.com/cloudflare/security-audit-skill/blob/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8/skills/security-audit/HUNTING.md)、[`VALIDATION-AND-REPORTING.md`](https://github.com/cloudflare/security-audit-skill/blob/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8/skills/security-audit/VALIDATION-AND-REPORTING.md)とschemaを確認した。
 
 | Referenceの考え方 | 判断 | このrepositoryでの扱い |
 | --- | --- | --- |
 | Parentだけがshared run filesを更新する | **採用済み** | `ResearchCampaigns`だけがappend-only Research Recordを更新し、Runtime AdapterはReceiptとopaque refを返す。新しい共有JSON正本は作らない。 |
 | findingsとcoverageをschema検証する | **適応** | 現行ZodのCampaign Input、Native Receipt、Research Report、Review、Verification Requestを正本にする。Cloudflare schemaを直輸入せず、schema適合を技術的真偽にしない。 |
+| Reconnaissance、coverage-directed Hunt、adversarial Validate、Gapfill | **適応** | Cloudflare-derived Prompt SetのRoot-owned loopとして採る。固定Agent、Waveまたはdeterministic ledgerをHarness stateにせず、Gapfillはsource-bound continuation proposalとしてHuman Reviewへ渡す。 |
 | `confirmed` / `needs_validation` / `rejected`を分ける | **適応** | Research Candidate、`verification-preparation-needed`、Candidate Verificationの`runtime-confirmed` / `contradicted` / `incomplete`、programme scopeを別々に保つ。名称間の一対一変換はしない。 |
 | 保存記録からreportを導出する | **採用** | Campaign `inspect`とHuman OSの保存済みviewから読み取り専用に説明・比較を導出する。reportの都合で元のverdictやCandidateを更新しない。 |
 | deterministic coverage ledgerとcritic wave | **不採用** | fixed coverage unit、wave、roleをHarness stateにせず、AIが探索判断を所有する。Coverageの可視化を安全性の証明や探索queueにしない。 |

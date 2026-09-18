@@ -35,9 +35,9 @@ Research designの出発点は、Wordfence Argusが公開した「**confine, con
 | verify / record | 探索内のadversarial review、fresh dynamic verification、Verified Vulnerability、programme scope、append-only Receiptを分離する |
 | iterate hard and fast | Rootがsynthesize、challenge、redirectを繰り返し、各Grantのhuman review後だけ同じCheckpointから次へ進む |
 
-wp2shell promptの研究手法は[WordPress Plugin Research v3](../prompts/wordpress-plugin-research-v3.md)へすべて取り入れる。具体的にはfirst-principlesのraw-source analysis、native multi-agentの積極的で動的な利用、固定assignmentの禁止、genuinely diverseなportfolio、明示的なApproach Family Registry、収束時のunderexplored familyへのredirect、見込みだけで一routeを支配させないこと、blocked routeの新機構による再開、incompatible routeの複数round維持と遅いcross-pollination、concrete bugのadversarial double-check、Rootによる反復的なsynthesis / challenge / redirect / new round、first waveや現在のapproachの失敗だけで停止しないこと、dependency sourceを読んだmissing linkとintermediate bugのchain探索である。
+wp2shell promptの研究手法は[WP2Shell-derived Prompt](../prompts/wordpress-plugin-research-v3.md)へすべて取り入れる。具体的にはfirst-principlesのraw-source analysis、native multi-agentの積極的で動的な利用、固定assignmentの禁止、genuinely diverseなportfolio、明示的なApproach Family Registry、収束時のunderexplored familyへのredirect、見込みだけで一routeを支配させないこと、blocked routeの新機構による再開、incompatible routeの複数round維持と遅いcross-pollination、concrete bugのadversarial double-check、Rootによる反復的なsynthesis / challenge / redirect / new round、first waveや現在のapproachの失敗だけで停止しないこと、dependency sourceを読んだmissing linkとintermediate bugのchain探索である。
 
-v3はCloudflareの公開security-audit skillから、concrete security invariant、最強のsource-visible controlの再構成、sibling / legacy / lifecycle / failure pathの比較とsad-state testingを採る。固定Hunter、Wave、coverage ledger、finding countによる完了判定は採らない。これらはWP2Shell式loopの探索判断をHarnessへ移すためではなく、各routeの証拠とcounterevidenceを明確にするために使う。
+WP2Shell-derived PromptはCloudflareの公開security-audit skillからも、concrete security invariant、最強のsource-visible controlの再構成、sibling / legacy / lifecycle / failure pathの比較とsad-state testingを採る。さらに[Cloudflare-derived Prompt](../prompts/wordpress-plugin-research-cloudflare-v1.md)は、公開skillのReconnaissance、coverage-directed Hunt、adversarial Validate、GapfillをRoot所有の一つの連続loopへ適応する。固定Hunter、Wave、deterministic coverage ledger、finding countによる完了判定はどちらの方式にも採らない。これらは探索判断をHarnessへ移すためではなく、各routeの証拠、counterevidenceと次のsource-bound gapを明確にするために使う。
 
 持ち込まないのは、wp2shell task固有の「脆弱性が存在してpre-auth RCE / `/flag`へ必ず到達する」というpositive oracleと最低6時間の指定だけである。元のCDC promptの肯定解と最低8時間も同じ理由で持ち込まない。最大4体は現在のresource ceilingとして使い、Approach Family RegistryはRootのscratchに置く。dependencyのrun中cloneは事前pinしたread-only Dependency Snapshotへ置き換える。これらは研究要素の省略ではなく、prospective mission、再現性、isolation、Human Research Reviewへ適応した実行境界である。tempoはevidence、isolation、Human Research ReviewまたはCandidate admissionを省略する理由にしない。
 
@@ -61,7 +61,16 @@ Programme対象外、Disclosure Route不明、既探索またはAIの低評価�
 
 ## Agent-led Research
 
-通常運転はwp2shell / Cycle Double Cover Promptを直接の系譜とする、raw-source-firstの一つの連続loopである。Provider-native Root agentはTarget Snapshot全体を読み、pluginが依存するWordPress core等の挙動をpinned Dependency Snapshotから解決する。[WordPress Plugin Research v3](../prompts/wordpress-plugin-research-v3.md)に従ってnative subagentを積極的かつ動的に使い、互いに異なるroute、反証、synthesisまたは追加調査を進める。Dependencyはsource worldを完成させるreferenceであり、別のaudit Targetにしない。HarnessはRootを含む同時active agent最大4体のresource ceilingだけをprovider runtimeで強制し、agentの実数、role、round、探索classまたは読むfileを指定しない。Rootだけが最大3体のsubagentを起動し、役割、終了後の再投入とwaveを決める。探索評価ではGrokを先に使う。利用不能時に同じCampaignを暗黙fallbackせず、GLM 5.3等の別Runtime Profileをbindした新しいCampaignとして明示的に比較する。
+Research MethodはPrompt SetとしてCampaign開始前に選び、model / provider transportとは独立にbindする。現在のcanonicalな方式は次の二つである。
+
+| Research Method | Canonical Prompt Set | Rootが所有する探索loop |
+| --- | --- | --- |
+| `wp2shell` | `wordpress-plugin-research-wp2shell-v1` / [Prompt](../prompts/wordpress-plugin-research-v3.md) | diverse approach portfolio、複数round、遅いcross-pollination、反復synthesis / redirect |
+| `cloudflare` | `wordpress-plugin-research-cloudflare-v1` / [Prompt](../prompts/wordpress-plugin-research-cloudflare-v1.md) | source Reconnaissance、coverage-directed Hunt、adversarial Validate、source-bound Gapfill |
+
+既存記録の`wordpress-plugin-research-v3`は同じWP2Shell-derived Promptへbindしたlegacy idとして認識する。canonical idとPrompt digestの対応は[`research-methods.ts`](../src/research/agent-led/research-methods.ts)で固定し、別方式の本文を同じ名前で実行する誤設定を拒否する。方式固有の探索判断はPromptとprovider-native Rootの内側に置き、`ResearchCampaigns.conduct / inspect`、Research Report、Human Reviewまたはprovider AdapterのInterfaceを方式ごとに分岐させない。
+
+Provider-native Root agentはTarget Snapshot全体を読み、pluginが依存するWordPress core等の挙動をpinned Dependency Snapshotから解決する。どちらの方式でもnative subagentを積極的かつ動的に使い、Dependencyを別のaudit Targetにしない。HarnessはRootを含む同時active agent最大4体のresource ceilingだけをprovider runtimeで強制し、agentの実数、role、round、探索classまたは読むfileを指定しない。Rootだけが最大3体のsubagentを起動し、役割、終了後の再投入とwaveを決める。探索評価ではGrokを先に使う。利用不能時に同じCampaignを暗黙fallbackせず、GLM 5.3等の別Runtime Profileをbindした新しいCampaignとして明示的に比較する。
 
 一回のResearch Native RunをResearch Grantとし、wall-time allowanceは最大1時間とする。Harnessはproviderを呼ぶ前にexactなSealed Native Run、digestと開始時刻をNative Run Attemptとしてappendする。Receiptはprivateなrecovery artifactへatomicに確定した後でだけterminal eventへappendする。started eventだけが残ったattemptはorphanedであり、自動再実行しない。同じrun、runtime profile、Receipt digestへ一致するartifactだけを回復し、欠落・破損・不一致なら`incomplete`のままにする。
 
@@ -89,7 +98,7 @@ Research Report v2では、Candidateにlower-trust entrypointからsecurity-rele
 
 ## Independent trial evaluation
 
-一つのIndependent Research Trialは、以前の結果やCheckpointを入力せず、freshなCampaignとして開始する。Campaign内で同じCheckpointから続けるResearch Grant、provider通信のretry、認証の再試行、出力形式の補正は同じTrialの一部であり、独立試行数を増やさない。固定した評価対象集合の各Targetへ一Trialずつ行う単位をEvaluation Sweepとする。外部資料の`pass@3`を参照する場合は、単一Targetの3 Trialなのか、評価対象全体の3 Sweepなのかを明記し、保存形式やInterfaceの名前にはしない。
+一つのIndependent Research Trialは、以前の結果やCheckpointを入力せず、freshなCampaignとして開始する。Campaign内で同じCheckpointから続けるResearch Grant、provider通信のretry、認証の再試行、出力形式の補正は同じTrialの一部であり、独立試行数を増やさない。固定した評価対象集合の各Targetへ一Trialずつ行う単位をEvaluation Sweepとする。外部資料の`pass@3`を参照する場合は、単一Targetの3 Trialなのか、評価対象全体の3 Sweepなのかを明記し、保存形式、InterfaceまたはResearch Methodの名前にはしない。
 
 同じ条件の反復を比較するときは、`campaignId`だけを変え、Target / Dependency Snapshots、Prompt Set、Threat Context、Programme Boundary、Agent Runtime Profile、Permission Profile、Budget Envelopeとtool / network条件を固定する。各Trialは`resumeFrom`を持たず、freshなprovider session、homeとscratchを使い、別TrialのCandidate、Checkpoint、reportまたは人間の判断を入力しない。modelやprovider harnessのbuildを固定または実行時に確認できなければ、そのidentityをunknownのまま表示し、異なる可能性がある結果を同一条件として集計しない。異なるPromptやApproach Familyを割り当てる比較はportfolio ablationであり、同一条件の反復とは別に扱う。
 

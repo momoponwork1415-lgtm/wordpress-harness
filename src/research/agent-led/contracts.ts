@@ -3,6 +3,7 @@ import { z } from "zod";
 import { agentRuntimeProfileSchema } from "../../infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../../infrastructure/canonical-json.js";
 import { providerCredentialEgressReceiptSchema } from "../../infrastructure/deepseek-credential-egress-broker.js";
+import { canonicalResearchPromptDigest } from "./research-methods.js";
 
 export { agentRuntimeProfileSchema } from "../../infrastructure/agent-runtime-profile.js";
 
@@ -18,6 +19,20 @@ const immutableRefSchema = z.strictObject({
   id: identifierSchema,
   digest: digestSchema,
 });
+
+export const researchPromptSetRefSchema = immutableRefSchema.superRefine(
+  (promptSet, context) => {
+    const expectedDigest = canonicalResearchPromptDigest(promptSet.id);
+    if (expectedDigest !== undefined && promptSet.digest !== expectedDigest) {
+      context.addIssue({
+        code: "custom",
+        path: ["digest"],
+        message:
+          "Canonical Research Method Prompt Set id requires its exact digest",
+      });
+    }
+  },
+);
 
 export const targetSnapshotRefSchema = z.strictObject({
   id: identifierSchema,
@@ -191,7 +206,7 @@ const researchCampaignPolicyBodySchema = z.strictObject({
   kind: z.literal("research-campaign-policy"),
   schemaVersion: z.literal(1),
   id: identifierSchema,
-  promptSet: immutableRefSchema,
+  promptSet: researchPromptSetRefSchema,
   agentRuntimeProfile: agentRuntimeProfileSchema,
   permissionProfile: immutableRefSchema,
   budgetEnvelope: budgetEnvelopeSchema,
@@ -240,7 +255,7 @@ export const campaignInputSchema = z
     dependencySnapshots: dependencySnapshotsSchema.optional(),
     threatContext: campaignThreatContextSchema.optional(),
     programmeBoundary: programmeResearchBoundarySchema.optional(),
-    promptSet: immutableRefSchema,
+    promptSet: researchPromptSetRefSchema,
     agentRuntimeProfile: agentRuntimeProfileSchema,
     permissionProfile: immutableRefSchema,
     budgetEnvelope: budgetEnvelopeSchema,
@@ -739,7 +754,7 @@ export const sealedNativeRunSchema = z.strictObject({
   dependencySnapshots: dependencySnapshotsSchema.optional(),
   threatContext: campaignThreatContextSchema.optional(),
   programmeBoundary: programmeResearchBoundarySchema.optional(),
-  promptSet: immutableRefSchema,
+  promptSet: researchPromptSetRefSchema,
   agentRuntimeProfile: agentRuntimeProfileSchema,
   permissionProfile: immutableRefSchema,
   budgetEnvelope: budgetEnvelopeSchema,

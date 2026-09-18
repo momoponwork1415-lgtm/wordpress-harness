@@ -26,6 +26,7 @@ import type {
   ResearchCandidate,
   SealedNativeRun,
 } from "../../src/research/agent-led/contracts.js";
+import { researchPromptSetForMethod } from "../../src/research/agent-led/research-methods.js";
 import { researchEvidenceSummaryFixture } from "../research/support/research-evidence-summary.js";
 
 function digest(character: string): string {
@@ -51,7 +52,7 @@ function campaignInput(campaignId: string): CampaignInput {
       digest: digest("a"),
       sourceTree: { digest: digest("b"), entries: 1, bytes: 6 },
     },
-    promptSet: { id: "wordpress-plugin-research-v3", digest: digest("c") },
+    promptSet: { id: "research-method-fixture-v1", digest: digest("c") },
     agentRuntimeProfile: runtimeProfile,
     permissionProfile: { id: "source-only-v1", digest: digest("d") },
     budgetEnvelope: {
@@ -424,7 +425,7 @@ describe("Independent Research Trial comparison", () => {
         ...baseline.targetSnapshot,
         id: "target-alias-with-same-source",
       },
-      promptSet: { id: "different-prompt", digest: digest("9") },
+      promptSet: researchPromptSetForMethod("cloudflare"),
     };
     const resumedInput = {
       ...campaignInput("trial-resumed"),

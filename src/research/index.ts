@@ -14,6 +14,7 @@ export {
   researchAssessmentSchema,
   researchAdmissionFailureSchema,
   researchEvidenceSummarySchema,
+  researchPromptSetRefSchema,
   candidateVerificationRecipeRefSchema,
   candidateVerificationRecipeSchema,
   candidateVerificationRequestSchema,
@@ -21,6 +22,15 @@ export {
   sourceEvidenceSchema,
   targetSnapshotRefSchema,
 } from "./agent-led/contracts.js";
+export {
+  canonicalResearchPromptDigest,
+  researchMethodForPromptSet,
+  researchPromptSetForMethod,
+} from "./agent-led/research-methods.js";
+export type {
+  ResearchMethod,
+  ResearchMethodPromptSet,
+} from "./agent-led/research-methods.js";
 export type {
   CandidateReviewRequest,
   CampaignCommand,
