@@ -132,7 +132,7 @@ async function readyFixture(
     agentRuntimeProfile: defineAgentRuntimeProfile({
       id: "claude-profile-1",
       ...claudeCodeNativeTransport,
-      model: "claude-opus-4-1",
+      model: "claude-opus-5",
       effort: "high",
     }),
     permissionProfile: {
@@ -492,7 +492,7 @@ describe("Campaign readiness doctor", () => {
           agentRuntimeProfile: defineAgentRuntimeProfile({
             id: "claude-profile-unsupported-effort",
             ...claudeCodeNativeTransport,
-            model: "claude-opus-4-1",
+            model: "claude-opus-5",
             effort: "ultra",
           }),
         },

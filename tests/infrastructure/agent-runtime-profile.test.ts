@@ -9,54 +9,60 @@ import {
 } from "../../src/infrastructure/agent-runtime-profile.js";
 
 describe("Agent Runtime Profile catalog", () => {
-  it("admits multiple models on one compatible transport without an Adapter change", () => {
-    const first = defineAgentRuntimeProfile({
-      id: "claude-opus-4-1-high",
+  it("admits the provider-reported canonical Opus model without an Adapter change", () => {
+    const profile = defineAgentRuntimeProfile({
+      id: "claude-opus-high",
       ...claudeCodeNativeTransport,
-      model: "claude-opus-4-1",
+      model: "claude-opus-5",
       effort: "high",
     });
-    const second = defineAgentRuntimeProfile({
-      id: "claude-opus-high",
+    const unsupportedLegacyAlias = defineAgentRuntimeProfile({
+      id: "claude-opus-legacy-alias-high",
       ...claudeCodeNativeTransport,
       model: "claude-opus",
       effort: "high",
     });
 
-    expect(first.digest).toBe(
+    expect(profile.digest).toBe(
       canonicalDigest({
-        kind: first.kind,
-        schemaVersion: first.schemaVersion,
-        id: first.id,
-        transportKind: first.transportKind,
-        executableVersion: first.executableVersion,
-        sandboxImageDigest: first.sandboxImageDigest,
-        promptProtocol: first.promptProtocol,
-        reportProtocol: first.reportProtocol,
-        model: first.model,
-        effort: first.effort,
+        kind: profile.kind,
+        schemaVersion: profile.schemaVersion,
+        id: profile.id,
+        transportKind: profile.transportKind,
+        executableVersion: profile.executableVersion,
+        sandboxImageDigest: profile.sandboxImageDigest,
+        promptProtocol: profile.promptProtocol,
+        reportProtocol: profile.reportProtocol,
+        model: profile.model,
+        effort: profile.effort,
       }),
     );
     expect(
-      admitAgentRuntimeProfile(first, `research@${first.sandboxImageDigest}`),
-    ).toEqual({ status: "admitted", profile: first });
+      admitAgentRuntimeProfile(
+        profile,
+        `research@${profile.sandboxImageDigest}`,
+      ),
+    ).toEqual({ status: "admitted", profile });
     expect(
-      admitAgentRuntimeProfile(second, `research@${second.sandboxImageDigest}`),
-    ).toEqual({ status: "admitted", profile: second });
+      admitAgentRuntimeProfile(
+        unsupportedLegacyAlias,
+        `research@${unsupportedLegacyAlias.sandboxImageDigest}`,
+      ),
+    ).toEqual({ status: "unsupported-profile" });
   });
 
   it("rejects unsupported effort, image, and protocol combinations", () => {
     const unsupportedEffort = defineAgentRuntimeProfile({
-      id: "claude-opus-4-1-ultra",
+      id: "claude-opus-ultra",
       ...claudeCodeNativeTransport,
-      model: "claude-opus-4-1",
+      model: "claude-opus-5",
       effort: "ultra",
     });
     const unsupportedProtocol = defineAgentRuntimeProfile({
-      id: "claude-opus-4-1-wrong-protocol",
+      id: "claude-opus-wrong-protocol",
       ...claudeCodeNativeTransport,
       promptProtocol: "file",
-      model: "claude-opus-4-1",
+      model: "claude-opus-5",
       effort: "high",
     });
 
@@ -75,9 +81,9 @@ describe("Agent Runtime Profile catalog", () => {
     expect(
       admitAgentRuntimeProfile(
         defineAgentRuntimeProfile({
-          id: "claude-opus-4-1-high",
+          id: "claude-opus-high",
           ...claudeCodeNativeTransport,
-          model: "claude-opus-4-1",
+          model: "claude-opus-5",
           effort: "high",
         }),
         `sha256:${"0".repeat(64)}`,

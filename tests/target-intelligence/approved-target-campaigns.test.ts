@@ -60,7 +60,7 @@ function policy(): ResearchCampaignPolicy {
     agentRuntimeProfile: defineAgentRuntimeProfile({
       id: "claude-code-research-v1",
       ...claudeCodeNativeTransport,
-      model: "claude-opus",
+      model: "claude-opus-5",
       effort: "high",
     }),
     permissionProfile: {

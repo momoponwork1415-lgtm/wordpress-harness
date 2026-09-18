@@ -116,12 +116,7 @@ const admittedModels = [
   },
   {
     transportKind: claudeCodeNativeTransport.transportKind,
-    model: "claude-opus-4-1",
-    effort: "high",
-  },
-  {
-    transportKind: claudeCodeNativeTransport.transportKind,
-    model: "claude-opus",
+    model: "claude-opus-5",
     effort: "high",
   },
   {

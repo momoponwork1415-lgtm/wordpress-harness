@@ -105,7 +105,7 @@ function sealedRun(): SealedNativeRun {
     agentRuntimeProfile: defineAgentRuntimeProfile({
       id: "runtime-v1",
       ...claudeCodeNativeTransport,
-      model: "claude-opus",
+      model: "claude-opus-5",
       effort: "high",
     }),
     permissionProfile: { id: "source-only-v1", digest: digest("8") },

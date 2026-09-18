@@ -31,7 +31,7 @@ function claudeProfile() {
   return defineAgentRuntimeProfile({
     id: "claude-code-opus-native-v1",
     ...claudeCodeNativeTransport,
-    model: "claude-opus-4-1",
+    model: "claude-opus-5",
     effort: "high",
   });
 }
@@ -110,6 +110,7 @@ provider_mount_mode=''
 new_session=''
 resume_session=''
 has_no_session_persistence=0
+selected_model=''
 is_version_probe=0
 scratch=''
 previous=''
@@ -128,6 +129,7 @@ for argument in "$@"; do
   fi
   if [ "$previous" = "--session-id" ]; then new_session="$argument"; fi
   if [ "$previous" = "--resume" ]; then resume_session="$argument"; fi
+  if [ "$previous" = "--model" ]; then selected_model="$argument"; fi
   [ "$argument" != "--runtime=runsc" ] || has_runsc=1
   [ "$argument" != "--interactive" ] || has_interactive=1
   [ "$argument" != "--env=CLAUDE_CONFIG_DIR=/provider" ] || has_ephemeral_provider_home=1
@@ -159,6 +161,7 @@ if [ "$is_version_probe" -eq 1 ]; then
   exit 0
 fi
 [ -n "$scratch" ] || exit 92
+[ "$selected_model" = "claude-opus-5" ] || exit 69
 [ "$has_unsupported_option" -eq 0 ] || exit 88
 [ "$denies_provider_read" -eq 1 ] || exit 87
 [ "$denies_provider_glob" -eq 1 ] || exit 86
@@ -194,12 +197,12 @@ if [ -f "$0.count" ]; then
 fi
 printf '%s' "$invocation" > "$0.count"
 if [ "$invocation" -eq 1 ]; then
-  printf '{"type":"result","subtype":"success","is_error":false,"terminal_reason":"completed","session_id":"%s","structured_output":{"schemaVersion":2,"assessments":[],"evidenceSummary":${evidenceSummaryJson},"candidates":[{"candidateId":"candidate-claude-stored-xss-1","attackerPremise":"An unauthenticated visitor can submit the public form.","brokenSecurityProperty":"Persisted attacker input must be inert in privileged output.","claim":"A public form value is stored and rendered to an administrator without escaping.","evidence":[{"path":"public/save.php","location":"save_value:44","observation":"Persists the public value."}],"sourceTrace":[{"role":"entrypoint","path":"public/save.php","location":"save_value:44","observation":"The public form accepts attacker input."},{"role":"effect","path":"public/save.php","location":"save_value:44","observation":"The stored value reaches administrator output."}],"controlAssessments":[{"control":"Output escaping","evidence":[{"path":"public/save.php","location":"save_value:44","observation":"No escaping is applied at the output boundary."}],"conclusion":"No source-visible control prevents the stored output effect."}],"unresolvedFacts":[]}],"decision":{"kind":"continue","reason":"A separate source-bound frontier remains.","nextActions":[{"question":"Does the adjacent public handler cross another trust boundary?","sourcePointers":["public/next.php"]}]}},"total_cost_usd":0.75,"duration_ms":90000,"num_turns":8,"permission_denials":[],"usage":{"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}},"modelUsage":{"claude-opus-4-1":{"canonicalModel":"claude-opus-4-1","inputTokens":8000,"outputTokens":1500,"cacheReadInputTokens":2000,"cacheCreationInputTokens":500}}}' "$active_session"
+  printf '{"type":"result","subtype":"success","is_error":false,"terminal_reason":"completed","session_id":"%s","structured_output":{"schemaVersion":2,"assessments":[],"evidenceSummary":${evidenceSummaryJson},"candidates":[{"candidateId":"candidate-claude-stored-xss-1","attackerPremise":"An unauthenticated visitor can submit the public form.","brokenSecurityProperty":"Persisted attacker input must be inert in privileged output.","claim":"A public form value is stored and rendered to an administrator without escaping.","evidence":[{"path":"public/save.php","location":"save_value:44","observation":"Persists the public value."}],"sourceTrace":[{"role":"entrypoint","path":"public/save.php","location":"save_value:44","observation":"The public form accepts attacker input."},{"role":"effect","path":"public/save.php","location":"save_value:44","observation":"The stored value reaches administrator output."}],"controlAssessments":[{"control":"Output escaping","evidence":[{"path":"public/save.php","location":"save_value:44","observation":"No escaping is applied at the output boundary."}],"conclusion":"No source-visible control prevents the stored output effect."}],"unresolvedFacts":[]}],"decision":{"kind":"continue","reason":"A separate source-bound frontier remains.","nextActions":[{"question":"Does the adjacent public handler cross another trust boundary?","sourcePointers":["public/next.php"]}]}},"total_cost_usd":0.75,"duration_ms":90000,"num_turns":8,"permission_denials":[],"usage":{"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}},"modelUsage":{"claude-opus-5":{"canonicalModel":"claude-opus-5","inputTokens":8000,"outputTokens":1500,"cacheReadInputTokens":2000,"cacheCreationInputTokens":500}}}' "$active_session"
   exit 0
 fi
 if [ "$invocation" -eq 2 ]; then
   [ -n "$resume_session" ] || exit 77
-  printf '{"type":"result","subtype":"success","is_error":false,"terminal_reason":"completed","session_id":"%s","structured_output":{"schemaVersion":2,"assessments":[],"evidenceSummary":${evidenceSummaryJson},"candidates":[],"decision":{"kind":"stop","basis":"The remaining frontier was resolved."}},"total_cost_usd":0.3,"duration_ms":45000,"num_turns":3,"permission_denials":[],"usage":{"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}},"modelUsage":{"claude-opus-4-1":{"canonicalModel":"claude-opus-4-1","inputTokens":3000,"outputTokens":500,"cacheReadInputTokens":1000,"cacheCreationInputTokens":250}}}' "$active_session"
+  printf '{"type":"result","subtype":"success","is_error":false,"terminal_reason":"completed","session_id":"%s","structured_output":{"schemaVersion":2,"assessments":[],"evidenceSummary":${evidenceSummaryJson},"candidates":[],"decision":{"kind":"stop","basis":"The remaining frontier was resolved."}},"total_cost_usd":0.3,"duration_ms":45000,"num_turns":3,"permission_denials":[],"usage":{"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}},"modelUsage":{"claude-opus-5":{"canonicalModel":"claude-opus-5","inputTokens":3000,"outputTokens":500,"cacheReadInputTokens":1000,"cacheCreationInputTokens":250}}}' "$active_session"
   exit 0
 fi
 if [ "$invocation" -eq 3 ]; then
@@ -208,7 +211,7 @@ if [ "$invocation" -eq 3 ]; then
 fi
 if [ "$invocation" -eq 4 ]; then
   [ -n "$resume_session" ] || exit 76
-  printf '{"type":"result","subtype":"success","is_error":false,"terminal_reason":"completed","session_id":"%s","structured_output":{"schemaVersion":2,"assessments":[],"evidenceSummary":${evidenceSummaryJson},"candidates":[],"decision":{"kind":"stop","basis":"The explicitly resumed frontier was resolved."}},"total_cost_usd":0.2,"duration_ms":30000,"num_turns":2,"permission_denials":[],"usage":{"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}},"modelUsage":{"claude-opus-4-1":{"canonicalModel":"claude-opus-4-1","inputTokens":2000,"outputTokens":300,"cacheReadInputTokens":500,"cacheCreationInputTokens":100}}}' "$active_session"
+  printf '{"type":"result","subtype":"success","is_error":false,"terminal_reason":"completed","session_id":"%s","structured_output":{"schemaVersion":2,"assessments":[],"evidenceSummary":${evidenceSummaryJson},"candidates":[],"decision":{"kind":"stop","basis":"The explicitly resumed frontier was resolved."}},"total_cost_usd":0.2,"duration_ms":30000,"num_turns":2,"permission_denials":[],"usage":{"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}},"modelUsage":{"claude-opus-5":{"canonicalModel":"claude-opus-5","inputTokens":2000,"outputTokens":300,"cacheReadInputTokens":500,"cacheCreationInputTokens":100}}}' "$active_session"
   exit 0
 fi
 exit 75
@@ -606,8 +609,8 @@ exit "$(cat '${providerExitPath}')"
         result:
           "API Error: Request rejected (429) · Usage limit reached for 5 hour.",
         modelUsage: {
-          "claude-opus-4-1": {
-            canonicalModel: "claude-opus-4-1",
+          "claude-opus-5": {
+            canonicalModel: "claude-opus-5",
             inputTokens: 4_000,
             outputTokens: 700,
             cacheReadInputTokens: 1_000,
