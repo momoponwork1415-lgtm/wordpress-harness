@@ -408,6 +408,7 @@ class DeepSeekHarnessNativeAgentRuntime implements NativeAgentRuntime {
             "--env=HOME=/tmp/home",
             "--env=DSH_PERMISSION_MODE=read-only",
             "--env=DSH_TELEMETRY_DISABLED=1",
+            "--env=NARB_DISABLE_NATIVE_CACHE=1",
             "--env=NO_COLOR=1",
             `--env=DEEPSEEK_API_KEY=${token}`,
             `--env=DEEPSEEK_BASE_URL=${grant.baseUrl}`,

@@ -202,6 +202,7 @@ has_network=0
 has_key=0
 has_base_url=0
 has_dsh_home=0
+has_native_cache_disabled=0
 patch_file=''
 provider_home=''
 previous=''
@@ -210,6 +211,7 @@ for argument in "$@"; do
   [ "$argument" != "--env=DEEPSEEK_API_KEY=scoped-token" ] || has_key=1
   [ "$argument" != "--env=DEEPSEEK_BASE_URL=http://10.0.0.2:8080" ] || has_base_url=1
   [ "$argument" != "--env=DSH_HOME=/provider" ] || has_dsh_home=1
+  [ "$argument" != "--env=NARB_DISABLE_NATIVE_CACHE=1" ] || has_native_cache_disabled=1
   [ "$argument" != "--version" ] || is_version_probe=1
   case "$argument" in
     *:/etc/dsh/research.patch.yml:ro) patch_file="\${argument%:/etc/dsh/research.patch.yml:ro}" ;;
@@ -221,6 +223,7 @@ done
 [ "$has_key" -eq 1 ] || exit 92
 [ "$has_base_url" -eq 1 ] || exit 93
 [ "$has_dsh_home" -eq 1 ] || exit 94
+[ "$has_native_cache_disabled" -eq 1 ] || exit 97
 if [ "$is_version_probe" -eq 1 ]; then
   printf '%s\n' '0.1.6-alpha.2'
   exit 0
