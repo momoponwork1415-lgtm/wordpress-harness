@@ -4,7 +4,9 @@ import { z } from "zod";
 
 import { admitAgentRuntimeProfile } from "../infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../infrastructure/canonical-json.js";
-import { campaignInputSchema } from "../research/index.js";
+import type { CampaignInput } from "../research/index.js";
+import { approvedTargetCampaignRequestSchema } from "../target-intelligence/approved-target-campaign/contracts.js";
+import { admitApprovedTargetCampaign } from "../target-intelligence/approved-target-campaign/approved-target-campaigns.js";
 import { deepSeekAccountReadinessObservationSchema } from "./deepseek-account-readiness.js";
 import {
   defineIndependentResearchTrialBinding,
@@ -34,7 +36,7 @@ const dependencySourceSchema = z.strictObject({
 export const independentResearchTrialPlanSchema = z
   .strictObject({
     trialId: identifierSchema,
-    campaignInput: campaignInputSchema,
+    approvedTargetCampaignRequest: approvedTargetCampaignRequestSchema,
     targetSourceDirectory: absolutePathSchema,
     dependencySources: z.array(dependencySourceSchema).max(16),
     databasePath: absolutePathSchema,
@@ -45,28 +47,37 @@ export const independentResearchTrialPlanSchema = z
     researchPromptPath: absolutePathSchema,
   })
   .superRefine((plan, context) => {
-    if (plan.campaignInput.resumeFrom !== undefined) {
+    let campaignInput: CampaignInput;
+    try {
+      campaignInput = admitApprovedTargetCampaign(
+        plan.approvedTargetCampaignRequest,
+      );
+    } catch {
       context.addIssue({
         code: "custom",
-        path: ["campaignInput", "resumeFrom"],
-        message: "Independent Research Trials must start fresh",
+        path: ["approvedTargetCampaignRequest"],
+        message: "Independent Trial requires an admitted Target Campaign",
       });
+      return;
     }
     if (
-      plan.campaignInput.agentRuntimeProfile.transportKind !==
+      campaignInput.agentRuntimeProfile.transportKind !==
       "deepseek-harness-native/v1"
     ) {
       context.addIssue({
         code: "custom",
-        path: ["campaignInput", "agentRuntimeProfile", "transportKind"],
+        path: [
+          "approvedTargetCampaignRequest",
+          "campaignPolicy",
+          "agentRuntimeProfile",
+          "transportKind",
+        ],
         message: "This launcher requires DeepSeek account readiness",
       });
     }
     if (
-      admitAgentRuntimeProfile(
-        plan.campaignInput.agentRuntimeProfile,
-        plan.image,
-      ).status !== "admitted"
+      admitAgentRuntimeProfile(campaignInput.agentRuntimeProfile, plan.image)
+        .status !== "admitted"
     ) {
       context.addIssue({
         code: "custom",
@@ -75,7 +86,7 @@ export const independentResearchTrialPlanSchema = z
       });
     }
     const expectedMounts = new Set(
-      (plan.campaignInput.dependencySnapshots ?? []).map(
+      (campaignInput.dependencySnapshots ?? []).map(
         (dependency) => dependency.mountName,
       ),
     );
@@ -99,10 +110,16 @@ export type IndependentResearchTrialPlan = z.infer<
   typeof independentResearchTrialPlanSchema
 >;
 
+export function campaignInputForIndependentResearchTrial(
+  trial: IndependentResearchTrialPlan,
+): CampaignInput {
+  return admitApprovedTargetCampaign(trial.approvedTargetCampaignRequest);
+}
+
 const independentResearchTrialApprovalBodySchema = z
   .strictObject({
     kind: z.literal("independent-research-trial-approval"),
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     approvalId: identifierSchema,
     approvedAt: z.iso.datetime(),
     expiresAt: z.iso.datetime(),
@@ -130,8 +147,10 @@ const independentResearchTrialApprovalBodySchema = z
     const uniqueFields = [
       ["trialId", approval.trials.map((trial) => trial.trialId)],
       [
-        "campaignInput.campaignId",
-        approval.trials.map((trial) => trial.campaignInput.campaignId),
+        "approvedTargetCampaignRequest.campaignId",
+        approval.trials.map(
+          (trial) => trial.approvedTargetCampaignRequest.campaignId,
+        ),
       ],
       ["databasePath", approval.trials.map((trial) => trial.databasePath)],
       [
@@ -165,7 +184,9 @@ const independentResearchTrialApprovalBodySchema = z
       bindingDigests = new Set(
         approval.trials.map(
           (trial) =>
-            defineIndependentResearchTrialBinding(trial.campaignInput).digest,
+            defineIndependentResearchTrialBinding(
+              campaignInputForIndependentResearchTrial(trial),
+            ).digest,
         ),
       );
     } catch {
@@ -224,7 +245,7 @@ export function defineIndependentResearchTrialApproval(
   const body = independentResearchTrialApprovalBodySchema.parse({
     ...fields,
     kind: "independent-research-trial-approval",
-    schemaVersion: 1,
+    schemaVersion: 2,
   });
   return independentResearchTrialApprovalSchema.parse({
     ...body,
@@ -244,9 +265,11 @@ export function comparisonRequestForIndependentResearchTrialApproval(
   return defineIndependentResearchTrialComparisonRequest({
     comparisonId: approval.approvalId,
     trialCampaignIds: approval.trials.map(
-      (trial) => trial.campaignInput.campaignId,
+      (trial) => trial.approvedTargetCampaignRequest.campaignId,
     ),
-    expectedBinding: defineIndependentResearchTrialBinding(first.campaignInput),
+    expectedBinding: defineIndependentResearchTrialBinding(
+      campaignInputForIndependentResearchTrial(first),
+    ),
   });
 }
 
@@ -441,12 +464,15 @@ export function decideIndependentResearchTrialLaunches(input: {
       claim.approvalId !== approval.approvalId ||
       claim.approvalDigest !== approval.digest ||
       trial === undefined ||
-      claim.campaignId !== trial.campaignInput.campaignId ||
-      claim.campaignInputDigest !== canonicalDigest(trial.campaignInput) ||
+      claim.campaignId !== trial.approvedTargetCampaignRequest.campaignId ||
+      claim.campaignInputDigest !==
+        canonicalDigest(campaignInputForIndependentResearchTrial(trial)) ||
       claim.reservedNativeRuns !==
-        trial.campaignInput.budgetEnvelope.maxNativeRuns ||
+        trial.approvedTargetCampaignRequest.campaignPolicy.budgetEnvelope
+          .maxNativeRuns ||
       claim.reservedWallTimeMs !==
-        trial.campaignInput.budgetEnvelope.maxWallTimeMs
+        trial.approvedTargetCampaignRequest.campaignPolicy.budgetEnvelope
+          .maxWallTimeMs
     ) {
       throw new Error("Independent Trial claim does not match approval");
     }
@@ -513,7 +539,8 @@ export function decideIndependentResearchTrialLaunches(input: {
     ) {
       continue;
     }
-    const budget = trial.campaignInput.budgetEnvelope;
+    const budget =
+      trial.approvedTargetCampaignRequest.campaignPolicy.budgetEnvelope;
     if (
       budget.maxNativeRuns > availableNativeRuns ||
       budget.maxWallTimeMs > availableWallTimeMs

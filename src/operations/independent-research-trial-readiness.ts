@@ -14,6 +14,7 @@ import {
 import { promptTextDigest } from "../infrastructure/prompt-text.js";
 import { readPrivateProviderCredential } from "../infrastructure/provider-private-credential.js";
 import {
+  campaignInputForIndependentResearchTrial,
   defineIndependentResearchTrialReadiness,
   independentResearchTrialApprovalSchema,
   independentResearchTrialPlanSchema,
@@ -33,12 +34,13 @@ function result(
   status: IndependentResearchTrialReadiness["status"],
   reason: string,
 ): IndependentResearchTrialReadiness {
+  const campaignInput = campaignInputForIndependentResearchTrial(trial);
   return defineIndependentResearchTrialReadiness({
     approvalId: approval.approvalId,
     approvalDigest: approval.digest,
     trialId: trial.trialId,
-    campaignId: trial.campaignInput.campaignId,
-    campaignInputDigest: canonicalDigest(trial.campaignInput),
+    campaignId: campaignInput.campaignId,
+    campaignInputDigest: canonicalDigest(campaignInput),
     checkedAt,
     status,
     reason,
@@ -167,9 +169,10 @@ function imageMatches(output: string, image: string): boolean {
 async function sourceFailureReason(
   trial: IndependentResearchTrialPlan,
 ): Promise<string | undefined> {
+  const campaignInput = campaignInputForIndependentResearchTrial(trial);
   const target = await verifyCanonicalSourceTree(
     trial.targetSourceDirectory,
-    trial.campaignInput.targetSnapshot.sourceTree,
+    campaignInput.targetSnapshot.sourceTree,
   );
   if (!target.matches) return "target-source-mismatch";
   const sources = new Map(
@@ -178,7 +181,7 @@ async function sourceFailureReason(
       source.directory,
     ]),
   );
-  for (const snapshot of trial.campaignInput.dependencySnapshots ?? []) {
+  for (const snapshot of campaignInput.dependencySnapshots ?? []) {
     const directory = sources.get(snapshot.mountName);
     if (
       directory === undefined ||
@@ -200,6 +203,7 @@ export async function inspectIndependentResearchTrialReadiness(options: {
     options.approval,
   );
   const trial = independentResearchTrialPlanSchema.parse(options.trial);
+  const campaignInput = campaignInputForIndependentResearchTrial(trial);
   const checkedAt = (options.clock ?? (() => new Date()))().toISOString();
   const approvedTrial = approval.trials.find(
     (candidate) => candidate.trialId === trial.trialId,
@@ -218,7 +222,7 @@ export async function inspectIndependentResearchTrialReadiness(options: {
   const prompt = await stablePrompt(trial.researchPromptPath);
   if (
     prompt === undefined ||
-    promptTextDigest(prompt) !== trial.campaignInput.promptSet.digest
+    promptTextDigest(prompt) !== campaignInput.promptSet.digest
   ) {
     return blocked(approval, trial, checkedAt, "prompt-mismatch");
   }
@@ -317,7 +321,7 @@ export async function inspectIndependentResearchTrialReadiness(options: {
     provider?.kind !== "exited" ||
     provider.exitCode !== 0 ||
     provider.stdout.trim().split(/\s/u)[0] !==
-      trial.campaignInput.agentRuntimeProfile.executableVersion
+      campaignInput.agentRuntimeProfile.executableVersion
   ) {
     return blocked(approval, trial, checkedAt, "provider-version-mismatch");
   }

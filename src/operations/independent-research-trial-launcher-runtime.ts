@@ -17,6 +17,7 @@ import {
   type DeepSeekAccountReadinessObservation,
 } from "./deepseek-account-readiness.js";
 import {
+  campaignInputForIndependentResearchTrial,
   decideIndependentResearchTrialLaunches,
   independentResearchTrialApprovalSchema,
   independentResearchTrialClaimSchema,
@@ -148,7 +149,7 @@ export function buildIndependentResearchTrialCommand(
   const args = [
     approval.runtime.harnessCliPath,
     "campaign",
-    "conduct",
+    "conduct-approved",
     "--database",
     trial.databasePath,
     "--input",
@@ -182,12 +183,13 @@ function readinessMatches(
   now: string,
 ): boolean {
   const ageMs = Date.parse(now) - Date.parse(readiness.checkedAt);
+  const campaignInput = campaignInputForIndependentResearchTrial(trial);
   return (
     readiness.approvalId === approval.approvalId &&
     readiness.approvalDigest === approval.digest &&
     readiness.trialId === trial.trialId &&
-    readiness.campaignId === trial.campaignInput.campaignId &&
-    readiness.campaignInputDigest === canonicalDigest(trial.campaignInput) &&
+    readiness.campaignId === campaignInput.campaignId &&
+    readiness.campaignInputDigest === canonicalDigest(campaignInput) &&
     readiness.status === "ready" &&
     ageMs >= 0 &&
     ageMs <= approval.maxReadinessAgeSeconds * 1_000
@@ -201,18 +203,19 @@ function claimFor(input: {
   readonly trialReadiness: IndependentResearchTrialReadiness;
   readonly claimedAt: string;
 }): IndependentResearchTrialClaim {
+  const campaignInput = campaignInputForIndependentResearchTrial(input.trial);
   const body = {
     kind: "independent-research-trial-claim" as const,
     schemaVersion: 1 as const,
     approvalId: input.approval.approvalId,
     approvalDigest: input.approval.digest,
     trialId: input.trial.trialId,
-    campaignId: input.trial.campaignInput.campaignId,
-    campaignInputDigest: canonicalDigest(input.trial.campaignInput),
+    campaignId: campaignInput.campaignId,
+    campaignInputDigest: canonicalDigest(campaignInput),
     accountReadinessDigest: input.accountReadiness.digest,
     trialReadinessDigest: input.trialReadiness.digest,
-    reservedNativeRuns: input.trial.campaignInput.budgetEnvelope.maxNativeRuns,
-    reservedWallTimeMs: input.trial.campaignInput.budgetEnvelope.maxWallTimeMs,
+    reservedNativeRuns: campaignInput.budgetEnvelope.maxNativeRuns,
+    reservedWallTimeMs: campaignInput.budgetEnvelope.maxWallTimeMs,
     claimedAt: input.claimedAt,
   };
   return independentResearchTrialClaimSchema.parse({
@@ -240,16 +243,20 @@ async function persistClaim(input: {
 }): Promise<{ readonly claimDirectory: string; readonly inputPath: string }> {
   const claimDirectory = join(input.receiptRoot, "claims", input.trial.trialId);
   await mkdir(claimDirectory, { mode: 0o700 });
-  const inputPath = join(claimDirectory, "campaign-input.json");
+  const inputPath = join(
+    claimDirectory,
+    "approved-target-campaign-request.json",
+  );
   await writeFile(
     join(claimDirectory, "claim.json"),
     `${JSON.stringify(input.claim)}\n`,
     { flag: "wx", mode: 0o600 },
   );
-  await writeFile(inputPath, `${JSON.stringify(input.trial.campaignInput)}\n`, {
-    flag: "wx",
-    mode: 0o600,
-  });
+  await writeFile(
+    inputPath,
+    `${JSON.stringify(input.trial.approvedTargetCampaignRequest)}\n`,
+    { flag: "wx", mode: 0o600 },
+  );
   await mkdir(dirname(input.trial.databasePath), {
     recursive: true,
     mode: 0o700,
@@ -277,6 +284,7 @@ async function launchClaim(input: {
   readonly workingDirectory: string;
   readonly launchedAt: string;
 }): Promise<IndependentResearchTrialLaunchReceipt> {
+  const campaignInput = campaignInputForIndependentResearchTrial(input.trial);
   const log = await open(input.trial.logPath, "a", 0o600);
   try {
     const child = spawn(
@@ -307,8 +315,8 @@ async function launchClaim(input: {
       approvalId: input.approval.approvalId,
       approvalDigest: input.approval.digest,
       trialId: input.trial.trialId,
-      campaignId: input.trial.campaignInput.campaignId,
-      campaignInputDigest: canonicalDigest(input.trial.campaignInput),
+      campaignId: campaignInput.campaignId,
+      campaignInputDigest: canonicalDigest(campaignInput),
       claimDigest: input.claim.digest,
       accountReadinessDigest: input.claim.accountReadinessDigest,
       trialReadinessDigest: input.trialReadiness.digest,
