@@ -20,6 +20,7 @@ Target Intelligenceが受け渡した入力を受け取り、調査、継続の�
 | **Native Agent Runtime** | 固定した条件で提供元のエージェントを実行し、結果と失敗の種別を返すModule。研究上の判断は所有しない。 |
 | **Root Agent** | 対象全体を見て、仮説、読む順序、補助エージェント、候補を決め、継続や停止を提案するAI。 |
 | **Discovery** | ソースに基づく仮説、候補、保留中の手がかりを更新する探索部分。継続提案で次の実行を自動開始せず、途中に動的検証を割り込ませない。 |
+| **Native Run Attempt** | providerを呼ぶ前にexactなSealed Native Runと開始時刻を記録する一回の実行試行。terminal Receipt eventがなければorphanedであり、自動再実行せず、integrity-boundなprivate Receipt artifactが一致する場合だけ回復する。 |
 | **Research Grant** | 一回の調査実行に与える時間枠。最大1時間で、終了時に報告と再開用の記録を回収する。回収不能なら失敗として残す。 |
 | **Independent Research Trial** | 以前の結果やCheckpointを入力せず、freshなCampaignとして始める外側の一試行。同じCampaign内の継続Grant、通信retry、出力形式の再試行は別Trialに数えない。 |
 | **Evaluation Sweep** | 固定した評価対象集合の各TargetへIndependent Research Trialを一回ずつ行う評価単位。同じTargetへの複数Trialや一Campaign内の複数Grantとは区別する。 |
@@ -47,6 +48,7 @@ Target Intelligenceが受け渡した入力を受け取り、調査、継続の�
 - Candidate Verification Request、Coverage、実行失敗を混同しない。
 - 再開可能な記録と、診断専用の記録を分ける。
 - Native Runの正常終了と、そのResearch結果をCampaignへ採用できたかを分ける。
+- Native Run Attemptの開始、providerの終了、Receiptのdurableな記録を分け、orphaned attemptを未実行または失敗Receiptへ読み替えない。
 - 同じ履歴を継続するResearch Grant、freshなIndependent Research Trial、評価対象全体のEvaluation Sweepを分ける。
 
 権限・隔離・予算・失敗時の設計原則は[Research Design](docs/RESEARCH-DESIGN.md#trust-and-versioning)、現在のInterfaceと回帰テストは[Codebase Guide](docs/CODEBASE-GUIDE.md#research-campaigns)を参照する。

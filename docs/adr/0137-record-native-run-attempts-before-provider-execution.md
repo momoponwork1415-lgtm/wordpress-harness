@@ -1,0 +1,11 @@
+---
+status: accepted
+---
+
+# Record Native Run attempts before provider execution
+
+Research Campaignsはproviderを呼ぶ前に、exactなSealed Native Run、そのdigestと開始時刻をappend-only Research Recordへ記録する。provider呼び出し後にReceiptだけを記録する方式では、process interruptionが「まだ実行していない」のか「quotaを消費したが記録できなかった」のかを区別できず、restart後の再実行が二重消費になり得るためである。
+
+Native Runtimeが返したReceiptは、run、runtime profileとReceipt digestを結ぶprivateなcontent-addressed recovery artifactへatomicに確定してからterminal eventへ記録する。started eventだけが残ったNative Run Attemptは`orphaned`、Campaignは`incomplete`とする。同じbindingのartifactがあればterminal eventだけを回復し、providerを再実行しない。artifactが欠落、破損または不一致ならorphanedのまま残し、自動repair、削除またはretryをしない。
+
+Research Recordはterminal event記録後の正本であり、private artifactはprocess interruptionの狭い区間を回復するためのimmutable capsuleであって第二のmutable ledgerではない。既存のterminal-only eventはreplay可能なまま残し、Native Run Attemptを公開するCampaign outcome viewはschema v3とする。代償としてReceiptをprivate storageにも保持し、明示的なgarbage collectionを導入するまで保存量が増える。

@@ -39,6 +39,7 @@ export type {
   ResearchAssessment,
   ResearchAdmissionFailure,
   ResearchEvidenceSummary,
+  NativeRunAttempt,
   ResearchCampaigns,
   ResearchCampaignView,
   ResearchCandidate,

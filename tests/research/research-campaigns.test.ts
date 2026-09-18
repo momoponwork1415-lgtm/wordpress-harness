@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -357,6 +357,235 @@ describe("ResearchCampaigns", () => {
     });
     reopened.close();
   });
+
+  it("reopens a started Native Run as one orphaned attempt without rerunning it", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "research-orphaned-run-"));
+    temporaryDirectories.push(directory);
+    const databasePath = join(directory, "agent-led.sqlite");
+    const orphanedInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-orphaned-run-1",
+    };
+    let invocations = 0;
+    let markExecutionStarted!: () => void;
+    const executionStarted = new Promise<void>((resolve) => {
+      markExecutionStarted = resolve;
+    });
+    const active = openResearchCampaigns({
+      databasePath,
+      runtime: {
+        async execute() {
+          invocations += 1;
+          markExecutionStarted();
+          return await new Promise<never>(() => undefined);
+        },
+      },
+      clock: () => new Date("2026-09-07T01:30:00.000Z"),
+    });
+
+    void active.conduct(orphanedInput);
+    await executionStarted;
+    active.close();
+
+    const reopened = openResearchCampaigns({
+      databasePath,
+      runtime: {
+        async execute() {
+          throw new Error("An orphaned attempt must not spend quota again");
+        },
+      },
+    });
+    await expect(
+      reopened.inspect({ campaignId: orphanedInput.campaignId }),
+    ).resolves.toMatchObject({
+      schemaVersion: 3,
+      status: "incomplete",
+      nativeRuns: [],
+      nativeRunAttempts: [
+        {
+          status: "orphaned",
+          startedAt: "2026-09-07T01:30:00.000Z",
+          run: {
+            runId: "campaign-orphaned-run-1:native:1",
+            campaignId: orphanedInput.campaignId,
+            campaignInputDigest: canonicalDigest(orphanedInput),
+          },
+          runDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+        },
+      ],
+    });
+    await expect(reopened.conduct(orphanedInput)).resolves.toMatchObject({
+      status: "incomplete",
+    });
+    expect(invocations).toBe(1);
+    reopened.close();
+  });
+
+  it("recovers a finalized Native Run Receipt after terminal persistence is interrupted", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "research-run-recovery-"));
+    temporaryDirectories.push(directory);
+    const databasePath = join(directory, "agent-led.sqlite");
+    const recoverableInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-run-recovery-1",
+    };
+    let active!: ResearchCampaigns;
+    active = openResearchCampaigns({
+      databasePath,
+      runtime: {
+        async execute(run) {
+          active.close();
+          return {
+            schemaVersion: 2,
+            runId: run.runId,
+            runtimeProfileDigest: run.agentRuntimeProfile.digest,
+            terminal: "completed",
+            startedAt: "2026-09-07T01:45:00.000Z",
+            completedAt: "2026-09-07T01:46:00.000Z",
+            usage: { wallTimeMs: 60_000 },
+            activity: { subagents: 1, tools: ["source.read"] },
+            isolation: gvisorIsolation,
+            checkpoint: checkpointFor(run),
+            report: {
+              schemaVersion: 2,
+              assessments: [],
+              evidenceSummary: researchEvidenceSummaryFixture(),
+              candidates: [],
+              decision: {
+                kind: "stop",
+                basis: "No actionable frontier remains.",
+              },
+            },
+          };
+        },
+      },
+      clock: () => new Date("2026-09-07T01:45:00.000Z"),
+    });
+
+    await expect(active.conduct(recoverableInput)).rejects.toThrow();
+
+    let recoveryRuntimeInvocations = 0;
+    const reopened = openResearchCampaigns({
+      databasePath,
+      runtime: {
+        async execute() {
+          recoveryRuntimeInvocations += 1;
+          throw new Error("Recovery must not execute the provider again");
+        },
+      },
+    });
+    await expect(reopened.conduct(recoverableInput)).resolves.toMatchObject({
+      schemaVersion: 3,
+      status: "coverage-closed",
+    });
+    expect(recoveryRuntimeInvocations).toBe(0);
+    await expect(
+      reopened.inspect({ campaignId: recoverableInput.campaignId }),
+    ).resolves.toMatchObject({
+      nativeRunAttempts: [
+        {
+          status: "terminal",
+          nativeRunReceiptDigest: expect.stringMatching(
+            /^sha256:[a-f0-9]{64}$/,
+          ),
+        },
+      ],
+      nativeRuns: [
+        {
+          runId: "campaign-run-recovery-1:native:1",
+          terminal: "completed",
+        },
+      ],
+    });
+    reopened.close();
+  });
+
+  it.each(["malformed", "mismatched"] as const)(
+    "does not recover a %s Native Run Receipt artifact",
+    async (artifactCondition) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), `research-run-${artifactCondition}-`),
+      );
+      temporaryDirectories.push(directory);
+      const databasePath = join(directory, "agent-led.sqlite");
+      const campaignInput: CampaignInput = {
+        ...input,
+        campaignId: `campaign-run-${artifactCondition}-1`,
+      };
+      let active!: ResearchCampaigns;
+      active = openResearchCampaigns({
+        databasePath,
+        runtime: {
+          async execute(run) {
+            active.close();
+            return {
+              schemaVersion: 2,
+              runId: run.runId,
+              runtimeProfileDigest: run.agentRuntimeProfile.digest,
+              terminal: "provider-failed",
+              startedAt: "2026-09-07T01:50:00.000Z",
+              completedAt: "2026-09-07T01:50:01.000Z",
+              usage: { wallTimeMs: 1_000 },
+              activity: { subagents: null, tools: null },
+              failure: { summary: "Synthetic finalized failure Receipt." },
+            };
+          },
+        },
+        clock: () => new Date("2026-09-07T01:50:00.000Z"),
+      });
+      await expect(active.conduct(campaignInput)).rejects.toThrow();
+
+      const receiptRoot = join(
+        `${databasePath}.private`,
+        "native-run-receipts",
+      );
+      const receiptDirectory = (
+        await readdir(receiptRoot, {
+          withFileTypes: true,
+        })
+      ).find((entry) => entry.isDirectory());
+      if (receiptDirectory === undefined) {
+        throw new Error("Missing finalized Receipt fixture");
+      }
+      const receiptPath = join(
+        receiptRoot,
+        receiptDirectory.name,
+        "receipt.json",
+      );
+      if (artifactCondition === "malformed") {
+        await writeFile(receiptPath, "not-json", "utf8");
+      } else {
+        const artifact = JSON.parse(await readFile(receiptPath, "utf8")) as {
+          runDigest: string;
+        };
+        artifact.runDigest =
+          "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+        await writeFile(receiptPath, JSON.stringify(artifact), "utf8");
+      }
+
+      let runtimeInvocations = 0;
+      const reopened = openResearchCampaigns({
+        databasePath,
+        runtime: {
+          async execute() {
+            runtimeInvocations += 1;
+            throw new Error("Invalid recovery must not execute the provider");
+          },
+        },
+      });
+      await expect(reopened.conduct(campaignInput)).resolves.toMatchObject({
+        status: "incomplete",
+      });
+      expect(runtimeInvocations).toBe(0);
+      await expect(
+        reopened.inspect({ campaignId: campaignInput.campaignId }),
+      ).resolves.toMatchObject({
+        nativeRuns: [],
+        nativeRunAttempts: [{ status: "orphaned" }],
+      });
+      reopened.close();
+    },
+  );
 
   it("does not retry a sandbox policy denial that the runtime did not mark retryable", async () => {
     const directory = await mkdtemp(join(tmpdir(), "research-policy-denied-"));
@@ -796,7 +1025,7 @@ describe("ResearchCampaigns", () => {
     await expect(
       campaigns.inspect({ campaignId: conflictInput.campaignId }),
     ).resolves.toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       status: "incomplete",
       admissionFailure: {
         reason: "candidate-identity-conflict",

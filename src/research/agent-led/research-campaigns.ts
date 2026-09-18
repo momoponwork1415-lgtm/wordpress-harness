@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { join, resolve } from "node:path";
 import { z } from "zod";
 
 import {
@@ -14,6 +15,7 @@ import {
   humanCandidateReviewSchema,
   humanResearchContinuationReviewSchema,
   nativeRunReceiptSchema,
+  sealedNativeRunSchema,
   researchAdmissionFailureSchema,
   researchContinuationReviewRequestSchema,
   type CampaignInput,
@@ -27,6 +29,7 @@ import {
   type CandidateVerificationRequest,
   type ResearchContinuationReviewRequest,
   type NativeAgentRuntime,
+  type NativeRunAttempt,
   type NativeRunReceipt,
   type OpenResearchCampaignsOptions,
   type ParkedProgrammeLead,
@@ -36,10 +39,12 @@ import {
   type ResearchCandidate,
   type ResearchAdmissionFailure,
 } from "./contracts.js";
+import { NativeRunReceiptStore } from "./native-run-receipts.js";
 
 const eventRowSchema = z.object({
   kind: z.enum([
     "campaign.defined",
+    "native-run.started",
     "native-run.recorded",
     "native-run.admission-failed",
     "candidate-review.recorded",
@@ -58,6 +63,22 @@ const campaignDefinedPayloadSchema = z.strictObject({
 
 const nativeRunRecordedPayloadSchema = z.strictObject({
   inputDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  receipt: nativeRunReceiptSchema,
+});
+
+const nativeRunStartedPayloadSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  inputDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  run: sealedNativeRunSchema,
+  runDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  startedAt: z.iso.datetime(),
+});
+
+const boundNativeRunRecordedPayloadSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  inputDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  runDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  nativeRunReceiptDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
   receipt: nativeRunReceiptSchema,
 });
 
@@ -459,11 +480,15 @@ function hasRetryableResearchRun(view: ResearchCampaignView): boolean {
 class SqliteResearchCampaigns implements ResearchCampaigns {
   readonly #database: Database.Database;
   readonly #runtime: NativeAgentRuntime;
+  readonly #receiptStore: NativeRunReceiptStore;
   readonly #clock: () => Date;
 
   constructor(options: OpenResearchCampaignsOptions) {
     this.#database = new Database(options.databasePath);
     this.#runtime = options.runtime;
+    this.#receiptStore = new NativeRunReceiptStore(
+      join(`${resolve(options.databasePath)}.private`, "native-run-receipts"),
+    );
     this.#clock = options.clock ?? (() => new Date());
     this.#database.pragma("journal_mode = WAL");
     this.#database.pragma("busy_timeout = 5000");
@@ -500,7 +525,11 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
       }
       if (
         existing.status === "coverage-closed" ||
-        (existing.status === "incomplete" && !hasRetryableResearchRun(existing))
+        (existing.status === "incomplete" &&
+          !hasRetryableResearchRun(existing) &&
+          !existing.nativeRunAttempts.some(
+            (attempt) => attempt.status === "orphaned",
+          ))
       ) {
         return outcomeFor(existing);
       }
@@ -594,6 +623,26 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
     const inputDigest = canonicalDigest(input);
     let view = this.#requireView(input.campaignId);
     for (;;) {
+      const orphanedAttempt = view.nativeRunAttempts.find(
+        (attempt) => attempt.status === "orphaned",
+      );
+      if (orphanedAttempt !== undefined) {
+        const recovery = await this.#receiptStore.recover(orphanedAttempt.run);
+        if (recovery.status !== "recovered") return outcomeFor(view);
+        this.#recordTerminalRun(
+          input,
+          inputDigest,
+          orphanedAttempt.run,
+          orphanedAttempt.runDigest,
+          recovery.receipt,
+        );
+        view = this.#requireView(input.campaignId);
+        if (exceededBudget(input, view.nativeRuns)) {
+          this.#interruptForBudget(input, inputDigest, true);
+          view = this.#requireView(input.campaignId);
+        }
+        return outcomeFor(view);
+      }
       if (
         view.status === "coverage-closed" ||
         (view.status === "incomplete" && !hasRetryableResearchRun(view))
@@ -665,7 +714,67 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
             }),
       };
       const startedAt = this.#clock();
+      const runDigest = canonicalDigest(run);
+      this.#append(input.campaignId, "native-run.started", {
+        schemaVersion: 1,
+        inputDigest,
+        run,
+        runDigest,
+        startedAt: startedAt.toISOString(),
+      });
       const receipt = await this.#execute(run, startedAt);
+      await this.#receiptStore.finalize(run, receipt);
+      const admissionFailure = this.#recordTerminalRun(
+        input,
+        inputDigest,
+        run,
+        runDigest,
+        receipt,
+      );
+      view = this.#requireView(input.campaignId);
+      if (exceededBudget(input, view.nativeRuns)) {
+        this.#interruptForBudget(input, inputDigest, true);
+        view = this.#requireView(input.campaignId);
+      }
+      if (receipt.terminal !== "completed") {
+        return outcomeFor(view);
+      }
+      if (admissionFailure !== undefined) {
+        return outcomeFor(view);
+      }
+    }
+  }
+
+  #recordTerminalRun(
+    input: CampaignInput,
+    inputDigest: string,
+    run: SealedNativeRun,
+    runDigest: string,
+    receipt: NativeRunReceipt,
+  ): ResearchAdmissionFailure | undefined {
+    return this.#database.transaction(() => {
+      const view = this.#requireView(input.campaignId);
+      const attempt = view.nativeRunAttempts.find(
+        (candidate) => candidate.run.runId === run.runId,
+      );
+      const nativeRunReceiptDigest = canonicalDigest(receipt);
+      if (attempt?.status === "terminal") {
+        if (
+          attempt.runDigest !== runDigest ||
+          attempt.nativeRunReceiptDigest !== nativeRunReceiptDigest
+        ) {
+          throw new Error(`Native Run terminal conflict: ${input.campaignId}`);
+        }
+        return view.admissionFailure?.runId === run.runId
+          ? view.admissionFailure
+          : undefined;
+      }
+      if (attempt === undefined || attempt.runDigest !== runDigest) {
+        throw new Error(
+          `Native Run attempt binding mismatch: ${input.campaignId}`,
+        );
+      }
+
       let admissionFailure: ResearchAdmissionFailure | undefined;
       if (receipt.terminal === "completed") {
         try {
@@ -674,7 +783,7 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
           admissionFailure = {
             reason: "candidate-identity-conflict",
             runId: receipt.runId,
-            nativeRunReceiptDigest: canonicalDigest(receipt),
+            nativeRunReceiptDigest,
             summary:
               "Native Agent Runtime reused a Candidate identity with different evidence.",
           };
@@ -689,7 +798,7 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         admissionFailure = {
           reason: "parked-programme-lead-without-boundary",
           runId: receipt.runId,
-          nativeRunReceiptDigest: canonicalDigest(receipt),
+          nativeRunReceiptDigest,
           summary:
             "Native Agent Runtime returned a parked Programme Lead without a Programme Research Boundary.",
         };
@@ -701,36 +810,27 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
           admissionFailure = {
             reason: "parked-programme-lead-identity-conflict",
             runId: receipt.runId,
-            nativeRunReceiptDigest: canonicalDigest(receipt),
+            nativeRunReceiptDigest,
             summary:
               "Native Agent Runtime reused a parked Programme Lead identity with different evidence.",
           };
         }
       }
-      this.#database.transaction(() => {
-        this.#append(input.campaignId, "native-run.recorded", {
-          inputDigest,
-          receipt,
-        });
-        if (admissionFailure !== undefined) {
-          this.#append(input.campaignId, "native-run.admission-failed", {
-            inputDigest,
-            failure: admissionFailure,
-          });
-        }
-      })();
-      view = this.#requireView(input.campaignId);
-      if (exceededBudget(input, view.nativeRuns)) {
-        this.#interruptForBudget(input, inputDigest, true);
-        view = this.#requireView(input.campaignId);
-      }
-      if (receipt.terminal !== "completed") {
-        return outcomeFor(view);
-      }
+      this.#append(input.campaignId, "native-run.recorded", {
+        schemaVersion: 1,
+        inputDigest,
+        runDigest,
+        nativeRunReceiptDigest,
+        receipt,
+      });
       if (admissionFailure !== undefined) {
-        return outcomeFor(view);
+        this.#append(input.campaignId, "native-run.admission-failed", {
+          inputDigest,
+          failure: admissionFailure,
+        });
       }
-    }
+      return admissionFailure;
+    })();
   }
 
   async inspect(query: CampaignQuery): Promise<ResearchCampaignView> {
@@ -865,6 +965,7 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
       );
     }
 
+    const nativeRunAttempts: NativeRunAttempt[] = [];
     const nativeRuns: NativeRunReceipt[] = [];
     const candidateReviews: HumanCandidateReview[] = [];
     const researchContinuationReviews: HumanResearchContinuationReview[] = [];
@@ -877,12 +978,67 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
           `Agent-led Campaign event digest mismatch: ${campaignId}`,
         );
       }
-      if (row.kind === "native-run.recorded") {
-        const event = nativeRunRecordedPayloadSchema.parse(value);
-        if (event.inputDigest !== definition.inputDigest) {
-          throw new Error(`Native Run input binding mismatch: ${campaignId}`);
+      if (row.kind === "native-run.started") {
+        const event = nativeRunStartedPayloadSchema.parse(value);
+        if (
+          event.inputDigest !== definition.inputDigest ||
+          event.run.campaignId !== campaignId ||
+          event.run.campaignInputDigest !== definition.inputDigest ||
+          canonicalDigest(event.run) !== event.runDigest ||
+          nativeRunAttempts.some(
+            (attempt) => attempt.run.runId === event.run.runId,
+          )
+        ) {
+          throw new Error(`Native Run attempt binding mismatch: ${campaignId}`);
         }
-        nativeRuns.push(event.receipt);
+        nativeRunAttempts.push({
+          kind: "native-run-attempt",
+          schemaVersion: 1,
+          run: event.run,
+          runDigest: event.runDigest,
+          startedAt: event.startedAt,
+          status: "orphaned",
+        });
+        continue;
+      }
+      if (row.kind === "native-run.recorded") {
+        const boundEvent = boundNativeRunRecordedPayloadSchema.safeParse(value);
+        let receipt: NativeRunReceipt;
+        if (boundEvent.success) {
+          const event = boundEvent.data;
+          if (event.inputDigest !== definition.inputDigest) {
+            throw new Error(`Native Run input binding mismatch: ${campaignId}`);
+          }
+          const attemptIndex = nativeRunAttempts.findIndex(
+            (attempt) => attempt.run.runId === event.receipt.runId,
+          );
+          const attempt = nativeRunAttempts[attemptIndex];
+          if (
+            attempt === undefined ||
+            attempt.status !== "orphaned" ||
+            attempt.runDigest !== event.runDigest ||
+            attempt.run.agentRuntimeProfile.digest !==
+              event.receipt.runtimeProfileDigest ||
+            canonicalDigest(event.receipt) !== event.nativeRunReceiptDigest
+          ) {
+            throw new Error(
+              `Native Run terminal binding mismatch: ${campaignId}`,
+            );
+          }
+          nativeRunAttempts[attemptIndex] = {
+            ...attempt,
+            status: "terminal",
+            nativeRunReceiptDigest: event.nativeRunReceiptDigest,
+          };
+          receipt = event.receipt;
+        } else {
+          const event = nativeRunRecordedPayloadSchema.parse(value);
+          if (event.inputDigest !== definition.inputDigest) {
+            throw new Error(`Native Run input binding mismatch: ${campaignId}`);
+          }
+          receipt = event.receipt;
+        }
+        nativeRuns.push(receipt);
         continue;
       }
       if (row.kind === "native-run.admission-failed") {
@@ -1029,10 +1185,14 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
     );
     const hasFailedResearchRun =
       latest !== undefined && latest.terminal !== "completed";
+    const hasOrphanedNativeRunAttempt = nativeRunAttempts.some(
+      (attempt) => attempt.status === "orphaned",
+    );
     let status: CampaignStatus;
     if (
       interruption !== undefined ||
       admissionFailure !== undefined ||
+      hasOrphanedNativeRunAttempt ||
       hasFailedResearchRun
     ) {
       status = "incomplete";
@@ -1063,11 +1223,12 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
 
     return {
       kind: "agent-led-campaign-outcome",
-      schemaVersion: 2,
+      schemaVersion: 3,
       campaignId,
       inputDigest: definition.inputDigest,
       status,
       input: definition.input,
+      nativeRunAttempts,
       nativeRuns,
       candidateReviews,
       researchContinuationReviews,

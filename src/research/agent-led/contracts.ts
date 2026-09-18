@@ -834,14 +834,25 @@ export interface CampaignQuery {
 
 export interface CampaignOutcomeRef {
   readonly kind: "agent-led-campaign-outcome";
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly campaignId: string;
   readonly inputDigest: string;
   readonly status: CampaignStatus;
 }
 
+export interface NativeRunAttempt {
+  readonly kind: "native-run-attempt";
+  readonly schemaVersion: 1;
+  readonly run: SealedNativeRun;
+  readonly runDigest: string;
+  readonly startedAt: string;
+  readonly status: "orphaned" | "terminal";
+  readonly nativeRunReceiptDigest?: string;
+}
+
 export interface ResearchCampaignView extends CampaignOutcomeRef {
   readonly input: CampaignInput;
+  readonly nativeRunAttempts: readonly NativeRunAttempt[];
   readonly nativeRuns: readonly NativeRunReceipt[];
   readonly candidateReviews: readonly HumanCandidateReview[];
   readonly researchContinuationReviews: readonly HumanResearchContinuationReview[];
