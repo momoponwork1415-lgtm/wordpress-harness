@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "bin": {
-    "wordpress-harness": "./dist/cli.js"
+    "wordpress-harness": "./dist/cli.js",
+    "wordpress-harness-claude-launcher": "./dist/operations/claude-quota-approved-campaign-launcher-cli.js"
   },
   "engines": {
     "node": ">=22.0.0"

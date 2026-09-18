@@ -262,6 +262,20 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 
 </details>
 
+## Quota-aware Approved Campaign Launcher
+
+<details>
+<summary>Operator control — 承認済みClaude Campaignの起動量を調整する</summary>
+
+- **目的:** Claudeの5時間枠にreserveを残しながら、既に承認済みの独立Campaignだけをcronから起動する。
+- **Interface:** `decideApprovedCampaignLaunches`、`dispatchApprovedCampaignLaunches`、installed operator CLI `wordpress-harness-claude-launcher`の`record-status-line / dispatch`。Claudeのsupported status-line JSONをstdinからprivate observationへ正規化してからdispatchする。Launcher自身はprovider credentialを読まず、provider processやusage probeを起動しない。
+- **所有する記録・不変条件:** privateなrate-limit observationとimmutable launch receiptだけを扱う。Campaign state、Target順序の判断、継続Review、Candidate admission、Verification、提出は所有しない。起動commandは`campaign conduct-approved`に固定し、active Campaignは最大3、同一planのclaimはatomicにする。Receiptは使用したobservation digestと見積消費量をbindし、同じobservationに対する既存reservationを残量から控除する。Checkpoint再開を前提に人間が`allowQuotaExhaustion`を明示したBatchだけは、残量が1%以上あれば見積消費量未満でも起動できる。
+- **失敗時:** quota観測の欠落・stale・window reset・不正形式ではfail closedで一件も起動しない。status-line producerの認証切れもfresh observationを作れないため同じく停止する。中断されたclaimはactiveとして扱い、重複起動より手動確認を優先する。process spawnまたはprivate artifact保存の失敗はnon-zeroで返す。
+
+**Source / Behavior Test:** [`claude-quota-approved-campaign-launcher.ts`](../src/operations/claude-quota-approved-campaign-launcher.ts) · [`claude-quota-approved-campaign-launcher-runtime.ts`](../src/operations/claude-quota-approved-campaign-launcher-runtime.ts) · [`claude-quota-approved-campaign-launcher-cli.ts`](../src/operations/claude-quota-approved-campaign-launcher-cli.ts) · [`claude-quota-approved-campaign-launcher.test.ts`](../tests/operations/claude-quota-approved-campaign-launcher.test.ts)
+
+</details>
+
 ## Agent input
 
 情報の種類ごとに更新先を決める。同じ入力値の表示とJSON化は派生表現として扱い、別の正本にしない。
