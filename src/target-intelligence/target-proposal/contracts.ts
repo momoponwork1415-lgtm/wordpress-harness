@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { agentRuntimeProfileSchema } from "../../infrastructure/agent-runtime-profile.js";
 import {
   targetCandidatePoolSchema,
   targetCandidateSchema,
@@ -14,15 +15,6 @@ const identifierSchema = z
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
 const immutableRefSchema = z.strictObject({
   id: identifierSchema,
-  digest: digestSchema,
-});
-
-const agentRuntimeProfileSchema = z.strictObject({
-  id: identifierSchema,
-  kind: z.string().min(1).max(128),
-  executableVersion: z.string().min(1).max(128),
-  model: z.string().min(1).max(128),
-  effort: z.string().min(1).max(64),
   digest: digestSchema,
 });
 

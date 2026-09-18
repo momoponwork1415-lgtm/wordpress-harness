@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { z } from "zod";
 
+import { admitAgentRuntimeProfile } from "../../infrastructure/agent-runtime-profile.js";
 import {
   failedNativeRunReceipt,
   GvisorAgentSandbox,
@@ -105,39 +106,13 @@ const glmSettingsSchema = z.strictObject({
   env: z.strictObject({
     ANTHROPIC_AUTH_TOKEN: z.string().min(1).regex(/^\S+$/),
     ANTHROPIC_BASE_URL: z.literal("https://api.z.ai/api/anthropic"),
-    ANTHROPIC_DEFAULT_OPUS_MODEL: z.literal("glm-5.3"),
-    ANTHROPIC_DEFAULT_SONNET_MODEL: z.literal("glm-5.3"),
+    ANTHROPIC_DEFAULT_OPUS_MODEL: z.string().min(1),
+    ANTHROPIC_DEFAULT_SONNET_MODEL: z.string().min(1),
     ANTHROPIC_DEFAULT_HAIKU_MODEL: z.literal("glm-4.5-air"),
     API_TIMEOUT_MS: z.literal("3000000"),
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: z.literal("1"),
   }),
 });
-
-const claudeCodeTransportEligibility = {
-  schemaVersion: 1,
-  imageDigest:
-    "sha256:b8bb6b8f8865dbabb70f03bb71639792fe1f5c4301a8cd874d212435e5cda355",
-  executableVersion: "2.1.220",
-  probedAt: "2026-09-07T05:34:00.000Z",
-  root: {
-    providerRead: "denied",
-    targetWrite: "denied",
-    scratchWrite: "allowed",
-    shell: "unavailable",
-    web: "unavailable",
-  },
-  subagent: {
-    providerRead: "denied",
-    targetWrite: "denied",
-    shell: "unavailable",
-    web: "unavailable",
-  },
-} as const;
-
-function imageDigest(reference: string): string {
-  const separator = reference.lastIndexOf("@sha256:");
-  return separator === -1 ? reference : reference.slice(separator + 1);
-}
 
 function parseJson(value: string): unknown {
   try {
@@ -429,9 +404,9 @@ function nonzeroReceipt(
 
 class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
   readonly #sandbox: GvisorAgentSandbox;
-  readonly #transportAdmitted: boolean;
   readonly #provider: "anthropic" | "zai";
   readonly #providerConfigDirectory: string;
+  readonly #image: string;
 
   constructor(
     options: GvisorAgentRuntimeOptions,
@@ -440,8 +415,7 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
     this.#sandbox = new GvisorAgentSandbox(options);
     this.#provider = provider;
     this.#providerConfigDirectory = options.providerConfigDirectory;
-    this.#transportAdmitted =
-      imageDigest(options.image) === claudeCodeTransportEligibility.imageDigest;
+    this.#image = options.image;
   }
 
   #command(
@@ -514,14 +488,10 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
   async execute(run: SealedNativeRun): Promise<NativeRunReceipt> {
     const glm = this.#provider === "zai";
     if (
-      run.agentRuntimeProfile.kind !==
+      run.agentRuntimeProfile.transportKind !==
         (glm ? "glm-claude-code-native/v1" : "claude-code-native/v1") ||
-      !this.#transportAdmitted ||
-      run.agentRuntimeProfile.executableVersion !==
-        claudeCodeTransportEligibility.executableVersion ||
-      (glm &&
-        (run.agentRuntimeProfile.model !== "glm-5.3" ||
-          run.agentRuntimeProfile.effort !== "max")) ||
+      admitAgentRuntimeProfile(run.agentRuntimeProfile, this.#image).status !==
+        "admitted" ||
       !this.#sandbox.bindingMatches(run)
     ) {
       const now = this.#sandbox.now();
@@ -543,7 +513,14 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
             "utf8",
           ),
         ) as unknown;
-        if (!glmSettingsSchema.safeParse(settings).success) {
+        const parsedSettings = glmSettingsSchema.safeParse(settings);
+        if (
+          !parsedSettings.success ||
+          parsedSettings.data.env.ANTHROPIC_DEFAULT_OPUS_MODEL !==
+            run.agentRuntimeProfile.model ||
+          parsedSettings.data.env.ANTHROPIC_DEFAULT_SONNET_MODEL !==
+            run.agentRuntimeProfile.model
+        ) {
           throw new Error("unsupported GLM settings");
         }
       } catch {

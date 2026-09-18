@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { z } from "zod";
 
+import { admitAgentRuntimeProfile } from "../../infrastructure/agent-runtime-profile.js";
 import {
   failedNativeRunReceipt,
   GvisorAgentSandbox,
@@ -16,16 +17,6 @@ import {
   type SealedNativeRun,
 } from "./contracts.js";
 import { providerResearchReportSchema } from "./provider-research-report.js";
-
-const codexTransportEligibility = {
-  schemaVersion: 1,
-  imageDigest:
-    "sha256:44342fc7bc7d6e6dd6c7445ebf23d0d6f414fc22c61fab69e158ab0fa7ba5a73",
-  executableVersion: "0.146.0",
-  model: "gpt-daybreak-blue-latest",
-  efforts: new Set<string>(["xhigh", "max"]),
-  probedAt: "2026-09-08T12:44:00.000Z",
-} as const;
 
 const sourceReaderTools = new Set(["list_files", "read_text", "search_text"]);
 const collabTools = new Set([
@@ -64,11 +55,6 @@ interface CodexTranscript {
   readonly subagents: number;
   readonly tools: readonly string[];
   readonly policyViolation: boolean;
-}
-
-function imageDigest(reference: string): string {
-  const separator = reference.lastIndexOf("@sha256:");
-  return separator === -1 ? reference : reference.slice(separator + 1);
 }
 
 function parseJson(value: string): unknown {
@@ -371,13 +357,12 @@ export interface CodexNativeAgentRuntimeOptions extends GvisorAgentRuntimeOption
 
 class CodexNativeAgentRuntime implements NativeAgentRuntime {
   readonly #sandbox: GvisorAgentSandbox;
-  readonly #transportAdmitted: boolean;
   readonly #sourceReaderScript: string | undefined;
+  readonly #image: string;
 
   constructor(options: CodexNativeAgentRuntimeOptions) {
     this.#sandbox = new GvisorAgentSandbox(options);
-    this.#transportAdmitted =
-      imageDigest(options.image) === codexTransportEligibility.imageDigest;
+    this.#image = options.image;
     this.#sourceReaderScript = options.sourceReaderScript;
   }
 
@@ -482,12 +467,9 @@ class CodexNativeAgentRuntime implements NativeAgentRuntime {
 
   async execute(run: SealedNativeRun): Promise<NativeRunReceipt> {
     if (
-      run.agentRuntimeProfile.kind !== "codex-native/v1" ||
-      !this.#transportAdmitted ||
-      run.agentRuntimeProfile.executableVersion !==
-        codexTransportEligibility.executableVersion ||
-      run.agentRuntimeProfile.model !== codexTransportEligibility.model ||
-      !codexTransportEligibility.efforts.has(run.agentRuntimeProfile.effort) ||
+      run.agentRuntimeProfile.transportKind !== "codex-native/v1" ||
+      admitAgentRuntimeProfile(run.agentRuntimeProfile, this.#image).status !==
+        "admitted" ||
       !this.#sandbox.bindingMatches(run)
     ) {
       const now = this.#sandbox.now();

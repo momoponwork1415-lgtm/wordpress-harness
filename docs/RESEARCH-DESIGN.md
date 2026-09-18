@@ -41,7 +41,7 @@ v3はCloudflareの公開security-audit skillから、concrete security invariant
 
 持ち込まないのは、wp2shell task固有の「脆弱性が存在してpre-auth RCE / `/flag`へ必ず到達する」というpositive oracleと最低6時間の指定だけである。元のCDC promptの肯定解と最低8時間も同じ理由で持ち込まない。最大4体は現在のresource ceilingとして使い、Approach Family RegistryはRootのscratchに置く。dependencyのrun中cloneは事前pinしたread-only Dependency Snapshotへ置き換える。これらは研究要素の省略ではなく、prospective mission、再現性、isolation、Human Research Reviewへ適応した実行境界である。tempoはevidence、isolation、Human Research ReviewまたはCandidate admissionを省略する理由にしない。
 
-Claude Code、Codex、Grok等が既に提供するmodel loop、context管理、session resume、native subagentの起動・message・wait、tool routingをHarness内で再実装しない。Provider Adapterは公式native機能を設定・制限し、Target / Prompt / Runtime / Permission / Budget bindingとReceiptへ変換する。安全上必要な最小read-only source seamやintegrity checkはHarnessが所有するが、provider-neutralなagent framework、conversation engine、schedulerまたはtool DSLは作らない。native機能が利用不能またはadmit不能ならsilent fallbackせず、typed `incomplete`として残す。
+Claude Code、Codex、Grok等が既に提供するmodel loop、context管理、session resume、native subagentの起動・message・wait、tool routingをHarness内で再実装しない。Provider Adapterは公式native機能を設定・制限し、Target / Prompt / Runtime / Permission / Budget bindingとReceiptへ変換する。Agent Runtime Profileはexact model、reasoning effort、native transport、executable version、sandbox image、prompt / report capabilityを一つのdigestへbindする。既存transportで実行できるmodelはprofile catalogへ追加し、modelごとのAdapterを作らない。新しいAdapterはnative command、sessionまたはoutput protocolが異なる場合だけ追加する。安全上必要な最小read-only source seamやintegrity checkはHarnessが所有するが、provider-neutralなagent framework、conversation engine、schedulerまたはtool DSLは作らない。native機能が利用不能またはadmit不能ならsilent fallbackせず、typed `incomplete`として残す。
 
 ## Target Selection
 

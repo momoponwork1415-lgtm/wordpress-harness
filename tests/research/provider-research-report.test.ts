@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { defineAgentRuntimeProfile } from "../../src/infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import { openFileCandidateVerificationRecipeResolver } from "../../src/human-os/index.js";
 import {
@@ -47,14 +48,16 @@ function run() {
       },
     },
     promptSet: { id: "prompt-1", digest: `sha256:${"4".repeat(64)}` },
-    agentRuntimeProfile: {
+    agentRuntimeProfile: defineAgentRuntimeProfile({
       id: "runtime-1",
-      kind: "test-native/v1",
+      transportKind: "test-native/v1",
       executableVersion: "1.0.0",
+      sandboxImageDigest: `sha256:${"0".repeat(64)}`,
+      promptProtocol: "stdin",
+      reportProtocol: "prompted-json",
       model: "test-model",
       effort: "high",
-      digest: `sha256:${"5".repeat(64)}`,
-    },
+    }),
     permissionProfile: {
       id: "permission-1",
       digest: `sha256:${"6".repeat(64)}`,

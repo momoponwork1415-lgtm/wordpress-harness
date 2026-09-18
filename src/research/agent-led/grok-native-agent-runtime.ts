@@ -1,9 +1,6 @@
 import { z } from "zod";
 
-import {
-  grokBuildTransportEligibility,
-  grokImageDigest,
-} from "../../infrastructure/grok-transport-eligibility.js";
+import { admitAgentRuntimeProfile } from "../../infrastructure/agent-runtime-profile.js";
 import {
   failedNativeRunReceipt,
   GvisorAgentSandbox,
@@ -48,15 +45,24 @@ const grokResultSchema = z.object({
   structuredOutput: z.unknown().optional(),
 });
 
-const grokManagedConfig = `[subagents.models]
-general-purpose = "grok-4.6"
-explore = "grok-4.6"
-plan = "grok-4.6"
+function grokManagedConfig(model: string): string {
+  const encodedModel = JSON.stringify(model);
+  return `[subagents.models]
+general-purpose = ${encodedModel}
+explore = ${encodedModel}
+plan = ${encodedModel}
 `;
+}
 
-const grokRequirements = `[models]
-allowed_models = ["grok-4.6"]
+function grokRequirements(model: string): string {
+  return `[models]
+allowed_models = [${JSON.stringify(model)}]
 `;
+}
+
+function grokUsageModel(model: string): string {
+  return `${model}-build`;
+}
 
 function parseJson(value: string): unknown {
   try {
@@ -112,23 +118,18 @@ Use the source tools for the investigation before producing the final answer. At
 
 class GrokNativeAgentRuntime implements NativeAgentRuntime {
   readonly #sandbox: GvisorAgentSandbox;
-  readonly #transportAdmitted: boolean;
+  readonly #image: string;
 
   constructor(options: GvisorAgentRuntimeOptions) {
     this.#sandbox = new GvisorAgentSandbox(options);
-    this.#transportAdmitted =
-      grokImageDigest(options.image) ===
-      grokBuildTransportEligibility.imageDigest;
+    this.#image = options.image;
   }
 
   async execute(run: SealedNativeRun): Promise<NativeRunReceipt> {
     if (
-      run.agentRuntimeProfile.kind !== "grok-build-native/v1" ||
-      !this.#transportAdmitted ||
-      run.agentRuntimeProfile.executableVersion !==
-        grokBuildTransportEligibility.executableVersion ||
-      run.agentRuntimeProfile.model !== "grok-4.6" ||
-      run.agentRuntimeProfile.effort !== "xhigh" ||
+      run.agentRuntimeProfile.transportKind !== "grok-build-native/v1" ||
+      admitAgentRuntimeProfile(run.agentRuntimeProfile, this.#image).status !==
+        "admitted" ||
       !this.#sandbox.bindingMatches(run)
     ) {
       const now = this.#sandbox.now();
@@ -155,12 +156,12 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
       supportFiles: [
         {
           filename: "grok-managed-config.toml",
-          text: grokManagedConfig,
+          text: grokManagedConfig(run.agentRuntimeProfile.model),
           containerMountPath: "/etc/grok/managed_config.toml",
         },
         {
           filename: "grok-requirements.toml",
-          text: grokRequirements,
+          text: grokRequirements(run.agentRuntimeProfile.model),
           containerMountPath: "/etc/grok/requirements.toml",
         },
       ],
@@ -229,7 +230,8 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
       );
     }
     const envelope = decodedEnvelope.data;
-    const modelUsage = envelope.modelUsage["grok-4.6-build"];
+    const modelUsage =
+      envelope.modelUsage[grokUsageModel(run.agentRuntimeProfile.model)];
     if (
       execution.checkpoint === undefined ||
       envelope.sessionId !== execution.checkpoint.sessionId

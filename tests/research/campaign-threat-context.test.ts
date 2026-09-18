@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import {
+  claudeCodeNativeTransport,
+  defineAgentRuntimeProfile,
+} from "../../src/infrastructure/agent-runtime-profile.js";
+import {
   campaignInputSchema,
   type SealedNativeRun,
 } from "../../src/research/agent-led/contracts.js";
@@ -98,14 +102,12 @@ function sealedRun(): SealedNativeRun {
     threatContext: threatContext(),
     programmeBoundary: programmeBoundary(),
     promptSet: { id: "research-prompt-v1", digest: digest("6") },
-    agentRuntimeProfile: {
+    agentRuntimeProfile: defineAgentRuntimeProfile({
       id: "runtime-v1",
-      kind: "claude-code-native/v1",
-      executableVersion: "2.1.220",
+      ...claudeCodeNativeTransport,
       model: "claude-opus",
       effort: "high",
-      digest: digest("7"),
-    },
+    }),
     permissionProfile: { id: "source-only-v1", digest: digest("8") },
     budgetEnvelope: {
       id: "budget-v1",

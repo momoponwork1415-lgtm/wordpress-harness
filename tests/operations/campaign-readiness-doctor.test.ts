@@ -12,6 +12,10 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
+import {
+  claudeCodeNativeTransport,
+  defineAgentRuntimeProfile,
+} from "../../src/infrastructure/agent-runtime-profile.js";
 import { measureCanonicalSourceTree } from "../../src/infrastructure/canonical-source-tree.js";
 import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import {
@@ -26,7 +30,7 @@ import type { CampaignInput } from "../../src/research/index.js";
 import { PrivateArtifactStore } from "../../src/infrastructure/private-artifact-store.js";
 
 const checkedAt = "2026-09-18T06:00:00.000Z";
-const imageDigest = `sha256:${"a".repeat(64)}`;
+const imageDigest = claudeCodeNativeTransport.sandboxImageDigest;
 
 async function readyProcess(options: { readonly args: readonly string[] }) {
   const args = options.args;
@@ -125,14 +129,12 @@ async function readyFixture(
       id: "research-prompt-v3",
       digest: promptTextDigest(prompt),
     },
-    agentRuntimeProfile: {
+    agentRuntimeProfile: defineAgentRuntimeProfile({
       id: "claude-profile-1",
-      kind: "claude-code-native/v1",
-      executableVersion: "2.1.220",
+      ...claudeCodeNativeTransport,
       model: "claude-opus-4-1",
       effort: "high",
-      digest: `sha256:${"d".repeat(64)}`,
-    },
+    }),
     permissionProfile: {
       id: "research-read-only",
       digest: `sha256:${"e".repeat(64)}`,
@@ -464,6 +466,43 @@ describe("Campaign readiness doctor", () => {
         status: "blocked",
         reason: "provider-version-mismatch",
       });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("blocks an unsupported model profile before invoking its provider", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "campaign-doctor-runtime-profile-"),
+    );
+    try {
+      const input = await readyFixture(directory);
+      const calls: string[][] = [];
+      const doctor = openCampaignReadinessDoctor({
+        clock: () => new Date(checkedAt),
+        runProcess: async (options) => {
+          calls.push([...options.args]);
+          return readyProcess(options);
+        },
+      });
+      const report = await doctor.inspect({
+        ...input,
+        campaignInput: {
+          ...input.campaignInput,
+          agentRuntimeProfile: defineAgentRuntimeProfile({
+            id: "claude-profile-unsupported-effort",
+            ...claudeCodeNativeTransport,
+            model: "claude-opus-4-1",
+            effort: "ultra",
+          }),
+        },
+      });
+
+      expect(resultCheck(report, "provider-version")).toMatchObject({
+        status: "blocked",
+        reason: "runtime-profile-unsupported-profile",
+      });
+      expect(calls.some((args) => args[0] === "run")).toBe(false);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

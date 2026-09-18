@@ -12,6 +12,10 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  defineAgentRuntimeProfile,
+  grokBuildNativeTransport,
+} from "../../src/infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import { openGrokNativeAgentRuntime } from "../../src/research/agent-led/grok-native-agent-runtime.js";
@@ -21,6 +25,15 @@ import { conductWithHumanAdvance } from "./support/candidate-review.js";
 import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
 const temporaryDirectories: string[] = [];
+
+function grokProfile() {
+  return defineAgentRuntimeProfile({
+    id: "grok-build-native-v1",
+    ...grokBuildNativeTransport,
+    model: "grok-4.6",
+    effort: "xhigh",
+  });
+}
 
 afterEach(async () => {
   await Promise.all(
@@ -271,15 +284,7 @@ exit 75
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
       },
-      agentRuntimeProfile: {
-        id: "grok-build-native-v1",
-        kind: "grok-build-native/v1",
-        executableVersion: "1.0.13",
-        model: "grok-4.6",
-        effort: "xhigh",
-        digest:
-          "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-      },
+      agentRuntimeProfile: grokProfile(),
       permissionProfile: {
         id: "gvisor-source-research-v1",
         digest:
@@ -543,15 +548,7 @@ printf '{"text":"{\\"schemaVersion\\":2,\\"assessments\\":[],\\"evidenceSummary\
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
       },
-      agentRuntimeProfile: {
-        id: "grok-build-native-v1",
-        kind: "grok-build-native/v1",
-        executableVersion: "1.0.13",
-        model: "grok-4.6",
-        effort: "xhigh",
-        digest:
-          "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-      },
+      agentRuntimeProfile: grokProfile(),
       permissionProfile: {
         id: "gvisor-source-research-v1",
         digest:

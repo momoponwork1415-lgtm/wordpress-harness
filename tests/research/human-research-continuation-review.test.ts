@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { defineAgentRuntimeProfile } from "../../src/infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import {
   campaignInputSchema,
@@ -56,14 +57,16 @@ function campaignInput(campaignId: string): CampaignInput {
       sourceTree: { digest: digest("9"), entries: 10, bytes: 1_024 },
     },
     promptSet: { id: "research-v1", digest: digest("b") },
-    agentRuntimeProfile: {
+    agentRuntimeProfile: defineAgentRuntimeProfile({
       id: "runtime-v1",
-      kind: "scripted-native-agent/v1",
+      transportKind: "scripted-native-agent/v1",
       executableVersion: "1.0.0",
+      sandboxImageDigest: digest("0"),
+      promptProtocol: "stdin",
+      reportProtocol: "prompted-json",
       model: "scripted-model",
       effort: "high",
-      digest: digest("d"),
-    },
+    }),
     permissionProfile: { id: "source-only-v1", digest: digest("e") },
     budgetEnvelope: {
       id: "budget-v1",

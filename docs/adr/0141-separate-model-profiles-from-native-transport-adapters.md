@@ -1,0 +1,11 @@
+---
+status: accepted
+---
+
+# Separate model profiles from native transport adapters
+
+Agent Runtime Profileをversionedかつself-digestingなadmission contractとし、transport kind、exact model、reasoning effort、executable version、sandbox image digest、prompt protocolとreport protocolを一つにbindする。central catalogはadmitted model / effort tupleとtransport capabilityの整合をprovider process起動前に検査する。compositionは`transportKind`だけで既存Adapterを選び、Adapterはprovider-native command、session、tool制限、outputとfailureの変換だけを所有する。
+
+同じnative agent hostとprotocolで実行できるmodelを追加・変更するときはprofile catalogだけを変更し、新しいAdapterを作らない。新しいAdapterはcommand、credential、sessionまたはoutput protocolが既存transportと異なる場合だけ追加する。これによりmodel名やeffortの条件がCLI、Doctor、Target Proposalと各Research Adapterへ散らばらず、Providerが持つmodel loopやcontext managementをHarnessが再実装しない。
+
+Profileの全fieldとdigestはCampaign、CheckpointとReceiptのruntime bindingになる。未対応tuple、transport requirement mismatchまたはlaunch image mismatchはsilent fallbackせずpolicy denialとし、Doctorも同じcatalogで事前にblockedとする。代償として旧いflat profileは現行binaryで読めず、profile fieldやcatalog entryの変更はdigestを変える。必要な実行は新しいversioned Campaignとして作り直す。

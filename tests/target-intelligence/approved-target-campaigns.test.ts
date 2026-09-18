@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
+import {
+  claudeCodeNativeTransport,
+  defineAgentRuntimeProfile,
+} from "../../src/infrastructure/agent-runtime-profile.js";
 import type { CampaignInput } from "../../src/research/index.js";
 import {
   openApprovedTargetCampaigns,
@@ -53,14 +57,12 @@ function policy(): ResearchCampaignPolicy {
     schemaVersion: 1 as const,
     id: "research-campaign-policy-v1",
     promptSet: { id: "research-prompt-v1", digest: digest("e") },
-    agentRuntimeProfile: {
+    agentRuntimeProfile: defineAgentRuntimeProfile({
       id: "claude-code-research-v1",
-      kind: "claude-code-native/v1",
-      executableVersion: "2.1.220",
+      ...claudeCodeNativeTransport,
       model: "claude-opus",
       effort: "high",
-      digest: digest("1"),
-    },
+    }),
     permissionProfile: {
       id: "source-only-gvisor-v1",
       digest: digest("2"),

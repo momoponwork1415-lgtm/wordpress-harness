@@ -4,6 +4,10 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import {
+  defineAgentRuntimeProfile,
+  grokBuildNativeTransport,
+} from "../../src/infrastructure/agent-runtime-profile.js";
 import type {
   TargetIntakePolicy,
   WordPressOrgAcquisitionResult,
@@ -439,14 +443,12 @@ describe("WordPressOrgUpdateCandidatePools", () => {
           id: "selection-guidance-v1",
           digest: digest("5"),
         },
-        agentRuntimeProfile: {
+        agentRuntimeProfile: defineAgentRuntimeProfile({
           id: "grok-target-proposal-v1",
-          kind: "grok-build-native/v1",
-          executableVersion: "1.0.13",
+          ...grokBuildNativeTransport,
           model: "grok-4.6",
           effort: "xhigh",
-          digest: digest("6"),
-        },
+        }),
         permissionProfile: {
           id: "oracle-free-selection-v1",
           digest: digest("7"),

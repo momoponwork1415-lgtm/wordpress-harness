@@ -13,6 +13,10 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  defineAgentRuntimeProfile,
+  glmClaudeCodeNativeTransport,
+} from "../../src/infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import { openGlmNativeAgentRuntime } from "../../src/research/agent-led/claude-code-native-agent-runtime.js";
@@ -22,6 +26,15 @@ import { conductWithHumanAdvance } from "./support/candidate-review.js";
 import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
 const temporaryDirectories: string[] = [];
+
+function glmProfile() {
+  return defineAgentRuntimeProfile({
+    id: "glm-5.3-claude-code-native-v1",
+    ...glmClaudeCodeNativeTransport,
+    model: "glm-5.3",
+    effort: "max",
+  });
+}
 
 afterEach(async () => {
   await Promise.all(
@@ -246,15 +259,7 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
       },
-      agentRuntimeProfile: {
-        id: "glm-5.3-claude-code-native-v1",
-        kind: "glm-claude-code-native/v1",
-        executableVersion: "2.1.220",
-        model: "glm-5.3",
-        effort: "max",
-        digest:
-          "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-      },
+      agentRuntimeProfile: glmProfile(),
       permissionProfile: {
         id: "gvisor-source-research-v1",
         digest:

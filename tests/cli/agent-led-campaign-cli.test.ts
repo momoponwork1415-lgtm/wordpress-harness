@@ -7,12 +7,25 @@ import { describe, expect, it } from "vitest";
 
 import { runCli } from "../../src/cli.js";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
+import {
+  defineAgentRuntimeProfile,
+  glmClaudeCodeNativeTransport,
+} from "../../src/infrastructure/agent-runtime-profile.js";
 import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import type { CampaignInput } from "../../src/research/index.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
 import { researchEvidenceSummaryFixture } from "../research/support/research-evidence-summary.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
+
+function glmProfile() {
+  return defineAgentRuntimeProfile({
+    id: "glm-5.3-claude-code-native-v1",
+    ...glmClaudeCodeNativeTransport,
+    model: "glm-5.3",
+    effort: "max",
+  });
+}
 
 describe("agent-led campaign CLI", () => {
   it("conducts and inspects only the agent-led Campaign interface", async () => {
@@ -86,14 +99,7 @@ describe("agent-led campaign CLI", () => {
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
       },
-      agentRuntimeProfile: {
-        id: "glm-5.3-claude-code-native-v1",
-        kind: "glm-claude-code-native/v1",
-        executableVersion: "2.1.220",
-        model: "glm-5.3",
-        effort: "max",
-        digest: digest("b"),
-      },
+      agentRuntimeProfile: glmProfile(),
       permissionProfile: {
         id: "gvisor-source-research-v1",
         digest: digest("c"),
@@ -246,14 +252,7 @@ exit 90
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
       },
-      agentRuntimeProfile: {
-        id: "glm-5.3-claude-code-native-v1",
-        kind: "glm-claude-code-native/v1",
-        executableVersion: "2.1.220",
-        model: "glm-5.3",
-        effort: "max",
-        digest: digest("b"),
-      },
+      agentRuntimeProfile: glmProfile(),
       permissionProfile: { id: "source-only-v1", digest: digest("c") },
       budgetEnvelope: {
         id: "agent-led-budget-v1",
@@ -502,14 +501,7 @@ exit 90
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
       },
-      agentRuntimeProfile: {
-        id: "glm-5.3-claude-code-native-v1",
-        kind: "glm-claude-code-native/v1",
-        executableVersion: "2.1.220",
-        model: "glm-5.3",
-        effort: "max",
-        digest: digest("b"),
-      },
+      agentRuntimeProfile: glmProfile(),
       permissionProfile: { id: "source-only-v1", digest: digest("c") },
       budgetEnvelope: {
         id: "agent-led-budget-v1",

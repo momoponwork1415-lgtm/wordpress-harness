@@ -133,20 +133,20 @@ function openNativeRuntime(
     maxOutputBytes: 8 * 1024 * 1024,
   };
 
-  if (input.agentRuntimeProfile.kind === "grok-build-native/v1") {
+  if (input.agentRuntimeProfile.transportKind === "grok-build-native/v1") {
     return openGrokNativeAgentRuntime(options);
   }
-  if (input.agentRuntimeProfile.kind === "claude-code-native/v1") {
+  if (input.agentRuntimeProfile.transportKind === "claude-code-native/v1") {
     return openClaudeCodeNativeAgentRuntime(options);
   }
-  if (input.agentRuntimeProfile.kind === "glm-claude-code-native/v1") {
+  if (input.agentRuntimeProfile.transportKind === "glm-claude-code-native/v1") {
     return openGlmNativeAgentRuntime(options);
   }
-  if (input.agentRuntimeProfile.kind === "codex-native/v1") {
+  if (input.agentRuntimeProfile.transportKind === "codex-native/v1") {
     return openCodexNativeAgentRuntime(options);
   }
   throw new Error(
-    `Unsupported Agent Runtime: ${input.agentRuntimeProfile.kind}`,
+    `Unsupported Agent Runtime: ${input.agentRuntimeProfile.transportKind}`,
   );
 }
 

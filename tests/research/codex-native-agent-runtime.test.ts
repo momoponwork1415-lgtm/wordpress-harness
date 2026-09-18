@@ -13,6 +13,10 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  codexNativeTransport,
+  defineAgentRuntimeProfile,
+} from "../../src/infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import { openCodexNativeAgentRuntime } from "../../src/research/agent-led/codex-native-agent-runtime.js";
@@ -22,6 +26,15 @@ import { conductWithHumanAdvance } from "./support/candidate-review.js";
 import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
 const temporaryDirectories: string[] = [];
+
+function codexProfile(effort: "xhigh" | "max") {
+  return defineAgentRuntimeProfile({
+    id: `codex-daybreak-blue-native-${effort}`,
+    ...codexNativeTransport,
+    model: "gpt-daybreak-blue-latest",
+    effort,
+  });
+}
 
 afterEach(async () => {
   await Promise.all(
@@ -173,15 +186,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
       },
-      agentRuntimeProfile: {
-        id: "codex-daybreak-blue-native-v1",
-        kind: "codex-native/v1",
-        executableVersion: "0.146.0",
-        model: "gpt-daybreak-blue-latest",
-        effort: "xhigh",
-        digest:
-          "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-      },
+      agentRuntimeProfile: codexProfile("xhigh"),
       permissionProfile: {
         id: "gvisor-source-research-v1",
         digest:
@@ -340,15 +345,7 @@ sleep 60
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
       },
-      agentRuntimeProfile: {
-        id: "codex-daybreak-blue-native-v1",
-        kind: "codex-native/v1",
-        executableVersion: "0.146.0",
-        model: "gpt-daybreak-blue-latest",
-        effort: "max",
-        digest:
-          "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-      },
+      agentRuntimeProfile: codexProfile("max"),
       permissionProfile: {
         id: "gvisor-source-research-v1",
         digest:
@@ -531,15 +528,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
       },
-      agentRuntimeProfile: {
-        id: "codex-daybreak-blue-native-v1",
-        kind: "codex-native/v1",
-        executableVersion: "0.146.0",
-        model: "gpt-daybreak-blue-latest",
-        effort: "max",
-        digest:
-          "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-      },
+      agentRuntimeProfile: codexProfile("max"),
       permissionProfile: {
         id: "gvisor-source-research-v1",
         digest:

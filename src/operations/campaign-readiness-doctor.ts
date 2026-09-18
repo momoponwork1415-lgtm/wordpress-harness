@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { z } from "zod";
 
 import { canonicalDigest } from "../infrastructure/canonical-json.js";
+import { admitAgentRuntimeProfile } from "../infrastructure/agent-runtime-profile.js";
 import { verifyCanonicalSourceTree } from "../infrastructure/canonical-source-tree.js";
 import {
   runNativeModelProcess,
@@ -631,6 +632,10 @@ class DefaultCampaignReadinessDoctor implements CampaignReadinessDoctor {
     input: CampaignReadinessInput,
     image: string,
   ): Promise<readonly CampaignReadinessCheck[]> {
+    const profileAdmission = admitAgentRuntimeProfile(
+      input.campaignInput.agentRuntimeProfile,
+      image,
+    );
     const dockerPath = input.manifest.runtime.dockerExecutablePath;
     const dockerProbe = await this.#docker(dockerPath, [
       "version",
@@ -716,17 +721,26 @@ class DefaultCampaignReadinessDoctor implements CampaignReadinessDoctor {
       ]);
       if (imageProbe?.kind === "exited" && imageProbe.exitCode === 0) {
         imageAvailable = imageInspectionMatches(imageProbe.stdout, image);
-        imageCheck = imageAvailable
-          ? ready(
-              "image",
-              "image-digest-available",
-              "The exact pinned Agent image is available.",
-            )
-          : blocked(
-              "image",
-              "image-digest-mismatch",
-              "Docker did not return the required Agent image digest.",
-            );
+        if (imageAvailable && profileAdmission.status === "image-mismatch") {
+          imageAvailable = false;
+          imageCheck = blocked(
+            "image",
+            "runtime-profile-image-mismatch",
+            "The launch image does not match the image bound by the Agent Runtime profile.",
+          );
+        } else {
+          imageCheck = imageAvailable
+            ? ready(
+                "image",
+                "image-digest-available",
+                "The exact pinned Agent image is available.",
+              )
+            : blocked(
+                "image",
+                "image-digest-mismatch",
+                "Docker did not return the required Agent image digest.",
+              );
+        }
       } else {
         imageCheck = blocked(
           "image",
@@ -737,10 +751,17 @@ class DefaultCampaignReadinessDoctor implements CampaignReadinessDoctor {
     }
 
     let provider: CampaignReadinessCheck;
-    const command = runtimeExecutable(
-      input.campaignInput.agentRuntimeProfile.kind,
-    );
-    if (command === undefined) {
+    const command =
+      profileAdmission.status === "admitted"
+        ? runtimeExecutable(profileAdmission.profile.transportKind)
+        : undefined;
+    if (profileAdmission.status !== "admitted") {
+      provider = blocked(
+        "provider-version",
+        `runtime-profile-${profileAdmission.status}`,
+        "The Agent Runtime profile is not admitted for this launch image.",
+      );
+    } else if (command === undefined) {
       provider = blocked(
         "provider-version",
         "runtime-profile-unsupported",

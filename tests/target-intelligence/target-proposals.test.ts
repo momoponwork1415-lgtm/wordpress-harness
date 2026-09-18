@@ -6,6 +6,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import {
+  defineAgentRuntimeProfile,
+  grokBuildNativeTransport,
+} from "../../src/infrastructure/agent-runtime-profile.js";
+import {
   defineTargetCandidatePool,
   type TargetCandidate,
 } from "../../src/target-intelligence/candidate-pool/index.js";
@@ -109,15 +113,12 @@ function input(
       digest:
         "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
     },
-    agentRuntimeProfile: {
+    agentRuntimeProfile: defineAgentRuntimeProfile({
       id: "grok-target-proposal-v1",
-      kind: "grok-build-native/v1",
-      executableVersion: "1.0.13",
+      ...grokBuildNativeTransport,
       model: "grok-4.6",
       effort: "xhigh",
-      digest:
-        "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-    },
+    }),
     permissionProfile: {
       id: "oracle-free-selection-v1",
       digest:

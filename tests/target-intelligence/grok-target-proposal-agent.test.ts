@@ -5,6 +5,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
+import {
+  defineAgentRuntimeProfile,
+  grokBuildNativeTransport,
+} from "../../src/infrastructure/agent-runtime-profile.js";
 import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import {
   defineTargetCandidatePool,
@@ -179,14 +183,12 @@ printf '%s' '{"text":"","stopReason":"end_turn","sessionId":"selection-session",
         id: "selection-guidance-v1",
         digest: promptTextDigest(guidance),
       },
-      agentRuntimeProfile: {
+      agentRuntimeProfile: defineAgentRuntimeProfile({
         id: "grok-selection-v1",
-        kind: "grok-build-native/v1",
-        executableVersion: "1.0.13",
+        ...grokBuildNativeTransport,
         model: "grok-4.6",
         effort: "xhigh",
-        digest: digest("1"),
-      },
+      }),
       permissionProfile: {
         id: "oracle-free-selection-v1",
         digest: permissionProfileDigest,

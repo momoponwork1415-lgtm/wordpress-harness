@@ -13,6 +13,10 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  claudeCodeNativeTransport,
+  defineAgentRuntimeProfile,
+} from "../../src/infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import { openClaudeCodeNativeAgentRuntime } from "../../src/research/agent-led/claude-code-native-agent-runtime.js";
@@ -22,6 +26,15 @@ import { conductWithHumanAdvance } from "./support/candidate-review.js";
 import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
 const temporaryDirectories: string[] = [];
+
+function claudeProfile() {
+  return defineAgentRuntimeProfile({
+    id: "claude-code-opus-native-v1",
+    ...claudeCodeNativeTransport,
+    model: "claude-opus-4-1",
+    effort: "high",
+  });
+}
 
 afterEach(async () => {
   await Promise.all(
@@ -222,15 +235,7 @@ exit 75
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
       },
-      agentRuntimeProfile: {
-        id: "claude-code-opus-native-v1",
-        kind: "claude-code-native/v1",
-        executableVersion: "2.1.220",
-        model: "claude-opus-4-1",
-        effort: "high",
-        digest:
-          "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-      },
+      agentRuntimeProfile: claudeProfile(),
       permissionProfile: {
         id: "gvisor-source-research-v1",
         digest:
@@ -543,15 +548,7 @@ exit "$(cat '${providerExitPath}')"
         id: "agent-led-research-v1",
         digest: promptTextDigest(researchPrompt),
       },
-      agentRuntimeProfile: {
-        id: "claude-code-opus-native-v1",
-        kind: "claude-code-native/v1",
-        executableVersion: "2.1.220",
-        model: "claude-opus-4-1",
-        effort: "high",
-        digest:
-          "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-      },
+      agentRuntimeProfile: claudeProfile(),
       permissionProfile: {
         id: "gvisor-source-research-v1",
         digest:

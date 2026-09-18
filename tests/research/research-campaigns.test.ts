@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { defineAgentRuntimeProfile } from "../../src/infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import type { CampaignInput } from "../../src/research/index.js";
 import type {
@@ -53,15 +54,16 @@ const input: CampaignInput = {
     digest:
       "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   },
-  agentRuntimeProfile: {
+  agentRuntimeProfile: defineAgentRuntimeProfile({
     id: "runtime-scripted-v1",
-    kind: "scripted-native-agent/v1",
+    transportKind: "scripted-native-agent/v1",
     executableVersion: "1.0.0",
+    sandboxImageDigest: `sha256:${"0".repeat(64)}`,
+    promptProtocol: "stdin",
+    reportProtocol: "prompted-json",
     model: "scripted-model",
     effort: "high",
-    digest:
-      "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-  },
+  }),
   permissionProfile: {
     id: "source-only-v1",
     digest:

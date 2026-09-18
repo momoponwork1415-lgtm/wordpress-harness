@@ -1,4 +1,5 @@
 export {
+  agentRuntimeProfileSchema,
   candidateReviewRequestSchema,
   campaignCommandSchema,
   campaignInputSchema,

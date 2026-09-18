@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { defineAgentRuntimeProfile } from "../../src/infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import {
   campaignInputSchema,
@@ -45,15 +46,16 @@ function input() {
       digest:
         "sha256:3333333333333333333333333333333333333333333333333333333333333333",
     },
-    agentRuntimeProfile: {
+    agentRuntimeProfile: defineAgentRuntimeProfile({
       id: "runtime-v1",
-      kind: "test-native/v1",
+      transportKind: "test-native/v1",
       executableVersion: "1.0.0",
+      sandboxImageDigest: `sha256:${"0".repeat(64)}`,
+      promptProtocol: "stdin",
+      reportProtocol: "prompted-json",
       model: "test-model",
       effort: "high",
-      digest:
-        "sha256:4444444444444444444444444444444444444444444444444444444444444444",
-    },
+    }),
     permissionProfile: {
       id: "permission-v1",
       digest:

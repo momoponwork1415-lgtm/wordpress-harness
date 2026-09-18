@@ -1,6 +1,9 @@
 import { z } from "zod";
 
+import { agentRuntimeProfileSchema } from "../../infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../../infrastructure/canonical-json.js";
+
+export { agentRuntimeProfileSchema } from "../../infrastructure/agent-runtime-profile.js";
 
 const identifierSchema = z
   .string()
@@ -169,15 +172,6 @@ export const programmeResearchBoundarySchema =
         sourceIds.add(source.id);
       }
     });
-
-const agentRuntimeProfileSchema = z.strictObject({
-  id: identifierSchema,
-  kind: z.string().min(1).max(128),
-  executableVersion: z.string().min(1).max(128),
-  model: z.string().min(1).max(128),
-  effort: z.string().min(1).max(64),
-  digest: digestSchema,
-});
 
 const budgetEnvelopeSchema = z
   .strictObject({

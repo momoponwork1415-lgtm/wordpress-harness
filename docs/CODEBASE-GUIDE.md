@@ -223,16 +223,17 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 <summary>Research — providerと隔離実行を接続する</summary>
 
 - **目的:** provider-nativeな実行・session・subagentを隔離し、bindingとReceiptを扱う。
-- **Interface:** `NativeAgentRuntime.execute`。Grok、Claude Code、GLM、CodexのAdapterを持つ。
-- **所有する記録・不変条件:** shared Private Research Artifact Store上のprivate provider home / Checkpoint、Diagnostic、content-addressed Candidate Recipe。exact image / CLI、non-root、read-only source、writeable scratch、Root込み最大4 active agentsを要求する。ambient権限やprovider fallbackを与えない。provider report内のrecipe本文はprivate storeへ移し、公開Research Reportにはdigest-bound参照だけを残す。
+- **Interface:** `NativeAgentRuntime.execute`。Grok、Claude Code、GLM、Codexのtransport Adapterを持つ。`Agent Runtime Profile`はversioned schemaとcentral catalogで定義する。
+- **所有する記録・不変条件:** Agent Runtime Profileはtransport kind、exact model / effort、executable version、sandbox image digest、prompt / report protocolを自己digestへbindする。compositionはtransport kindだけでAdapterを選び、catalogが未対応の組合せをprovider起動前に拒否する。Adapterはnative command、session、provider outputとfailure変換を所有し、model catalogを重複して持たない。shared Private Research Artifact Store上のprivate provider home / Checkpoint、Diagnostic、content-addressed Candidate Recipeを使う。exact image / CLI、non-root、read-only source、writeable scratch、Root込み最大4 active agentsを要求する。ambient権限やprovider fallbackを与えない。provider report内のrecipe本文はprivate storeへ移し、公開Research Reportにはdigest-bound参照だけを残す。
 - **失敗時:** availability・binding・policy・provider・schemaの失敗をtyped receiptへ変換する。timeoutは`budget-exhausted`、対応するaccount envelopeは`provider-unauthenticated` / `provider-quota-exhausted`。元の分類・usageをcleanupで失わず、拒否したoutputもprivate Diagnosticへ保存する。Diagnostic保存不能は`provider-failed`。診断用stateはresumeに使わない。
 
-通常は[`NativeAgentRuntime.execute`](../src/research/agent-led/contracts.ts)と対象providerのBehavior Testまで読む。`grok`・`claude-code`・`codex`というファイル名は、固有のCLI設定・応答変換を所有するAdapterを示す。modelの選択は実行profileの`model`で確認する。
+通常は[`NativeAgentRuntime.execute`](../src/research/agent-led/contracts.ts)、[`Agent Runtime Profile catalog`](../src/infrastructure/agent-runtime-profile.ts)と対象providerのBehavior Testまで読む。`grok`・`claude-code`・`codex`というファイル名は、固有のCLI設定・応答変換を所有するAdapterを示す。同じtransportへmodelを追加する変更はcatalogだけで行い、transport semanticsが変わる場合だけAdapterを変更する。理由は[ADR 0141](adr/0141-separate-model-profiles-from-native-transport-adapters.md)を参照する。
 
 内部を変更するときは、次の担当へ進む。外部のInterfaceは`NativeAgentRuntime.execute`のままとする。
 
 | 変更する責務 | Implementation |
 | --- | --- |
+| model / effortのadmission、transport capability、profile digest | [`agent-runtime-profile.ts`](../src/infrastructure/agent-runtime-profile.ts) |
 | 隔離起動・実行終了・失敗分類の組立 | [`gvisor-agent-sandbox.ts`](../src/research/agent-led/gvisor-agent-sandbox.ts) |
 | 認証ファイルの検査・コピー・削除・ログ秘匿 | [`ProviderCredentialFiles.copyTo / removeFrom / redact`](../src/research/agent-led/provider-files.ts) |
 | Checkpointの照合・作業用コピー・確定 | [`prepareResearchState / finalizeResearchState`](../src/research/agent-led/research-checkpoints.ts) |
@@ -244,7 +245,7 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 
 認証障害を調べる場合は、認証Moduleと各Adapterのmount設定を読む。この実装だけで障害の原因は確定しない。隔離を要求する理由は[ADR 0063](adr/0063-separate-the-orchestrator-agent-and-target-trust-zones.md)を参照する。
 
-**Source / Behavior Test:** [`gvisor-agent-sandbox.ts`](../src/research/agent-led/gvisor-agent-sandbox.ts) · [`provider-research-report.ts`](../src/research/agent-led/provider-research-report.ts) · [`grok-native-agent-runtime.ts`](../src/research/agent-led/grok-native-agent-runtime.ts) · [`claude-code-native-agent-runtime.ts`](../src/research/agent-led/claude-code-native-agent-runtime.ts) · [`codex-native-agent-runtime.ts`](../src/research/agent-led/codex-native-agent-runtime.ts) · [`codex-source-reader.ts`](../src/research/agent-led/codex-source-reader.ts) · [`provider-research-report.test.ts`](../tests/research/provider-research-report.test.ts) · [`grok-native-agent-runtime.test.ts`](../tests/research/grok-native-agent-runtime.test.ts) · [`claude-code-native-agent-runtime.test.ts`](../tests/research/claude-code-native-agent-runtime.test.ts) · [`glm-native-agent-runtime.test.ts`](../tests/research/glm-native-agent-runtime.test.ts) · [`codex-native-agent-runtime.test.ts`](../tests/research/codex-native-agent-runtime.test.ts)
+**Source / Behavior Test:** [`agent-runtime-profile.ts`](../src/infrastructure/agent-runtime-profile.ts) · [`gvisor-agent-sandbox.ts`](../src/research/agent-led/gvisor-agent-sandbox.ts) · [`provider-research-report.ts`](../src/research/agent-led/provider-research-report.ts) · [`grok-native-agent-runtime.ts`](../src/research/agent-led/grok-native-agent-runtime.ts) · [`claude-code-native-agent-runtime.ts`](../src/research/agent-led/claude-code-native-agent-runtime.ts) · [`codex-native-agent-runtime.ts`](../src/research/agent-led/codex-native-agent-runtime.ts) · [`codex-source-reader.ts`](../src/research/agent-led/codex-source-reader.ts) · [`agent-runtime-profile.test.ts`](../tests/infrastructure/agent-runtime-profile.test.ts) · [`provider-research-report.test.ts`](../tests/research/provider-research-report.test.ts) · [`grok-native-agent-runtime.test.ts`](../tests/research/grok-native-agent-runtime.test.ts) · [`claude-code-native-agent-runtime.test.ts`](../tests/research/claude-code-native-agent-runtime.test.ts) · [`glm-native-agent-runtime.test.ts`](../tests/research/glm-native-agent-runtime.test.ts) · [`codex-native-agent-runtime.test.ts`](../tests/research/codex-native-agent-runtime.test.ts)
 
 </details>
 
@@ -269,7 +270,7 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 
 - **目的:** AIが既存のCampaign操作と照会を呼ぶための薄い入口を提供する。
 - **Interface:** `wordpress-harness campaign conduct | conduct-approved | review-research | review-candidates | inspect`。
-- **所有する記録・不変条件:** CLI独自のCampaign stateは持たない。sealed profileからAdapterを選び、prompt digestとDependency mount集合を検査する。`inspect`はrunを起動しない。Review前の一時照会も、例外時を含めDB接続を閉じる。
+- **所有する記録・不変条件:** CLI独自のCampaign stateは持たない。sealed profileの`transportKind`からAdapterを選び、prompt digestとDependency mount集合を検査する。model / effortのadmissionはRuntime Profile catalogとAdapterがprovider起動前に行う。`inspect`はrunを起動しない。Review前の一時照会も、例外時を含めDB接続を閉じる。
 - **失敗時:** unsupported runtime・missing option・invalid inputはnon-zero。buildは古いdistを消し、現行sourceにないartifactを拒否する。
 
 **Source / Behavior Test:** [`src/cli.ts`](../src/cli.ts) · [`agent-led-campaign-cli.test.ts`](../tests/cli/agent-led-campaign-cli.test.ts) · [`database-lifecycle.test.ts`](../tests/cli/database-lifecycle.test.ts)
@@ -297,7 +298,7 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 
 - **目的:** 承認済みCampaignについて、起動前のinfrastructure、subscription、binding、storageとprivate artifactの状態を一つのread-only reportで確認する。
 - **Interface:** `CampaignReadinessDoctor.inspect`、versioned `CampaignReadinessInput / CampaignReadinessReport`、installed CLI `wordpress-harness-doctor inspect --input ... [--human]`。machine reportはDocker、runsc、image、provider version、account、quota、launch capacity、Target、Dependency、prompt、database、scratch、disk、private artifactの各checkをexactly once返す。human表示は同じreportから導く。
-- **所有する記録・不変条件:** stateを所有しない。全checkが`ready / blocked / unknown`のいずれかを返し、overallは`blocked`を優先し、次に`unknown`、全件readyの場合だけ`ready`とする。TargetとDependencyはsealed canonical tree、promptはdigest、resume Checkpointはshared Private Artifact Storeで照合する。provider version確認はlocal pinned imageを`runsc`、`network=none`、`pull=never`、read-onlyで`--version`実行するだけで、Target、provider config、credential、promptをmountしない。理由は[ADR 0140](adr/0140-keep-campaign-readiness-doctor-read-only.md)を参照する。
+- **所有する記録・不変条件:** stateを所有しない。全checkが`ready / blocked / unknown`のいずれかを返し、overallは`blocked`を優先し、次に`unknown`、全件readyの場合だけ`ready`とする。TargetとDependencyはsealed canonical tree、promptはdigest、resume Checkpointはshared Private Artifact Storeで照合する。Agent Runtime Profileはlaunch imageと同じcentral catalogで照合し、未対応model / effort / capabilityはprovider probe前にblockedにする。provider version確認はlocal pinned imageを`runsc`、`network=none`、`pull=never`、read-onlyで`--version`実行するだけで、Target、provider config、credential、promptをmountしない。理由は[ADR 0140](adr/0140-keep-campaign-readiness-doctor-read-only.md)を参照する。
 - **失敗時:** 明確な不一致・不足・unauthenticatedは`blocked`、観測欠落・stale・unavailable・依存check未成立は`unknown`にする。missingなdatabaseはparentがwrite可能ならreadyだが作成せず、missingなscratchはblockedにする。Doctorはlogin、repair、directory / database / receipt作成、Campaign mutation、Target実行、model invocationを行わない。input schema不正またはCLI I/O失敗だけをnon-zeroにする。
 
 **Source / Behavior Test:** [`campaign-readiness-doctor.ts`](../src/operations/campaign-readiness-doctor.ts) · [`campaign-readiness-doctor-cli.ts`](../src/operations/campaign-readiness-doctor-cli.ts) · [`campaign-readiness-doctor.test.ts`](../tests/operations/campaign-readiness-doctor.test.ts)
