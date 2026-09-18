@@ -770,6 +770,17 @@ export const campaignInterruptionSchema = z.strictObject({
   summary: z.string().min(1),
 });
 
+export const researchAdmissionFailureSchema = z.strictObject({
+  reason: z.enum([
+    "candidate-identity-conflict",
+    "parked-programme-lead-without-boundary",
+    "parked-programme-lead-identity-conflict",
+  ]),
+  runId: identifierSchema,
+  nativeRunReceiptDigest: digestSchema,
+  summary: z.string().min(1),
+});
+
 export const candidateVerificationRequestSchema = z
   .strictObject({
     kind: z.literal("candidate-verification-request"),
@@ -823,7 +834,7 @@ export interface CampaignQuery {
 
 export interface CampaignOutcomeRef {
   readonly kind: "agent-led-campaign-outcome";
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly campaignId: string;
   readonly inputDigest: string;
   readonly status: CampaignStatus;
@@ -840,6 +851,7 @@ export interface ResearchCampaignView extends CampaignOutcomeRef {
   readonly coverage: CampaignCoverage;
   readonly pendingCandidateReview?: CandidateReviewRequest;
   readonly pendingResearchContinuationReview?: ResearchContinuationReviewRequest;
+  readonly admissionFailure?: ResearchAdmissionFailure;
   readonly interruption?: CampaignInterruption;
 }
 
@@ -863,6 +875,9 @@ export type AgentCheckpointRef = z.infer<typeof agentCheckpointRefSchema>;
 export type AgentRunDiagnosticRef = z.infer<typeof agentRunDiagnosticRefSchema>;
 export type AgentRunFailureStage = z.infer<typeof agentRunFailureStageSchema>;
 export type CampaignInterruption = z.infer<typeof campaignInterruptionSchema>;
+export type ResearchAdmissionFailure = z.infer<
+  typeof researchAdmissionFailureSchema
+>;
 export type NativeRunReceipt = z.infer<typeof nativeRunReceiptSchema>;
 export type ParkedProgrammeLead = z.infer<typeof parkedProgrammeLeadSchema>;
 export type SealedNativeRun = z.infer<typeof sealedNativeRunSchema>;

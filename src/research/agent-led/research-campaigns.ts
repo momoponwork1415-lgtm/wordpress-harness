@@ -14,6 +14,7 @@ import {
   humanCandidateReviewSchema,
   humanResearchContinuationReviewSchema,
   nativeRunReceiptSchema,
+  researchAdmissionFailureSchema,
   researchContinuationReviewRequestSchema,
   type CampaignInput,
   type CampaignCommand,
@@ -33,12 +34,14 @@ import {
   type ResearchCampaignView,
   type SealedNativeRun,
   type ResearchCandidate,
+  type ResearchAdmissionFailure,
 } from "./contracts.js";
 
 const eventRowSchema = z.object({
   kind: z.enum([
     "campaign.defined",
     "native-run.recorded",
+    "native-run.admission-failed",
     "candidate-review.recorded",
     "research-continuation-review.recorded",
     "campaign.interrupted",
@@ -56,6 +59,11 @@ const campaignDefinedPayloadSchema = z.strictObject({
 const nativeRunRecordedPayloadSchema = z.strictObject({
   inputDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
   receipt: nativeRunReceiptSchema,
+});
+
+const nativeRunAdmissionFailedPayloadSchema = z.strictObject({
+  inputDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  failure: researchAdmissionFailureSchema,
 });
 
 const candidateReviewRecordedPayloadSchema = z.strictObject({
@@ -657,56 +665,69 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
             }),
       };
       const startedAt = this.#clock();
-      let receipt = await this.#execute(run, startedAt);
+      const receipt = await this.#execute(run, startedAt);
+      let admissionFailure: ResearchAdmissionFailure | undefined;
       if (receipt.terminal === "completed") {
         try {
           candidatesFor([...view.nativeRuns, receipt]);
         } catch {
-          receipt = failedReceipt(
-            run,
-            startedAt,
-            this.#clock(),
-            "invalid-output",
-            "Native Agent Runtime reused a Candidate identity with different evidence.",
-          );
+          admissionFailure = {
+            reason: "candidate-identity-conflict",
+            runId: receipt.runId,
+            nativeRunReceiptDigest: canonicalDigest(receipt),
+            summary:
+              "Native Agent Runtime reused a Candidate identity with different evidence.",
+          };
         }
       }
       if (
         receipt.terminal === "completed" &&
+        admissionFailure === undefined &&
         (receipt.report.parkedProgrammeLeads?.length ?? 0) > 0 &&
         run.programmeBoundary === undefined
       ) {
-        receipt = failedReceipt(
-          run,
-          startedAt,
-          this.#clock(),
-          "invalid-output",
-          "Native Agent Runtime returned a parked Programme Lead without a Programme Research Boundary.",
-        );
+        admissionFailure = {
+          reason: "parked-programme-lead-without-boundary",
+          runId: receipt.runId,
+          nativeRunReceiptDigest: canonicalDigest(receipt),
+          summary:
+            "Native Agent Runtime returned a parked Programme Lead without a Programme Research Boundary.",
+        };
       }
-      if (receipt.terminal === "completed") {
+      if (receipt.terminal === "completed" && admissionFailure === undefined) {
         try {
           parkedProgrammeLeadsFor([...view.nativeRuns, receipt]);
         } catch {
-          receipt = failedReceipt(
-            run,
-            startedAt,
-            this.#clock(),
-            "invalid-output",
-            "Native Agent Runtime reused a parked Programme Lead identity with different evidence.",
-          );
+          admissionFailure = {
+            reason: "parked-programme-lead-identity-conflict",
+            runId: receipt.runId,
+            nativeRunReceiptDigest: canonicalDigest(receipt),
+            summary:
+              "Native Agent Runtime reused a parked Programme Lead identity with different evidence.",
+          };
         }
       }
-      this.#append(input.campaignId, "native-run.recorded", {
-        inputDigest,
-        receipt,
-      });
+      this.#database.transaction(() => {
+        this.#append(input.campaignId, "native-run.recorded", {
+          inputDigest,
+          receipt,
+        });
+        if (admissionFailure !== undefined) {
+          this.#append(input.campaignId, "native-run.admission-failed", {
+            inputDigest,
+            failure: admissionFailure,
+          });
+        }
+      })();
       view = this.#requireView(input.campaignId);
       if (exceededBudget(input, view.nativeRuns)) {
         this.#interruptForBudget(input, inputDigest, true);
         view = this.#requireView(input.campaignId);
       }
       if (receipt.terminal !== "completed") {
+        return outcomeFor(view);
+      }
+      if (admissionFailure !== undefined) {
         return outcomeFor(view);
       }
     }
@@ -848,6 +869,7 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
     const candidateReviews: HumanCandidateReview[] = [];
     const researchContinuationReviews: HumanResearchContinuationReview[] = [];
     let interruption: z.infer<typeof campaignInterruptionSchema> | undefined;
+    let admissionFailure: ResearchAdmissionFailure | undefined;
     for (const row of rows.slice(1)) {
       const value = decodeJson(row.payload_json);
       if (canonicalDigest(value) !== row.payload_digest) {
@@ -861,6 +883,28 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
           throw new Error(`Native Run input binding mismatch: ${campaignId}`);
         }
         nativeRuns.push(event.receipt);
+        continue;
+      }
+      if (row.kind === "native-run.admission-failed") {
+        const event = nativeRunAdmissionFailedPayloadSchema.parse(value);
+        const receipt = nativeRuns.find(
+          (nativeRun) => nativeRun.runId === event.failure.runId,
+        );
+        if (
+          event.inputDigest !== definition.inputDigest ||
+          receipt?.terminal !== "completed" ||
+          canonicalDigest(receipt) !== event.failure.nativeRunReceiptDigest
+        ) {
+          throw new Error(
+            `Native Run admission failure binding mismatch: ${campaignId}`,
+          );
+        }
+        if (admissionFailure !== undefined) {
+          throw new Error(
+            `Duplicate Native Run admission failure: ${campaignId}`,
+          );
+        }
+        admissionFailure = event.failure;
         continue;
       }
       if (row.kind === "research-continuation-review.recorded") {
@@ -925,9 +969,15 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
       }
       throw new Error(`Unsupported agent-led Campaign event: ${row.kind}`);
     }
-    const latest = nativeRuns.at(-1);
-    const candidates = candidatesFor(nativeRuns);
-    const parkedProgrammeLeads = parkedProgrammeLeadsFor(nativeRuns);
+    const admittedNativeRuns =
+      admissionFailure === undefined
+        ? nativeRuns
+        : nativeRuns.filter(
+            (nativeRun) => nativeRun.runId !== admissionFailure.runId,
+          );
+    const latest = admittedNativeRuns.at(-1);
+    const candidates = candidatesFor(admittedNativeRuns);
+    const parkedProgrammeLeads = parkedProgrammeLeadsFor(admittedNativeRuns);
     const currentResearchContinuationReviewRequest =
       researchContinuationReviewRequestFor(
         campaignId,
@@ -980,7 +1030,11 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
     const hasFailedResearchRun =
       latest !== undefined && latest.terminal !== "completed";
     let status: CampaignStatus;
-    if (interruption !== undefined || hasFailedResearchRun) {
+    if (
+      interruption !== undefined ||
+      admissionFailure !== undefined ||
+      hasFailedResearchRun
+    ) {
       status = "incomplete";
     } else if (latest === undefined) {
       status = "research-continues";
@@ -1009,7 +1063,7 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
 
     return {
       kind: "agent-led-campaign-outcome",
-      schemaVersion: 1,
+      schemaVersion: 2,
       campaignId,
       inputDigest: definition.inputDigest,
       status,
@@ -1044,6 +1098,7 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
               : "open",
       },
       ...(interruption === undefined ? {} : { interruption }),
+      ...(admissionFailure === undefined ? {} : { admissionFailure }),
     };
   }
 

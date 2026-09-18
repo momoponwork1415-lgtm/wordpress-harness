@@ -9,6 +9,7 @@ import type { CampaignInput } from "../../src/research/index.js";
 import type {
   AgentCheckpointRef,
   NativeAgentRuntime,
+  ResearchCandidate,
   ResearchCampaigns,
   SealedNativeRun,
 } from "../../src/research/agent-led/contracts.js";
@@ -94,6 +95,51 @@ function checkpointFor(run: SealedNativeRun): AgentCheckpointRef {
     ...(dependencySnapshots.length === 0
       ? {}
       : { dependencySnapshotsDigest: canonicalDigest(dependencySnapshots) }),
+  };
+}
+
+function candidateFor(claim: string): ResearchCandidate {
+  return {
+    candidateId: "candidate-shared-id",
+    attackerPremise: "Unauthenticated visitor",
+    brokenSecurityProperty: "Only administrators may update plugin options",
+    claim,
+    evidence: [
+      {
+        path: "includes/options.php",
+        location: "42",
+        observation: "The public callback writes an attacker-controlled value.",
+      },
+    ],
+    sourceTrace: [
+      {
+        role: "entrypoint",
+        path: "includes/options.php",
+        location: "18",
+        observation: "A public callback accepts the value.",
+      },
+      {
+        role: "effect",
+        path: "includes/options.php",
+        location: "42",
+        observation: "The callback persists the value as a plugin option.",
+      },
+    ],
+    controlAssessments: [
+      {
+        control: "Administrator capability check",
+        evidence: [
+          {
+            path: "includes/options.php",
+            location: "24",
+            observation:
+              "The callback does not check an administrator capability.",
+          },
+        ],
+        conclusion: "No source-visible authority check prevents the write.",
+      },
+    ],
+    unresolvedFacts: [],
   };
 }
 
@@ -675,6 +721,130 @@ describe("ResearchCampaigns", () => {
       ],
     });
     campaigns.close();
+  });
+
+  it("preserves a completed Native Run when its Candidate cannot be admitted", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "research-candidate-admission-conflict-"),
+    );
+    temporaryDirectories.push(directory);
+    const databasePath = join(directory, "agent-led.sqlite");
+    const conflictInput: CampaignInput = {
+      ...input,
+      campaignId: "campaign-candidate-admission-conflict-1",
+      budgetEnvelope: {
+        ...input.budgetEnvelope,
+        maxNativeRuns: 2,
+      },
+    };
+    let invocation = 0;
+    const campaigns = openResearchCampaigns({
+      databasePath,
+      runtime: {
+        async execute(run) {
+          invocation += 1;
+          return {
+            schemaVersion: 2,
+            runId: run.runId,
+            runtimeProfileDigest: run.agentRuntimeProfile.digest,
+            terminal: "completed",
+            startedAt: `2026-09-07T04:1${invocation}:00.000Z`,
+            completedAt: `2026-09-07T04:1${invocation}:30.000Z`,
+            usage: {
+              wallTimeMs: 30_000,
+              estimatedCostUsd: invocation === 1 ? 1.25 : 2.5,
+            },
+            activity: { subagents: 1, tools: ["source.read"] },
+            isolation: gvisorIsolation,
+            checkpoint: checkpointFor(run),
+            report: {
+              schemaVersion: 2,
+              assessments: [],
+              evidenceSummary: researchEvidenceSummaryFixture(),
+              candidates: [
+                candidateFor(
+                  invocation === 1
+                    ? "The public callback updates a plugin option."
+                    : "The public callback updates a different administrator option.",
+                ),
+              ],
+              decision:
+                invocation === 1
+                  ? {
+                      kind: "continue" as const,
+                      reason: "One source-bound consumer remains unresolved.",
+                      nextActions: [
+                        {
+                          question: "Where is the stored value consumed?",
+                          sourcePointers: ["includes/render.php"],
+                        },
+                      ],
+                    }
+                  : {
+                      kind: "stop" as const,
+                      basis: "No actionable frontier remains.",
+                    },
+            },
+          };
+        },
+      },
+    });
+
+    await expect(
+      conductWithHumanAdvance(campaigns, conflictInput),
+    ).resolves.toMatchObject({ status: "incomplete" });
+    await expect(
+      campaigns.inspect({ campaignId: conflictInput.campaignId }),
+    ).resolves.toMatchObject({
+      schemaVersion: 2,
+      status: "incomplete",
+      admissionFailure: {
+        reason: "candidate-identity-conflict",
+        runId: "campaign-candidate-admission-conflict-1:native:2",
+      },
+      candidateVerificationRequests: [],
+      nativeRuns: [
+        { terminal: "completed" },
+        {
+          terminal: "completed",
+          usage: { estimatedCostUsd: 2.5 },
+          checkpoint: {
+            checkpointId:
+              "campaign-candidate-admission-conflict-1:native:2:checkpoint",
+          },
+          report: {
+            candidates: [
+              {
+                candidateId: "candidate-shared-id",
+                claim:
+                  "The public callback updates a different administrator option.",
+              },
+            ],
+          },
+        },
+      ],
+    });
+    campaigns.close();
+
+    const reopened = openResearchCampaigns({
+      databasePath,
+      runtime: {
+        async execute() {
+          throw new Error("Inspection must not execute another Native Run");
+        },
+      },
+    });
+    await expect(
+      reopened.inspect({ campaignId: conflictInput.campaignId }),
+    ).resolves.toMatchObject({
+      status: "incomplete",
+      admissionFailure: {
+        reason: "candidate-identity-conflict",
+        runId: "campaign-candidate-admission-conflict-1:native:2",
+      },
+      nativeRuns: [{ terminal: "completed" }, { terminal: "completed" }],
+    });
+    reopened.close();
   });
 
   it("records budget exhaustion as incomplete while preserving the frontier", async () => {

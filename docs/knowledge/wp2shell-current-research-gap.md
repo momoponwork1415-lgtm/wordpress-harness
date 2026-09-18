@@ -56,12 +56,10 @@ Base Promptは30行だが、Threat Context、Programme Boundary、binding、time
 - diverse route、blocked route、途中primitive、counterevidenceをRoot conversation側で扱い、Harnessへ固定role / wave / classとして実装しない（`docs/adr/0125-put-agent-decisions-behind-thin-evidence-shells.md:5-13`）。
 - 一件のprimitive / Candidateで必ず探索を終えず、残るactive frontierとfresh approachを追う（`prompts/wordpress-plugin-research-v3.md:38-40`）。
 
-## 修正優先度
+## 現在の実装と残る観測課題
 
-1. **P0 — completed resultをfailureへ置換してCheckpointを失わない。** semantic conflictを別のfailure evidenceとして追記し、生Report、usage、Checkpointを保持する。
-2. **P0 — 全providerでsubagent利用数と親子関係をReceiptへ記録する。** Root込み最大4体の起動前制限は実装済み。次はCLIの実活動を正確に検査できるようにする。
-3. **P0 — v2 Promptの反復loopを実測する。** `subagents > 0`だけで合格にせず、divergent routes、adversarial challenge、Root synthesis、redirect / additional roundの痕跡を評価する。
-4. **P1 — v2 Prompt導入後の早期stopをablationする。** `no actionable frontier`までにfirst-wave failure後のfresh idea再投入が起きるかを同じknown-positive corpusで比較する。1時間Human Reviewは維持する。
-5. **P1 — Prompt量とdependency不足のmissを測る。** 重複するboundary記述を削ったPrompt、および必要なcompanion / library sourceを事前pinしたsource worldと比較する。
+completed Native RunのCandidate identityまたはProgramme Boundaryにsemantic conflictがある場合、現在はcompleted Receipt、raw Report、usageとCheckpointを保持し、digest-boundなResearch Admission Failureを同じtransactionへ追記する。失敗したrunのCandidate / LeadだけをCampaign集約から除外するため、過去に観測した「completed resultをfailureへ置換する」不一致は解消した。
 
-要するに、wp2shellの研究手法はv2 Promptへ取り込んだ。持ち込まないのは`positive oracle + RCE / /flag到達の強制 + 最低6時間`である。残る問題は、**v2が反復roundとして実行されるか、subagent活動を観測できないこと、completed resultとCheckpointをinvalid-output時に失うこと**である。
+残る観測課題は、全providerのsubagent利用数と親子関係、v3 Promptでdivergent route・adversarial challenge・Root synthesis・追加roundが実際に起きるか、早期stopとPrompt量、事前pinするdependencyの不足がrecallへ与える影響である。これらの有限workと受入条件はGitHub Issueを正本にする。
+
+要するに、wp2shellの研究手法はv3 Promptへ取り込んだ。持ち込まないのは`positive oracle + RCE / /flag到達の強制 + 最低6時間`である。現在の主要な不確実性は、**v3が反復roundとして実行されるか、subagent活動を十分に観測できるか、Prompt量とsource worldの境界がrecallへどう影響するか**である。

@@ -8,6 +8,7 @@ import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import type { CampaignInput } from "../../src/research/index.js";
 import type { SealedNativeRun } from "../../src/research/agent-led/contracts.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
+import { conductWithHumanAdvance } from "./support/candidate-review.js";
 import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
 const temporaryDirectories: string[] = [];
@@ -282,13 +283,107 @@ describe("parked Programme Leads", () => {
     await expect(
       campaigns.inspect({ campaignId: input.campaignId }),
     ).resolves.toMatchObject({
+      status: "incomplete",
+      admissionFailure: {
+        reason: "parked-programme-lead-without-boundary",
+        runId: "campaign-unbound-parked-lead-1:native:1",
+      },
       parkedProgrammeLeads: [],
       nativeRuns: [
         {
-          terminal: "invalid-output",
-          failure: {
-            summary:
-              "Native Agent Runtime returned a parked Programme Lead without a Programme Research Boundary.",
+          terminal: "completed",
+          usage: { wallTimeMs: 50_000 },
+          checkpoint: {
+            checkpointId: "campaign-unbound-parked-lead-1:native:1:checkpoint",
+          },
+          report: {
+            parkedProgrammeLeads: [{ leadId: "lead-profile-label-read" }],
+          },
+        },
+      ],
+    });
+    campaigns.close();
+  });
+
+  it("preserves a completed run whose parked Lead identity conflicts", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "parked-lead-admission-conflict-"),
+    );
+    temporaryDirectories.push(directory);
+    const input = inputFor("campaign-parked-lead-admission-conflict-1");
+    let invocations = 0;
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "research.sqlite"),
+      runtime: {
+        async execute(run) {
+          invocations += 1;
+          const receipt = parkedLeadReceipt(run);
+          const lead = receipt.report.parkedProgrammeLeads[0];
+          if (lead === undefined)
+            throw new Error("missing parked lead fixture");
+          return {
+            ...receipt,
+            report: {
+              ...receipt.report,
+              parkedProgrammeLeads: [
+                invocations === 1
+                  ? lead
+                  : {
+                      ...lead,
+                      primitive:
+                        "The same identity now claims disclosure of authentication material.",
+                    },
+              ],
+              decision:
+                invocations === 1
+                  ? {
+                      kind: "continue" as const,
+                      reason: "A concrete eligible route remains unresolved.",
+                      nextActions: [
+                        {
+                          question:
+                            "Does the adjacent endpoint expose authentication material?",
+                          sourcePointers: ["src/api/profile-controller.ts"],
+                        },
+                      ],
+                    }
+                  : receipt.report.decision,
+            },
+          };
+        },
+      },
+    });
+
+    await expect(
+      conductWithHumanAdvance(campaigns, input),
+    ).resolves.toMatchObject({ status: "incomplete" });
+    await expect(
+      campaigns.inspect({ campaignId: input.campaignId }),
+    ).resolves.toMatchObject({
+      status: "incomplete",
+      admissionFailure: {
+        reason: "parked-programme-lead-identity-conflict",
+        runId: "campaign-parked-lead-admission-conflict-1:native:2",
+      },
+      parkedProgrammeLeads: [
+        {
+          leadId: "lead-profile-label-read",
+          primitive:
+            "The endpoint returns another user's internal profile label.",
+        },
+      ],
+      nativeRuns: [
+        { terminal: "completed" },
+        {
+          terminal: "completed",
+          report: {
+            parkedProgrammeLeads: [
+              {
+                leadId: "lead-profile-label-read",
+                primitive:
+                  "The same identity now claims disclosure of authentication material.",
+              },
+            ],
           },
         },
       ],

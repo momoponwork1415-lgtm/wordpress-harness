@@ -289,7 +289,7 @@ describe("ApprovedTargetCampaigns", () => {
           received = input;
           return {
             kind: "agent-led-campaign-outcome",
-            schemaVersion: 1,
+            schemaVersion: 2,
             campaignId: input.campaignId,
             inputDigest: canonicalDigest(input),
             status: "research-continues",
@@ -326,7 +326,7 @@ describe("ApprovedTargetCampaigns", () => {
           conducted = true;
           return {
             kind: "agent-led-campaign-outcome",
-            schemaVersion: 1,
+            schemaVersion: 2,
             campaignId: input.campaignId,
             inputDigest: canonicalDigest(input),
             status: "research-continues",

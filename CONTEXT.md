@@ -37,6 +37,7 @@ Target Intelligenceが受け渡した入力を受け取り、調査、継続の�
 | **Verification Preparation Needed** | admitされたがrecipeがなく、Requestを安全に作れない状態。Candidateを棄却せず準備不足として残す。 |
 | **Coverage** | 固定した調査条件の中で、具体的に調べる余地が残るかを表す記録。発見件数や対象の安全性を意味しない。 |
 | **Interruption** | 予算、提供元、権限、不正な出力などにより、判断を完了できなかった記録。 |
+| **Research Admission Failure** | Native Runは正常終了して証拠を返したが、CandidateまたはParked Programme Leadのidentity・Programme Boundary制約により、そのrunのResearch結果をCampaignへ採用できなかった記録。元のReceiptを改変せず、Campaignを未完了にする。 |
 | **Research Record** | 入力、実行結果、非公開記録への参照、両方の人間判断、Candidate Verification Request、Coverage、中断を追記する正本。会話本文や作業メモ、内部の呼び出し順を業務上の状態にしない。 |
 
 ## 守るべき区別
@@ -45,6 +46,7 @@ Target Intelligenceが受け渡した入力を受け取り、調査、継続の�
 - Candidateの発見、人間によるadmission、Human OSの動的検証を分ける。
 - Candidate Verification Request、Coverage、実行失敗を混同しない。
 - 再開可能な記録と、診断専用の記録を分ける。
+- Native Runの正常終了と、そのResearch結果をCampaignへ採用できたかを分ける。
 - 同じ履歴を継続するResearch Grant、freshなIndependent Research Trial、評価対象全体のEvaluation Sweepを分ける。
 
 権限・隔離・予算・失敗時の設計原則は[Research Design](docs/RESEARCH-DESIGN.md#trust-and-versioning)、現在のInterfaceと回帰テストは[Codebase Guide](docs/CODEBASE-GUIDE.md#research-campaigns)を参照する。
