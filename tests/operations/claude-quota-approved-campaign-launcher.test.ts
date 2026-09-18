@@ -6,8 +6,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   decideApprovedCampaignLaunches,
+  normalizeClaudeAccountReadiness,
   normalizeClaudeStatusLineRateLimits,
   type ApprovedCampaignLaunchManifest,
+  type ClaudeAccountReadinessObservation,
+  type ClaudeRateLimitObservation,
 } from "../../src/operations/claude-quota-approved-campaign-launcher.js";
 import {
   buildApprovedCampaignCommand,
@@ -16,14 +19,56 @@ import {
 import { runClaudeQuotaLauncherCli } from "../../src/operations/claude-quota-approved-campaign-launcher-cli.js";
 
 const observedAt = "2026-09-17T00:00:00.000Z";
+const fiveHourResetsAt = "2026-09-17T03:40:00.000Z";
+const sevenDayResetsAt = "2026-09-23T06:20:00.000Z";
+
+function readiness(
+  status: ClaudeAccountReadinessObservation["status"] = "ready",
+  at = observedAt,
+): ClaudeAccountReadinessObservation {
+  return {
+    kind: "claude-account-readiness-observation",
+    schemaVersion: 1,
+    observedAt: at,
+    source: "operator",
+    status,
+  };
+}
+
+function quotaObservation(
+  input: {
+    readonly at?: string;
+    readonly fiveHourUsed?: number;
+    readonly fiveHourReset?: string;
+    readonly sevenDayUsed?: number;
+    readonly sevenDayReset?: string;
+  } = {},
+): ClaudeRateLimitObservation {
+  return {
+    kind: "claude-rate-limit-observation",
+    schemaVersion: 2,
+    observedAt: input.at ?? observedAt,
+    source: "status-line",
+    fiveHour: {
+      usedPercentage: input.fiveHourUsed ?? 40,
+      resetsAt: input.fiveHourReset ?? fiveHourResetsAt,
+    },
+    sevenDay: {
+      usedPercentage: input.sevenDayUsed ?? 10,
+      resetsAt: input.sevenDayReset ?? sevenDayResetsAt,
+    },
+  };
+}
 
 function manifest(): ApprovedCampaignLaunchManifest {
   return {
     kind: "approved-campaign-launch-manifest",
-    schemaVersion: 1,
+    schemaVersion: 2,
     policy: {
       fiveHourReservePercentage: 10,
+      sevenDayReservePercentage: 5,
       estimatedFiveHourPercentagePerLaunch: 18,
+      estimatedSevenDayPercentagePerLaunch: 25,
       maxActiveCampaigns: 3,
       maxObservationAgeSeconds: 600,
     },
@@ -51,6 +96,55 @@ function manifest(): ApprovedCampaignLaunchManifest {
 }
 
 describe("Claude quota-aware approved Campaign launcher", () => {
+  it("normalizes account readiness separately from quota", () => {
+    expect(
+      normalizeClaudeAccountReadiness({ status: "ready" }, observedAt),
+    ).toEqual({
+      kind: "claude-account-readiness-observation",
+      schemaVersion: 1,
+      observedAt,
+      source: "operator",
+      status: "ready",
+    });
+    expect(() =>
+      normalizeClaudeAccountReadiness(
+        { status: "ready", token: "must-not-be-persisted" },
+        observedAt,
+      ),
+    ).toThrow();
+  });
+
+  it("records account readiness through the operator CLI", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "readiness-cli-status-"));
+    const readinessPath = join(directory, "readiness.json");
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    try {
+      const exitCode = await runClaudeQuotaLauncherCli(
+        ["record-account-readiness", "--readiness-observation", readinessPath],
+        {
+          stdin: async () => JSON.stringify({ status: "unauthenticated" }),
+          stdout: (text) => stdout.push(text),
+          stderr: (text) => stderr.push(text),
+        },
+      );
+
+      expect(exitCode).toBe(0);
+      expect(stderr).toEqual([]);
+      expect(JSON.parse(stdout.join(""))).toMatchObject({
+        source: "operator",
+        status: "unauthenticated",
+      });
+      expect(JSON.parse(await readFile(readinessPath, "utf8"))).toMatchObject({
+        source: "operator",
+        status: "unauthenticated",
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("records a status-line observation through the operator CLI", async () => {
     const directory = await mkdtemp(join(tmpdir(), "quota-cli-status-"));
     const observationPath = join(directory, "observation.json");
@@ -59,7 +153,7 @@ describe("Claude quota-aware approved Campaign launcher", () => {
 
     try {
       const exitCode = await runClaudeQuotaLauncherCli(
-        ["record-status-line", "--observation", observationPath],
+        ["record-status-line", "--quota-observation", observationPath],
         {
           stdin: async () =>
             JSON.stringify({
@@ -67,6 +161,10 @@ describe("Claude quota-aware approved Campaign launcher", () => {
                 five_hour: {
                   used_percentage: 35,
                   resets_at: 1_789_616_400,
+                },
+                seven_day: {
+                  used_percentage: 4,
+                  resets_at: 1_790_144_400,
                 },
               },
             }),
@@ -80,11 +178,13 @@ describe("Claude quota-aware approved Campaign launcher", () => {
       expect(JSON.parse(stdout.join(""))).toMatchObject({
         source: "status-line",
         fiveHour: { usedPercentage: 35 },
+        sevenDay: { usedPercentage: 4 },
       });
       expect(JSON.parse(await readFile(observationPath, "utf8"))).toMatchObject(
         {
           source: "status-line",
           fiveHour: { usedPercentage: 35 },
+          sevenDay: { usedPercentage: 4 },
         },
       );
     } finally {
@@ -96,22 +196,36 @@ describe("Claude quota-aware approved Campaign launcher", () => {
     const directory = await mkdtemp(join(tmpdir(), "quota-cli-dispatch-"));
     const manifestPath = join(directory, "manifest.json");
     const observationPath = join(directory, "observation.json");
+    const readinessPath = join(directory, "readiness.json");
     const input = manifest();
     input.plans = input.plans.slice(0, 1);
     await writeFile(manifestPath, `${JSON.stringify(input)}\n`, {
       mode: 0o600,
     });
-    await writeFile(
-      observationPath,
-      `${JSON.stringify({
-        kind: "claude-rate-limit-observation",
-        schemaVersion: 1,
-        observedAt: new Date().toISOString(),
-        source: "status-line",
-        fiveHour: { usedPercentage: 40 },
-      })}\n`,
-      { mode: 0o600 },
-    );
+    const now = new Date();
+    const currentObservedAt = now.toISOString();
+    await Promise.all([
+      writeFile(
+        observationPath,
+        `${JSON.stringify(
+          quotaObservation({
+            at: currentObservedAt,
+            fiveHourReset: new Date(
+              now.getTime() + 60 * 60 * 1_000,
+            ).toISOString(),
+            sevenDayReset: new Date(
+              now.getTime() + 7 * 24 * 60 * 60 * 1_000,
+            ).toISOString(),
+          }),
+        )}\n`,
+        { mode: 0o600 },
+      ),
+      writeFile(
+        readinessPath,
+        `${JSON.stringify(readiness("ready", currentObservedAt))}\n`,
+        { mode: 0o600 },
+      ),
+    ]);
     const stdout: string[] = [];
     const stderr: string[] = [];
 
@@ -119,8 +233,10 @@ describe("Claude quota-aware approved Campaign launcher", () => {
       const exitCode = await runClaudeQuotaLauncherCli(
         [
           "dispatch",
-          "--observation",
+          "--quota-observation",
           observationPath,
+          "--readiness-observation",
+          readinessPath,
           "--manifest",
           manifestPath,
           "--receipts",
@@ -169,46 +285,108 @@ describe("Claude quota-aware approved Campaign launcher", () => {
       ),
     ).toEqual({
       kind: "claude-rate-limit-observation",
-      schemaVersion: 1,
+      schemaVersion: 2,
       observedAt,
       source: "status-line",
       fiveHour: {
         usedPercentage: 78,
-        resetsAt: "2026-09-17T03:40:00.000Z",
+        resetsAt: fiveHourResetsAt,
       },
       sevenDay: {
         usedPercentage: 4,
-        resetsAt: "2026-09-23T06:20:00.000Z",
+        resetsAt: sevenDayResetsAt,
       },
     });
+    expect(() =>
+      normalizeClaudeStatusLineRateLimits(
+        {
+          rate_limits: {
+            five_hour: {
+              used_percentage: 78,
+              resets_at: 1_789_616_400,
+            },
+          },
+        },
+        observedAt,
+      ),
+    ).toThrow();
   });
 
   it("preserves the reserve and both quota and process ceilings", () => {
     const decision = decideApprovedCampaignLaunches({
       manifest: manifest(),
-      observation: {
-        kind: "claude-rate-limit-observation",
-        schemaVersion: 1,
-        observedAt,
-        source: "status-line",
-        fiveHour: { usedPercentage: 40 },
-      },
+      readiness: readiness(),
+      observation: quotaObservation(),
       claimedPlanIds: new Set(["one"]),
       activePlanIds: new Set(["one"]),
       reservedFiveHourPercentage: 0,
+      reservedSevenDayPercentage: 0,
       now: "2026-09-17T00:05:00.000Z",
     });
 
     expect(decision).toEqual({
       kind: "approved-campaign-launch-decision",
-      usedPercentage: 40,
-      usablePercentage: 50,
+      accountStatus: "ready",
+      fiveHour: {
+        usedPercentage: 40,
+        usablePercentage: 50,
+        quotaSlots: 2,
+      },
+      sevenDay: {
+        usedPercentage: 10,
+        usablePercentage: 85,
+        quotaSlots: 3,
+      },
       quotaSlots: 2,
       processSlots: 2,
       selectedPlanIds: ["two", "three"],
       reason: "launch-approved",
     });
   });
+
+  it.each([
+    {
+      name: "missing",
+      readinessObservation: undefined,
+      now: "2026-09-17T00:05:00.000Z",
+      reason: "account-readiness-observation-missing",
+    },
+    {
+      name: "expired authentication",
+      readinessObservation: readiness("unauthenticated"),
+      now: "2026-09-17T00:05:00.000Z",
+      reason: "account-unauthenticated",
+    },
+    {
+      name: "unavailable",
+      readinessObservation: readiness("unavailable"),
+      now: "2026-09-17T00:05:00.000Z",
+      reason: "account-readiness-unavailable",
+    },
+    {
+      name: "stale",
+      readinessObservation: readiness(),
+      now: "2026-09-17T00:11:00.000Z",
+      reason: "account-readiness-observation-stale",
+    },
+  ])(
+    "fails closed when account readiness is $name",
+    ({ readinessObservation, now, reason }) => {
+      const decision = decideApprovedCampaignLaunches({
+        manifest: manifest(),
+        readiness: readinessObservation,
+        observation: quotaObservation(),
+        claimedPlanIds: new Set(),
+        activePlanIds: new Set(),
+        reservedFiveHourPercentage: 0,
+        reservedSevenDayPercentage: 0,
+        now,
+      });
+
+      expect(decision.selectedPlanIds).toEqual([]);
+      expect(decision.reason).toBe(reason);
+    },
+  );
 
   it.each([
     {
@@ -220,11 +398,7 @@ describe("Claude quota-aware approved Campaign launcher", () => {
     {
       name: "stale",
       observation: {
-        kind: "claude-rate-limit-observation" as const,
-        schemaVersion: 1 as const,
-        observedAt,
-        source: "status-line" as const,
-        fiveHour: { usedPercentage: 40 },
+        ...quotaObservation(),
       },
       now: "2026-09-17T00:11:00.000Z",
       reason: "quota-observation-stale",
@@ -232,27 +406,34 @@ describe("Claude quota-aware approved Campaign launcher", () => {
     {
       name: "reset-crossed",
       observation: {
-        kind: "claude-rate-limit-observation" as const,
-        schemaVersion: 1 as const,
-        observedAt,
-        source: "status-line" as const,
-        fiveHour: {
-          usedPercentage: 40,
-          resetsAt: "2026-09-17T00:04:00.000Z",
-        },
+        ...quotaObservation({
+          fiveHourReset: "2026-09-17T00:04:00.000Z",
+        }),
       },
       now: "2026-09-17T00:05:00.000Z",
-      reason: "quota-window-reset",
+      reason: "five-hour-quota-window-reset",
+    },
+    {
+      name: "seven-day-reset-crossed",
+      observation: {
+        ...quotaObservation({
+          sevenDayReset: "2026-09-17T00:04:00.000Z",
+        }),
+      },
+      now: "2026-09-17T00:05:00.000Z",
+      reason: "seven-day-quota-window-reset",
     },
   ])(
     "fails closed when the quota observation is $name",
     ({ observation, now, reason }) => {
       const decision = decideApprovedCampaignLaunches({
         manifest: manifest(),
+        readiness: readiness("ready", now),
         observation,
         claimedPlanIds: new Set(),
         activePlanIds: new Set(),
         reservedFiveHourPercentage: 0,
+        reservedSevenDayPercentage: 0,
         now,
       });
 
@@ -261,51 +442,87 @@ describe("Claude quota-aware approved Campaign launcher", () => {
     },
   );
 
-  it("launches nothing when doing so would consume the reserve", () => {
+  it("launches nothing when doing so would consume the five-hour reserve", () => {
     const decision = decideApprovedCampaignLaunches({
       manifest: manifest(),
-      observation: {
-        kind: "claude-rate-limit-observation",
-        schemaVersion: 1,
-        observedAt,
-        source: "status-line",
-        fiveHour: { usedPercentage: 78 },
-      },
+      readiness: readiness(),
+      observation: quotaObservation({ fiveHourUsed: 78 }),
       claimedPlanIds: new Set(),
       activePlanIds: new Set(),
       reservedFiveHourPercentage: 0,
+      reservedSevenDayPercentage: 0,
       now: "2026-09-17T00:05:00.000Z",
     });
 
     expect(decision).toMatchObject({
-      usablePercentage: 12,
+      fiveHour: { usablePercentage: 12, quotaSlots: 0 },
       quotaSlots: 0,
       selectedPlanIds: [],
-      reason: "quota-reserve-reached",
+      reason: "five-hour-quota-reserve-reached",
+    });
+  });
+
+  it("launches nothing when doing so would consume the seven-day reserve", () => {
+    const decision = decideApprovedCampaignLaunches({
+      manifest: manifest(),
+      readiness: readiness(),
+      observation: quotaObservation({ sevenDayUsed: 80 }),
+      claimedPlanIds: new Set(),
+      activePlanIds: new Set(),
+      reservedFiveHourPercentage: 0,
+      reservedSevenDayPercentage: 0,
+      now: "2026-09-17T00:05:00.000Z",
+    });
+
+    expect(decision).toMatchObject({
+      sevenDay: { usablePercentage: 15, quotaSlots: 0 },
+      quotaSlots: 0,
+      selectedPlanIds: [],
+      reason: "seven-day-quota-reserve-reached",
+    });
+  });
+
+  it("preserves the maximum-active process ceiling", () => {
+    const decision = decideApprovedCampaignLaunches({
+      manifest: manifest(),
+      readiness: readiness(),
+      observation: quotaObservation(),
+      claimedPlanIds: new Set(["one", "two", "three"]),
+      activePlanIds: new Set(["one", "two", "three"]),
+      reservedFiveHourPercentage: 0,
+      reservedSevenDayPercentage: 0,
+      now: "2026-09-17T00:05:00.000Z",
+    });
+
+    expect(decision).toMatchObject({
+      processSlots: 0,
+      selectedPlanIds: [],
+      reason: "process-ceiling-reached",
     });
   });
 
   it("can spend the final quota percentage for resumable Campaigns", () => {
     const input = manifest();
     input.policy.fiveHourReservePercentage = 0;
+    input.policy.sevenDayReservePercentage = 0;
     input.policy.allowQuotaExhaustion = true;
     const decision = decideApprovedCampaignLaunches({
       manifest: input,
-      observation: {
-        kind: "claude-rate-limit-observation",
-        schemaVersion: 1,
-        observedAt,
-        source: "status-line",
-        fiveHour: { usedPercentage: 99 },
-      },
+      readiness: readiness(),
+      observation: quotaObservation({
+        fiveHourUsed: 99,
+        sevenDayUsed: 99,
+      }),
       claimedPlanIds: new Set(),
       activePlanIds: new Set(),
       reservedFiveHourPercentage: 0,
+      reservedSevenDayPercentage: 0,
       now: "2026-09-17T00:05:00.000Z",
     });
 
     expect(decision).toMatchObject({
-      usablePercentage: 1,
+      fiveHour: { usablePercentage: 1 },
+      sevenDay: { usablePercentage: 1 },
       quotaSlots: 4,
       selectedPlanIds: ["one", "two", "three"],
       reason: "launch-approved",
@@ -316,10 +533,12 @@ describe("Claude quota-aware approved Campaign launcher", () => {
     const input = manifest();
     const decision = decideApprovedCampaignLaunches({
       manifest: input,
+      readiness: undefined,
       observation: undefined,
       claimedPlanIds: new Set(input.plans.map((plan) => plan.id)),
       activePlanIds: new Set(),
       reservedFiveHourPercentage: 0,
+      reservedSevenDayPercentage: 0,
       now: "2026-09-17T00:05:00.000Z",
     });
 
@@ -363,13 +582,8 @@ describe("Claude quota-aware approved Campaign launcher", () => {
     };
     const options = {
       manifest: input,
-      observation: {
-        kind: "claude-rate-limit-observation" as const,
-        schemaVersion: 1 as const,
-        observedAt,
-        source: "status-line" as const,
-        fiveHour: { usedPercentage: 40 },
-      },
+      readiness: readiness(),
+      observation: quotaObservation(),
       receiptRoot: join(directory, "receipts"),
       workingDirectory: directory,
       now: "2026-09-17T00:05:00.000Z",
@@ -386,6 +600,13 @@ describe("Claude quota-aware approved Campaign launcher", () => {
       expect([first.decision.reason, concurrent.decision.reason]).toContain(
         "launch-approved",
       );
+      expect([...first.launched, ...concurrent.launched][0]).toMatchObject({
+        schemaVersion: 2,
+        accountReadinessObservationDigest: expect.stringMatching(/^sha256:/),
+        quotaObservationDigest: expect.stringMatching(/^sha256:/),
+        estimatedFiveHourPercentage: 18,
+        estimatedSevenDayPercentage: 25,
+      });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -399,6 +620,7 @@ describe("Claude quota-aware approved Campaign launcher", () => {
       policy: {
         ...base.policy,
         estimatedFiveHourPercentagePerLaunch: 30,
+        estimatedSevenDayPercentagePerLaunch: 70,
         maxActiveCampaigns: 1,
       },
       runtime: {
@@ -413,13 +635,8 @@ describe("Claude quota-aware approved Campaign launcher", () => {
     };
     const options = {
       manifest: input,
-      observation: {
-        kind: "claude-rate-limit-observation" as const,
-        schemaVersion: 1 as const,
-        observedAt,
-        source: "status-line" as const,
-        fiveHour: { usedPercentage: 40 },
-      },
+      readiness: readiness(),
+      observation: quotaObservation(),
       receiptRoot: join(directory, "receipts"),
       workingDirectory: directory,
       now: "2026-09-17T00:05:00.000Z",
@@ -449,10 +666,11 @@ describe("Claude quota-aware approved Campaign launcher", () => {
       expect(first.launched).toHaveLength(1);
       expect(second).toMatchObject({
         decision: {
-          usablePercentage: 20,
+          fiveHour: { usablePercentage: 20, quotaSlots: 0 },
+          sevenDay: { usablePercentage: 15, quotaSlots: 0 },
           quotaSlots: 0,
           selectedPlanIds: [],
-          reason: "quota-reserve-reached",
+          reason: "five-hour-quota-reserve-reached",
         },
         launched: [],
       });
@@ -472,6 +690,8 @@ describe("Claude quota-aware approved Campaign launcher", () => {
 
     expect(exitCode).toBe(1);
     expect(stdout).toEqual([]);
-    expect(stderr.join("")).toContain("<record-status-line|dispatch>");
+    expect(stderr.join("")).toContain(
+      "<record-account-readiness|record-status-line|dispatch>",
+    );
   });
 });

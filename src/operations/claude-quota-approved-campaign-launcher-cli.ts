@@ -6,16 +6,19 @@ import { pathToFileURL } from "node:url";
 
 import {
   approvedCampaignLaunchManifestSchema,
+  normalizeClaudeAccountReadiness,
   normalizeClaudeStatusLineRateLimits,
 } from "./claude-quota-approved-campaign-launcher.js";
 import {
   dispatchApprovedCampaignLaunches,
+  readAccountReadinessObservation,
   readRateLimitObservation,
+  writeAccountReadinessObservation,
   writeRateLimitObservation,
 } from "./claude-quota-approved-campaign-launcher-runtime.js";
 
 const usage =
-  "Usage: claude-quota-approved-campaign-launcher <record-status-line|dispatch> ...";
+  "Usage: claude-quota-approved-campaign-launcher <record-account-readiness|record-status-line|dispatch> ...";
 
 export interface LauncherCliIo {
   stdin(): Promise<string>;
@@ -59,12 +62,26 @@ export async function runClaudeQuotaLauncherCli(
 ): Promise<number> {
   try {
     const [command] = args;
-    if (command !== "record-status-line" && command !== "dispatch") {
+    if (
+      command !== "record-account-readiness" &&
+      command !== "record-status-line" &&
+      command !== "dispatch"
+    ) {
       throw new Error(usage);
     }
     const now = new Date().toISOString();
-    const observationPath = resolve(readOption(args, "--observation"));
+    if (command === "record-account-readiness") {
+      const readinessPath = resolve(
+        readOption(args, "--readiness-observation"),
+      );
+      const value: unknown = JSON.parse(await io.stdin());
+      const observation = normalizeClaudeAccountReadiness(value, now);
+      await writeAccountReadinessObservation(readinessPath, observation);
+      io.stdout(`${JSON.stringify(observation)}\n`);
+      return 0;
+    }
     if (command === "record-status-line") {
+      const observationPath = resolve(readOption(args, "--quota-observation"));
       const value: unknown = JSON.parse(await io.stdin());
       const observation = normalizeClaudeStatusLineRateLimits(value, now);
       await writeRateLimitObservation(observationPath, observation);
@@ -75,9 +92,12 @@ export async function runClaudeQuotaLauncherCli(
     const manifest = await readManifest(
       resolve(readOption(args, "--manifest")),
     );
+    const readinessPath = resolve(readOption(args, "--readiness-observation"));
+    const observationPath = resolve(readOption(args, "--quota-observation"));
     const receiptRoot = resolve(readOption(args, "--receipts"));
     const result = await dispatchApprovedCampaignLaunches({
       manifest,
+      readiness: await readAccountReadinessObservation(readinessPath),
       observation: await readRateLimitObservation(observationPath),
       receiptRoot,
       workingDirectory: resolve(readOption(args, "--working-directory")),

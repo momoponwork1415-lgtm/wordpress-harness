@@ -16,25 +16,31 @@ import { z } from "zod";
 import { canonicalDigest } from "../infrastructure/canonical-json.js";
 import {
   approvedCampaignLaunchManifestSchema,
+  claudeAccountReadinessObservationSchema,
   claudeRateLimitObservationSchema,
   decideApprovedCampaignLaunches,
   type ApprovedCampaignLaunchDecision,
   type ApprovedCampaignLaunchManifest,
   type ApprovedCampaignLaunchPlan,
+  type ClaudeAccountReadinessObservation,
   type ClaudeRateLimitObservation,
 } from "./claude-quota-approved-campaign-launcher.js";
 
 const launchReceiptSchema = z
   .object({
     kind: z.literal("approved-campaign-launch-receipt"),
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     planId: z.string().min(1),
     campaignId: z.string().min(1),
     launchedAt: z.iso.datetime(),
     pid: z.number().int().positive(),
     logPath: z.string().min(1),
+    accountReadinessObservationDigest: z
+      .string()
+      .regex(/^sha256:[a-f0-9]{64}$/),
     quotaObservationDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
     estimatedFiveHourPercentage: z.number().positive().max(100),
+    estimatedSevenDayPercentage: z.number().positive().max(100),
   })
   .strict();
 
@@ -46,6 +52,7 @@ export interface LaunchReceiptView {
   readonly quotaReservations: readonly Readonly<{
     observationDigest: string;
     estimatedFiveHourPercentage: number;
+    estimatedSevenDayPercentage: number;
   }>[];
 }
 
@@ -71,6 +78,7 @@ export async function inspectLaunchReceipts(
   const quotaReservations: Array<{
     observationDigest: string;
     estimatedFiveHourPercentage: number;
+    estimatedSevenDayPercentage: number;
   }> = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
@@ -83,6 +91,7 @@ export async function inspectLaunchReceipts(
       quotaReservations.push({
         observationDigest: receipt.quotaObservationDigest,
         estimatedFiveHourPercentage: receipt.estimatedFiveHourPercentage,
+        estimatedSevenDayPercentage: receipt.estimatedSevenDayPercentage,
       });
       if (receipt.planId !== entry.name || processIsActive(receipt.pid)) {
         activePlanIds.add(entry.name);
@@ -101,10 +110,17 @@ export async function writeRateLimitObservation(
   observation: ClaudeRateLimitObservation,
 ): Promise<void> {
   const parsed = claudeRateLimitObservationSchema.parse(observation);
+  await writePrivateObservation(path, parsed);
+}
+
+async function writePrivateObservation(
+  path: string,
+  observation: ClaudeAccountReadinessObservation | ClaudeRateLimitObservation,
+): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
   try {
-    await writeFile(temporaryPath, `${JSON.stringify(parsed)}\n`, {
+    await writeFile(temporaryPath, `${JSON.stringify(observation)}\n`, {
       flag: "wx",
       mode: 0o600,
     });
@@ -114,12 +130,34 @@ export async function writeRateLimitObservation(
   }
 }
 
+export async function writeAccountReadinessObservation(
+  path: string,
+  observation: ClaudeAccountReadinessObservation,
+): Promise<void> {
+  const parsed = claudeAccountReadinessObservationSchema.parse(observation);
+  await writePrivateObservation(path, parsed);
+}
+
 export async function readRateLimitObservation(
   path: string,
 ): Promise<ClaudeRateLimitObservation | undefined> {
   try {
     const value: unknown = JSON.parse(await readFile(path, "utf8"));
     return claudeRateLimitObservationSchema.parse(value);
+  } catch (error: unknown) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+export async function readAccountReadinessObservation(
+  path: string,
+): Promise<ClaudeAccountReadinessObservation | undefined> {
+  try {
+    const value: unknown = JSON.parse(await readFile(path, "utf8"));
+    return claudeAccountReadinessObservationSchema.parse(value);
   } catch (error: unknown) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return undefined;
@@ -168,6 +206,7 @@ async function claimAndLaunch(
   receiptRoot: string,
   workingDirectory: string,
   launchedAt: string,
+  accountReadinessObservationDigest: string,
   quotaObservationDigest: string,
 ): Promise<LaunchReceipt | undefined> {
   const claimDirectory = join(receiptRoot, plan.id);
@@ -206,15 +245,18 @@ async function claimAndLaunch(
       child.unref();
       const receipt = launchReceiptSchema.parse({
         kind: "approved-campaign-launch-receipt",
-        schemaVersion: 1,
+        schemaVersion: 2,
         planId: plan.id,
         campaignId: plan.campaignId,
         launchedAt,
         pid: child.pid,
         logPath: plan.logPath,
+        accountReadinessObservationDigest,
         quotaObservationDigest,
         estimatedFiveHourPercentage:
           manifest.policy.estimatedFiveHourPercentagePerLaunch,
+        estimatedSevenDayPercentage:
+          manifest.policy.estimatedSevenDayPercentagePerLaunch,
       });
       await writeFile(
         join(claimDirectory, "receipt.json"),
@@ -240,6 +282,7 @@ export interface ApprovedCampaignDispatchResult {
 
 export async function dispatchApprovedCampaignLaunches(options: {
   readonly manifest: ApprovedCampaignLaunchManifest;
+  readonly readiness: ClaudeAccountReadinessObservation | undefined;
   readonly observation: ClaudeRateLimitObservation | undefined;
   readonly receiptRoot: string;
   readonly workingDirectory: string;
@@ -247,11 +290,17 @@ export async function dispatchApprovedCampaignLaunches(options: {
   readonly dryRun: boolean;
 }): Promise<ApprovedCampaignDispatchResult> {
   const manifest = approvedCampaignLaunchManifestSchema.parse(options.manifest);
+  const readiness =
+    options.readiness === undefined
+      ? undefined
+      : claudeAccountReadinessObservationSchema.parse(options.readiness);
   const observation =
     options.observation === undefined
       ? undefined
       : claudeRateLimitObservationSchema.parse(options.observation);
   const view = await inspectLaunchReceipts(options.receiptRoot);
+  const readinessDigest =
+    readiness === undefined ? undefined : canonicalDigest(readiness);
   const observationDigest =
     observation === undefined ? undefined : canonicalDigest(observation);
   const reservedFiveHourPercentage = view.quotaReservations
@@ -262,19 +311,34 @@ export async function dispatchApprovedCampaignLaunches(options: {
       (total, reservation) => total + reservation.estimatedFiveHourPercentage,
       0,
     );
+  const reservedSevenDayPercentage = view.quotaReservations
+    .filter(
+      (reservation) => reservation.observationDigest === observationDigest,
+    )
+    .reduce(
+      (total, reservation) => total + reservation.estimatedSevenDayPercentage,
+      0,
+    );
   const decision = decideApprovedCampaignLaunches({
     manifest,
+    readiness,
     observation,
     claimedPlanIds: view.claimedPlanIds,
     activePlanIds: view.activePlanIds,
     reservedFiveHourPercentage,
+    reservedSevenDayPercentage,
     now: options.now,
   });
   if (options.dryRun) return { decision, launched: [] };
   const plansById = new Map(manifest.plans.map((plan) => [plan.id, plan]));
   const launched: LaunchReceipt[] = [];
-  if (observationDigest === undefined && decision.selectedPlanIds.length > 0) {
-    throw new Error("A launch decision requires a quota observation binding");
+  if (
+    (readinessDigest === undefined || observationDigest === undefined) &&
+    decision.selectedPlanIds.length > 0
+  ) {
+    throw new Error(
+      "A launch decision requires account readiness and quota observation bindings",
+    );
   }
   for (const planId of decision.selectedPlanIds) {
     const plan = plansById.get(planId);
@@ -285,6 +349,7 @@ export async function dispatchApprovedCampaignLaunches(options: {
       resolve(options.receiptRoot),
       options.workingDirectory,
       options.now,
+      readinessDigest!,
       observationDigest!,
     );
     if (receipt !== undefined) launched.push(receipt);

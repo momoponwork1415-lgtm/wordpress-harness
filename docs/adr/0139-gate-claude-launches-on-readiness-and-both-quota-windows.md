@@ -1,0 +1,11 @@
+---
+status: accepted
+---
+
+# Gate Claude launches on readiness and both quota windows
+
+承認済みClaude Campaignの起動前に、account readinessとrate limitを別のprivate observationとして要求し、5時間枠と7日枠の少ない方で起動数を制限する。status-lineから両windowの使用率とreset instantを得られない場合、またはreadyを示すfreshなoperator observationがない場合は起動しない。認証状態をquota欠落へ丸めると、loginが必要なのか観測producerが壊れたのかを運用者が区別できず、5時間枠だけを見ると7日枠を使い切るためである。
+
+Operationsは`ready`、`unauthenticated`、`unavailable`とtimestampから導く`stale`を区別するが、credential、token、browser sessionを保存せず、loginやrefreshを自動化しない。loginまたはquota window reset後は新しい両observationを要求する。Launch Receiptは両observation digestと両windowの見積予約量へbindするため、process終了後も同じquota observationを再利用して枠を過大評価しない。
+
+このgateは起動前のoperator controlであり、Research Campaign stateやNative Runtimeの失敗分類ではない。起動後の`provider-unauthenticated`と`provider-quota-exhausted`はNative Runtime Receiptに残し、Operationsが成功・棄却・別terminalへ変換しない。代償としてoperatorはreadinessとquotaを別々に更新し、manifestごとに両windowのreserveと1起動あたりの見積りを設定する必要がある。
