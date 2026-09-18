@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { isIP } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -105,7 +105,8 @@ http.createServer((request, response) => {
       request.url !== "/chat/completions" ||
       request.headers.authorization !== "Bearer scoped-integration-token" ||
       body.model !== "deepseek-flash" ||
-      body.stream !== true
+      body.stream !== true ||
+      !JSON.stringify(body.messages).includes("Maintain an explicit scratch registry of approach families")
     ) {
       response.writeHead(400).end();
       return;
@@ -167,7 +168,10 @@ describe("DeepSeek Harness Native Agent Runtime host integration", () => {
           },
         ],
       });
-      const researchPrompt = "Audit broken security semantics from source.";
+      const researchPrompt = await readFile(
+        resolve("prompts/wordpress-plugin-research-v3.md"),
+        "utf8",
+      );
       const runtimeProfile = defineAgentRuntimeProfile({
         id: "deepseek-flash-max",
         ...deepSeekHarnessNativeTransport,
