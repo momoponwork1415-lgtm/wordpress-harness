@@ -31,6 +31,7 @@ Interfaceとテストだけでは使い方が分からず内部を横断する�
 | providerと隔離実行を接続する | Research | [gVisor Native Agent Runtimes](#gvisor-native-agent-runtimes) |
 | Candidateを動的検証しscopeと提出承認を扱う | Human OS | [Human OS](#human-os) |
 | コマンドと実行依存を接続する | Composition root | [CLI](#cli) |
+| 独立Research Trialを保存済み記録から比較する | Operations | [Independent Research Trial Comparison](#independent-research-trial-comparison) |
 | Agentへ渡る入力の所在を確認する | Research / Runtime Adapter | [Agent input](#agent-input) |
 | 共通のJSON・source digestを調べる | Infrastructure | [Shared infrastructure](#shared-infrastructure) |
 
@@ -47,6 +48,7 @@ skillが必要なModuleを呼び、データを取得して手順を進める使
 | Research | Grant、両Human Review、Checkpoint再開、Candidate Verification Request / Coverage記録 | `inspect`でRequestとrecipe準備不足を取得できる。領域間のCampaign Coverage Receipt形式への変換は未実装 |
 | Native Runtime | Grok / Claude / GLM / Codex / DeepSeek HarnessのResearch Adapter、固定runtime binding、private recipe materialization | 実providerでのCandidateとrecipeの品質は別途評価が必要 |
 | Human OS | Candidate-bound dynamic verification、Verified Vulnerability、programme scope、提出草案と承認の記録・照会 | 呼び出し側がsource・Lab・private recipe store・全programmeを列挙するscope evaluatorを供給する。外部送信は行わない |
+| Trial比較 | exact Campaign集合のbinding照合、planned / model-completed / incomplete、Candidate / Assessment provenance、usage / cost、Verification / programme scopeのread-only projection | CampaignとCandidate Verificationの保存済みviewを呼び出し側が供給する。比較からResearch、Review、Verification、外部行動は起動しない |
 
 外部送信と複数Targetの中央schedulerは意図的に持たない。次の有限workと受入条件は[GitHub Issues](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues)を参照する。
 
@@ -277,6 +279,20 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 - **失敗時:** unsupported runtime・missing option・invalid inputはnon-zero。buildは古いdistを消し、現行sourceにないartifactを拒否する。
 
 **Source / Behavior Test:** [`src/cli.ts`](../src/cli.ts) · [`agent-led-campaign-cli.test.ts`](../tests/cli/agent-led-campaign-cli.test.ts) · [`database-lifecycle.test.ts`](../tests/cli/database-lifecycle.test.ts)
+
+</details>
+
+## Independent Research Trial Comparison
+
+<details>
+<summary>Operations — 保存済みCampaignを独立Trialとして読み取り専用で比較する</summary>
+
+- **目的:** exactなCampaign ID集合を一つの評価条件へ照合し、Campaign内の継続Grantやprovider retryを独立Trialへ数えずに、完了・未完了・不一致と後段結果を表示する。
+- **Interface:** `defineIndependentResearchTrialBinding`、`defineIndependentResearchTrialComparisonRequest`、`deriveIndependentResearchTrialComparison`。RequestはTarget / Dependency、Threat Context、Programme Boundary、Prompt、Runtime、Permission、Budgetとfresh startを自己digestへbindする。導出関数は`ResearchCampaignView`と任意の`CandidateVerificationView`だけを受け取る。
+- **所有する記録・不変条件:** mutable stateを持たない。Request順をTrial順として決定論的な自己digest付きviewを返す。CandidateはCampaign内のimmutableな同一IDだけを一recordへまとめて全run IDを保持し、別Campaign間では同じrecord digestでも統合しない。AssessmentはGrant-local occurrenceのまま保持する。costまたはtoken欠損は`unknown`、未起動は`not-observed`であり0へ丸めない。technical verification、programme scope、Campaign statusとCoverageを別fieldにする。
+- **失敗時:** missing Campaignは`planned`、binding不一致またはresume開始は`incompatible`、失敗・orphan・administrative incompleteは`incomplete`として表示する。計画外Campaign、重複・改変されたview、Campaign Requestと一致しないHuman OS viewは例外で拒否する。比較はResearch Grant、Human Review、Candidate Verificationまたは外部行動を起動しない。
+
+**Source / Behavior Test:** [`independent-research-trial-comparison.ts`](../src/operations/independent-research-trial-comparison.ts) · [`independent-research-trial-comparison.test.ts`](../tests/operations/independent-research-trial-comparison.test.ts)
 
 </details>
 
