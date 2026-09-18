@@ -58,6 +58,11 @@ describe("Research Method Prompt Sets", () => {
       promptPath: "prompts/wordpress-plugin-research-cloudflare-v1.md",
       promptSetId: "wordpress-plugin-research-cloudflare-v1",
     },
+    {
+      method: "cloudflare-upstream" as const,
+      promptPath: "prompts/wordpress-plugin-research-cloudflare-upstream-v1.md",
+      promptSetId: "wordpress-plugin-research-cloudflare-upstream-c1c8a8c-v1",
+    },
   ])(
     "binds the $method method name to one exact versioned Prompt Set",
     async ({ method, promptPath, promptSetId }) => {
@@ -140,6 +145,27 @@ describe("Research Method Prompt Sets", () => {
     );
     expect(prompt).toContain(
       "The evidence summary is not proof that the Target is safe or complete.",
+    );
+  });
+
+  it("preserves the pinned upstream Cloudflare full-audit workflow", async () => {
+    const prompt = await readFile(
+      join(
+        process.cwd(),
+        "prompts/wordpress-plugin-research-cloudflare-upstream-v1.md",
+      ),
+      "utf8",
+    );
+
+    expect(prompt).toContain(
+      "Upstream commit: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8",
+    );
+    expect(prompt).toContain("Deterministic coverage ledger");
+    expect(prompt).toContain("Coverage-critic waves");
+    expect(prompt).toContain("Independently validate every candidate");
+    expect(prompt).toContain("Verify the final records with fresh eyes");
+    expect(prompt).toContain(
+      "Return only the Harness Research Report requested after this method bundle.",
     );
   });
 });

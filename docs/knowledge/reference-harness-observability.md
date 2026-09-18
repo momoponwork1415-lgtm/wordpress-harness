@@ -64,13 +64,13 @@ Status: official-source comparison; Cloudflare security-audit-skillとAikido / D
 | Reconnaissance、coverage-directed Hunt、adversarial Validate、Gapfill | **適応** | Cloudflare-derived Prompt SetのRoot-owned loopとして採る。固定Agent、Waveまたはdeterministic ledgerをHarness stateにせず、Gapfillはsource-bound continuation proposalとしてHuman Reviewへ渡す。 |
 | `confirmed` / `needs_validation` / `rejected`を分ける | **適応** | Research Candidate、`verification-preparation-needed`、Candidate Verificationの`runtime-confirmed` / `contradicted` / `incomplete`、programme scopeを別々に保つ。名称間の一対一変換はしない。 |
 | 保存記録からreportを導出する | **採用** | Campaign `inspect`とHuman OSの保存済みviewから読み取り専用に説明・比較を導出する。reportの都合で元のverdictやCandidateを更新しない。 |
-| deterministic coverage ledgerとcritic wave | **不採用** | fixed coverage unit、wave、roleをHarness stateにせず、AIが探索判断を所有する。Coverageの可視化を安全性の証明や探索queueにしない。 |
+| deterministic coverage ledgerとcritic wave | **適応方式では不採用、upstream比較方式では採用** | 通常のCloudflare-derived Promptではfixed coverage unit、wave、roleをHarness stateにしない。`cloudflare-upstream`比較方式だけはpinned skillのprivate scratch workflowとして保持し、Harness state、Research Coverageまたは安全性の証明へ昇格させない。 |
 | prior runを次runの計画と除外へ使う | **独立試行では不採用** | 同一条件のIndependent Research Trialへ過去Candidate、Checkpoint、reportを入力しない。履歴を使う別の継続・再調査は比較条件に明記する。 |
 | fresh source verifierとstable fingerprintで統合する | **不採用 / 保留** | source-only verifierはADR 0135により復活させず、admit済みCandidateをfresh runtimeで検証する。Candidate idはroot cause同一性を証明しないため、cross-Campaign dedupは自動化しない。 |
 | 不足した検証や予算をincompleteとして残す | **採用済み** | provider、schema、setup、recipe、evidence不足をno-finding、FP、contradictedへ丸めない。 |
 | agent invocation数をstrict cost budgetにする | **不採用** | run数とwall timeをhard limitにし、provider報告costはADR 0132どおり観測値とする。 |
 
-**Inference:** Cloudflareから採るべきなのは、single writer、機械可読な記録、failureとverdictの分離、保存記録からのreport導出である。固定workflow、第二のledger、source-only verifierまたはdedup agentを移植する根拠にはならない。
+**Inference:** 通常方式でCloudflareから採るのは、single writer、機械可読な記録、failureとverdictの分離、保存記録からのreport導出である。固定workflow、第二のledger、source-only verifierまたはdedup agentをProduct stateへ移植しない。方法の因果効果を測る`cloudflare-upstream`比較方式では、pinned公開skillをResearch Method内部だけに保持する。
 
 ## Anthropic: information design and evidence quality
 

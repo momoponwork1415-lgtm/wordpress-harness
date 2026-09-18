@@ -1,4 +1,4 @@
-export type ResearchMethod = "wp2shell" | "cloudflare";
+export type ResearchMethod = "wp2shell" | "cloudflare" | "cloudflare-upstream";
 
 export interface ResearchMethodPromptSet {
   readonly id: string;
@@ -18,6 +18,11 @@ const promptSetByMethod = {
     digest:
       "sha256:ad97b51be4cbe8e10e147bbed779a2db05c419fc8bbc78cdc26c1dbfedfe0113",
   },
+  "cloudflare-upstream": {
+    id: "wordpress-plugin-research-cloudflare-upstream-c1c8a8c-v1",
+    digest:
+      "sha256:9372e9529bc9d5bf9daafca61598102e99ade13ac27d370e468a90e8c9061889",
+  },
 } as const satisfies Record<ResearchMethod, ResearchMethodPromptSet>;
 
 const canonicalPromptSets = new Map<
@@ -35,6 +40,13 @@ const canonicalPromptSets = new Map<
   [
     promptSetByMethod.cloudflare.id,
     { method: "cloudflare", digest: promptSetByMethod.cloudflare.digest },
+  ],
+  [
+    promptSetByMethod["cloudflare-upstream"].id,
+    {
+      method: "cloudflare-upstream",
+      digest: promptSetByMethod["cloudflare-upstream"].digest,
+    },
   ],
 ]);
 

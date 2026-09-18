@@ -9,6 +9,7 @@ custom-facebook-feed/
 dist/
 node_modules/
 tools/php-program-index/vendor/
+vendor/cloudflare-security-audit-skill/
 
 # Generated lockfiles and human-authored design documents are outside the format gate.
 pnpm-lock.yaml
