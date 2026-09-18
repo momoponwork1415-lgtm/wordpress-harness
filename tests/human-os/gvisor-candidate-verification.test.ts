@@ -51,7 +51,7 @@ describe("gVisor WordPress Candidate Verification", () => {
     });
     const requestBody = {
       kind: "candidate-verification-request" as const,
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
       requestId: "campaign-runtime:verification:candidate-1",
       campaignId: "campaign-runtime",
       campaignInputDigest: digest("8"),
@@ -75,6 +75,35 @@ describe("gVisor WordPress Candidate Verification", () => {
             observation: "Stores the visitor-controlled value.",
           },
         ],
+        sourceTrace: [
+          {
+            role: "entrypoint" as const,
+            path: "example.php",
+            location: "save:44",
+            observation: "The public request supplies the stored value.",
+          },
+          {
+            role: "effect" as const,
+            path: "example.php",
+            location: "render:72",
+            observation: "The stored value reaches an executable context.",
+          },
+        ],
+        controlAssessments: [
+          {
+            control: "Output escaping",
+            evidence: [
+              {
+                path: "example.php",
+                location: "render:72",
+                observation: "The stored value is rendered without escaping.",
+              },
+            ],
+            conclusion:
+              "No source-visible escaping prevents the executable browser effect.",
+          },
+        ],
+        unresolvedFacts: [],
         reproductionRecipe: {
           kind: "candidate-verification-recipe-ref" as const,
           schemaVersion: 1 as const,

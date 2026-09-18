@@ -7,9 +7,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import {
   candidateVerificationRecipeSchema,
+  researchAssessmentSchema,
   sealedNativeRunSchema,
 } from "../../src/research/agent-led/contracts.js";
-import { materializeResearchReport } from "../../src/research/agent-led/provider-research-report.js";
+import {
+  materializeResearchReport,
+  providerResearchReportSchema,
+} from "../../src/research/agent-led/provider-research-report.js";
+import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
 const directories: string[] = [];
 
@@ -98,7 +103,87 @@ function report(targetSnapshotDigest: string) {
   };
 }
 
+function challengedReport(targetSnapshotDigest: string) {
+  const value = report(targetSnapshotDigest);
+  return {
+    ...value,
+    schemaVersion: 2 as const,
+    evidenceSummary: researchEvidenceSummaryFixture(),
+    assessments: [
+      {
+        assessmentId: "assessment-refuted-nonce-bypass",
+        attackerPremise: "Unauthenticated visitor",
+        securityProperty: "State changes require an authorized request",
+        question: "Can the public action bypass the nonce check?",
+        disposition: "refuted" as const,
+        evidence: [
+          {
+            path: "plugin.php",
+            location: "8",
+            observation: "The public action verifies a request-bound nonce.",
+          },
+        ],
+        controlAssessments: [
+          {
+            control: "Request-bound nonce verification",
+            evidence: [
+              {
+                path: "plugin.php",
+                location: "8",
+                observation: "The handler rejects a missing or invalid nonce.",
+              },
+            ],
+            conclusion: "The visible control refutes this bypass route.",
+          },
+        ],
+        basis: "The unauthenticated request cannot pass the nonce check.",
+      },
+    ],
+    candidates: value.candidates.map((candidate) => ({
+      ...candidate,
+      sourceTrace: [
+        {
+          role: "entrypoint" as const,
+          path: "plugin.php",
+          location: "10",
+          observation: "The public action accepts the uploaded archive.",
+        },
+        {
+          role: "effect" as const,
+          path: "plugin.php",
+          location: "42",
+          observation: "The archive is installed as executable plugin code.",
+        },
+      ],
+      controlAssessments: [
+        {
+          control: "Administrator capability check",
+          evidence: [
+            {
+              path: "plugin.php",
+              location: "10-42",
+              observation:
+                "The public action reaches installation without a capability check.",
+            },
+          ],
+          conclusion:
+            "No source-visible control prevents the public request from reaching installation.",
+        },
+      ],
+      unresolvedFacts: [],
+    })),
+  };
+}
+
 describe("provider Research Report materialization", () => {
+  it("rejects a Report without source-grounded evidence of examined scope", () => {
+    const { evidenceSummary: _evidenceSummary, ...withoutEvidenceSummary } =
+      challengedReport(run().targetSnapshot.digest);
+    expect(
+      providerResearchReportSchema.safeParse(withoutEvidenceSummary).success,
+    ).toBe(false);
+  });
+
   it("moves a Candidate recipe body into the private content-addressed store", async () => {
     const directory = await mkdtemp(join(tmpdir(), "candidate-recipe-cas-"));
     directories.push(directory);
@@ -106,7 +191,7 @@ describe("provider Research Report materialization", () => {
     const sealedRun = run();
 
     const materialized = await materializeResearchReport(
-      report(sealedRun.targetSnapshot.digest),
+      challengedReport(sealedRun.targetSnapshot.digest),
       sealedRun,
       candidateRecipeDirectory,
     );
@@ -136,6 +221,37 @@ describe("provider Research Report materialization", () => {
     expect(JSON.stringify(materialized)).not.toContain("HARNESS_RESULT=");
   });
 
+  it("rejects a Candidate without a challenged source trace", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "candidate-source-trace-"));
+    directories.push(directory);
+
+    await expect(
+      materializeResearchReport(
+        report(run().targetSnapshot.digest),
+        run(),
+        join(directory, "recipes"),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("requires an exact unresolved fact for a blocked Assessment", () => {
+    const value = challengedReport(run().targetSnapshot.digest);
+    const refuted = value.assessments[0]!;
+    const blocked = {
+      ...refuted,
+      disposition: "blocked" as const,
+      unresolvedFacts: [
+        "The pinned source does not establish the ordinary deployment setting.",
+      ],
+    };
+
+    expect(researchAssessmentSchema.safeParse(blocked).success).toBe(true);
+    const { unresolvedFacts: _unresolvedFacts, ...missingBlocker } = blocked;
+    expect(researchAssessmentSchema.safeParse(missingBlocker).success).toBe(
+      false,
+    );
+  });
+
   it("rejects a recipe bound to another Target Snapshot", async () => {
     const directory = await mkdtemp(
       join(tmpdir(), "candidate-recipe-binding-"),
@@ -144,7 +260,7 @@ describe("provider Research Report materialization", () => {
 
     await expect(
       materializeResearchReport(
-        report(`sha256:${"f".repeat(64)}`),
+        challengedReport(`sha256:${"f".repeat(64)}`),
         run(),
         join(directory, "recipes"),
       ),

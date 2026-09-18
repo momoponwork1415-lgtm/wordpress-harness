@@ -13,6 +13,7 @@ import type {
   SealedNativeRun,
 } from "../../src/research/agent-led/contracts.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
+import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
 const temporaryDirectories: string[] = [];
 const gvisorIsolation = {
@@ -177,7 +178,7 @@ describe("ResearchCampaigns", () => {
     const runtime: NativeAgentRuntime = {
       async execute(run) {
         return {
-          schemaVersion: 1,
+          schemaVersion: 2,
           runId: run.runId,
           runtimeProfileDigest: run.agentRuntimeProfile.digest,
           terminal: "completed",
@@ -196,7 +197,9 @@ describe("ResearchCampaigns", () => {
           isolation: gvisorIsolation,
           checkpoint: checkpointFor(run),
           report: {
-            schemaVersion: 1,
+            schemaVersion: 2,
+            assessments: [],
+            evidenceSummary: researchEvidenceSummaryFixture(),
             candidates: [],
             decision: {
               kind: "stop",
@@ -323,7 +326,7 @@ describe("ResearchCampaigns", () => {
         async execute(run) {
           invocations += 1;
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "policy-denied",
@@ -371,7 +374,7 @@ describe("ResearchCampaigns", () => {
         async execute(run) {
           invocations += 1;
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "provider-unauthenticated",
@@ -421,7 +424,7 @@ describe("ResearchCampaigns", () => {
         async execute(run) {
           invocations += 1;
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "provider-quota-exhausted",
@@ -472,7 +475,7 @@ describe("ResearchCampaigns", () => {
       runtime: {
         async execute(run) {
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "completed",
@@ -520,7 +523,7 @@ describe("ResearchCampaigns", () => {
       runtime: {
         async execute(run) {
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "completed",
@@ -530,7 +533,9 @@ describe("ResearchCampaigns", () => {
             activity: { subagents: 0, tools: ["source.read"] },
             isolation: gvisorIsolation,
             report: {
-              schemaVersion: 1,
+              schemaVersion: 2,
+              assessments: [],
+              evidenceSummary: researchEvidenceSummaryFixture(),
               candidates: [],
               decision: {
                 kind: "stop",
@@ -606,7 +611,7 @@ describe("ResearchCampaigns", () => {
             });
           }
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "completed",
@@ -617,7 +622,9 @@ describe("ResearchCampaigns", () => {
             isolation: gvisorIsolation,
             checkpoint,
             report: {
-              schemaVersion: 1,
+              schemaVersion: 2,
+              assessments: [],
+              evidenceSummary: researchEvidenceSummaryFixture(),
               candidates: [],
               decision:
                 invocation === 1
@@ -682,7 +689,7 @@ describe("ResearchCampaigns", () => {
       runtime: {
         async execute(run) {
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "completed",
@@ -693,7 +700,9 @@ describe("ResearchCampaigns", () => {
             isolation: gvisorIsolation,
             checkpoint: checkpointFor(run),
             report: {
-              schemaVersion: 1,
+              schemaVersion: 2,
+              assessments: [],
+              evidenceSummary: researchEvidenceSummaryFixture(),
               candidates: [],
               decision: {
                 kind: "continue",
@@ -747,7 +756,7 @@ describe("ResearchCampaigns", () => {
       runtime: {
         async execute(run) {
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: "different-campaign:native:1",
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "completed",
@@ -758,7 +767,9 @@ describe("ResearchCampaigns", () => {
             isolation: gvisorIsolation,
             checkpoint: checkpointFor(run),
             report: {
-              schemaVersion: 1,
+              schemaVersion: 2,
+              assessments: [],
+              evidenceSummary: researchEvidenceSummaryFixture(),
               candidates: [],
               decision: {
                 kind: "stop",
@@ -809,7 +820,7 @@ describe("ResearchCampaigns", () => {
       runtime: {
         async execute(run) {
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "completed",
@@ -820,7 +831,9 @@ describe("ResearchCampaigns", () => {
             isolation: gvisorIsolation,
             checkpoint: checkpointFor(run),
             report: {
-              schemaVersion: 1,
+              schemaVersion: 2,
+              assessments: [],
+              evidenceSummary: researchEvidenceSummaryFixture(),
               candidates: [],
               decision: {
                 kind: "stop",
@@ -862,7 +875,7 @@ describe("ResearchCampaigns", () => {
       runtime: {
         async execute(run) {
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "completed",
@@ -873,7 +886,9 @@ describe("ResearchCampaigns", () => {
             isolation: gvisorIsolation,
             checkpoint: checkpointFor(run),
             report: {
-              schemaVersion: 1,
+              schemaVersion: 2,
+              assessments: [],
+              evidenceSummary: researchEvidenceSummaryFixture(),
               candidates: [],
               decision: {
                 kind: "stop",
@@ -919,7 +934,7 @@ describe("ResearchCampaigns", () => {
           seenRuns.push(run);
           const first = seenRuns.length === 1;
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "completed",
@@ -937,7 +952,9 @@ describe("ResearchCampaigns", () => {
             isolation: gvisorIsolation,
             checkpoint: checkpointFor(run),
             report: {
-              schemaVersion: 1,
+              schemaVersion: 2,
+              assessments: [],
+              evidenceSummary: researchEvidenceSummaryFixture(),
               candidates: [],
               decision: first
                 ? {

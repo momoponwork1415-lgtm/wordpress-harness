@@ -1,6 +1,6 @@
 # Knowledge: reference harness comparison
 
-Status: official-source comparison; Anthropicの情報設計・評価比較は2026-09-15に更新。他資料は2026-09-10の確認。
+Status: official-source comparison; Cloudflare security-audit-skillとAikido / DeepSeekの評価境界は2026-09-18に更新。他資料は2026-09-15以前の確認。
 
 ## Conclusion
 
@@ -18,7 +18,7 @@ Status: official-source comparison; Anthropicの情報設計・評価比較は20
 | OpenAI Codex Security | [`c8296885f`](https://github.com/openai/codex-security/tree/c8296885fbbf593edc1b405dc49859496b2bd8e4) | 公開SDK / pluginの構造。WordPressでの性能を示さない。 |
 | Anthropic Defending Code Reference Harness | [`d3bea6b57`](https://github.com/anthropics/defending-code-reference-harness/tree/d3bea6b5793b5f3d59a75ebe69a58efa88383145) | 保守終了済み。autonomous harnessはC/C++ memory safety向け。interactiveなsource review資料もある。 |
 | Google / Mandiant AVDH | [公式記事](https://cloud.google.com/blog/topics/threat-intelligence/staying-ahead-of-adversarial-ai-through-agentic-source-code-review) | 内部architectureの説明。公開codeやdurability testはない。 |
-| Cloudflare VDH / VVS | [Harness記事](https://blog.cloudflare.com/build-your-own-vulnerability-harness/)、[VDR記事](https://blog.cloudflare.com/vulnerability-discovery-remediation/) | 内部運用の説明。非公開implementationは検証できない。 |
+| Cloudflare security-audit-skill / VDH / VVS | [`c1c8a8c`](https://github.com/cloudflare/security-audit-skill/tree/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8)、[Harness記事](https://blog.cloudflare.com/build-your-own-vulnerability-harness/)、[VDR記事](https://blog.cloudflare.com/vulnerability-discovery-remediation/) | 公開skillは単一repo向けのsource-first workflow。production harnessの非公開implementationや性能は検証できない。 |
 | Aikido known-CVE benchmark | [2026-08-21 benchmark](https://www.aikido.dev/blog/ai-model-benchmarks-aug-21-2026) | 固定したAikido Harness内で探索modelだけを比較。dataset、target revision、prompt、tool、判定記録は非公開で、Harness間比較ではない。 |
 | Wordfence PRISM / Argus | [PRISM profile](https://www.wordfence.com/threat-intel/vulnerabilities/researchers/prism)、[breadth / depth記事](https://www.wordfence.com/blog/2026/08/wordfence-argus-finds-complex-6-step-critical-rce-in-avada-theme-with-1-million-sales/) | WordPressでの発見例と運用方針。prompt、model、実装、missを含むrecall datasetは非公開。 |
 | Unit 42 NOVA | [公式記事](https://unit42.paloaltonetworks.com/frontier-ai-vulnerability-burst/) | 内部Harnessの集計と14-project model比較。公開source、target一覧、candidate判定記録はない。 |
@@ -53,6 +53,24 @@ Status: official-source comparison; Anthropicの情報設計・評価比較は20
 | Wordfence PRISM / Argus | 広い調査と長いchainの調査を区別し、Avadaの6-step chainは隔離環境で人間が確認した。[Breadth / depth](https://www.wordfence.com/blog/2026/08/wordfence-argus-finds-complex-6-step-critical-rce-in-avada-theme-with-1-million-sales/#breadth-and-depth) | 異なる複雑さの事例を評価する参考になる。二つのproduction engineを作る根拠やrecall比較ではない。 |
 | Unit 42 NOVA | clean environmentでのreplayと反証確認を使う。14 projectsの比較ではmodelごとに異なるFindingも報告した。[Harness and comparison](https://unit42.paloaltonetworks.com/frontier-ai-vulnerability-burst/#how-the-autonomous-research-harness-works) | model間の差を示す観測であり、known-CVE recallや特定の段階構成の因果効果を示さない。 |
 
+## Cloudflare security-audit-skill: adoption decision
+
+参照revisionは[`c1c8a8c1471069fb0e188eeaff69b8e8db6564a8`](https://github.com/cloudflare/security-audit-skill/tree/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8)。公開skillとCloudflareのproduction harnessを同一視せず、[`SKILL.md`](https://github.com/cloudflare/security-audit-skill/blob/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8/skills/security-audit/SKILL.md)、[`HUNTING.md`](https://github.com/cloudflare/security-audit-skill/blob/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8/skills/security-audit/HUNTING.md)、[`VALIDATION.md`](https://github.com/cloudflare/security-audit-skill/blob/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8/skills/security-audit/VALIDATION.md)とschemaを確認した。
+
+| Referenceの考え方 | 判断 | このrepositoryでの扱い |
+| --- | --- | --- |
+| Parentだけがshared run filesを更新する | **採用済み** | `ResearchCampaigns`だけがappend-only Research Recordを更新し、Runtime AdapterはReceiptとopaque refを返す。新しい共有JSON正本は作らない。 |
+| findingsとcoverageをschema検証する | **適応** | 現行ZodのCampaign Input、Native Receipt、Research Report、Review、Verification Requestを正本にする。Cloudflare schemaを直輸入せず、schema適合を技術的真偽にしない。 |
+| `confirmed` / `needs_validation` / `rejected`を分ける | **適応** | Research Candidate、`verification-preparation-needed`、Candidate Verificationの`runtime-confirmed` / `contradicted` / `incomplete`、programme scopeを別々に保つ。名称間の一対一変換はしない。 |
+| 保存記録からreportを導出する | **採用** | Campaign `inspect`とHuman OSの保存済みviewから読み取り専用に説明・比較を導出する。reportの都合で元のverdictやCandidateを更新しない。 |
+| deterministic coverage ledgerとcritic wave | **不採用** | fixed coverage unit、wave、roleをHarness stateにせず、AIが探索判断を所有する。Coverageの可視化を安全性の証明や探索queueにしない。 |
+| prior runを次runの計画と除外へ使う | **独立試行では不採用** | 同一条件のIndependent Research Trialへ過去Candidate、Checkpoint、reportを入力しない。履歴を使う別の継続・再調査は比較条件に明記する。 |
+| fresh source verifierとstable fingerprintで統合する | **不採用 / 保留** | source-only verifierはADR 0135により復活させず、admit済みCandidateをfresh runtimeで検証する。Candidate idはroot cause同一性を証明しないため、cross-Campaign dedupは自動化しない。 |
+| 不足した検証や予算をincompleteとして残す | **採用済み** | provider、schema、setup、recipe、evidence不足をno-finding、FP、contradictedへ丸めない。 |
+| agent invocation数をstrict cost budgetにする | **不採用** | run数とwall timeをhard limitにし、provider報告costはADR 0132どおり観測値とする。 |
+
+**Inference:** Cloudflareから採るべきなのは、single writer、機械可読な記録、failureとverdictの分離、保存記録からのreport導出である。固定workflow、第二のledger、source-only verifierまたはdedup agentを移植する根拠にはならない。
+
 ## Anthropic: information design and evidence quality
 
 ### 比較範囲と限界
@@ -83,14 +101,16 @@ Status: official-source comparison; Anthropicの情報設計・評価比較は20
 | 観点 | 一次資料の要点 | このrepositoryとの関係 |
 | --- | --- | --- |
 | 証拠品質 | [Best practices](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#verification-the-load-bearing-component)は説明だけでなく観測可能な証拠を重視する。 | **一致:** source上の成立、runtime確認、人間の確認を区別する。**不一致:** runtime証明をsource Findingの成立条件へ戻さない。 |
-| 独立性 | [Pipeline](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/pipeline.md#what-each-stage-does)はfreshな検証環境と限定したhandoffを説明する。 | **一致:** ResearchのconversationやscratchをIndependent Validationへ引き継がない。**不一致:** class別graderや繰り返し採点をsingle fresh source-only Validationの代わりにしない。 |
-| 失敗 | [Data contracts](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/artifacts.py#L135-L174)は不検出、棄却、agent/build failureを別statusにする。[Pipeline](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/pipeline.md#watching-a-run)は失敗・中断時もtranscriptを残す。 | **一致:** failureをnegativeへ丸めず、既存証拠を保持する。**境界:** 外部資料の自動retry方針は、人間のGrant reviewやValidation Retryの権限を置き換えない。 |
+| 独立性 | [Pipeline](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/pipeline.md#what-each-stage-does)はfreshな検証環境と限定したhandoffを説明する。 | **一致:** ResearchのconversationやscratchをCandidate Verificationへ引き継がない。**不一致:** class別graderや繰り返し採点をCandidate-bound fresh runtime verificationの代わりにしない。 |
+| 失敗 | [Data contracts](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/harness/artifacts.py#L135-L174)は不検出、棄却、agent/build failureを別statusにする。[Pipeline](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/pipeline.md#watching-a-run)は失敗・中断時もtranscriptを残す。 | **一致:** failureをnegativeへ丸めず、既存証拠を保持する。**境界:** 外部資料の自動retry方針は、人間のResearch Grant reviewやCandidate Verificationの実行権限を置き換えない。 |
 | 隔離 | [Security](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/security.md#why-the-sandbox-is-necessary)はPrompt上の禁止だけでは能力制限にならないとする。 | **一致:** filesystem、network、credential、toolの制限を実行境界で保証する。**不一致:** 外部repoのsandbox opt-outやsource reviewへの弱い隔離を取り込まない。 |
 | 人間の権限 | [Triage](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/triage.md#run-it)は人間にtrust boundaryと判断基準を確認する。[Security](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/security.md#rules-for-running-autonomous-agents)は外部へのwrite権限を制限する。 | **一致:** 人間がscopeと権限を決める。**境界:** 現repoのCandidate admission、exact Draft revisionとdestinationへの承認、最後のSubmitは独自の必須gateとして保つ。 |
 
 ## Known-CVE recall evidence
 
 **Observed:** Aikidoはrecent CVE 32件を10 modelへ各3回、fresh session、最大30 turns、internetなしで実行し、case、prompt、tools、evaluation policyを固定した。[2026-08-21 benchmark](https://www.aikido.dev/blog/ai-model-benchmarks-aug-21-2026)。DeepSeek V4 Proは一回目17 / 32から3-run union 28 / 32へ増えた。Grok 4.6はunion 26 / 32、3回すべてで見つけたconsistent resultが21 / 32、GLM 5.3はunion 25 / 32、consistent resultが18 / 32だった。反面、DeepSeek Proのreported candidate中false leadは34.4%、Solは3.3%で、union recallと後段負荷にtrade-offがあった。
+
+この評価のDeepSeekはV4 Pro 0813とV4 Flash 0731であり、2026-09-10公開のV4.1 Flashではない。[DeepSeekの公式changelog](https://api-docs.deepseek.com/updates/)ではV4.1 FlashのAPI idを`deepseek-flash`としている。したがってV4.1で同じ3回反復を行っても、Aikido結果の再現ではなく新しいmodel / harness条件の実験になる。
 
 **Limit:** これはmodel比較であり、Mandiant、Cloudflare、Wordfence、NOVA、Anthropic Harness、Codex Securityの比較ではない。8月版はtarget、revision、prompt、tool、candidate判定を公開せず、既知箇所をagentへ与えたかも不明である。公開dataset、patched negative、secure repoがないため、full-repository navigation、prospective recall、false-positive率は再現できない。
 
@@ -105,6 +125,6 @@ Status: official-source comparison; Anthropicの情報設計・評価比較は20
 | 正本・派生表示・更新責任を区別してdocと入力の重複を点検する。 | Anthropicのcontext出典一貫性が参考になる。JSONと文章の併存だけで不具合と断定せず、独立した編集点があるかを確認する。 |
 | 評価の記録で、固定条件、確認段階、判断不能の理由を識別できるようにする。 | Aikido / NOVAの限界を踏まえ、model比較とHarness比較、既知positiveとprospective evidenceを混同しない。具体的な評価caseと受入条件はIssueへ置く。 |
 | 提出判断では過去のFindingと最新配布版への適用可能性を分ける。 | Cloudflareの[latest source確認](https://blog.cloudflare.com/build-your-own-vulnerability-harness/#contextual-judgment)が参考になる。WordPressではGit mainとofficial配布packageを同一視しない。再確認結果で元のFindingを削除せず、Researchのoracleへ戻さない。 |
-| 観測できる証拠を増やす時も、source成立・runtime確認・人間の判断を分ける。 | 各資料は検証を重視するが、runtimeをsource Finding成立の必須条件にする根拠にはならない。既採用の責任分担は[Independent Validation](../RESEARCH-DESIGN.md#independent-validation)を参照する。 |
+| 観測できる証拠を増やす時も、source成立・runtime確認・人間の判断を分ける。 | 各資料は検証を重視する。既採用の責任分担は[Candidate Verification](../RESEARCH-DESIGN.md#candidate-verification)を参照する。 |
 
-外部資料のpositive oracle、既知脆弱性情報、固定partition、投票、class別grader、自動retry、sandbox opt-outは個別の前提を持つ。現repoのoracle-free、source-only、single fresh Validation、人間の承認、no-silent-fallbackを置き換える提案ではない。研究手法とresource ceilingの正本は[Research Design](../RESEARCH-DESIGN.md)、実行境界は[repository rules](../../AGENTS.md)にある。
+外部資料のpositive oracle、既知脆弱性情報、固定partition、投票、class別grader、自動retry、sandbox opt-outは個別の前提を持つ。現repoのoracle-free Research、Candidate-bound fresh runtime verification、人間の承認、no-silent-fallbackを置き換える提案ではない。研究手法とresource ceilingの正本は[Research Design](../RESEARCH-DESIGN.md)、実行境界は[repository rules](../../AGENTS.md)にある。

@@ -14,6 +14,7 @@ import {
   HumanResearchContinuationReviewConflictError,
   openResearchCampaigns,
 } from "../../src/research/agent-led/research-campaigns.js";
+import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
 const temporaryDirectories: string[] = [];
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
@@ -107,7 +108,7 @@ describe("Human Research Continuation Review", () => {
             );
           }
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "completed",
@@ -122,7 +123,9 @@ describe("Human Research Continuation Review", () => {
             },
             checkpoint: checkpointFor(run),
             report: {
-              schemaVersion: 1,
+              schemaVersion: 2,
+              assessments: [],
+              evidenceSummary: researchEvidenceSummaryFixture(),
               candidates: [
                 {
                   candidateId: "candidate-unauth-record-archive",
@@ -139,6 +142,40 @@ describe("Human Research Continuation Review", () => {
                       observation:
                         "The ownership comparison normalizes missing identities to zero.",
                     },
+                  ],
+                  sourceTrace: [
+                    {
+                      role: "entrypoint",
+                      path: "src/api/item-controller.ts",
+                      location: "complete_item:120",
+                      observation:
+                        "An anonymous request reaches the item completion handler.",
+                    },
+                    {
+                      role: "effect",
+                      path: "src/api/item-controller.ts",
+                      location: "complete_item:120",
+                      observation:
+                        "The handler can archive a draft record after the missing lookup.",
+                    },
+                  ],
+                  controlAssessments: [
+                    {
+                      control: "Record ownership comparison",
+                      evidence: [
+                        {
+                          path: "src/api/item-controller.ts",
+                          location: "complete_item:120",
+                          observation:
+                            "Missing identities normalize to the same value.",
+                        },
+                      ],
+                      conclusion:
+                        "The comparison does not distinguish the anonymous caller from the missing owner.",
+                    },
+                  ],
+                  unresolvedFacts: [
+                    "The repository value returned after the failed lookup remains unresolved.",
                   ],
                 },
               ],
@@ -170,7 +207,7 @@ describe("Human Research Continuation Review", () => {
       status: "research-review-pending",
       pendingResearchContinuationReview: {
         kind: "research-continuation-review-request",
-        schemaVersion: 1,
+        schemaVersion: 2,
         campaignId: input.campaignId,
         researchRunId: `${input.campaignId}:native:1`,
         checkpoint: { checkpointId: `${input.campaignId}:native:1:checkpoint` },
@@ -217,7 +254,7 @@ describe("Human Research Continuation Review", () => {
             );
           }
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "completed",
@@ -232,7 +269,9 @@ describe("Human Research Continuation Review", () => {
             },
             checkpoint: checkpointFor(run),
             report: {
-              schemaVersion: 1,
+              schemaVersion: 2,
+              assessments: [],
+              evidenceSummary: researchEvidenceSummaryFixture(),
               candidates: [],
               decision: {
                 kind: "continue",
@@ -328,7 +367,7 @@ describe("Human Research Continuation Review", () => {
               },
             ]);
             return {
-              schemaVersion: 1,
+              schemaVersion: 2,
               runId: run.runId,
               runtimeProfileDigest: run.agentRuntimeProfile.digest,
               terminal: "provider-failed",
@@ -360,7 +399,7 @@ describe("Human Research Continuation Review", () => {
             ]);
           }
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "completed",
@@ -375,7 +414,9 @@ describe("Human Research Continuation Review", () => {
             },
             checkpoint: checkpointFor(run),
             report: {
-              schemaVersion: 1,
+              schemaVersion: 2,
+              assessments: [],
+              evidenceSummary: researchEvidenceSummaryFixture(),
               candidates: [],
               decision:
                 invocations === 1
@@ -474,7 +515,7 @@ describe("Human Research Continuation Review", () => {
               checkpointId: `${input.campaignId}:native:1:checkpoint`,
             });
             return {
-              schemaVersion: 1,
+              schemaVersion: 2,
               runId: run.runId,
               runtimeProfileDigest: run.agentRuntimeProfile.digest,
               terminal: "policy-denied",
@@ -494,7 +535,7 @@ describe("Human Research Continuation Review", () => {
             });
           }
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "completed",
@@ -509,7 +550,9 @@ describe("Human Research Continuation Review", () => {
             },
             checkpoint: checkpointFor(run),
             report: {
-              schemaVersion: 1,
+              schemaVersion: 2,
+              assessments: [],
+              evidenceSummary: researchEvidenceSummaryFixture(),
               candidates: [],
               decision:
                 invocations === 1
@@ -602,7 +645,7 @@ describe("Human Research Continuation Review", () => {
             throw new Error("Proceed must not start another Native Run");
           }
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "completed",
@@ -617,7 +660,9 @@ describe("Human Research Continuation Review", () => {
             },
             checkpoint: checkpointFor(run),
             report: {
-              schemaVersion: 1,
+              schemaVersion: 2,
+              assessments: [],
+              evidenceSummary: researchEvidenceSummaryFixture(),
               candidates: [
                 {
                   candidateId: "candidate-resource-idor",
@@ -635,6 +680,38 @@ describe("Human Research Continuation Review", () => {
                         "The authorized collection id and fetched resource id are independent.",
                     },
                   ],
+                  sourceTrace: [
+                    {
+                      role: "entrypoint",
+                      path: "src/api/resource-controller.ts",
+                      location: "load_resource:90",
+                      observation:
+                        "A public RPC accepts a caller-controlled resource id.",
+                    },
+                    {
+                      role: "effect",
+                      path: "src/api/resource-controller.ts",
+                      location: "load_resource:90",
+                      observation:
+                        "The independently selected resource is returned to the caller.",
+                    },
+                  ],
+                  controlAssessments: [
+                    {
+                      control: "Collection authorization",
+                      evidence: [
+                        {
+                          path: "src/api/resource-controller.ts",
+                          location: "load_resource:90",
+                          observation:
+                            "Authorization binds a collection id rather than the fetched resource id.",
+                        },
+                      ],
+                      conclusion:
+                        "The collection check does not authorize the independently selected resource.",
+                    },
+                  ],
+                  unresolvedFacts: [],
                 },
               ],
               decision: {
@@ -720,7 +797,7 @@ describe("Human Research Continuation Review", () => {
           }
           invocations += 1;
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "completed",
@@ -735,7 +812,9 @@ describe("Human Research Continuation Review", () => {
             },
             checkpoint: checkpointFor(run),
             report: {
-              schemaVersion: 1,
+              schemaVersion: 2,
+              assessments: [],
+              evidenceSummary: researchEvidenceSummaryFixture(),
               candidates: [],
               decision: {
                 kind: "continue",

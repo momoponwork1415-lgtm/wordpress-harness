@@ -11,6 +11,7 @@ import {
   type NativeAgentRuntime,
 } from "../../src/research/agent-led/contracts.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
+import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -72,7 +73,7 @@ function input() {
 function runtime(withRecipe: boolean): NativeAgentRuntime {
   return {
     execute: vi.fn(async (run) => ({
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
       runId: run.runId,
       runtimeProfileDigest: run.agentRuntimeProfile.digest,
       terminal: "completed" as const,
@@ -100,7 +101,9 @@ function runtime(withRecipe: boolean): NativeAgentRuntime {
         permissionProfileDigest: run.permissionProfile.digest,
       },
       report: {
-        schemaVersion: 1 as const,
+        schemaVersion: 2 as const,
+        assessments: [],
+        evidenceSummary: researchEvidenceSummaryFixture(),
         candidates: [
           {
             candidateId: "candidate-1",
@@ -114,6 +117,36 @@ function runtime(withRecipe: boolean): NativeAgentRuntime {
                 observation: "No authority check",
               },
             ],
+            sourceTrace: [
+              {
+                role: "entrypoint" as const,
+                path: "plugin.php",
+                location: "10",
+                observation:
+                  "A public action accepts attacker-controlled input.",
+              },
+              {
+                role: "effect" as const,
+                path: "plugin.php",
+                location: "10",
+                observation: "The action installs executable plugin code.",
+              },
+            ],
+            controlAssessments: [
+              {
+                control: "Administrator capability check",
+                evidence: [
+                  {
+                    path: "plugin.php",
+                    location: "10",
+                    observation: "The action has no authority check.",
+                  },
+                ],
+                conclusion:
+                  "No source-visible control prevents the public action from installing code.",
+              },
+            ],
+            unresolvedFacts: [],
             ...(withRecipe
               ? {
                   reproductionRecipe: {

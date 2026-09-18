@@ -1,0 +1,9 @@
+---
+status: accepted
+---
+
+# Require control-challenged Research evidence
+
+Research Report v2は、Candidateへ入口からeffectまでのordered source trace、最強のsource-visible controlに対するassessmentと未解決事実を要求し、Candidateにならなかった重要なrouteを`refuted`または`blocked`のResearch Assessmentとして残す。Candidateがないstopでも証拠なしに閉じないよう、Grant内で調べた領域をsource evidence付きで、未調査領域を明示するevidence summaryも必須にする。これはCloudflareのconcrete-invariantとcounterevidenceの規律を、ADR 0125のthin evidence shellへ適応する判断である。Approach Family、Hunter、Waveまたはcoverage assignmentをHarness stateにせず、Research Assessmentやevidence summaryをCoverage completion、探索完了または安全性の証明に使わない。
+
+この変更はprovider出力を厳しくし、invalid outputが増える可能性がある。一方、自然文だけのCandidate、既存controlを読まない主張、source外の仮定を隠した主張をHuman Candidate Reviewへ渡さず、将来のproviderを同じevidence barで比較できる。独立したsource-only verifierは追加せず、人間がadmitしたCandidateのpromotionはADR 0135どおりfresh runtime verificationだけが行う。

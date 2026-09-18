@@ -18,6 +18,7 @@ import { openGrokNativeAgentRuntime } from "../../src/research/agent-led/grok-na
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
 import type { CampaignInput } from "../../src/research/index.js";
 import { conductWithHumanAdvance } from "./support/candidate-review.js";
+import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -105,6 +106,9 @@ describe("Grok Native Agent Runtime", () => {
         mode: 0o600,
       }),
     ]);
+    const escapedEvidenceSummaryJson = JSON.stringify(
+      researchEvidenceSummaryFixture("public/save.php"),
+    ).replaceAll('"', '\\"');
 
     const dockerExecutablePath = join(directory, "fake-docker");
     await writeFile(
@@ -222,12 +226,12 @@ if [ -f "$0.count" ]; then
 fi
 printf '%s' "$invocation" > "$0.count"
 if [ "$invocation" -eq 1 ]; then
-  printf '{"text":"Research complete. {\\"schemaVersion\\":1,\\"candidates\\":[{\\"candidateId\\":\\"candidate-grok-stored-xss-1\\",\\"attackerPremise\\":\\"An unauthenticated visitor can submit the public form.\\",\\"brokenSecurityProperty\\":\\"Persisted attacker input must be inert in privileged output.\\",\\"claim\\":\\"A public form value is stored and rendered to an administrator without escaping.\\",\\"evidence\\":[{\\"path\\":\\"public/save.php\\",\\"location\\":\\"save_value:44\\",\\"observation\\":\\"Persists the public value.\\"}]}],\\"decision\\":{\\"kind\\":\\"continue\\",\\"reason\\":\\"A separate source-bound frontier remains.\\",\\"nextActions\\":[{\\"question\\":\\"Does the adjacent handler cross another trust boundary?\\",\\"sourcePointers\\":[\\"public/next.php\\"]}]}}","stopReason":"end_turn","sessionId":"%s","requestId":"request-1","usage":{"input_tokens":7000,"cache_read_input_tokens":1000,"cache_creation_input_tokens":500,"output_tokens":1250,"reasoning_tokens":400,"total_tokens":9750},"num_turns":7,"total_cost_usd":0.5,"modelUsage":{"grok-4.6-build":{"inputTokens":7000,"outputTokens":1250,"cacheReadInputTokens":1000,"cacheCreationInputTokens":500,"modelCalls":7,"costUSD":0.5}},"structuredOutput":{"schemaVersion":2}}' "$active_session"
+  printf '{"text":"Research complete. {\\"schemaVersion\\":2,\\"assessments\\":[],\\"evidenceSummary\\":${escapedEvidenceSummaryJson},\\"candidates\\":[{\\"candidateId\\":\\"candidate-grok-stored-xss-1\\",\\"attackerPremise\\":\\"An unauthenticated visitor can submit the public form.\\",\\"brokenSecurityProperty\\":\\"Persisted attacker input must be inert in privileged output.\\",\\"claim\\":\\"A public form value is stored and rendered to an administrator without escaping.\\",\\"evidence\\":[{\\"path\\":\\"public/save.php\\",\\"location\\":\\"save_value:44\\",\\"observation\\":\\"Persists the public value.\\"}],\\"sourceTrace\\":[{\\"role\\":\\"entrypoint\\",\\"path\\":\\"public/save.php\\",\\"location\\":\\"save_value:44\\",\\"observation\\":\\"The public form accepts attacker input.\\"},{\\"role\\":\\"effect\\",\\"path\\":\\"public/save.php\\",\\"location\\":\\"save_value:44\\",\\"observation\\":\\"The stored value reaches administrator output.\\"}],\\"controlAssessments\\":[{\\"control\\":\\"Output escaping\\",\\"evidence\\":[{\\"path\\":\\"public/save.php\\",\\"location\\":\\"save_value:44\\",\\"observation\\":\\"No escaping is applied at the output boundary.\\"}],\\"conclusion\\":\\"No source-visible control prevents the stored output effect.\\"}],\\"unresolvedFacts\\":[]}],\\"decision\\":{\\"kind\\":\\"continue\\",\\"reason\\":\\"A separate source-bound frontier remains.\\",\\"nextActions\\":[{\\"question\\":\\"Does the adjacent handler cross another trust boundary?\\",\\"sourcePointers\\":[\\"public/next.php\\"]}]}}","stopReason":"end_turn","sessionId":"%s","requestId":"request-1","usage":{"input_tokens":7000,"cache_read_input_tokens":1000,"cache_creation_input_tokens":500,"output_tokens":1250,"reasoning_tokens":400,"total_tokens":9750},"num_turns":7,"total_cost_usd":0.5,"modelUsage":{"grok-4.6-build":{"inputTokens":7000,"outputTokens":1250,"cacheReadInputTokens":1000,"cacheCreationInputTokens":500,"modelCalls":7,"costUSD":0.5}},"structuredOutput":{"schemaVersion":2}}' "$active_session"
   exit 0
 fi
 if [ "$invocation" -eq 2 ]; then
   [ -n "$resume_session" ] || exit 108
-  printf '{"text":"{\\"schemaVersion\\":1,\\"candidates\\":[],\\"decision\\":{\\"kind\\":\\"stop\\",\\"basis\\":\\"The remaining frontier was resolved.\\"}}","stopReason":"end_turn","sessionId":"%s","requestId":"request-3","usage":{"input_tokens":3000,"cache_read_input_tokens":500,"cache_creation_input_tokens":250,"output_tokens":500,"reasoning_tokens":200,"total_tokens":4250},"num_turns":3,"total_cost_usd":0.3,"modelUsage":{"grok-4.6-build":{"inputTokens":3000,"outputTokens":500,"cacheReadInputTokens":500,"cacheCreationInputTokens":250,"modelCalls":3,"costUSD":0.3}}}' "$active_session"
+  printf '{"text":"{\\"schemaVersion\\":2,\\"assessments\\":[],\\"evidenceSummary\\":${escapedEvidenceSummaryJson},\\"candidates\\":[],\\"decision\\":{\\"kind\\":\\"stop\\",\\"basis\\":\\"The remaining frontier was resolved.\\"}}","stopReason":"end_turn","sessionId":"%s","requestId":"request-3","usage":{"input_tokens":3000,"cache_read_input_tokens":500,"cache_creation_input_tokens":250,"output_tokens":500,"reasoning_tokens":200,"total_tokens":4250},"num_turns":3,"total_cost_usd":0.3,"modelUsage":{"grok-4.6-build":{"inputTokens":3000,"outputTokens":500,"cacheReadInputTokens":500,"cacheCreationInputTokens":250,"modelCalls":3,"costUSD":0.3}}}' "$active_session"
   exit 0
 fi
 exit 75
@@ -516,7 +520,7 @@ fi
 [ -n "$session" ] || exit 100
 printf '%s' '{"checkpoint":true}' > "$provider_mount/session-$session.jsonl"
 printf '%s' 'durable research notes' > "$scratch/state.md"
-printf '{"text":"{\\"schemaVersion\\":1,\\"candidates\\":[],\\"decision\\":{\\"kind\\":\\"stop\\",\\"basis\\":\\"No actionable frontier remains.\\"}}","stopReason":"end_turn","sessionId":"%s","requestId":"request-1","usage":{"input_tokens":3000,"cache_read_input_tokens":500,"cache_creation_input_tokens":250,"output_tokens":500,"reasoning_tokens":200,"total_tokens":99},"num_turns":3,"total_cost_usd":0.3,"modelUsage":{"grok-4.6-build":{"inputTokens":3000,"outputTokens":500,"cacheReadInputTokens":500,"cacheCreationInputTokens":250,"modelCalls":3,"costUSD":0.3}}}' "$session"
+printf '{"text":"{\\"schemaVersion\\":2,\\"assessments\\":[],\\"evidenceSummary\\":{\\"examinedAreas\\":[{\\"area\\":\\"Provider usage binding\\",\\"evidence\\":[{\\"path\\":\\"plugin.php\\",\\"location\\":\\"fixture\\",\\"observation\\":\\"The fixture inspected the source path relevant to this Research result.\\"}]}],\\"unexaminedAreas\\":[]},\\"candidates\\":[],\\"decision\\":{\\"kind\\":\\"stop\\",\\"basis\\":\\"No actionable frontier remains.\\"}}","stopReason":"end_turn","sessionId":"%s","requestId":"request-1","usage":{"input_tokens":3000,"cache_read_input_tokens":500,"cache_creation_input_tokens":250,"output_tokens":500,"reasoning_tokens":200,"total_tokens":99},"num_turns":3,"total_cost_usd":0.3,"modelUsage":{"grok-4.6-build":{"inputTokens":3000,"outputTokens":500,"cacheReadInputTokens":500,"cacheCreationInputTokens":250,"modelCalls":3,"costUSD":0.3}}}' "$session"
 `,
       { encoding: "utf8", mode: 0o700 },
     );

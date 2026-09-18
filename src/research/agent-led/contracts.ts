@@ -305,6 +305,81 @@ export const sourceEvidenceSchema = z.strictObject({
   observation: z.string().min(1),
 });
 
+export const researchSourceTraceSchema = z
+  .array(
+    sourceEvidenceSchema.extend({
+      role: z.enum(["entrypoint", "propagation", "effect"]),
+    }),
+  )
+  .min(2)
+  .max(64)
+  .superRefine((trace, context) => {
+    if (trace[0]?.role !== "entrypoint") {
+      context.addIssue({
+        code: "custom",
+        path: [0, "role"],
+        message: "Research source trace must begin at an entrypoint",
+      });
+    }
+    if (trace.at(-1)?.role !== "effect") {
+      context.addIssue({
+        code: "custom",
+        path: [trace.length - 1, "role"],
+        message: "Research source trace must end at the claimed effect",
+      });
+    }
+    for (let index = 1; index < trace.length - 1; index += 1) {
+      if (trace[index]?.role !== "propagation") {
+        context.addIssue({
+          code: "custom",
+          path: [index, "role"],
+          message: "Intermediate Research source trace steps must propagate",
+        });
+      }
+    }
+  });
+
+export const researchControlAssessmentSchema = z.strictObject({
+  control: z.string().min(1).max(4_000),
+  evidence: z.array(sourceEvidenceSchema).min(1).max(16),
+  conclusion: z.string().min(1).max(4_000),
+});
+
+export const researchEvidenceSummarySchema = z.strictObject({
+  examinedAreas: z
+    .array(
+      z.strictObject({
+        area: z.string().min(1).max(4_000),
+        evidence: z.array(sourceEvidenceSchema).min(1).max(32),
+      }),
+    )
+    .min(1)
+    .max(128),
+  unexaminedAreas: z.array(z.string().min(1).max(4_000)).max(128),
+});
+
+const researchAssessmentShape = {
+  assessmentId: identifierSchema,
+  attackerPremise: z.string().min(1),
+  securityProperty: z.string().min(1),
+  question: z.string().min(1),
+  evidence: z.array(sourceEvidenceSchema).min(1).max(32),
+  controlAssessments: z.array(researchControlAssessmentSchema).min(1).max(16),
+  basis: z.string().min(1).max(8_000),
+};
+
+export const researchAssessmentSchema = z.discriminatedUnion("disposition", [
+  z.strictObject({
+    ...researchAssessmentShape,
+    disposition: z.literal("refuted"),
+  }),
+  z.strictObject({
+    ...researchAssessmentShape,
+    disposition: z.literal("blocked"),
+    unresolvedFacts: z.array(z.string().min(1).max(4_000)).min(1).max(16),
+  }),
+]);
+
 export const parkedProgrammeLeadSchema = z.strictObject({
   leadId: identifierSchema,
   attackerPremise: z.string().min(1),
@@ -359,6 +434,9 @@ export const researchCandidateSchema = z.strictObject({
   brokenSecurityProperty: z.string().min(1),
   claim: z.string().min(1),
   evidence: z.array(sourceEvidenceSchema).min(1),
+  sourceTrace: researchSourceTraceSchema,
+  controlAssessments: z.array(researchControlAssessmentSchema).min(1).max(16),
+  unresolvedFacts: z.array(z.string().min(1).max(4_000)).max(16),
   reproductionRecipe: candidateVerificationRecipeRefSchema.optional(),
 });
 
@@ -369,7 +447,7 @@ const verifiableResearchCandidateSchema = researchCandidateSchema.extend({
 export const candidateReviewRequestSchema = z
   .strictObject({
     kind: z.literal("candidate-review-request"),
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     campaignId: identifierSchema,
     campaignInputDigest: digestSchema,
     terminalResearchRunId: identifierSchema,
@@ -405,7 +483,7 @@ const nextActionSchema = z.strictObject({
 export const researchContinuationReviewRequestSchema = z
   .strictObject({
     kind: z.literal("research-continuation-review-request"),
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     campaignId: identifierSchema,
     campaignInputDigest: digestSchema,
     researchRunId: identifierSchema,
@@ -571,8 +649,10 @@ const researchDecisionSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const researchReportSchema = z.strictObject({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
+  evidenceSummary: researchEvidenceSummarySchema,
   candidates: z.array(researchCandidateSchema),
+  assessments: z.array(researchAssessmentSchema).max(128),
   parkedProgrammeLeads: z.array(parkedProgrammeLeadSchema).optional(),
   decision: researchDecisionSchema,
 });
@@ -620,7 +700,7 @@ const agentRunFailureSchema = z.strictObject({
 });
 
 const agentRunReceiptShape = {
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   runId: identifierSchema,
   runtimeProfileDigest: digestSchema,
   startedAt: z.iso.datetime(),
@@ -693,7 +773,7 @@ export const campaignInterruptionSchema = z.strictObject({
 export const candidateVerificationRequestSchema = z
   .strictObject({
     kind: z.literal("candidate-verification-request"),
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     requestId: identifierSchema,
     campaignId: identifierSchema,
     campaignInputDigest: digestSchema,
@@ -787,6 +867,10 @@ export type NativeRunReceipt = z.infer<typeof nativeRunReceiptSchema>;
 export type ParkedProgrammeLead = z.infer<typeof parkedProgrammeLeadSchema>;
 export type SealedNativeRun = z.infer<typeof sealedNativeRunSchema>;
 export type ResearchCandidate = z.infer<typeof researchCandidateSchema>;
+export type ResearchAssessment = z.infer<typeof researchAssessmentSchema>;
+export type ResearchEvidenceSummary = z.infer<
+  typeof researchEvidenceSummarySchema
+>;
 export type CandidateVerificationRecipeRef = z.infer<
   typeof candidateVerificationRecipeRefSchema
 >;

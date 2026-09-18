@@ -174,7 +174,7 @@ export function failedNativeRunReceipt(
   retryable = false,
 ): FailedReceipt {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     runId: run.runId,
     runtimeProfileDigest: run.agentRuntimeProfile.digest,
     terminal,

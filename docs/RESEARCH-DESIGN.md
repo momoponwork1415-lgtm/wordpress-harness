@@ -1,6 +1,6 @@
 # Research Design
 
-Status: accepted research policy, 2026-09-10
+Status: accepted research policy, 2026-09-18
 
 ## Goal
 
@@ -35,7 +35,9 @@ Research designの出発点は、Wordfence Argusが公開した「**confine, con
 | verify / record | 探索内のadversarial review、fresh dynamic verification、Verified Vulnerability、programme scope、append-only Receiptを分離する |
 | iterate hard and fast | Rootがsynthesize、challenge、redirectを繰り返し、各Grantのhuman review後だけ同じCheckpointから次へ進む |
 
-wp2shell promptの研究手法は[WordPress Plugin Research v2](../prompts/wordpress-plugin-research-v2.md)へすべて取り入れる。具体的にはfirst-principlesのraw-source analysis、native multi-agentの積極的で動的な利用、固定assignmentの禁止、genuinely diverseなportfolio、明示的なApproach Family Registry、収束時のunderexplored familyへのredirect、見込みだけで一routeを支配させないこと、blocked routeの新機構による再開、incompatible routeの複数round維持と遅いcross-pollination、concrete bugのadversarial double-check、Rootによる反復的なsynthesis / challenge / redirect / new round、first waveや現在のapproachの失敗だけで停止しないこと、dependency sourceを読んだmissing linkとintermediate bugのchain探索である。
+wp2shell promptの研究手法は[WordPress Plugin Research v3](../prompts/wordpress-plugin-research-v3.md)へすべて取り入れる。具体的にはfirst-principlesのraw-source analysis、native multi-agentの積極的で動的な利用、固定assignmentの禁止、genuinely diverseなportfolio、明示的なApproach Family Registry、収束時のunderexplored familyへのredirect、見込みだけで一routeを支配させないこと、blocked routeの新機構による再開、incompatible routeの複数round維持と遅いcross-pollination、concrete bugのadversarial double-check、Rootによる反復的なsynthesis / challenge / redirect / new round、first waveや現在のapproachの失敗だけで停止しないこと、dependency sourceを読んだmissing linkとintermediate bugのchain探索である。
+
+v3はCloudflareの公開security-audit skillから、concrete security invariant、最強のsource-visible controlの再構成、sibling / legacy / lifecycle / failure pathの比較とsad-state testingを採る。固定Hunter、Wave、coverage ledger、finding countによる完了判定は採らない。これらはWP2Shell式loopの探索判断をHarnessへ移すためではなく、各routeの証拠とcounterevidenceを明確にするために使う。
 
 持ち込まないのは、wp2shell task固有の「脆弱性が存在してpre-auth RCE / `/flag`へ必ず到達する」というpositive oracleと最低6時間の指定だけである。元のCDC promptの肯定解と最低8時間も同じ理由で持ち込まない。最大4体は現在のresource ceilingとして使い、Approach Family RegistryはRootのscratchに置く。dependencyのrun中cloneは事前pinしたread-only Dependency Snapshotへ置き換える。これらは研究要素の省略ではなく、prospective mission、再現性、isolation、Human Research Reviewへ適応した実行境界である。tempoはevidence、isolation、Human Research ReviewまたはCandidate admissionを省略する理由にしない。
 
@@ -59,7 +61,7 @@ Programme対象外、Disclosure Route不明、既探索またはAIの低評価�
 
 ## Agent-led Research
 
-通常運転はwp2shell / Cycle Double Cover Promptを直接の系譜とする、raw-source-firstの一つの連続loopである。Provider-native Root agentはTarget Snapshot全体を読み、pluginが依存するWordPress core等の挙動をpinned Dependency Snapshotから解決する。[WordPress Plugin Research v2](../prompts/wordpress-plugin-research-v2.md)に従ってnative subagentを積極的かつ動的に使い、互いに異なるroute、反証、synthesisまたは追加調査を進める。Dependencyはsource worldを完成させるreferenceであり、別のaudit Targetにしない。HarnessはRootを含む同時active agent最大4体のresource ceilingだけをprovider runtimeで強制し、agentの実数、role、round、探索classまたは読むfileを指定しない。Rootだけが最大3体のsubagentを起動し、役割、終了後の再投入とwaveを決める。探索評価ではGrokを先に使う。利用不能時に同じCampaignを暗黙fallbackせず、GLM 5.3等の別Runtime Profileをbindした新しいCampaignとして明示的に比較する。
+通常運転はwp2shell / Cycle Double Cover Promptを直接の系譜とする、raw-source-firstの一つの連続loopである。Provider-native Root agentはTarget Snapshot全体を読み、pluginが依存するWordPress core等の挙動をpinned Dependency Snapshotから解決する。[WordPress Plugin Research v3](../prompts/wordpress-plugin-research-v3.md)に従ってnative subagentを積極的かつ動的に使い、互いに異なるroute、反証、synthesisまたは追加調査を進める。Dependencyはsource worldを完成させるreferenceであり、別のaudit Targetにしない。HarnessはRootを含む同時active agent最大4体のresource ceilingだけをprovider runtimeで強制し、agentの実数、role、round、探索classまたは読むfileを指定しない。Rootだけが最大3体のsubagentを起動し、役割、終了後の再投入とwaveを決める。探索評価ではGrokを先に使う。利用不能時に同じCampaignを暗黙fallbackせず、GLM 5.3等の別Runtime Profileをbindした新しいCampaignとして明示的に比較する。
 
 一回のResearch Native RunをResearch Grantとし、wall-time allowanceは最大1時間とする。Research Rootのprovider-native conversationとscratchはprivate Agent Checkpointとして継続できる。Harnessは固定checkpoint cadenceや内部tool eventをdomain modelにせず、bindingとintegrityを持つopaque refだけを記録する。timeoutまたはprovider interruptionでもCheckpointを保存できなければ`incomplete`であり、resume可能とは扱わない。Candidate VerificationへResearch Checkpointを渡さない。
 
@@ -79,9 +81,21 @@ AIが`continue`を返すとCampaignは`research-review-pending`で止まる。Hu
 
 staticまたは派生解析の出力があってもnavigationとevidenceの補助に限り、探索空間またはcompletion proofにしない。現行agent pathはraw sourceを直接読む。
 
+Research Report v2では、Candidateにlower-trust entrypointからsecurity-relevant effectまでのordered source trace、最強のsource-visible controlへのassessmentとexactな未解決事実を要求する。Grant内で具体的に調査した重要routeがCandidateにならなかった場合は、sourceで反証できた`refuted`または決定的事実が不足する`blocked`のResearch Assessmentを残す。さらに、Candidateの有無にかかわらず、Grant内で調べた領域をsource evidence付きで、未調査領域を明示したevidence summaryを要求する。Assessmentとevidence summaryはどちらもGrant-localであり、次Grantへ再掲するqueue、Coverage unit、探索完了または安全性の証明にしない。
+
+## Independent trial evaluation
+
+一つのIndependent Research Trialは、以前の結果やCheckpointを入力せず、freshなCampaignとして開始する。Campaign内で同じCheckpointから続けるResearch Grant、provider通信のretry、認証の再試行、出力形式の補正は同じTrialの一部であり、独立試行数を増やさない。固定した評価対象集合の各Targetへ一Trialずつ行う単位をEvaluation Sweepとする。外部資料の`pass@3`を参照する場合は、単一Targetの3 Trialなのか、評価対象全体の3 Sweepなのかを明記し、保存形式やInterfaceの名前にはしない。
+
+同じ条件の反復を比較するときは、`campaignId`だけを変え、Target / Dependency Snapshots、Prompt Set、Threat Context、Programme Boundary、Agent Runtime Profile、Permission Profile、Budget Envelopeとtool / network条件を固定する。各Trialは`resumeFrom`を持たず、freshなprovider session、homeとscratchを使い、別TrialのCandidate、Checkpoint、reportまたは人間の判断を入力しない。modelやprovider harnessのbuildを固定または実行時に確認できなければ、そのidentityをunknownのまま表示し、異なる可能性がある結果を同一条件として集計しない。異なるPromptやApproach Familyを割り当てる比較はportfolio ablationであり、同一条件の反復とは別に扱う。
+
+比較表示は既存のCampaign view、Native Receipt、Candidate Verificationとprogramme scopeの記録から読み取り専用で導出する。第二のmutable ledger、`ResearchStrategy.execute`、Campaign内部の反復loopまたは比較のための自動Research起動を追加しない。自動起動が後で必要になった場合も、exact Trial集合とaggregate wall-time / run allowanceへの人間の承認を先に要求し、比較処理がResearch Grant、Candidate admission、Verificationまたは外部行動を代行しない。
+
+比較ではplanned / model-completed / incompleteなTrialを分け、Candidateを`campaignId / runId / candidateId`の出所付きで保持する。同じ主張の複数出現、model confidence、schema適合または多数決を技術的確実性へ変換せず、root causeの同一性が不明なCandidateを自動統合しない。`runtime-confirmed`、programme scope、administrative completionとCoverageは別々に表示する。cost欠損はunknownであり0にしない。既知正解を固定したcorpusだけがprecision / recallを主張でき、prospective Campaignではunique runtime-confirmed vulnerability、duplicate、incomplete、in-scope outcomeとTrialごとの増分を観測する。
+
 ## Candidate Verification
 
-Research CandidateはTarget Snapshot、attacker premise、broken security property、主張、source anchorとprivate reproduction recipeへの参照を持つ。Rootはsourceを理解した同じrunで最小の動的手順を作り、Runtime Adapterが本文をGit外のcontent-addressed storeへ退避する。Campaign recordへはdigest、sizeとrecipe idだけを残す。recipeを作れなかったCandidateは棄却せず`verification-preparation-needed`に留める。
+Research CandidateはTarget Snapshot、attacker premise、broken security property、主張、ordered source trace、control assessment、未解決事実とprivate reproduction recipeへの参照を持つ。Rootはsourceを理解した同じrunで最小の動的手順を作り、Runtime Adapterが本文をGit外のcontent-addressed storeへ退避する。Campaign recordへはdigest、sizeとrecipe idだけを残す。recipeを作れなかったCandidateは棄却せず`verification-preparation-needed`に留める。
 
 Researchを区切ってCandidateがあれば、Campaignは`candidate-review-pending`で止まる。Human Candidate Reviewはexact Candidate setへbindし、`advance-to-candidate-verification`だけをCandidate Verification Requestへ変換する。`return-to-research`が一件でもあればVerificationより先にResearchへ戻す。
 
@@ -139,6 +153,7 @@ Costは観測するがhard ceilingにしない。Cost削減はrecall baseline確
 - [ADR 0131](adr/0131-place-human-reviews-between-research-and-validation.md)
 - [ADR 0132](adr/0132-treat-provider-cost-as-observational-telemetry.md)
 - [ADR 0135](adr/0135-promote-candidates-through-runtime-verification.md)
+- [ADR 0136](adr/0136-require-control-challenged-research-evidence.md)
 - [wp2shell exact prompt](https://www.slcyber.io/research/exploit-brokers-pay-500000-for-a-wordpress-rce-i-found-one-with-gpt5-6#the-story-of-wp2shell)
 - [Cycle Double Cover Prompt](https://cdn.openai.com/pdf/04d1d1e4-bc75-476a-97cf-49055cd98d31/cdc_prompt.pdf)
 - [Reference harness comparison](knowledge/reference-harness-observability.md)

@@ -8,6 +8,7 @@ import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import type { CampaignInput } from "../../src/research/index.js";
 import type { SealedNativeRun } from "../../src/research/agent-led/contracts.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
+import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
 const temporaryDirectories: string[] = [];
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
@@ -110,7 +111,7 @@ function checkpointFor(run: SealedNativeRun) {
 
 function parkedLeadReceipt(run: SealedNativeRun) {
   return {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     runId: run.runId,
     runtimeProfileDigest: run.agentRuntimeProfile.digest,
     terminal: "completed" as const,
@@ -125,7 +126,9 @@ function parkedLeadReceipt(run: SealedNativeRun) {
     },
     checkpoint: checkpointFor(run),
     report: {
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
+      assessments: [],
+      evidenceSummary: researchEvidenceSummaryFixture(),
       candidates: [],
       parkedProgrammeLeads: [
         {
@@ -158,7 +161,7 @@ function parkedLeadReceipt(run: SealedNativeRun) {
 describe("parked Programme Leads", () => {
   it("carries the wp2shell research method without its time and forced-RCE task", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v2.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v3.md"),
       "utf8",
     );
 
@@ -186,13 +189,19 @@ describe("parked Programme Leads", () => {
     expect(prompt).toContain(
       "Do not merely return because current approaches failed or agents reported no findings",
     );
+    expect(prompt).toContain(
+      "Every report must include a Grant-local `evidenceSummary`",
+    );
+    expect(prompt).toContain(
+      "It is not a Harness work queue, a coverage ledger",
+    );
     expect(prompt).not.toContain("/flag");
     expect(prompt).not.toContain("at least 6 hours");
   });
 
   it("spends deep exploration only on the programme-eligible vulnerability scope", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v2.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v3.md"),
       "utf8",
     );
 

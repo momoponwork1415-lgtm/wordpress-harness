@@ -126,7 +126,7 @@ function failedReceipt(
   summary: string,
 ): FailedNativeAgentReceipt {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     runId: run.runId,
     runtimeProfileDigest: run.agentRuntimeProfile.digest,
     terminal,
@@ -247,7 +247,7 @@ function candidateReviewRequestFor(
   const candidateSetDigest = canonicalDigest(candidates);
   const body = {
     kind: "candidate-review-request" as const,
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     campaignId,
     campaignInputDigest,
     terminalResearchRunId: terminalResearchRun.runId,
@@ -278,7 +278,7 @@ function researchContinuationReviewRequestFor(
   const parkedProgrammeLeadSetDigest = canonicalDigest(parkedProgrammeLeads);
   const body = {
     kind: "research-continuation-review-request" as const,
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     campaignId,
     campaignInputDigest,
     researchRunId: researchRun.runId,
@@ -407,7 +407,7 @@ function candidateVerificationRequestsFor(
     if (candidate.reproductionRecipe === undefined) return [];
     const body = {
       kind: "candidate-verification-request" as const,
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
       requestId: `${input.campaignId}:verification:${candidate.candidateId}`,
       campaignId: input.campaignId,
       campaignInputDigest: inputDigest,

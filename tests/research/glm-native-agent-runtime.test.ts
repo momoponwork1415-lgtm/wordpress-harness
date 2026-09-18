@@ -19,6 +19,7 @@ import { openGlmNativeAgentRuntime } from "../../src/research/agent-led/claude-c
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
 import type { CampaignInput } from "../../src/research/index.js";
 import { conductWithHumanAdvance } from "./support/candidate-review.js";
+import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -43,16 +44,66 @@ describe("GLM Native Agent Runtime", () => {
       mkdir(scratchRootDirectory),
     ]);
     await writeFile(join(sourceDirectory, "plugin.php"), "<?php\n", "utf8");
-    const missingClosuresResult =
-      '{"schemaVersion":1,"candidates":[{"candidateId":"candidate-1","attackerPremise":"anonymous actor","brokenSecurityProperty":"untrusted state reaches another actor","claim":"candidate claim","evidence":[{"path":"plugin.php","location":"1","observation":"source observation"]}],"decision":{"kind":"stop","basis":"No actionable frontier remains.","}';
-    const validCandidateResult =
-      '{"schemaVersion":1,"candidates":[{"candidateId":"candidate-1","attackerPremise":"anonymous actor","brokenSecurityProperty":"untrusted state reaches another actor","claim":"candidate claim","evidence":[{"path":"plugin.php","location":"1","observation":"source observation"}]}],"decision":{"kind":"stop","basis":"No actionable frontier remains."}}';
-    const malformedStop =
-      '{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"No actionable frontier remains.","nextActions":[]}]}';
-    const validStop =
-      '{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"No actionable frontier remains."}}';
-    const ambiguousStop =
-      '{"schemaVersion":1,"candidates":[],"decision":{"kind":"stop","basis":"Ambiguous stop.","nextActions":[{"question":"Continue?","sourcePointers":["plugin.php"]}]}}';
+    const evidenceSummaryJson = JSON.stringify(
+      researchEvidenceSummaryFixture(),
+    );
+    const missingClosuresResult = `{"schemaVersion":2,"assessments":[],"evidenceSummary":${evidenceSummaryJson},"candidates":[{"candidateId":"candidate-1","attackerPremise":"anonymous actor","brokenSecurityProperty":"untrusted state reaches another actor","claim":"candidate claim","evidence":[{"path":"plugin.php","location":"1","observation":"source observation"]}],"decision":{"kind":"stop","basis":"No actionable frontier remains.","}`;
+    const validCandidateResult = JSON.stringify({
+      schemaVersion: 2,
+      assessments: [],
+      evidenceSummary: researchEvidenceSummaryFixture(),
+      candidates: [
+        {
+          candidateId: "candidate-1",
+          attackerPremise: "anonymous actor",
+          brokenSecurityProperty: "untrusted state reaches another actor",
+          claim: "candidate claim",
+          evidence: [
+            {
+              path: "plugin.php",
+              location: "1",
+              observation: "source observation",
+            },
+          ],
+          sourceTrace: [
+            {
+              role: "entrypoint",
+              path: "plugin.php",
+              location: "1",
+              observation: "The anonymous actor reaches the handler.",
+            },
+            {
+              role: "effect",
+              path: "plugin.php",
+              location: "1",
+              observation: "The handler crosses the protected state boundary.",
+            },
+          ],
+          controlAssessments: [
+            {
+              control: "Authorization check",
+              evidence: [
+                {
+                  path: "plugin.php",
+                  location: "1",
+                  observation: "No effective authorization check is present.",
+                },
+              ],
+              conclusion:
+                "The visible control does not prevent the claimed effect.",
+            },
+          ],
+          unresolvedFacts: [],
+        },
+      ],
+      decision: {
+        kind: "stop",
+        basis: "No actionable frontier remains.",
+      },
+    });
+    const malformedStop = `{"schemaVersion":2,"assessments":[],"evidenceSummary":${evidenceSummaryJson},"candidates":[],"decision":{"kind":"stop","basis":"No actionable frontier remains.","nextActions":[]}]}`;
+    const validStop = `{"schemaVersion":2,"assessments":[],"evidenceSummary":${evidenceSummaryJson},"candidates":[],"decision":{"kind":"stop","basis":"No actionable frontier remains."}}`;
+    const ambiguousStop = `{"schemaVersion":2,"assessments":[],"evidenceSummary":${evidenceSummaryJson},"candidates":[],"decision":{"kind":"stop","basis":"Ambiguous stop.","nextActions":[{"question":"Continue?","sourcePointers":["plugin.php"]}]}}`;
     const providerResultPath = join(directory, "provider-result.txt");
     const correctedProviderResultPath = join(
       directory,
@@ -165,7 +216,7 @@ subagents=2
 case "$prompt" in
   *'The prior response was invalid'*)
     if [ -f '${correctionErrorPath}' ]; then
-      node -e 'const body={type:"result",subtype:"success",is_error:true,terminal_reason:"api_error",api_error_status:429,result:"API Error: Usage limit reached for 5 hour.",session_id:process.argv[1],duration_ms:1000,num_turns:0,permission_denials:[],usage:{server_tool_use:{web_search_requests:0,web_fetch_requests:0}},modelUsage:{}};process.stdout.write(JSON.stringify(body));' "$session"
+      printf '{"type":"result","subtype":"success","is_error":true,"terminal_reason":"api_error","api_error_status":429,"result":"API Error: Usage limit reached for 5 hour.","session_id":"%s","duration_ms":1000,"num_turns":0,"permission_denials":[],"usage":{"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}},"modelUsage":{}}' "$session"
       exit 1
     fi
     result_path='${correctedProviderResultPath}'

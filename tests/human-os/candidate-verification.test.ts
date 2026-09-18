@@ -29,7 +29,7 @@ afterEach(async () => {
 function request() {
   const body = {
     kind: "candidate-verification-request" as const,
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     requestId: "campaign-1:verification:candidate-1",
     campaignId: "campaign-1",
     campaignInputDigest:
@@ -61,6 +61,35 @@ function request() {
           observation: "The public action reaches the archive installer",
         },
       ],
+      sourceTrace: [
+        {
+          role: "entrypoint" as const,
+          path: "includes/action.php",
+          location: "42",
+          observation: "A public action accepts attacker-controlled input.",
+        },
+        {
+          role: "effect" as const,
+          path: "includes/action.php",
+          location: "70",
+          observation: "The archive is installed as executable code.",
+        },
+      ],
+      controlAssessments: [
+        {
+          control: "Administrator capability check",
+          evidence: [
+            {
+              path: "includes/action.php",
+              location: "42-70",
+              observation: "The public action reaches installation without it.",
+            },
+          ],
+          conclusion:
+            "No source-visible control prevents the public action from installing code.",
+        },
+      ],
+      unresolvedFacts: [],
       reproductionRecipe: {
         kind: "candidate-verification-recipe-ref" as const,
         schemaVersion: 1 as const,

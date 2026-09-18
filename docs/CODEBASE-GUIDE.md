@@ -194,7 +194,7 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 
 - **目的:** Research、両Human Review、Candidate Verification Request、Coverageと再開を一つのModuleに隠す。
 - **Interface:** `ResearchCampaigns.conduct / inspect`。versioned handoffは[`research/index.ts`](../src/research/index.ts)、入力とcommandのfieldは[`contracts.ts`](../src/research/agent-led/contracts.ts)。
-- **所有する記録・不変条件:** SQLiteのappend-only Campaign eventsとprivate Checkpoint / Diagnostic / Candidate Recipeへのopaque ref。最大1時間のGrant、exact bindingの両Human Review、Parked Programme LeadのCandidate Review除外、admitされたCandidateだけのRequest生成、Research Coverageとの分離を維持する。Candidate VerificationへCheckpointやProgramme Boundaryを渡さない。run数とwall timeがhard limit、provider costは観測値。
+- **所有する記録・不変条件:** SQLiteのappend-only Campaign eventsとprivate Checkpoint / Diagnostic / Candidate Recipeへのopaque ref。Research Report v2はGrant内のexamined / unexamined領域を示すsource-backed evidence summary、Grant-localなResearch Assessmentと、ordered source trace・control assessment・未解決事実を持つCandidateを記録する。最大1時間のGrant、exact bindingの両Human Review、Parked Programme LeadのCandidate Review除外、admitされたCandidateだけのRequest生成、Research Coverageとの分離を維持する。evidence summaryやAssessmentをwork queue、探索完了またはCoverage proofにせず、Candidate VerificationへCheckpointやProgramme Boundaryを渡さない。run数とwall timeがhard limit、provider costは観測値。
 - **失敗時:** review待ちはrunを開始しない。異なるinput、stale/partial reviewはatomic conflict。provider・Budget・policy・invalid outputは`incomplete`として残す。Researchの有効Checkpointによるresumeと実行前availability / 未認証の一度のretryを区別する。source / Checkpoint integrity failureはretry不可。admit済みCandidateにrecipeがなければRequestを捏造せず`verification-preparation-needed`にする。
 
 入力例は[`campaign-threat-context.test.ts`](../tests/research/campaign-threat-context.test.ts)。入力の組立箇所は[Agent input](#agent-input)へ進む。
@@ -268,10 +268,10 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 
 | 内容 | Source | 現在の関係 |
 | --- | --- | --- |
-| base Prompt | [Research Prompt v2](../prompts/wordpress-plugin-research-v2.md) | CLIから本文を渡し、sealed digestを検査する |
-| run固有のcontextと追加指示 | [`agent-prompts.ts`](../src/research/agent-led/agent-prompts.ts) | `agentResearchPrompt`がsealed runからTarget・Dependency・Threat Context・Programme Boundary・継続next actionの表示とJSON化したcontextを組み立て、Candidate-bound recipeの出力を要求する |
-| 入出力schema | [contracts.ts](../src/research/agent-led/contracts.ts) | versioned Zod schemaを所有する |
-| provider向け表現 | [Grok](../src/research/agent-led/grok-native-agent-runtime.ts)・[Claude / GLM](../src/research/agent-led/claude-code-native-agent-runtime.ts)・[Codex](../src/research/agent-led/codex-native-agent-runtime.ts) | schemaからJSON Schemaを生成し、provider別のprompt / structured-output形式へ変換する |
+| base Prompt | [Research Prompt v3](../prompts/wordpress-plugin-research-v3.md) | CLIから本文を渡し、sealed digestを検査する |
+| run固有のcontextと追加指示 | [`agent-prompts.ts`](../src/research/agent-led/agent-prompts.ts) | `agentResearchPrompt`がsealed runからTarget・Dependency・Threat Context・Programme Boundary・継続next actionの表示とJSON化したcontextを組み立て、Candidate-bound recipe、Candidate evidence、Grant-local Research Assessmentとevidence summaryの出力を要求する |
+| 入出力schema | [contracts.ts](../src/research/agent-led/contracts.ts) | Research Report v2を含むversioned Zod schemaを所有する |
+| provider向け表現 | [Grok](../src/research/agent-led/grok-native-agent-runtime.ts)・[Claude / GLM](../src/research/agent-led/claude-code-native-agent-runtime.ts)・[Codex](../src/research/agent-led/codex-native-agent-runtime.ts) | schemaからJSON Schemaを生成し、provider別のprompt / structured-output形式へ変換する。Codex transportのnullable placeholderは受信時にdomain schemaへ戻す |
 | Candidate recipeのprivate保存 | [`provider-research-report.ts`](../src/research/agent-led/provider-research-report.ts) | provider outputの本文を検査し、private CASへ保存して公開Reportをopaque refへ変換する |
 
 JSON Schemaの元はZod。Codex等のAdapterは項目名・必須項目・選択肢をprovider向けに変換するため、schema変更時には対応するBehavior Testも確認する。入力の組立を移動する変更では文字列を維持する。base Promptと追加文章に重なる指示を削除・並べ替える場合は、Agentへ届く入力を変える仕様変更として扱う。対応する観測は[Campaign input例](../tests/research/campaign-threat-context.test.ts)と各Runtime AdapterのBehavior Testsにある。

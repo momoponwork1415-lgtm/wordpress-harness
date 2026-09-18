@@ -336,7 +336,7 @@ function errorReceipt(
           ? "Claude Code exhausted the provider cost budget."
           : "Claude Code exited without a completed result.";
   const receipt = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     runId: run.runId,
     runtimeProfileDigest: run.agentRuntimeProfile.digest,
     terminal,
@@ -755,7 +755,7 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         : [candidate.subagent_stats.spawned],
     );
     const receipt = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       runId: run.runId,
       runtimeProfileDigest: run.agentRuntimeProfile.digest,
       terminal: "completed",

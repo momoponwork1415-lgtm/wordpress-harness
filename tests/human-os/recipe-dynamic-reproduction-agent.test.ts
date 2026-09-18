@@ -23,7 +23,7 @@ const recipe: DynamicReproductionRecipe = {
 };
 const requestBody = {
   kind: "candidate-verification-request" as const,
-  schemaVersion: 1 as const,
+  schemaVersion: 2 as const,
   requestId: "campaign:verification:candidate-1",
   campaignId: "campaign",
   campaignInputDigest:
@@ -48,6 +48,35 @@ const requestBody = {
     brokenSecurityProperty: "Only administrators may mutate settings",
     claim: "A public action changes settings",
     evidence: [{ path: "plugin.php", location: "10", observation: "No gate" }],
+    sourceTrace: [
+      {
+        role: "entrypoint" as const,
+        path: "plugin.php",
+        location: "10",
+        observation: "The public action accepts attacker-controlled settings.",
+      },
+      {
+        role: "effect" as const,
+        path: "plugin.php",
+        location: "10",
+        observation: "The action mutates protected settings.",
+      },
+    ],
+    controlAssessments: [
+      {
+        control: "Administrator capability check",
+        evidence: [
+          {
+            path: "plugin.php",
+            location: "10",
+            observation: "No gate is present.",
+          },
+        ],
+        conclusion:
+          "No source-visible control prevents the public settings mutation.",
+      },
+    ],
+    unresolvedFacts: [],
     reproductionRecipe: {
       kind: "candidate-verification-recipe-ref" as const,
       schemaVersion: 1 as const,

@@ -19,6 +19,7 @@ import { openCodexNativeAgentRuntime } from "../../src/research/agent-led/codex-
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
 import type { CampaignInput } from "../../src/research/index.js";
 import { conductWithHumanAdvance } from "./support/candidate-review.js";
+import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -60,6 +61,9 @@ describe("Codex Native Agent Runtime", () => {
         },
       ],
     });
+    const escapedEvidenceSummaryJson = JSON.stringify(
+      researchEvidenceSummaryFixture(),
+    ).replaceAll('"', '\\"');
     const dockerExecutablePath = join(directory, "fake-docker");
     await writeFile(
       dockerExecutablePath,
@@ -116,10 +120,10 @@ fi
 grep -Fq 'multi_agent = true' "$scratch/requirements.toml" || exit 83
 ! grep -q '"oneOf"' "$scratch/report-schema.json" || exit 97
 grep -q '"basis"' "$scratch/report-schema.json" || exit 98
-grep -Fq '"required":["schemaVersion","candidates","decision","parkedProgrammeLeads"]' "$scratch/report-schema.json" || exit 99
 node - "$scratch/report-schema.json" <<'NODE' || exit 82
 const { readFileSync } = require("node:fs");
 const schema = JSON.parse(readFileSync(process.argv[2], "utf8"));
+if (!schema.required.includes("evidenceSummary")) process.exit(1);
 const candidate = schema.properties.candidates.items;
 if (!candidate.required.includes("reproductionRecipe")) process.exit(1);
 if (
@@ -142,9 +146,9 @@ printf '%s\n' '{"type":"item.completed","item":{"id":"item-reader-error","type":
 printf '%s\n' '{"type":"item.started","item":{"id":"item-collab","type":"collab_tool_call","tool":"spawn_agent","sender_thread_id":"11111111-1111-4111-8111-111111111111","receiver_thread_ids":["22222222-2222-4222-8222-222222222222"],"prompt":"Review one route.","agents_states":{},"status":"in_progress"}}'
 printf '%s\n' '{"type":"item.completed","item":{"id":"item-collab","type":"collab_tool_call","tool":"spawn_agent","sender_thread_id":"11111111-1111-4111-8111-111111111111","receiver_thread_ids":["22222222-2222-4222-8222-222222222222"],"prompt":"Review one route.","agents_states":{"22222222-2222-4222-8222-222222222222":{"status":"running","message":null}},"status":"completed"}}'
 if [ "$is_resume" -eq 0 ]; then
-  printf '%s\n' '{"type":"item.completed","item":{"id":"item-2","type":"agent_message","text":"{\\"schemaVersion\\":1,\\"candidates\\":[],\\"decision\\":{\\"kind\\":\\"continue\\",\\"reason\\":\\"One source-bound question remains.\\",\\"nextActions\\":[{\\"question\\":\\"Trace the final route.\\",\\"sourcePointers\\":[\\"plugin.php\\"]}]}}"}}'
+  printf '%s\n' '{"type":"item.completed","item":{"id":"item-2","type":"agent_message","text":"{\\"schemaVersion\\":2,\\"assessments\\":[],\\"evidenceSummary\\":${escapedEvidenceSummaryJson},\\"candidates\\":[],\\"decision\\":{\\"kind\\":\\"continue\\",\\"reason\\":\\"One source-bound question remains.\\",\\"nextActions\\":[{\\"question\\":\\"Trace the final route.\\",\\"sourcePointers\\":[\\"plugin.php\\"]}]}}"}}'
 else
-  printf '%s\n' '{"type":"item.completed","item":{"id":"item-2","type":"agent_message","text":"{\\"schemaVersion\\":1,\\"candidates\\":[{\\"candidateId\\":\\"candidate-codex-stored-xss-1\\",\\"attackerPremise\\":\\"An unauthenticated visitor can submit the public form.\\",\\"brokenSecurityProperty\\":\\"Persisted attacker input must be inert in privileged output.\\",\\"claim\\":\\"A public form value is stored and rendered to an administrator without escaping.\\",\\"evidence\\":[{\\"path\\":\\"plugin.php\\",\\"location\\":\\"handler:1\\",\\"observation\\":\\"The public value crosses a stored output boundary.\\"}],\\"reproductionRecipe\\":null}],\\"decision\\":{\\"kind\\":\\"stop\\",\\"reason\\":null,\\"nextActions\\":null,\\"basis\\":\\"No actionable frontier remains.\\"},\\"parkedProgrammeLeads\\":[]}"}}'
+  printf '%s\n' '{"type":"item.completed","item":{"id":"item-2","type":"agent_message","text":"{\\"schemaVersion\\":2,\\"assessments\\":[],\\"evidenceSummary\\":${escapedEvidenceSummaryJson},\\"candidates\\":[{\\"candidateId\\":\\"candidate-codex-stored-xss-1\\",\\"attackerPremise\\":\\"An unauthenticated visitor can submit the public form.\\",\\"brokenSecurityProperty\\":\\"Persisted attacker input must be inert in privileged output.\\",\\"claim\\":\\"A public form value is stored and rendered to an administrator without escaping.\\",\\"evidence\\":[{\\"path\\":\\"plugin.php\\",\\"location\\":\\"handler:1\\",\\"observation\\":\\"The public value crosses a stored output boundary.\\"}],\\"sourceTrace\\":[{\\"role\\":\\"entrypoint\\",\\"path\\":\\"plugin.php\\",\\"location\\":\\"handler:1\\",\\"observation\\":\\"The public form accepts attacker input.\\"},{\\"role\\":\\"effect\\",\\"path\\":\\"plugin.php\\",\\"location\\":\\"handler:1\\",\\"observation\\":\\"The stored value reaches administrator output.\\"}],\\"controlAssessments\\":[{\\"control\\":\\"Output escaping\\",\\"evidence\\":[{\\"path\\":\\"plugin.php\\",\\"location\\":\\"handler:1\\",\\"observation\\":\\"No escaping is applied at the output boundary.\\"}],\\"conclusion\\":\\"No source-visible control prevents the stored output effect.\\"}],\\"unresolvedFacts\\":[],\\"reproductionRecipe\\":null}],\\"decision\\":{\\"kind\\":\\"stop\\",\\"reason\\":null,\\"nextActions\\":null,\\"basis\\":\\"No actionable frontier remains.\\"},\\"parkedProgrammeLeads\\":[]}"}}'
 fi
 printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":200,"cache_write_input_tokens":300,"output_tokens":100,"reasoning_output_tokens":50}}'
 `,
@@ -477,6 +481,9 @@ sleep 60
         },
       ],
     });
+    const escapedEvidenceSummaryJson = JSON.stringify(
+      researchEvidenceSummaryFixture(),
+    ).replaceAll('"', '\\"');
     const dockerExecutablePath = join(directory, "fake-docker");
     const omitSessionPath = join(directory, "omit-session");
     await writeFile(
@@ -506,7 +513,7 @@ if [ ! -f '${omitSessionPath}' ]; then
 fi
 printf '%s\n' '{"type":"turn.started"}'
 printf '%s\n' '{"type":"item.completed","item":{"id":"item-1","type":"mcp_tool_call","server":"ambient_shell","tool":"run","arguments":{},"result":null,"error":null,"status":"completed"}}'
-printf '%s\n' '{"type":"item.completed","item":{"id":"item-2","type":"agent_message","text":"{\\"schemaVersion\\":1,\\"candidates\\":[],\\"decision\\":{\\"kind\\":\\"stop\\",\\"basis\\":\\"No actionable frontier remains.\\"}}"}}'
+printf '%s\n' '{"type":"item.completed","item":{"id":"item-2","type":"agent_message","text":"{\\"schemaVersion\\":2,\\"assessments\\":[],\\"evidenceSummary\\":${escapedEvidenceSummaryJson},\\"candidates\\":[],\\"decision\\":{\\"kind\\":\\"stop\\",\\"basis\\":\\"No actionable frontier remains.\\"}}"}}'
 printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":200,"cache_write_input_tokens":300,"output_tokens":100,"reasoning_output_tokens":50}}'
 `,
       { encoding: "utf8", mode: 0o700 },

@@ -1,14 +1,14 @@
 # wp2shell と現行 Research loop の差分
 
-Status: primary-source comparison and runtime observation, checked 2026-09-10
+Status: primary-source comparison and runtime observation, checked 2026-09-18
 
 ## 結論
 
-現行方式はwp2shellの研究手法を[WordPress Plugin Research v2](../../prompts/wordpress-plugin-research-v2.md)へ取り入れた。Daybreak、Opus、GLM、Grokの全てでnative subagentの実利用例を確認済みだが、下記の実測はv2導入前で、通常は一つのfan-out waveの後、約10〜22分で`stop`していた。v2が明示する反復roundとadversarial double-checkが実行上も定着したかは再評価が必要である。
+現行方式はwp2shellの研究手法を[WordPress Plugin Research v3](../../prompts/wordpress-plugin-research-v3.md)へ取り入れた。Daybreak、Opus、GLM、Grokの全てでnative subagentの実利用例を確認済みだが、下記の実測はv2導入前で、通常は一つのfan-out waveの後、約10〜22分で`stop`していた。v3が明示する反復round、adversarial double-checkとcontrol challengeが実行上も定着したかは再評価が必要である。
 
 調査時点ではprovider間の制御と観測も揃っていなかった。最新DaybreakはRootごとに3体を起動する一方、source上には`multi_agent=false`が残り、OpusとGLMでは子agentがさらにagentを起動して最大同時4体を超えた。2026-09-10に全providerのRuntimeをRoot込み最大4体へ修正し、Claude Code / GLMとGrokはspawn depthも1へ制限した。一方、Opus、GLM、GrokのReceiptは実際にagentを使っても`activity.subagents=null`となる例があり、利用数の観測は未解決である。
 
-wp2shell promptから持ち込まないのは、task固有のpositive oracle、RCE / `/flag`到達の強制と最低6時間の指定である。1時間ごとのHuman Review、read-only sandbox、fresh Independent Validationは、prompt techniqueをprospective Campaignとして安全に運用する外側のProduct boundaryである。
+wp2shell promptから持ち込まないのは、task固有のpositive oracle、RCE / `/flag`到達の強制と最低6時間の指定である。1時間ごとのHuman Review、read-only sandbox、fresh Candidate Verificationは、prompt techniqueをprospective Campaignとして安全に運用する外側のProduct boundaryである。
 
 一次資料は、著者がfolder構成とexact promptを掲載した[wp2shellの記事](https://www.slcyber.io/research/exploit-brokers-pay-500000-for-a-wordpress-rce-i-found-one-with-gpt5-6#the-story-of-wp2shell)と、記事から直接参照されるOpenAIの[Cycle Double Cover Prompt](https://cdn.openai.com/pdf/04d1d1e4-bc75-476a-97cf-49055cd98d31/cdc_prompt.pdf)である。
 
@@ -16,15 +16,15 @@ wp2shell promptから持ち込まないのは、task固有のpositive oracle、R
 
 | Concern | wp2shellで実際に指示されたこと | 現行Research | 判定 |
 | --- | --- | --- | --- |
-| Root / subagent | multi-agentを積極的に使い、同時最大4体。approach familyを分散し、Rootが反復的にsynthesize、challenge、redirect、new roundを起動する。具体的bugはadversarial agentで二重確認する。 | v2 Promptは積極的なnative subagent利用、最大4体、Rootだけの起動、反復synthesis / challenge / redirect / new round、adversarial double-checkを明記した（`prompts/wordpress-plugin-research-v2.md:18-28`）。各Runtimeも同じresource ceilingを強制する。 | **Promptと上限は一致。** fan-outの利用数をReceiptへ正確に残す観測は未解決。 |
-| 多様性と反復 | diverse portfolioを始め、収束したfamilyを別routeへ戻す。失敗した最初のwaveで止めず、blocked routeは新 mechanismがある時だけ再開し、複数roundを回す。 | v2 Promptは明示的なfamily registry、収束時のredirect、一routeによる支配の禁止、新機構だけによるblocked route再開、incompatible routeの複数round維持、遅いcross-pollination、first-wave failure後のfresh idea投入を明記した（`prompts/wordpress-plugin-research-v2.md:20-28,40`）。 | **Promptは一致。** v2 Campaignの実測が必要。 |
-| 停止条件 | 「現在のapproachが失敗した」だけでreturnせず、新しいroundを続ける。give upまで最低6時間。 | 1 Grantは最大1時間（`src/research/agent-led/contracts.ts:182-193`）。agentはreport用に最大5分を残し、active frontierがあれば`continue`、なければいつでも`stop`できる（`src/research/agent-led/gvisor-agent-sandbox.ts:359-423`）。`stop` schemaは非空の`basis`しか要求しない（`src/research/agent-led/contracts.ts:568-585`）。 | **1時間Human Reviewは意図的。早期stopは重大差。** 最新Daybreak completed Rootは2.8〜18.4分、平均10.3分。GLM 4件は11〜19.5分、Grokのrich runは15.8〜19分で終了した。1時間はreview時点ではなく上限になっている。 |
-| Oracle / goal | 「脆弱性が存在する」と保証し、typical MySQL productionでpre-authからRCE、最終successは`/flag` readと教える。 | 脆弱性の存在を仮定せず、ordinary deploymentでunauth / Subscriber / CustomerからFile、Options、RCE、Admin ATO / PE、Stored XSS、SQLi等を探索する。列挙impactへの完全なrouteをsuccessとし、RCE昇格を必須にしない（`prompts/wordpress-plugin-research-v2.md:3-16`）。 | **明示的な除外。** positive oracleとRCE / `/flag`到達の強制は未知Targetのprospective Researchへ持ち込まない。 |
+| Root / subagent | multi-agentを積極的に使い、同時最大4体。approach familyを分散し、Rootが反復的にsynthesize、challenge、redirect、new roundを起動する。具体的bugはadversarial agentで二重確認する。 | v3 Promptは積極的なnative subagent利用、最大4体、Rootだけの起動、反復synthesis / challenge / redirect / new round、adversarial double-checkを明記した（`prompts/wordpress-plugin-research-v3.md:18-28`）。各Runtimeも同じresource ceilingを強制する。 | **Promptと上限は一致。** fan-outの利用数をReceiptへ正確に残す観測は未解決。 |
+| 多様性と反復 | diverse portfolioを始め、収束したfamilyを別routeへ戻す。失敗した最初のwaveで止めず、blocked routeは新 mechanismがある時だけ再開し、複数roundを回す。 | v3 Promptは明示的なfamily registry、収束時のredirect、一routeによる支配の禁止、新機構だけによるblocked route再開、incompatible routeの複数round維持、遅いcross-pollination、first-wave failure後のfresh idea投入を明記した（`prompts/wordpress-plugin-research-v3.md:20-28,40`）。 | **Promptは一致。** v3 Campaignの実測が必要。 |
+| 停止条件 | 「現在のapproachが失敗した」だけでreturnせず、新しいroundを続ける。give upまで最低6時間。 | 1 Grantは最大1時間。agentはreport用に最大5分を残し、active frontierがあれば`continue`、なければ`stop`できる。Report v2は`stop`のbasisに加えて、調査領域のsource evidenceと未調査領域を要求するが、探索完了の証明にはしない。 | **1時間Human Reviewは意図的。早期stopは重大差。** 最新Daybreak completed Rootは2.8〜18.4分、平均10.3分。GLM 4件は11〜19.5分、Grokのrich runは15.8〜19分で終了した。1時間はreview時点ではなく上限になっている。 |
+| Oracle / goal | 「脆弱性が存在する」と保証し、typical MySQL productionでpre-authからRCE、最終successは`/flag` readと教える。 | 脆弱性の存在を仮定せず、ordinary deploymentでunauth / Subscriber / CustomerからFile、Options、RCE、Admin ATO / PE、Stored XSS、SQLi等を探索する。列挙impactへの完全なrouteをsuccessとし、RCE昇格を必須にしない（`prompts/wordpress-plugin-research-v3.md:3-16`）。 | **明示的な除外。** positive oracleとRCE / `/flag`到達の強制は未知Targetのprospective Researchへ持ち込まない。 |
 | TargetとDependency | latest stable WordPressを`main/`へ置き`.git`を削除。空のwritable `third_party/`を用意し、必要ならPHP / MySQL等のsourceをcloneしてchainを調べられる。 | pluginを`/workspace/main`、事前にpinnedしたWordPress core等を`/workspace/dependencies/*`へread-only mountする（`src/research/agent-led/gvisor-agent-sandbox.ts:988-1025`）。Dependencyはreferenceで、Findingはpluginへ帰属させる（`docs/adr/0128-provide-pinned-dependency-source-to-research.md:5-11`）。 | **意図的だがrecall-sensitive。** 再現性と安全性は上がるが、run中に未準備のdependency sourceを取得してchainを伸ばすwp2shellの自由度はない。必要なcompanion / core sourceをCampaign作成時に漏れなくpinできることが前提になる。 |
 | Tool / sandbox | 記事は`third_party/`へclone可能とし、sourceを読むよう指示する。Prompt単体ではhost権限やsandboxを制限していない。 | runsc、read-only root、capability全drop、Target / Dependency read-only、scratchだけwriteable、webなし（`src/research/agent-led/gvisor-agent-sandbox.ts:988-1025`）。Codexはshellを無効化し、source toolはlist / read / literal searchの3種だけ（`src/research/agent-led/codex-native-agent-runtime.ts:420-465`、`src/research/agent-led/codex-source-reader.ts:137-181`）。 | **意図的な安全強化。** raw-source-firstとは一致するが、wp2shellと同じtool freedomではない。とくにdependency取得、複雑なlocal解析、独自scriptによる横断調査はできない。 |
-| OOS primitive | intermediate bugもchain候補として追い、authentication bypass等をつないでRCEへ進める。programme scopeによるparkingはない。 | v2 Promptはintermediate bugをeligible impactへchainする探索を要求する。Programme Boundary上で、focused source review後も具体的edgeがないexcluded primitiveだけはparkし、新しいsource evidenceがmissing edgeを供給すれば再開する（`prompts/wordpress-plugin-research-v2.md:28-36`）。 | **研究要素をProduct boundaryへ適応。** chain探索を保持しつつ、根拠のないOOS推論はParked Leadとして記録する。 |
+| OOS primitive | intermediate bugもchain候補として追い、authentication bypass等をつないでRCEへ進める。programme scopeによるparkingはない。 | v3 Promptはintermediate bugをeligible impactへchainする探索を要求する。Programme Boundary上で、focused source review後も具体的edgeがないexcluded primitiveだけはparkし、新しいsource evidenceがmissing edgeを供給すれば再開する（`prompts/wordpress-plugin-research-v3.md:28-36`）。 | **研究要素をProduct boundaryへ適応。** chain探索を保持しつつ、根拠のないOOS推論はParked Leadとして記録する。 |
 | Context / continuation | 著者はlong runの出力でSQLiを確認し、人間がstock WordPressで実行確認した後、RCEへ昇格できるか追加で質問し、約4時間後にchainを得た。単一promptだけの完全無人runではない。 | Root conversationとscratchをopaque checkpointとして保存し、exact input / runtime / sourceが同じ時だけ同一sessionをresumeする（`src/research/agent-led/gvisor-agent-sandbox.ts:600-731,1076-1113`）。Human Reviewはcheckpointとnext actionへbindされる（`src/research/agent-led/contracts.ts:363-421,488-521`）。 | **よく対応し、durabilityは強い。** timeout時にcheckpointを回収できなければ`incomplete`とする点も、結果消失をnegativeにしない改善である。 |
-| 出力とValidation | running outputを人間が読み、stock instanceでadmin email readを確認。その後に同じ研究をRCEへ延長し、人間が翌日chainを解読してreportを作った。fresh source-only validatorは記事にない。 | strict Research ReportでCandidate / parked Lead / continue-stopを返す（`src/research/agent-led/contracts.ts:568-585`）。Human Candidate Review後、Candidateごとにfresh source-only Validationを1回行い、`source-validated`だけがFindingになる（`docs/RESEARCH-DESIGN.md:62-79`）。runtime / human verificationはさらに後段。 | **意図的なassurance強化。** wp2shellの再現ではなくproduct workflowへの拡張。strict reportが探索終了を早めていないかは、別に実測する必要がある。 |
+| 出力とVerification | running outputを人間が読み、stock instanceでadmin email readを確認。その後に同じ研究をRCEへ延長し、人間が翌日chainを解読してreportを作った。fresh source-only validatorは記事にない。 | Research Report v2でResearch Assessment、control-challenged Candidate、parked Leadとcontinue / stopを返す。Human Candidate Review後、admitされたCandidateだけをfresh runtimeで一度検証し、`runtime-confirmed`だけがVerified Vulnerabilityになる。 | **意図的なassurance強化。** wp2shellの再現ではなくproduct workflowへの拡張。strict reportが探索終了やinvalid-outputを増やさないかは別に実測する必要がある。 |
 
 ## Provider別の実測
 
@@ -52,9 +52,9 @@ Base Promptは30行だが、Threat Context、Programme Boundary、binding、time
 ## wp2shellから保持できている核
 
 - raw sourceからfirst-principlesで読む。changelog、Git history、internet上の既知脆弱性へ頼らない（`src/research/agent-led/gvisor-agent-sandbox.ts:405-423`）。
-- sink checklistではなく、broken security semanticsとrouteをAgent自身が選ぶ（`prompts/wordpress-plugin-research-v2.md:20-30`）。
+- sink checklistではなく、broken security semanticsとrouteをAgent自身が選ぶ（`prompts/wordpress-plugin-research-v3.md:20-30`）。
 - diverse route、blocked route、途中primitive、counterevidenceをRoot conversation側で扱い、Harnessへ固定role / wave / classとして実装しない（`docs/adr/0125-put-agent-decisions-behind-thin-evidence-shells.md:5-13`）。
-- 一件のprimitive / Candidateで必ず探索を終えず、残るactive frontierとfresh approachを追う（`prompts/wordpress-plugin-research-v2.md:38-40`）。
+- 一件のprimitive / Candidateで必ず探索を終えず、残るactive frontierとfresh approachを追う（`prompts/wordpress-plugin-research-v3.md:38-40`）。
 
 ## 修正優先度
 

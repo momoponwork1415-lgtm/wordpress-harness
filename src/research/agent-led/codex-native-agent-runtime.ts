@@ -236,6 +236,33 @@ function researchTransportSchema(): Record<string, unknown> {
   candidate.required = [...candidateRequired, "reproductionRecipe"];
   candidates.items = candidate;
   properties.candidates = candidates;
+  const assessments = jsonObject(properties.assessments);
+  const assessment = jsonObject(assessments.items);
+  const assessmentBranches = z
+    .array(z.unknown())
+    .min(2)
+    .parse(assessment.oneOf);
+  const refutedAssessment = jsonObject(assessmentBranches[0]);
+  const blockedAssessment = jsonObject(assessmentBranches[1]);
+  const assessmentProperties = jsonObject(refutedAssessment.properties);
+  const blockedAssessmentProperties = jsonObject(blockedAssessment.properties);
+  const assessmentRequired = z
+    .array(z.string())
+    .parse(refutedAssessment.required);
+  assessmentProperties.disposition = {
+    type: "string",
+    enum: ["refuted", "blocked"],
+  };
+  assessmentProperties.unresolvedFacts = nullableJsonSchema(
+    blockedAssessmentProperties.unresolvedFacts,
+  );
+  assessments.items = {
+    type: "object",
+    properties: assessmentProperties,
+    required: [...assessmentRequired, "unresolvedFacts"],
+    additionalProperties: false,
+  };
+  properties.assessments = assessments;
   const decision = jsonObject(properties.decision);
   const branches = z.array(z.unknown()).min(2).parse(decision.oneOf);
   const continueProperties = jsonObject(jsonObject(branches[0]).properties);
@@ -271,10 +298,30 @@ function normalizeTransportReport(value: unknown): unknown {
       const { reproductionRecipe: _recipe, ...normalizedCandidate } = candidate;
       return normalizedCandidate;
     });
+  const assessments = z
+    .array(z.unknown())
+    .parse(report.assessments)
+    .map((value) => {
+      const assessment = jsonObject(value);
+      if (
+        assessment.disposition !== "refuted" ||
+        assessment.unresolvedFacts !== null
+      ) {
+        return assessment;
+      }
+      const { unresolvedFacts: _unresolvedFacts, ...normalizedAssessment } =
+        assessment;
+      return normalizedAssessment;
+    });
   const decision = jsonObject(report.decision);
   if (decision.kind === "continue") {
     const { basis: _basis, ...normalizedDecision } = decision;
-    return { ...report, candidates, decision: normalizedDecision };
+    return {
+      ...report,
+      candidates,
+      assessments,
+      decision: normalizedDecision,
+    };
   }
   if (decision.kind === "stop") {
     const {
@@ -282,13 +329,18 @@ function normalizeTransportReport(value: unknown): unknown {
       nextActions: _nextActions,
       ...normalizedDecision
     } = decision;
-    return { ...report, candidates, decision: normalizedDecision };
+    return {
+      ...report,
+      candidates,
+      assessments,
+      decision: normalizedDecision,
+    };
   }
-  return { ...report, candidates };
+  return { ...report, candidates, assessments };
 }
 
 function transportPrompt(prompt: string): string {
-  return `${prompt}\n\nTransport requirement: always include parkedProgrammeLeads; use an empty array when there are none. Every candidate must include reproductionRecipe; set it to null when no private reproduction recipe is available. Decision must include kind, reason, nextActions, and basis. For continue, set basis to null. For stop, set reason and nextActions to null. These null placeholders are transport-only.`;
+  return `${prompt}\n\nTransport requirement: always include parkedProgrammeLeads; use an empty array when there are none. Every candidate must include reproductionRecipe; set it to null when no private reproduction recipe is available. Every Research Assessment must include unresolvedFacts; set it to null for refuted and use a non-empty array for blocked. Decision must include kind, reason, nextActions, and basis. For continue, set basis to null. For stop, set reason and nextActions to null. These null placeholders are transport-only.`;
 }
 
 const managedRequirements = `allowed_web_search_modes = []
@@ -532,7 +584,7 @@ class CodexNativeAgentRuntime implements NativeAgentRuntime {
       );
     }
     const receipt = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       runId: run.runId,
       runtimeProfileDigest: run.agentRuntimeProfile.digest,
       terminal: "completed",

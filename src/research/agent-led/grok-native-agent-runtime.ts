@@ -296,7 +296,7 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
       );
     }
     const receipt = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       runId: run.runId,
       runtimeProfileDigest: run.agentRuntimeProfile.digest,
       terminal: "completed",

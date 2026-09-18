@@ -10,6 +10,7 @@ import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import type { CampaignInput } from "../../src/research/index.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
+import { researchEvidenceSummaryFixture } from "../research/support/research-evidence-summary.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 
@@ -271,7 +272,7 @@ exit 90
             throw new Error("initial setup only runs Research");
           }
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "completed",
@@ -298,7 +299,9 @@ exit 90
               permissionProfileDigest: run.permissionProfile.digest,
             },
             report: {
-              schemaVersion: 1,
+              schemaVersion: 2,
+              assessments: [],
+              evidenceSummary: researchEvidenceSummaryFixture(),
               candidates: [
                 {
                   candidateId: "candidate-cli-review-1",
@@ -315,6 +318,38 @@ exit 90
                       observation: "Outputs the request value.",
                     },
                   ],
+                  sourceTrace: [
+                    {
+                      role: "entrypoint",
+                      path: "plugin.php",
+                      location: "render:10",
+                      observation:
+                        "A public request supplies the rendered value.",
+                    },
+                    {
+                      role: "effect",
+                      path: "plugin.php",
+                      location: "render:10",
+                      observation:
+                        "The request value reaches privileged output.",
+                    },
+                  ],
+                  controlAssessments: [
+                    {
+                      control: "Output escaping",
+                      evidence: [
+                        {
+                          path: "plugin.php",
+                          location: "render:10",
+                          observation:
+                            "The value is output without an escaping operation.",
+                        },
+                      ],
+                      conclusion:
+                        "No source-visible escaping prevents the claimed output effect.",
+                    },
+                  ],
+                  unresolvedFacts: [],
                 },
               ],
               decision: {
@@ -493,7 +528,7 @@ exit 90
             throw new Error("initial setup only runs Research");
           }
           return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             runId: run.runId,
             runtimeProfileDigest: run.agentRuntimeProfile.digest,
             terminal: "completed",
@@ -520,7 +555,9 @@ exit 90
               permissionProfileDigest: run.permissionProfile.digest,
             },
             report: {
-              schemaVersion: 1,
+              schemaVersion: 2,
+              assessments: [],
+              evidenceSummary: researchEvidenceSummaryFixture(),
               candidates: [],
               decision: {
                 kind: "continue",
