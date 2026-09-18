@@ -7,10 +7,10 @@ import { runNativeModelProcess } from "../../src/infrastructure/native-model-pro
 describe("Native Model Process", () => {
   it("retains bounded stdout when a process times out", async () => {
     const result = await runNativeModelProcess({
-      executablePath: process.execPath,
+      executablePath: "/bin/sh",
       args: [
-        "-e",
-        'process.stdout.write("partial-thread-event\\n"); setInterval(() => {}, 1_000);',
+        "-c",
+        "printf 'partial-thread-event\\n'; while :; do sleep 1; done",
       ],
       workingDirectory: tmpdir(),
       environment: process.env,
