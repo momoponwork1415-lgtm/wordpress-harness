@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { agentRuntimeProfileSchema } from "../../infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../../infrastructure/canonical-json.js";
+import { providerCredentialEgressReceiptSchema } from "../../infrastructure/deepseek-credential-egress-broker.js";
 
 export { agentRuntimeProfileSchema } from "../../infrastructure/agent-runtime-profile.js";
 
@@ -220,7 +221,7 @@ export const agentCheckpointRefSchema = z.strictObject({
   stateDigest: digestSchema,
   stateEntries: z.number().int().positive(),
   stateBytes: z.number().int().nonnegative(),
-  sessionId: z.uuid(),
+  sessionId: identifierSchema,
   targetSnapshotDigest: digestSchema,
   promptSetDigest: digestSchema,
   runtimeProfileDigest: digestSchema,
@@ -701,6 +702,7 @@ const agentRunReceiptShape = {
   completedAt: z.iso.datetime(),
   usage: nativeRunUsageSchema,
   activity: nativeRunActivitySchema,
+  credentialEgress: providerCredentialEgressReceiptSchema.optional(),
 };
 
 export const nativeRunReceiptSchema = z.discriminatedUnion("terminal", [

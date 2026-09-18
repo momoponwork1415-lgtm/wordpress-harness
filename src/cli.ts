@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { createDeepSeekCredentialEgressBroker } from "./infrastructure/deepseek-credential-egress-broker.js";
 
 import {
   campaignInputSchema,
@@ -15,6 +17,7 @@ import {
   openGlmNativeAgentRuntime,
 } from "./research/agent-led/claude-code-native-agent-runtime.js";
 import { openCodexNativeAgentRuntime } from "./research/agent-led/codex-native-agent-runtime.js";
+import { openDeepSeekHarnessNativeAgentRuntime } from "./research/agent-led/deepseek-harness-native-agent-runtime.js";
 import { openGrokNativeAgentRuntime } from "./research/agent-led/grok-native-agent-runtime.js";
 import type { NativeAgentRuntime } from "./research/agent-led/contracts.js";
 import { openResearchCampaigns } from "./research/agent-led/research-campaigns.js";
@@ -144,6 +147,25 @@ function openNativeRuntime(
   }
   if (input.agentRuntimeProfile.transportKind === "codex-native/v1") {
     return openCodexNativeAgentRuntime(options);
+  }
+  if (
+    input.agentRuntimeProfile.transportKind === "deepseek-harness-native/v1"
+  ) {
+    return openDeepSeekHarnessNativeAgentRuntime({
+      sandbox: options,
+      credentialEgressBroker: createDeepSeekCredentialEgressBroker({
+        dockerExecutablePath: options.dockerExecutablePath,
+        brokerImage: options.image,
+        credentialFilePath: join(
+          options.providerConfigDirectory,
+          "deepseek-api-key",
+        ),
+        scratchRootDirectory: options.scratchRootDirectory,
+        proxyBundleDirectory: fileURLToPath(
+          new URL("./infrastructure/", import.meta.url),
+        ),
+      }),
+    });
   }
   throw new Error(
     `Unsupported Agent Runtime: ${input.agentRuntimeProfile.transportKind}`,

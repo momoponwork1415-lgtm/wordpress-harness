@@ -14,6 +14,10 @@ import {
   type SealedNativeRun,
 } from "./contracts.js";
 import { providerResearchReportSchema } from "./provider-research-report.js";
+import {
+  parsePromptedJsonResearchReport,
+  promptedJsonResearchPrompt,
+} from "./prompted-json-report.js";
 
 const grokUsageSchema = z.strictObject({
   input_tokens: z.number().int().nonnegative(),
@@ -70,50 +74,6 @@ function parseJson(value: string): unknown {
   } catch {
     return undefined;
   }
-}
-
-function parseJsonOrTrailingObject(value: string): unknown {
-  const whole = parseJson(value);
-  if (whole !== undefined) return whole;
-
-  const text = value.trim();
-  if (!text.endsWith("}")) return undefined;
-  let depth = 0;
-  let insideString = false;
-  for (let index = text.length - 1; index >= 0; index -= 1) {
-    const character = text[index];
-    if (character === '"') {
-      let precedingBackslashes = 0;
-      for (
-        let escapeIndex = index - 1;
-        escapeIndex >= 0 && text[escapeIndex] === "\\";
-        escapeIndex -= 1
-      ) {
-        precedingBackslashes += 1;
-      }
-      if (precedingBackslashes % 2 === 0) insideString = !insideString;
-      continue;
-    }
-    if (insideString) continue;
-    if (character === "}") {
-      depth += 1;
-      continue;
-    }
-    if (character !== "{") continue;
-    depth -= 1;
-    if (depth === 0) return parseJson(text.slice(index));
-    if (depth < 0) return undefined;
-  }
-  return undefined;
-}
-
-function grokPrompt(sandboxPrompt: string): string {
-  return `${sandboxPrompt}
-
-Grok final Research Report JSON Schema:
-${JSON.stringify(z.toJSONSchema(providerResearchReportSchema))}
-
-Use the source tools for the investigation before producing the final answer. At the end, return exactly one JSON object matching this schema in the response text. Do not wrap it in Markdown or add prose outside the JSON object.`;
 }
 
 class GrokNativeAgentRuntime implements NativeAgentRuntime {
@@ -198,7 +158,7 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
       ],
       prompt: {
         kind: "file",
-        text: grokPrompt(this.#sandbox.prompt(run)),
+        text: promptedJsonResearchPrompt(this.#sandbox.prompt(run), "Grok"),
       },
     });
     if (execution.status === "failed") return execution.receipt;
@@ -269,12 +229,9 @@ class GrokNativeAgentRuntime implements NativeAgentRuntime {
         undefined,
       );
     }
-    const textReport = providerResearchReportSchema.safeParse(
-      parseJsonOrTrailingObject(envelope.text),
-    );
-    const providerReport = textReport.success
-      ? textReport.data
-      : providerResearchReportSchema.safeParse(envelope.structuredOutput).data;
+    const providerReport =
+      parsePromptedJsonResearchReport(envelope.text) ??
+      providerResearchReportSchema.safeParse(envelope.structuredOutput).data;
     if (providerReport === undefined) {
       const summary = "Grok Build returned an unsupported Agent Report.";
       return refusedNativeRunReceipt(

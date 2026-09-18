@@ -69,6 +69,7 @@ export interface GvisorAgentRuntimeOptions {
 export interface SandboxedAgentCommand {
   readonly executable: string;
   readonly versionTokenIndex: number;
+  readonly dockerNetworkName?: string;
   readonly providerEnvironment: readonly string[];
   readonly supportFiles?: readonly {
     readonly filename: string;
@@ -537,8 +538,11 @@ export class GvisorAgentSandbox {
         }
         providerHome ??= await mkdtemp(join(scratchRootDirectory, "provider-"));
         await credentials.copyTo(providerConfigDirectory, providerHome);
-      } else if (command.ephemeralProviderHomeMount !== undefined) {
-        throw new Error("Provider mount requires credential files");
+      } else if (
+        command.ephemeralProviderHomeMount !== undefined &&
+        researchState === undefined
+      ) {
+        throw new Error("Provider mount requires Research session state");
       }
       if (scratchDirectory === undefined) {
         throw new Error("Agent scratch directory is unavailable");
@@ -572,6 +576,9 @@ export class GvisorAgentSandbox {
         "--pids-limit=512",
         "--memory=8g",
         "--cpus=4",
+        ...(command.dockerNetworkName === undefined
+          ? []
+          : ["--network", command.dockerNetworkName]),
         "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=512m",
         "--volume",
         `${sourceDirectory}:/workspace/main:ro`,

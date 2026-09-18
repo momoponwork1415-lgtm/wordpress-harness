@@ -59,62 +59,97 @@ export type ProviderCredentialEgressOperation<T> =
   | { readonly status: "completed"; readonly value: T }
   | { readonly status: "failed"; readonly error: unknown };
 
-export type ProviderCredentialEgressSetup =
-  | { readonly status: "ready" }
-  | {
-      readonly status: "failed";
-      readonly stage:
-        | "credential"
-        | "broker-preflight"
-        | "network-create"
-        | "broker-start"
-        | "provider-network-connect"
-        | "broker-address"
-        | "broker-health";
-      readonly reason:
-        | "credential-unavailable"
-        | "broker-bundle-unavailable"
-        | "docker-network-unavailable"
-        | "broker-container-unavailable"
-        | "provider-network-unavailable"
-        | "broker-address-unavailable"
-        | "broker-not-ready";
-    };
+const providerCredentialEgressSetupSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("ready") }),
+  z.strictObject({
+    status: z.literal("failed"),
+    stage: z.enum([
+      "credential",
+      "broker-preflight",
+      "network-create",
+      "broker-start",
+      "provider-network-connect",
+      "broker-address",
+      "broker-health",
+    ]),
+    reason: z.enum([
+      "credential-unavailable",
+      "broker-bundle-unavailable",
+      "docker-network-unavailable",
+      "broker-container-unavailable",
+      "provider-network-unavailable",
+      "broker-address-unavailable",
+      "broker-not-ready",
+    ]),
+  }),
+]);
 
-export type ProviderCredentialEgressCleanup =
-  | { readonly status: "completed" }
-  | { readonly status: "not-required" }
-  | {
-      readonly status: "failed";
-      readonly failedSteps: readonly (
-        "broker-remove" | "network-remove" | "credential-staging-remove"
-      )[];
-    };
+const providerCredentialEgressCleanupSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("completed") }),
+  z.strictObject({ status: z.literal("not-required") }),
+  z.strictObject({
+    status: z.literal("failed"),
+    failedSteps: z.array(
+      z.enum(["broker-remove", "network-remove", "credential-staging-remove"]),
+    ),
+  }),
+]);
 
-export interface ProviderCredentialEgressReceipt {
-  readonly schemaVersion: 1;
-  readonly grantId: string;
-  readonly runtimeProfileDigest: string;
-  readonly brokerImage: string;
-  readonly upstreamOrigin: typeof DEEPSEEK_UPSTREAM_ORIGIN;
-  readonly model: string;
-  readonly protocol: DeepSeekApiProtocol;
-  readonly maxRequests: number;
-  readonly maxRequestBytes: number;
-  readonly maxResponseBytes: number;
-  readonly expiresAt: string;
-  readonly startedAt: string;
-  readonly completedAt: string;
-  readonly setup: ProviderCredentialEgressSetup;
-  readonly cleanup: ProviderCredentialEgressCleanup;
-  readonly isolation: {
-    readonly backend: "gvisor";
-    readonly runtime: "runsc";
-    readonly fallbackUsed: false;
-    readonly agentNetworkInternal: true;
-  };
-  readonly digest: string;
-}
+const providerCredentialEgressReceiptBodySchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  grantId: dockerNameSchema,
+  runtimeProfileDigest: digestSchema,
+  brokerImage: pinnedImageSchema,
+  upstreamOrigin: z.literal(DEEPSEEK_UPSTREAM_ORIGIN),
+  model: modelSchema,
+  protocol: z.enum(["responses", "chat-completions"]),
+  maxRequests: z.number().int().positive().max(10_000),
+  maxRequestBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(1024 * 1024 * 1024),
+  maxResponseBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(1024 * 1024 * 1024),
+  expiresAt: z.iso.datetime({ offset: true }),
+  startedAt: z.iso.datetime({ offset: true }),
+  completedAt: z.iso.datetime({ offset: true }),
+  setup: providerCredentialEgressSetupSchema,
+  cleanup: providerCredentialEgressCleanupSchema,
+  isolation: z.strictObject({
+    backend: z.literal("gvisor"),
+    runtime: z.literal("runsc"),
+    fallbackUsed: z.literal(false),
+    agentNetworkInternal: z.literal(true),
+  }),
+});
+
+export const providerCredentialEgressReceiptSchema =
+  providerCredentialEgressReceiptBodySchema
+    .extend({ digest: digestSchema })
+    .superRefine((receipt, context) => {
+      const { digest, ...body } = receipt;
+      if (digest !== canonicalDigest(body)) {
+        context.addIssue({
+          code: "custom",
+          path: ["digest"],
+          message: "Credential egress receipt digest must bind its body",
+        });
+      }
+    });
+
+export type ProviderCredentialEgressSetup = z.infer<
+  typeof providerCredentialEgressSetupSchema
+>;
+export type ProviderCredentialEgressCleanup = z.infer<
+  typeof providerCredentialEgressCleanupSchema
+>;
+export type ProviderCredentialEgressReceipt = z.infer<
+  typeof providerCredentialEgressReceiptSchema
+>;
 
 export interface ProviderCredentialEgressResult<T> {
   readonly operation: ProviderCredentialEgressOperation<T>;
@@ -161,7 +196,10 @@ function redactSecret(value: string, secret: string): string {
 function receiptWithDigest(
   receipt: Omit<ProviderCredentialEgressReceipt, "digest">,
 ): ProviderCredentialEgressReceipt {
-  return { ...receipt, digest: canonicalDigest(receipt) };
+  return providerCredentialEgressReceiptSchema.parse({
+    ...receipt,
+    digest: canonicalDigest(receipt),
+  });
 }
 
 async function readPrivateCredential(path: string): Promise<string> {

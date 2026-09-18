@@ -91,11 +91,21 @@ export const codexNativeTransport = {
   reportProtocol: "schema-constrained-json",
 } as const;
 
+export const deepSeekHarnessNativeTransport = {
+  transportKind: "deepseek-harness-native/v1",
+  executableVersion: "0.1.6-alpha.2",
+  sandboxImageDigest:
+    "sha256:e23300f3efa693d9f52c429ff05f443df0577ae3f3e4f9f26842a7dc685ace29",
+  promptProtocol: "stdin",
+  reportProtocol: "prompted-json",
+} as const;
+
 const transportRequirements = [
   grokBuildNativeTransport,
   claudeCodeNativeTransport,
   glmClaudeCodeNativeTransport,
   codexNativeTransport,
+  deepSeekHarnessNativeTransport,
 ] as const;
 
 const admittedModels = [
@@ -127,6 +137,11 @@ const admittedModels = [
   {
     transportKind: codexNativeTransport.transportKind,
     model: "gpt-daybreak-blue-latest",
+    effort: "max",
+  },
+  {
+    transportKind: deepSeekHarnessNativeTransport.transportKind,
+    model: "deepseek-flash",
     effort: "max",
   },
 ] as const;

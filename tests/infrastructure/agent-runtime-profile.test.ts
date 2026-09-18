@@ -4,6 +4,7 @@ import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import {
   admitAgentRuntimeProfile,
   claudeCodeNativeTransport,
+  deepSeekHarnessNativeTransport,
   defineAgentRuntimeProfile,
 } from "../../src/infrastructure/agent-runtime-profile.js";
 
@@ -82,5 +83,18 @@ describe("Agent Runtime Profile catalog", () => {
         `sha256:${"0".repeat(64)}`,
       ),
     ).toEqual({ status: "image-mismatch" });
+  });
+
+  it("admits the pinned first-party DeepSeek Harness transport", () => {
+    const profile = defineAgentRuntimeProfile({
+      id: "deepseek-flash-max",
+      ...deepSeekHarnessNativeTransport,
+      model: "deepseek-flash",
+      effort: "max",
+    });
+
+    expect(
+      admitAgentRuntimeProfile(profile, profile.sandboxImageDigest),
+    ).toEqual({ status: "admitted", profile });
   });
 });
