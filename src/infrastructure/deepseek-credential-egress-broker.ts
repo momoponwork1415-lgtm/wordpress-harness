@@ -1,6 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { constants } from "node:fs";
-import { mkdtemp, open, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { isIP } from "node:net";
 
@@ -10,6 +9,7 @@ import { canonicalDigest } from "./canonical-json.js";
 import type { DeepSeekApiProtocol } from "./deepseek-credential-proxy.js";
 import { DEEPSEEK_UPSTREAM_ORIGIN } from "./deepseek-credential-proxy.js";
 import { runNativeModelProcess } from "./native-model-process.js";
+import { readPrivateProviderCredential } from "./provider-private-credential.js";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 const modelSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/u);
@@ -200,35 +200,6 @@ function receiptWithDigest(
     ...receipt,
     digest: canonicalDigest(receipt),
   });
-}
-
-async function readPrivateCredential(path: string): Promise<string> {
-  if (!isAbsolute(path) || path.includes("\0")) {
-    throw new Error("credential path is unavailable");
-  }
-  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-  try {
-    const metadata = await handle.stat();
-    const expectedUid =
-      typeof process.getuid === "function" ? process.getuid() : undefined;
-    if (
-      !metadata.isFile() ||
-      metadata.nlink !== 1 ||
-      (metadata.mode & 0o077) !== 0 ||
-      (expectedUid !== undefined && metadata.uid !== expectedUid) ||
-      metadata.size <= 0 ||
-      metadata.size > 16_384
-    ) {
-      throw new Error("credential file is unavailable");
-    }
-    const value = (await handle.readFile("utf8")).trim();
-    if (value.length < 8 || value.length > 16_384 || /[\0\r\n]/u.test(value)) {
-      throw new Error("credential value is unavailable");
-    }
-    return value;
-  } finally {
-    await handle.close();
-  }
 }
 
 async function defaultDockerCommand(
@@ -435,7 +406,9 @@ export function createDeepSeekCredentialEgressBroker(
           ) => Promise<DockerCommandResult>)
         | undefined;
       try {
-        rawApiKey = await readPrivateCredential(options.credentialFilePath);
+        rawApiKey = await readPrivateProviderCredential(
+          options.credentialFilePath,
+        );
         const secret = rawApiKey;
         runDocker = async (args, timeoutMs) => {
           const result =
