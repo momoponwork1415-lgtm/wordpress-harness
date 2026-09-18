@@ -1,0 +1,13 @@
+---
+status: accepted
+---
+
+# Route raw provider credentials through a bounded egress broker
+
+API keyを必要とするDeepSeek runtimeでは、raw credentialをAgent Sandboxへmountまたはenvironmentとして渡さない。Trusted Control PlaneがResearch runごとに最大1時間のgrantを作り、pinned imageを`runsc`で起動したcredential egress brokerだけへcredential fileを一時mountする。Agentはrun固有のinternal Docker network、broker endpointとscoped bearer tokenだけを受け取る。
+
+BrokerはDeepSeekの固定upstream、exact model、単一API protocol、request数、request / response byte ceilingとdeadlineへgrantをbindする。別model、別protocol、期限切れ、上限超過または不正tokenをupstreamへ送らず、raw keyは送信直前にbroker内でだけ注入する。Brokerだけをprovider-facing networkへ接続し、Agentをそのnetworkへ接続しない。plain DockerまたはAgentへのraw-key mountへfallbackしない。
+
+この境界がない場合、provider-native hostがkeyをlocal credential storeへ保存し、Agent自身またはmodel-selected toolから読める。Providerのmodel loop、session、subagentとtool routingは引き続きnative hostへ任せ、Brokerは研究判断やprovider protocolの再実装を所有しない。
+
+代償としてrunごとにsidecarとinternal networkのlifecycleが増える。Setup、provider operationとcleanupは別々に記録し、cleanup failureで元のoperation outcomeを上書きしない。これはDeepSeek用の固定egress seamであり、任意upstreamを受け付ける汎用proxy、credential rotation、loginまたはquota monitoringへ拡張しない。

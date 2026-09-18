@@ -127,6 +127,7 @@ AIが有望なsource-bound next actionを残さず、Harnessが固定入力、so
 - Target / Dependency Snapshotsはread-only、隔離scratchだけをwriteableにする。
 - Rootとnative subagentへ同じPermission Profileを適用する。
 - ambient shell、network、credential、container socket、host path、plugin、hook、memory、未承認MCPを与えない。
+- raw provider credentialはAgentへ渡さず、必要なtransportではfixed upstreamとrun bindingを持つ短命なcredential egress grantだけを渡す。
 - gVisor相当以上のOS-level sandboxとTransport Eligibility capability probeを通らないruntimeを使わず、host processまたはplain Dockerへfallbackしない。
 - Target / Dependency Snapshots、Prompt Set、Agent Runtime Profile、Permission Profile、Budget Envelope、outputをCampaignへdigest bindする。
 - providerまたはmodelをsilent fallbackしない。GrokからGLM 5.3へ切り替える場合も別Runtime Profileと新しいCampaign inputを使う。
@@ -158,6 +159,7 @@ Costは観測するがhard ceilingにしない。Cost削減はrecall baseline確
 - [ADR 0132](adr/0132-treat-provider-cost-as-observational-telemetry.md)
 - [ADR 0135](adr/0135-promote-candidates-through-runtime-verification.md)
 - [ADR 0136](adr/0136-require-control-challenged-research-evidence.md)
+- [ADR 0142](adr/0142-route-provider-credentials-through-a-bounded-egress-broker.md)
 - [wp2shell exact prompt](https://www.slcyber.io/research/exploit-brokers-pay-500000-for-a-wordpress-rce-i-found-one-with-gpt5-6#the-story-of-wp2shell)
 - [Cycle Double Cover Prompt](https://cdn.openai.com/pdf/04d1d1e4-bc75-476a-97cf-49055cd98d31/cdc_prompt.pdf)
 - [Reference harness comparison](knowledge/reference-harness-observability.md)
