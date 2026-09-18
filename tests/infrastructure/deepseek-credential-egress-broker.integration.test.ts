@@ -40,6 +40,7 @@ describe("DeepSeek credential egress broker host integration", () => {
         credentialFilePath,
         scratchRootDirectory: root,
         proxyBundleDirectory: resolve("dist/infrastructure"),
+        resolveProviderAddresses: () => Promise.resolve(["203.0.113.10"]),
         runDocker: async (args, timeoutMs) => {
           const processResult = await runNativeModelProcess({
             executablePath: "/usr/bin/docker",

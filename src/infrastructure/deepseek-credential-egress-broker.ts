@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { lookup } from "node:dns/promises";
 import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { isIP } from "node:net";
@@ -179,6 +180,9 @@ export interface DeepSeekCredentialEgressBrokerOptions {
   readonly clock?: () => Date;
   readonly randomUuid?: () => string;
   readonly randomGrantToken?: () => string;
+  readonly resolveProviderAddresses?: (
+    hostname: string,
+  ) => Promise<readonly string[]>;
   readonly runDocker?: (
     args: readonly string[],
     timeoutMs: number,
@@ -188,6 +192,25 @@ export interface DeepSeekCredentialEgressBrokerOptions {
 const BROKER_ALIAS = "deepseek-egress";
 const BROKER_PORT = 8080;
 const MAX_GRANT_DURATION_MS = 60 * 60 * 1_000;
+const MAX_PROVIDER_ADDRESSES = 16;
+const DEEPSEEK_UPSTREAM_HOSTNAME = new URL(DEEPSEEK_UPSTREAM_ORIGIN).hostname;
+
+async function resolveProviderAddresses(hostname: string): Promise<string[]> {
+  const addresses = await lookup(hostname, { all: true, verbatim: true });
+  return addresses.map(({ address }) => address);
+}
+
+function admittedProviderAddresses(addresses: readonly string[]): string[] {
+  const admitted = [...new Set(addresses)].sort();
+  if (
+    admitted.length === 0 ||
+    admitted.length > MAX_PROVIDER_ADDRESSES ||
+    admitted.some((address) => isIP(address) === 0)
+  ) {
+    throw new Error("DeepSeek provider addresses are unavailable");
+  }
+  return admitted;
+}
 
 function redactSecret(value: string, secret: string): string {
   return value.split(secret).join("[REDACTED]");
@@ -329,6 +352,8 @@ export function createDeepSeekCredentialEgressBroker(
   const nextUuid = options.randomUuid ?? randomUUID;
   const nextToken =
     options.randomGrantToken ?? (() => randomBytes(32).toString("base64url"));
+  const resolveAddresses =
+    options.resolveProviderAddresses ?? resolveProviderAddresses;
   const providerNetworkName = options.providerNetworkName ?? "bridge";
   const containerUser = nonRootHostUser();
 
@@ -360,7 +385,7 @@ export function createDeepSeekCredentialEgressBroker(
         status: "not-started",
       };
       let networkCreated = false;
-      let brokerStarted = false;
+      let brokerCreated = false;
       let stagingDirectory: string | undefined;
       let rawApiKey: string | undefined;
       let pendingSetupFailure: Extract<
@@ -451,6 +476,15 @@ export function createDeepSeekCredentialEgressBroker(
 
         pendingSetupFailure = {
           status: "failed",
+          stage: "provider-network-connect",
+          reason: "provider-network-unavailable",
+        };
+        const providerAddresses = admittedProviderAddresses(
+          await resolveAddresses(DEEPSEEK_UPSTREAM_HOSTNAME),
+        );
+
+        pendingSetupFailure = {
+          status: "failed",
           stage: "network-create",
           reason: "docker-network-unavailable",
         };
@@ -474,8 +508,7 @@ export function createDeepSeekCredentialEgressBroker(
           };
           const broker = await executeDocker(
             [
-              "run",
-              "--detach",
+              "create",
               "--pull=never",
               "--runtime=runsc",
               `--user=${containerUser}`,
@@ -484,6 +517,10 @@ export function createDeepSeekCredentialEgressBroker(
               "--network",
               networkName,
               `--network-alias=${BROKER_ALIAS}`,
+              ...providerAddresses.map(
+                (address) =>
+                  `--add-host=${DEEPSEEK_UPSTREAM_HOSTNAME}=${address}`,
+              ),
               "--read-only",
               "--cap-drop=ALL",
               "--security-opt=no-new-privileges",
@@ -522,7 +559,7 @@ export function createDeepSeekCredentialEgressBroker(
               reason: "broker-container-unavailable",
             };
           } else {
-            brokerStarted = true;
+            brokerCreated = true;
             pendingSetupFailure = {
               status: "failed",
               stage: "provider-network-connect",
@@ -541,55 +578,72 @@ export function createDeepSeekCredentialEgressBroker(
             } else {
               pendingSetupFailure = {
                 status: "failed",
-                stage: "broker-address",
-                reason: "broker-address-unavailable",
+                stage: "broker-start",
+                reason: "broker-container-unavailable",
               };
-              const address = await executeDocker(
-                [
-                  "inspect",
-                  "--format",
-                  `{{with index .NetworkSettings.Networks "${networkName}"}}{{.IPAddress}}{{end}}`,
-                  containerName,
-                ],
+              const started = await executeDocker(
+                ["start", containerName],
                 20_000,
               );
-              const brokerAddress = address.stdout.trim();
-              if (!dockerSucceeded(address) || isIP(brokerAddress) !== 4) {
+              if (!dockerSucceeded(started)) {
                 setup = {
                   status: "failed",
-                  stage: "broker-address",
-                  reason: "broker-address-unavailable",
+                  stage: "broker-start",
+                  reason: "broker-container-unavailable",
                 };
               } else {
                 pendingSetupFailure = {
                   status: "failed",
-                  stage: "broker-health",
-                  reason: "broker-not-ready",
+                  stage: "broker-address",
+                  reason: "broker-address-unavailable",
                 };
-                const healthy = await waitForBrokerHealth(
-                  executeDocker,
-                  containerName,
+                const address = await executeDocker(
+                  [
+                    "inspect",
+                    "--format",
+                    `{{with index .NetworkSettings.Networks "${networkName}"}}{{.IPAddress}}{{end}}`,
+                    containerName,
+                  ],
+                  20_000,
                 );
-                if (!healthy) {
+                const brokerAddress = address.stdout.trim();
+                if (!dockerSucceeded(address) || isIP(brokerAddress) !== 4) {
                   setup = {
+                    status: "failed",
+                    stage: "broker-address",
+                    reason: "broker-address-unavailable",
+                  };
+                } else {
+                  pendingSetupFailure = {
                     status: "failed",
                     stage: "broker-health",
                     reason: "broker-not-ready",
                   };
-                } else {
-                  setup = { status: "ready" };
-                  try {
-                    const value = await operation({
-                      baseUrl: `http://${brokerAddress}:${BROKER_PORT}`,
-                      authorization: `Bearer ${grantToken}`,
-                      dockerNetworkName: networkName,
-                      model: request.model,
-                      protocol: request.protocol,
-                      expiresAt: request.expiresAt,
-                    });
-                    operationResult = { status: "completed", value };
-                  } catch (error: unknown) {
-                    operationResult = { status: "failed", error };
+                  const healthy = await waitForBrokerHealth(
+                    executeDocker,
+                    containerName,
+                  );
+                  if (!healthy) {
+                    setup = {
+                      status: "failed",
+                      stage: "broker-health",
+                      reason: "broker-not-ready",
+                    };
+                  } else {
+                    setup = { status: "ready" };
+                    try {
+                      const value = await operation({
+                        baseUrl: `http://${brokerAddress}:${BROKER_PORT}`,
+                        authorization: `Bearer ${grantToken}`,
+                        dockerNetworkName: networkName,
+                        model: request.model,
+                        protocol: request.protocol,
+                        expiresAt: request.expiresAt,
+                      });
+                      operationResult = { status: "completed", value };
+                    } catch (error: unknown) {
+                      operationResult = { status: "failed", error };
+                    }
                   }
                 }
               }
@@ -602,7 +656,7 @@ export function createDeepSeekCredentialEgressBroker(
         const failedSteps: (
           "broker-remove" | "network-remove" | "credential-staging-remove"
         )[] = [];
-        if (brokerStarted && runDocker !== undefined) {
+        if (brokerCreated && runDocker !== undefined) {
           try {
             const stopped = await runDocker(
               ["rm", "--force", containerName],
@@ -631,7 +685,7 @@ export function createDeepSeekCredentialEgressBroker(
             failedSteps.push("credential-staging-remove");
           }
         }
-        if (brokerStarted || networkCreated || stagingDirectory !== undefined) {
+        if (brokerCreated || networkCreated || stagingDirectory !== undefined) {
           cleanup =
             failedSteps.length === 0
               ? { status: "completed" }

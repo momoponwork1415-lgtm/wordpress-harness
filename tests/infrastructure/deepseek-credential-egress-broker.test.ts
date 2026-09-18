@@ -18,6 +18,8 @@ import { openDeepSeekCredentialProxy } from "../../src/infrastructure/deepseek-c
 
 const servers: Server[] = [];
 const directories: string[] = [];
+const resolveProviderAddresses = () =>
+  Promise.resolve(["203.0.113.10"] as const);
 
 afterEach(async () => {
   await Promise.all(
@@ -398,6 +400,7 @@ describe("DeepSeek credential egress broker", () => {
       proxyBundleDirectory,
       clock: () => new Date("2026-09-18T07:00:00.000Z"),
       randomUuid: () => "11111111-2222-4333-8444-555555555555",
+      resolveProviderAddresses,
       runDocker: async (args) => {
         dockerCommands.push([...args]);
         return {
@@ -469,8 +472,8 @@ describe("DeepSeek credential egress broker", () => {
       "--internal",
       "deepseek-egress-11111111-2222-4333-8444-555555555555",
     ]);
-    const run = dockerCommands.find((command) => command[0] === "run");
-    expect(run).toEqual(
+    const create = dockerCommands.find((command) => command[0] === "create");
+    expect(create).toEqual(
       expect.arrayContaining([
         "--runtime=runsc",
         "--read-only",
@@ -479,12 +482,17 @@ describe("DeepSeek credential egress broker", () => {
         "--network",
         "deepseek-egress-11111111-2222-4333-8444-555555555555",
         "--network-alias=deepseek-egress",
+        "--add-host=api.deepseek.com=203.0.113.10",
       ]),
     );
     expect(dockerCommands).toContainEqual([
       "network",
       "connect",
       "bridge",
+      "deepseek-egress-broker-11111111-2222-4333-8444-555555555555",
+    ]);
+    expect(dockerCommands).toContainEqual([
+      "start",
       "deepseek-egress-broker-11111111-2222-4333-8444-555555555555",
     ]);
     expect(dockerCommands).toContainEqual([
@@ -516,6 +524,7 @@ describe("DeepSeek credential egress broker", () => {
       ...files,
       clock: () => new Date("2026-09-18T07:00:00.000Z"),
       randomUuid: () => "12121212-3434-4567-89ab-cdcdcdcdcdcd",
+      resolveProviderAddresses,
       runDocker,
     });
 
@@ -531,6 +540,35 @@ describe("DeepSeek credential egress broker", () => {
     expect(result.receipt.cleanup).toEqual({ status: "not-required" });
   });
 
+  it("fails closed before Docker when the fixed provider origin cannot resolve", async () => {
+    const files = await brokerFixture("deepseek-provider-resolution-");
+    const runDocker = vi.fn(() =>
+      Promise.resolve({ exitCode: 0, stdout: "", stderr: "" }),
+    );
+    const operation = vi.fn<() => Promise<void>>();
+    const broker = createDeepSeekCredentialEgressBroker({
+      dockerExecutablePath: "/usr/bin/docker",
+      brokerImage:
+        "node@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      ...files,
+      clock: () => new Date("2026-09-18T07:00:00.000Z"),
+      randomUuid: () => "13131313-3434-4567-89ab-cdcdcdcdcdcd",
+      resolveProviderAddresses: () => Promise.resolve([]),
+      runDocker,
+    });
+
+    const result = await broker.withGrant(grantRequest(), operation);
+
+    expect(operation).not.toHaveBeenCalled();
+    expect(runDocker).not.toHaveBeenCalled();
+    expect(result.receipt.setup).toEqual({
+      status: "failed",
+      stage: "provider-network-connect",
+      reason: "provider-network-unavailable",
+    });
+    expect(result.receipt.cleanup).toEqual({ status: "completed" });
+  });
+
   it("distinguishes internal-network and runsc broker startup failures", async () => {
     const networkFiles = await brokerFixture("deepseek-network-failure-");
     const runscFiles = await brokerFixture("deepseek-runsc-failure-");
@@ -542,6 +580,7 @@ describe("DeepSeek credential egress broker", () => {
       ...networkFiles,
       clock: () => new Date("2026-09-18T07:00:00.000Z"),
       randomUuid: () => "23232323-4545-4678-8abc-dededededede",
+      resolveProviderAddresses,
       runDocker: (args) =>
         Promise.resolve({
           exitCode: args[0] === "network" && args[1] === "create" ? 1 : 0,
@@ -556,9 +595,10 @@ describe("DeepSeek credential egress broker", () => {
       ...runscFiles,
       clock: () => new Date("2026-09-18T07:00:00.000Z"),
       randomUuid: () => "34343434-5656-4789-8bcd-efefefefefef",
+      resolveProviderAddresses,
       runDocker: (args) =>
         Promise.resolve({
-          exitCode: args[0] === "run" ? 1 : 0,
+          exitCode: args[0] === "create" ? 1 : 0,
           stdout: "",
           stderr: "",
         }),
@@ -595,6 +635,7 @@ describe("DeepSeek credential egress broker", () => {
       ...files,
       clock: () => new Date("2026-09-18T07:00:00.000Z"),
       randomUuid: () => "45454545-6767-489a-8cde-f0f0f0f0f0f0",
+      resolveProviderAddresses,
       runDocker: (args) =>
         Promise.resolve({
           exitCode: args[0] === "exec" ? 1 : 0,
@@ -638,6 +679,7 @@ describe("DeepSeek credential egress broker", () => {
       proxyBundleDirectory,
       clock: () => new Date("2026-09-18T07:00:00.000Z"),
       randomUuid: () => "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      resolveProviderAddresses,
       runDocker: async (args) => {
         dockerCommands.push([...args]);
         const providerConnect = args[0] === "network" && args[1] === "connect";
@@ -674,7 +716,7 @@ describe("DeepSeek credential egress broker", () => {
     expect(result.receipt.cleanup).toEqual({ status: "completed" });
     expect(dockerCommands.map((command) => command.slice(0, 2))).toEqual([
       ["network", "create"],
-      ["run", "--detach"],
+      ["create", "--pull=never"],
       ["network", "connect"],
       ["rm", "--force"],
       ["network", "rm"],
@@ -704,6 +746,7 @@ describe("DeepSeek credential egress broker", () => {
       proxyBundleDirectory,
       clock: () => new Date("2026-09-18T07:00:00.000Z"),
       randomUuid: () => "ffffffff-eeee-4ddd-8ccc-bbbbbbbbbbbb",
+      resolveProviderAddresses,
       runDocker: (args) =>
         Promise.resolve({
           exitCode: args[0] === "rm" ? 1 : 0,
