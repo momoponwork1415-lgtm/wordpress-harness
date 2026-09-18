@@ -550,6 +550,7 @@ describe("ResearchCampaigns", () => {
       const receiptPath = join(
         receiptRoot,
         receiptDirectory.name,
+        "content",
         "receipt.json",
       );
       if (artifactCondition === "malformed") {

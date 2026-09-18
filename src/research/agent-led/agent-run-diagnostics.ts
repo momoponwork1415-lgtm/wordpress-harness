@@ -1,12 +1,5 @@
 import { createHash } from "node:crypto";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { NativeModelProcessResult } from "../../infrastructure/native-model-process.js";
@@ -15,6 +8,12 @@ import type {
   AgentRunFailureStage,
   SealedNativeRun,
 } from "./contracts.js";
+import { PrivateArtifactStore } from "./private-artifact-store.js";
+
+const diagnosticLimits = {
+  maxEntries: 20_000,
+  maxBytes: 128 * 1024 * 1024,
+} as const;
 
 function diagnosticError(
   error: unknown,
@@ -45,88 +44,79 @@ export async function preserveAgentRunDiagnostic(options: {
   readonly error?: unknown;
   readonly stateRoot?: string;
 }): Promise<AgentRunDiagnosticRef | undefined> {
-  let temporaryRoot: string | undefined;
-  try {
-    const diagnosticsRoot = join(
-      options.scratchRootDirectory,
-      "agent-diagnostics",
-    );
-    await mkdir(diagnosticsRoot, { recursive: true, mode: 0o700 });
-    temporaryRoot = await mkdtemp(join(diagnosticsRoot, "active-diagnostic-"));
-    let statePreserved = false;
-    if (options.stateRoot !== undefined) {
-      try {
-        await rename(options.stateRoot, join(temporaryRoot, "state"));
-        statePreserved = true;
-      } catch {
-        statePreserved = false;
-      }
-    }
-    const body = {
-      kind: "agent-run-diagnostic",
-      schemaVersion: 1,
-      runId: options.run.runId,
-      stage: options.stage,
-      statePreserved,
-      ...(options.process === undefined
-        ? {}
-        : {
-            process: {
-              kind: options.process.kind,
-              ...(options.process.kind === "exited"
-                ? { exitCode: options.process.exitCode }
-                : {}),
-              stdout: options.redact(options.process.stdout),
-              stderr: options.redact(options.process.stderr),
-            },
-          }),
-      ...(options.error === undefined
-        ? {}
-        : { error: diagnosticError(options.error, options.redact) }),
-    };
-    const text = `${JSON.stringify(body, null, 2)}\n`;
-    const hash = createHash("sha256").update(text).digest("hex");
-    const diagnosticId = `diagnostic-${hash}`;
-    const destination = join(diagnosticsRoot, diagnosticId);
-    const path = join(temporaryRoot, "diagnostic.json");
-    await writeFile(path, text, {
-      encoding: "utf8",
-      mode: 0o600,
-      flag: "wx",
-    });
+  const artifacts = new PrivateArtifactStore({
+    rootDirectory: join(options.scratchRootDirectory, "agent-diagnostics"),
+    ...diagnosticLimits,
+  });
+  const preservationAttempts =
+    options.stateRoot === undefined ? [false] : [true, false];
+  for (const preserveState of preservationAttempts) {
+    let temporaryRoot: string | undefined;
     try {
-      await rename(temporaryRoot, destination);
-      temporaryRoot = undefined;
-    } catch (error: unknown) {
-      if (!(
-        error instanceof Error &&
-        "code" in error &&
-        error.code === "EEXIST"
-      )) {
-        throw error;
+      const staging = await artifacts.stage();
+      temporaryRoot = staging.rootDirectory;
+      let statePreserved = false;
+      if (preserveState && options.stateRoot !== undefined) {
+        try {
+          await rename(
+            options.stateRoot,
+            join(staging.contentDirectory, "state"),
+          );
+          statePreserved = true;
+        } catch {
+          statePreserved = false;
+        }
       }
-      if (
-        (await readFile(join(destination, "diagnostic.json"), "utf8")) !== text
-      ) {
-        throw error;
+      const body = {
+        kind: "agent-run-diagnostic",
+        schemaVersion: 1,
+        runId: options.run.runId,
+        stage: options.stage,
+        statePreserved,
+        ...(options.process === undefined
+          ? {}
+          : {
+              process: {
+                kind: options.process.kind,
+                ...(options.process.kind === "exited"
+                  ? { exitCode: options.process.exitCode }
+                  : {}),
+                stdout: options.redact(options.process.stdout),
+                stderr: options.redact(options.process.stderr),
+              },
+            }),
+        ...(options.error === undefined
+          ? {}
+          : { error: diagnosticError(options.error, options.redact) }),
+      };
+      const text = `${JSON.stringify(body, null, 2)}\n`;
+      const hash = createHash("sha256").update(text).digest("hex");
+      const diagnosticId = `diagnostic-${hash}`;
+      await writeFile(join(staging.contentDirectory, "diagnostic.json"), text, {
+        encoding: "utf8",
+        mode: 0o600,
+        flag: "wx",
+      });
+      const committed = await artifacts.commit(diagnosticId, staging);
+      if (committed.status === "conflict") {
+        throw new Error("Agent Run Diagnostic artifact conflict");
       }
-      if (temporaryRoot === undefined) throw error;
-      await rm(temporaryRoot, { recursive: true, force: true });
       temporaryRoot = undefined;
+      return {
+        kind: "agent-run-diagnostic",
+        schemaVersion: 1,
+        diagnosticId,
+        digest: `sha256:${hash}`,
+        bytes: Buffer.byteLength(text),
+      };
+    } catch {
+      if (temporaryRoot !== undefined) {
+        await rm(temporaryRoot, { recursive: true, force: true }).catch(
+          () => undefined,
+        );
+      }
+      if (!preserveState) return undefined;
     }
-    return {
-      kind: "agent-run-diagnostic",
-      schemaVersion: 1,
-      diagnosticId,
-      digest: `sha256:${hash}`,
-      bytes: Buffer.byteLength(text),
-    };
-  } catch {
-    if (temporaryRoot !== undefined) {
-      await rm(temporaryRoot, { recursive: true, force: true }).catch(
-        () => undefined,
-      );
-    }
-    return undefined;
   }
+  return undefined;
 }

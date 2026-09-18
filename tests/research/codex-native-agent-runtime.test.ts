@@ -424,7 +424,7 @@ sleep 60
       diagnosticFiles[0] ?? "",
     );
     const diagnostic = await readFile(
-      join(diagnosticRoot, "diagnostic.json"),
+      join(diagnosticRoot, "content", "diagnostic.json"),
       "utf8",
     );
     expect(diagnosticRef.digest).toBe(
@@ -437,17 +437,11 @@ sleep 60
       stage: "checkpoint-finalization",
       process: { kind: "timed-out" },
       error: { name: "Error" },
-      statePreserved: true,
+      statePreserved: false,
     });
-    expect(
-      await readFile(
-        join(diagnosticRoot, "state", "provider", "thread.jsonl"),
-        "utf8",
-      ),
-    ).toBe("partial provider state");
-    expect(
-      await readdir(join(diagnosticRoot, "state", "provider")),
-    ).not.toContain("auth.json");
+    expect(await readdir(join(diagnosticRoot, "content"))).not.toContain(
+      "state",
+    );
     campaigns.close();
   });
 
@@ -609,6 +603,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
         scratchRootDirectory,
         "agent-diagnostics",
         nativeRun.failure.diagnostic.diagnosticId,
+        "content",
         "diagnostic.json",
       ),
       "utf8",

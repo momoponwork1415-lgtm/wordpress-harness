@@ -67,6 +67,8 @@ Programme対象外、Disclosure Route不明、既探索またはAIの低評価�
 
 Research Rootのprovider-native conversationとscratchはprivate Agent Checkpointとして継続できる。Harnessは固定checkpoint cadenceや内部tool eventをdomain modelにせず、bindingとintegrityを持つopaque refだけを記録する。timeoutまたはprovider interruptionでもCheckpointを保存できなければ`incomplete`であり、resume可能とは扱わない。Candidate VerificationへResearch Checkpointを渡さない。
 
+Checkpoint、Agent Run Diagnostic、Native Run ReceiptとCandidate Recipeは同じprivate artifact storage規律を使うが、domain objectやrefの意味は統合しない。各Adapterがrun、Candidate、session等のbindingを所有し、共通storeはbounded write/read、atomic promotion、content-tree integrity、path/link safety、conflictとorphan inspectionだけを所有する。storeはorphanを自動repairまたは削除しない。
+
 判断は単純である。
 
 ```text

@@ -203,6 +203,20 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 
 </details>
 
+## Private Research Artifact Store
+
+<details>
+<summary>Research runtime infrastructure — private artifactのfilesystem規律を共有する</summary>
+
+- **目的:** Checkpoint、Agent Run Diagnostic、Native Run Receipt、Candidate Recipeの異なるdomain意味を保ったまま、private filesystemの保存・解決規則を一つのdeep Moduleへ隠す。
+- **Interface:** Research内部の`PrivateArtifactStore.stage / commit / resolve / readFile / inspectOrphans`。domain間handoffは既存のCheckpoint、Diagnostic、Receipt、Recipe refだけを使い、このstoreのmanifestやpathを渡さない。
+- **所有する記録・不変条件:** artifactごとの`manifest.json`とboundedなcanonical content tree。stagingはstore root内、promotionは同一filesystem上のrename、root・manifest・contentはno-follow、regular-file、hard-link、path collision、entry / byte ceilingを検査する。Domain Adapterは既存refのdigest、byte count、run / Candidate bindingを引き続き所有する。
+- **失敗時:** missing、integrity mismatch、size limit、unsafe pathをtyped resolutionとして返し、invalid identity、unsafe staging / rootはtyped error、同じidentityへの異なるcontentはconflictにする。orphaned stagingはread-onlyに列挙し、自動repair、削除、garbage collectionを行わない。unsafeなCheckpoint stateをDiagnosticへ取り込めない場合も、redacted process evidenceだけを`statePreserved: false`で保存する。
+
+**Source / Behavior Test:** [`private-artifact-store.ts`](../src/research/agent-led/private-artifact-store.ts) · [`private-artifact-store.test.ts`](../tests/research/private-artifact-store.test.ts) · [`research-checkpoints.ts`](../src/research/agent-led/research-checkpoints.ts) · [`agent-run-diagnostics.ts`](../src/research/agent-led/agent-run-diagnostics.ts) · [`native-run-receipts.ts`](../src/research/agent-led/native-run-receipts.ts) · [`provider-research-report.ts`](../src/research/agent-led/provider-research-report.ts)
+
+</details>
+
 ## gVisor Native Agent Runtimes
 
 <details>
@@ -210,7 +224,7 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 
 - **目的:** provider-nativeな実行・session・subagentを隔離し、bindingとReceiptを扱う。
 - **Interface:** `NativeAgentRuntime.execute`。Grok、Claude Code、GLM、CodexのAdapterを持つ。
-- **所有する記録・不変条件:** private provider home、Checkpoint、Diagnostic、content-addressed Candidate Recipe。exact image / CLI、non-root、read-only source、writeable scratch、Root込み最大4 active agentsを要求する。ambient権限やprovider fallbackを与えない。provider report内のrecipe本文はprivate storeへ移し、公開Research Reportにはdigest-bound参照だけを残す。
+- **所有する記録・不変条件:** shared Private Research Artifact Store上のprivate provider home / Checkpoint、Diagnostic、content-addressed Candidate Recipe。exact image / CLI、non-root、read-only source、writeable scratch、Root込み最大4 active agentsを要求する。ambient権限やprovider fallbackを与えない。provider report内のrecipe本文はprivate storeへ移し、公開Research Reportにはdigest-bound参照だけを残す。
 - **失敗時:** availability・binding・policy・provider・schemaの失敗をtyped receiptへ変換する。timeoutは`budget-exhausted`、対応するaccount envelopeは`provider-unauthenticated` / `provider-quota-exhausted`。元の分類・usageをcleanupで失わず、拒否したoutputもprivate Diagnosticへ保存する。Diagnostic保存不能は`provider-failed`。診断用stateはresumeに使わない。
 
 通常は[`NativeAgentRuntime.execute`](../src/research/agent-led/contracts.ts)と対象providerのBehavior Testまで読む。`grok`・`claude-code`・`codex`というファイル名は、固有のCLI設定・応答変換を所有するAdapterを示す。modelの選択は実行profileの`model`で確認する。

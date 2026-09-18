@@ -1,6 +1,3 @@
-import { lstat, readFile } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
-
 import { z } from "zod";
 
 import {
@@ -8,6 +5,7 @@ import {
   type CandidateVerificationRecipe,
   type CandidateVerificationRequest,
 } from "../research/index.js";
+import { PrivateArtifactStore } from "../research/agent-led/private-artifact-store.js";
 import { externalDependencyEvidenceRequestSchema } from "./contracts-v3.js";
 import type {
   DynamicReproductionAgent,
@@ -60,35 +58,33 @@ export interface FileCandidateVerificationRecipeResolverOptions {
 }
 
 class FileCandidateVerificationRecipeResolver implements DynamicReproductionRecipeResolver {
-  readonly #directory: string;
+  readonly #artifacts: PrivateArtifactStore;
 
   constructor(options: FileCandidateVerificationRecipeResolverOptions) {
-    if (!isAbsolute(options.candidateRecipeDirectory)) {
-      throw new Error("Candidate Recipe directory must be absolute");
-    }
-    this.#directory = options.candidateRecipeDirectory;
+    this.#artifacts = new PrivateArtifactStore({
+      rootDirectory: options.candidateRecipeDirectory,
+      maxEntries: 1,
+      maxBytes: 256 * 1024,
+    });
   }
 
   async resolve(input: {
     readonly request: CandidateVerificationRequest;
   }): Promise<DynamicReproductionRecipeResolution> {
     const reference = input.request.candidate.reproductionRecipe;
-    const path = join(
-      this.#directory,
-      `${reference.digest.slice("sha256:".length)}.json`,
+    const artifact = await this.#artifacts.readFile(
+      reference.digest.slice("sha256:".length),
+      "recipe.json",
+      reference.bytes,
     );
-    const fileStat = await lstat(path);
     if (
-      !fileStat.isFile() ||
-      fileStat.isSymbolicLink() ||
-      fileStat.nlink !== 1 ||
-      fileStat.size !== reference.bytes
+      artifact.status !== "resolved" ||
+      artifact.bytes.byteLength !== reference.bytes
     ) {
       throw new Error("Candidate Recipe artifact is unsafe or unbound");
     }
-    const encoded = await readFile(path);
     const recipe = candidateVerificationRecipeSchema.parse(
-      JSON.parse(encoded.toString("utf8")) as unknown,
+      JSON.parse(artifact.bytes.toString("utf8")) as unknown,
     );
     if (
       recipe.digest !== reference.digest ||

@@ -1,13 +1,4 @@
-import {
-  chmod,
-  lstat,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { z } from "zod";
@@ -21,6 +12,7 @@ import {
   type NativeRunReceipt,
   type SealedNativeRun,
 } from "./contracts.js";
+import { PrivateArtifactStore } from "./private-artifact-store.js";
 
 const MAX_RECEIPT_ARTIFACT_BYTES = 8 * 1024 * 1024;
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
@@ -36,18 +28,15 @@ type RecoveryResult =
   | { readonly status: "recovered"; readonly receipt: NativeRunReceipt }
   | { readonly status: "missing" | "invalid" };
 
-function isFileSystemError(
-  error: unknown,
-  code: string,
-): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error && error.code === code;
-}
-
 export class NativeRunReceiptStore {
-  readonly #rootDirectory: string;
+  readonly #artifacts: PrivateArtifactStore;
 
   constructor(rootDirectory: string) {
-    this.#rootDirectory = rootDirectory;
+    this.#artifacts = new PrivateArtifactStore({
+      rootDirectory,
+      maxEntries: 1,
+      maxBytes: MAX_RECEIPT_ARTIFACT_BYTES,
+    });
   }
 
   async finalize(
@@ -63,31 +52,21 @@ export class NativeRunReceiptStore {
       receipt,
     });
     const encoded = Buffer.from(canonicalJson(body), "utf8");
-    if (encoded.byteLength > MAX_RECEIPT_ARTIFACT_BYTES) {
-      throw new Error("Native Run Receipt artifact exceeds its byte limit");
-    }
-    await this.#prepareRoot();
-    const destination = this.#destination(runDigest);
-    const temporaryDirectory = await mkdtemp(
-      join(this.#rootDirectory, "active-receipt-"),
-    );
+    const staging = await this.#artifacts.stage();
     try {
-      await writeFile(join(temporaryDirectory, "receipt.json"), encoded, {
+      await writeFile(join(staging.contentDirectory, "receipt.json"), encoded, {
         flag: "wx",
         mode: 0o600,
       });
-      try {
-        await rename(temporaryDirectory, destination);
-      } catch (error: unknown) {
-        if (!isFileSystemError(error, "EEXIST")) throw error;
-        const existing = await this.#read(destination);
-        if (existing === undefined || !existing.equals(encoded)) {
-          throw new Error("Native Run Receipt artifact conflict");
-        }
-        await rm(temporaryDirectory, { recursive: true, force: true });
+      const committed = await this.#artifacts.commit(
+        runDigest.slice("sha256:".length),
+        staging,
+      );
+      if (committed.status === "conflict") {
+        throw new Error("Native Run Receipt artifact conflict");
       }
     } catch (error: unknown) {
-      await rm(temporaryDirectory, { recursive: true, force: true }).catch(
+      await rm(staging.rootDirectory, { recursive: true, force: true }).catch(
         () => undefined,
       );
       throw error;
@@ -96,65 +75,30 @@ export class NativeRunReceiptStore {
 
   async recover(run: SealedNativeRun): Promise<RecoveryResult> {
     const runDigest = canonicalDigest(run);
-    let encoded: Buffer | undefined;
+    const artifact = await this.#artifacts.readFile(
+      runDigest.slice("sha256:".length),
+      "receipt.json",
+      MAX_RECEIPT_ARTIFACT_BYTES,
+    );
+    if (artifact.status === "missing") return { status: "missing" };
+    if (artifact.status !== "resolved") return { status: "invalid" };
     try {
-      encoded = await this.#read(this.#destination(runDigest));
-    } catch {
-      return { status: "invalid" };
-    }
-    if (encoded === undefined) return { status: "missing" };
-    try {
-      const value = JSON.parse(encoded.toString("utf8")) as unknown;
-      const artifact = nativeRunReceiptArtifactSchema.parse(value);
+      const encoded = artifact.bytes.toString("utf8");
+      const value = JSON.parse(encoded) as unknown;
+      const parsed = nativeRunReceiptArtifactSchema.parse(value);
       if (
-        artifact.runDigest !== runDigest ||
-        artifact.receipt.runId !== run.runId ||
-        artifact.receipt.runtimeProfileDigest !==
+        parsed.runDigest !== runDigest ||
+        parsed.receipt.runId !== run.runId ||
+        parsed.receipt.runtimeProfileDigest !==
           run.agentRuntimeProfile.digest ||
-        canonicalDigest(artifact.receipt) !== artifact.nativeRunReceiptDigest ||
-        canonicalJson(artifact) !== encoded.toString("utf8")
+        canonicalDigest(parsed.receipt) !== parsed.nativeRunReceiptDigest ||
+        canonicalJson(parsed) !== encoded
       ) {
         return { status: "invalid" };
       }
-      return { status: "recovered", receipt: artifact.receipt };
+      return { status: "recovered", receipt: parsed.receipt };
     } catch {
       return { status: "invalid" };
-    }
-  }
-
-  async #prepareRoot(): Promise<void> {
-    await mkdir(this.#rootDirectory, { recursive: true, mode: 0o700 });
-    const stat = await lstat(this.#rootDirectory);
-    if (!stat.isDirectory() || stat.isSymbolicLink()) {
-      throw new Error("Native Run Receipt artifact root is unsafe");
-    }
-    await chmod(this.#rootDirectory, 0o700);
-  }
-
-  #destination(runDigest: string): string {
-    return join(this.#rootDirectory, runDigest.slice("sha256:".length));
-  }
-
-  async #read(destination: string): Promise<Buffer | undefined> {
-    try {
-      const directoryStat = await lstat(destination);
-      if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) {
-        throw new Error("Native Run Receipt artifact directory is unsafe");
-      }
-      const path = join(destination, "receipt.json");
-      const fileStat = await lstat(path);
-      if (
-        !fileStat.isFile() ||
-        fileStat.isSymbolicLink() ||
-        fileStat.nlink !== 1 ||
-        fileStat.size > MAX_RECEIPT_ARTIFACT_BYTES
-      ) {
-        throw new Error("Native Run Receipt artifact is unsafe");
-      }
-      return await readFile(path);
-    } catch (error: unknown) {
-      if (isFileSystemError(error, "ENOENT")) return undefined;
-      throw error;
     }
   }
 }

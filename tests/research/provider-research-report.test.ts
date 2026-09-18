@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
+import { openFileCandidateVerificationRecipeResolver } from "../../src/human-os/index.js";
 import {
+  candidateVerificationRequestSchema,
   candidateVerificationRecipeSchema,
   researchAssessmentSchema,
   sealedNativeRunSchema,
@@ -204,7 +206,9 @@ describe("provider Research Report materialization", () => {
     const encoded = await readFile(
       join(
         candidateRecipeDirectory,
-        `${reference.digest.slice("sha256:".length)}.json`,
+        reference.digest.slice("sha256:".length),
+        "content",
+        "recipe.json",
       ),
       "utf8",
     );
@@ -219,6 +223,31 @@ describe("provider Research Report materialization", () => {
       script: expect.stringContaining("HARNESS_RESULT="),
     });
     expect(JSON.stringify(materialized)).not.toContain("HARNESS_RESULT=");
+
+    const requestBody = {
+      kind: "candidate-verification-request" as const,
+      schemaVersion: 2 as const,
+      requestId: "campaign-1:verification:candidate-1",
+      campaignId: sealedRun.campaignId,
+      campaignInputDigest: sealedRun.campaignInputDigest,
+      candidateReviewDigest: `sha256:${"8".repeat(64)}`,
+      targetSnapshot: sealedRun.targetSnapshot,
+      candidate: materialized.candidates[0]!,
+    };
+    const resolver = openFileCandidateVerificationRecipeResolver({
+      candidateRecipeDirectory,
+    });
+    await expect(
+      resolver.resolve({
+        request: candidateVerificationRequestSchema.parse({
+          ...requestBody,
+          digest: canonicalDigest(requestBody),
+        }),
+      }),
+    ).resolves.toMatchObject({
+      kind: "recipe-ready",
+      recipe: { recipeId: "candidate-1-recipe" },
+    });
   });
 
   it("rejects a Candidate without a challenged source trace", async () => {

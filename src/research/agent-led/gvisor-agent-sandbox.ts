@@ -721,7 +721,7 @@ export class GvisorAgentSandbox {
         if (researchState !== undefined && checkpoint === undefined) {
           try {
             await removeProviderCredentials();
-            stateRoot = researchState.root;
+            stateRoot = researchState.contentDirectory;
           } catch {
             stateRoot = undefined;
           }
@@ -873,7 +873,7 @@ export class GvisorAgentSandbox {
         const state = researchState;
         try {
           await credentials.removeFrom(state.providerHome);
-          stateRoot = state.root;
+          stateRoot = state.contentDirectory;
         } catch {
           stateRoot = undefined;
         }

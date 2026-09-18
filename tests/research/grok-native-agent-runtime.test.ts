@@ -614,6 +614,7 @@ printf '{"text":"{\\"schemaVersion\\":2,\\"assessments\\":[],\\"evidenceSummary\
         scratchRootDirectory,
         "agent-diagnostics",
         nativeRun.failure.diagnostic.diagnosticId,
+        "content",
         "diagnostic.json",
       ),
       "utf8",

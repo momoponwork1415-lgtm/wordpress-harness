@@ -1,13 +1,14 @@
 import { createHash } from "node:crypto";
-import { cp, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { cp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { canonicalDigest } from "../../infrastructure/canonical-json.js";
-import {
-  measureCanonicalSourceTree,
-  verifyCanonicalSourceTree,
-} from "../../infrastructure/canonical-source-tree.js";
+import { measureCanonicalSourceTree } from "../../infrastructure/canonical-source-tree.js";
 import type { AgentCheckpointRef, SealedNativeRun } from "./contracts.js";
+import {
+  PrivateArtifactStore,
+  type PrivateArtifactStaging,
+} from "./private-artifact-store.js";
 
 const checkpointLimits = {
   maxEntries: 20_000,
@@ -16,6 +17,8 @@ const checkpointLimits = {
 
 export interface ResearchWorkingState {
   readonly root: string;
+  readonly contentDirectory: string;
+  readonly artifactStaging: PrivateArtifactStaging;
   readonly providerHome: string;
   readonly scratchDirectory: string;
   readonly sessionId: string;
@@ -62,10 +65,15 @@ export async function prepareResearchState(
   scratchRootDirectory: string,
 ): Promise<ResearchWorkingState> {
   const checkpointRoot = join(scratchRootDirectory, "agent-checkpoints");
-  await mkdir(checkpointRoot, { recursive: true, mode: 0o700 });
-  const root = await mkdtemp(join(scratchRootDirectory, "active-research-"));
-  const providerHome = join(root, "provider");
-  const scratchDirectory = join(root, "scratch");
+  const artifacts = new PrivateArtifactStore({
+    rootDirectory: checkpointRoot,
+    ...checkpointLimits,
+  });
+  const artifactStaging = await artifacts.stage();
+  const root = artifactStaging.rootDirectory;
+  const contentDirectory = artifactStaging.contentDirectory;
+  const providerHome = join(contentDirectory, "provider");
+  const scratchDirectory = join(contentDirectory, "scratch");
   try {
     const prior = run.resumeFrom;
     if (prior === undefined) {
@@ -75,6 +83,8 @@ export async function prepareResearchState(
       ]);
       return {
         root,
+        contentDirectory,
+        artifactStaging,
         providerHome,
         scratchDirectory,
         sessionId: deterministicSessionId(run.campaignInputDigest),
@@ -83,22 +93,22 @@ export async function prepareResearchState(
     if (!checkpointMatchesRun(prior, run)) {
       throw new Error("Agent Checkpoint binding mismatch");
     }
-    const priorDirectory = join(checkpointRoot, prior.checkpointId);
-    const verified = await verifyCanonicalSourceTree(priorDirectory, {
+    const resolved = await artifacts.resolve({
+      artifactId: prior.checkpointId,
       digest: prior.stateDigest,
       entries: prior.stateEntries,
       bytes: prior.stateBytes,
     });
-    if (!verified.matches) {
+    if (resolved.status !== "resolved") {
       throw new Error("Agent Checkpoint integrity mismatch");
     }
     await Promise.all([
-      cp(join(priorDirectory, "provider"), providerHome, {
+      cp(join(resolved.contentDirectory, "provider"), providerHome, {
         recursive: true,
         force: false,
         errorOnExist: true,
       }),
-      cp(join(priorDirectory, "scratch"), scratchDirectory, {
+      cp(join(resolved.contentDirectory, "scratch"), scratchDirectory, {
         recursive: true,
         force: false,
         errorOnExist: true,
@@ -106,6 +116,8 @@ export async function prepareResearchState(
     ]);
     return {
       root,
+      contentDirectory,
+      artifactStaging,
       providerHome,
       scratchDirectory,
       sessionId: prior.sessionId,
@@ -127,7 +139,7 @@ export async function finalizeResearchState(
   );
   if (providerState.entries === 0) return undefined;
   const measured = await measureCanonicalSourceTree(
-    state.root,
+    state.contentDirectory,
     checkpointLimits,
   );
   const checkpointId = `checkpoint-${createHash("sha256")
@@ -141,21 +153,13 @@ export async function finalizeResearchState(
     .update(run.threatContext?.digest ?? "")
     .update(run.programmeBoundary?.digest ?? "")
     .digest("hex")}`;
-  const checkpointRoot = join(scratchRootDirectory, "agent-checkpoints");
-  const destination = join(checkpointRoot, checkpointId);
-  try {
-    await rename(state.root, destination);
-  } catch (error: unknown) {
-    if (!(
-      error instanceof Error &&
-      "code" in error &&
-      (error.code === "EEXIST" || error.code === "ENOTEMPTY")
-    )) {
-      throw error;
-    }
-    const existing = await verifyCanonicalSourceTree(destination, measured);
-    if (!existing.matches) throw error;
-    await rm(state.root, { recursive: true, force: true });
+  const artifacts = new PrivateArtifactStore({
+    rootDirectory: join(scratchRootDirectory, "agent-checkpoints"),
+    ...checkpointLimits,
+  });
+  const committed = await artifacts.commit(checkpointId, state.artifactStaging);
+  if (committed.status === "conflict") {
+    throw new Error("Agent Checkpoint artifact conflict");
   }
   return {
     kind: "agent-checkpoint",
