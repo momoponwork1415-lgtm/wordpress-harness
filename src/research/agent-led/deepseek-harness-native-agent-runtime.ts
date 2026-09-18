@@ -3,6 +3,7 @@ import { z } from "zod";
 import { admitAgentRuntimeProfile } from "../../infrastructure/agent-runtime-profile.js";
 import type {
   DeepSeekCredentialEgressGrantRequest,
+  ProviderCredentialEgressGrant,
   ProviderCredentialEgressBroker,
   ProviderCredentialEgressReceipt,
 } from "../../infrastructure/deepseek-credential-egress-broker.js";
@@ -11,6 +12,7 @@ import {
   GvisorAgentSandbox,
   refusedNativeRunReceipt,
   type GvisorAgentRuntimeOptions,
+  type SandboxedAgentCommand,
   type SandboxedAgentResult,
 } from "./gvisor-agent-sandbox.js";
 import {
@@ -75,6 +77,12 @@ interface DeepSeekEventStream {
   readonly subagents: number;
 }
 
+interface DeepSeekExecutionSequence {
+  readonly execution: SandboxedAgentResult;
+  readonly initialStartedAt: Date | undefined;
+  readonly eventStreams: readonly DeepSeekEventStream[];
+}
+
 function deepSeekResearchPatch(model: string, effort: string): string {
   return `- id: agent-default-model
   config:
@@ -127,6 +135,13 @@ function deepSeekResearchPatch(model: string, effort: string): string {
 - id: tool-ralph
   disabled: true
 `;
+}
+
+function deepSeekReportCorrectionPrompt(): string {
+  return promptedJsonResearchPrompt(
+    "Correct only the format of your previous final Research Report. Preserve its research substance exactly, do not perform new research, and return one syntactically valid JSON object matching the supplied schema.",
+    "DeepSeek",
+  );
 }
 
 function parseJson(value: string): unknown {
@@ -365,6 +380,119 @@ class DeepSeekHarnessNativeAgentRuntime implements NativeAgentRuntime {
     this.#credentialEgressBroker = options.credentialEgressBroker;
   }
 
+  #command(
+    run: SealedNativeRun,
+    grant: ProviderCredentialEgressGrant,
+    prompt: string,
+  ): SandboxedAgentCommand {
+    const token = tokenFromAuthorization(grant.authorization);
+    return {
+      executable: "dsh",
+      versionTokenIndex: 0,
+      dockerNetworkName: grant.dockerNetworkName,
+      providerEnvironment: [
+        "--env=DSH_HOME=/provider",
+        "--env=HOME=/tmp/home",
+        "--env=DSH_PERMISSION_MODE=read-only",
+        "--env=DSH_TELEMETRY_DISABLED=1",
+        "--env=NARB_DISABLE_NATIVE_CACHE=1",
+        "--env=NO_COLOR=1",
+        `--env=DEEPSEEK_API_KEY=${token}`,
+        `--env=DEEPSEEK_BASE_URL=${grant.baseUrl}`,
+      ],
+      supportFiles: [
+        {
+          filename: "deepseek-research.patch.yml",
+          text: deepSeekResearchPatch(
+            run.agentRuntimeProfile.model,
+            run.agentRuntimeProfile.effort,
+          ),
+          containerMountPath: "/etc/dsh/research.patch.yml",
+        },
+      ],
+      ephemeralProviderHomeMount: { path: "/provider", mode: "rw" },
+      researchSession: {
+        newSessionArguments: () => [],
+        resumeSessionArguments: (sessionId) => ["--session-id", sessionId],
+        generatedSessionIdFromOutput: parseSessionId,
+      },
+      args: [
+        "--profile",
+        "headless",
+        "--patch",
+        "/etc/dsh/research.patch.yml",
+        "--json",
+      ],
+      prompt: { kind: "stdin", text: prompt },
+    };
+  }
+
+  async #executeWithBoundedCorrection(
+    run: SealedNativeRun,
+    grant: ProviderCredentialEgressGrant,
+  ): Promise<DeepSeekExecutionSequence> {
+    let execution = await this.#sandbox.execute(
+      run,
+      this.#command(
+        run,
+        grant,
+        promptedJsonResearchPrompt(this.#sandbox.prompt(run), "DeepSeek"),
+      ),
+    );
+    if (execution.status === "failed") {
+      return {
+        execution,
+        initialStartedAt: undefined,
+        eventStreams: [],
+      };
+    }
+
+    const initialStartedAt = execution.startedAt;
+    const initialEventStream =
+      execution.status === "completed"
+        ? parseEventStream(execution.stdout)
+        : undefined;
+    const eventStreams =
+      initialEventStream === undefined ? [] : [initialEventStream];
+    const checkpoint = execution.checkpoint;
+    const usedWallTimeMs = Math.max(
+      0,
+      execution.completedAt.getTime() - execution.startedAt.getTime(),
+    );
+    const remainingWallTimeMs =
+      run.budgetAllowance.maxWallTimeMs - usedWallTimeMs;
+    const canCorrect =
+      execution.status === "completed" &&
+      initialEventStream !== undefined &&
+      initialEventStream.completed &&
+      initialEventStream.finalText !== undefined &&
+      checkpoint !== undefined &&
+      checkpoint.sessionId === initialEventStream.sessionId &&
+      parsePromptedJsonResearchReport(initialEventStream.finalText) ===
+        undefined &&
+      remainingWallTimeMs > 0;
+
+    if (canCorrect) {
+      const correctionRun: SealedNativeRun = {
+        ...run,
+        budgetAllowance: { maxWallTimeMs: remainingWallTimeMs },
+        resumeFrom: checkpoint,
+      };
+      execution = await this.#sandbox.execute(
+        correctionRun,
+        this.#command(correctionRun, grant, deepSeekReportCorrectionPrompt()),
+      );
+      if (execution.status === "completed") {
+        const correctionEventStream = parseEventStream(execution.stdout);
+        if (correctionEventStream !== undefined) {
+          eventStreams.push(correctionEventStream);
+        }
+      }
+    }
+
+    return { execution, initialStartedAt, eventStreams };
+  }
+
   async execute(run: SealedNativeRun): Promise<NativeRunReceipt> {
     if (
       run.agentRuntimeProfile.transportKind !== "deepseek-harness-native/v1" ||
@@ -397,54 +525,7 @@ class DeepSeekHarnessNativeAgentRuntime implements NativeAgentRuntime {
     };
     const brokerResult = await this.#credentialEgressBroker.withGrant(
       grantRequest,
-      async (grant): Promise<SandboxedAgentResult> => {
-        const token = tokenFromAuthorization(grant.authorization);
-        return this.#sandbox.execute(run, {
-          executable: "dsh",
-          versionTokenIndex: 0,
-          dockerNetworkName: grant.dockerNetworkName,
-          providerEnvironment: [
-            "--env=DSH_HOME=/provider",
-            "--env=HOME=/tmp/home",
-            "--env=DSH_PERMISSION_MODE=read-only",
-            "--env=DSH_TELEMETRY_DISABLED=1",
-            "--env=NARB_DISABLE_NATIVE_CACHE=1",
-            "--env=NO_COLOR=1",
-            `--env=DEEPSEEK_API_KEY=${token}`,
-            `--env=DEEPSEEK_BASE_URL=${grant.baseUrl}`,
-          ],
-          supportFiles: [
-            {
-              filename: "deepseek-research.patch.yml",
-              text: deepSeekResearchPatch(
-                run.agentRuntimeProfile.model,
-                run.agentRuntimeProfile.effort,
-              ),
-              containerMountPath: "/etc/dsh/research.patch.yml",
-            },
-          ],
-          ephemeralProviderHomeMount: { path: "/provider", mode: "rw" },
-          researchSession: {
-            newSessionArguments: () => [],
-            resumeSessionArguments: (sessionId) => ["--session-id", sessionId],
-            generatedSessionIdFromOutput: parseSessionId,
-          },
-          args: [
-            "--profile",
-            "headless",
-            "--patch",
-            "/etc/dsh/research.patch.yml",
-            "--json",
-          ],
-          prompt: {
-            kind: "stdin",
-            text: promptedJsonResearchPrompt(
-              this.#sandbox.prompt(run),
-              "DeepSeek",
-            ),
-          },
-        });
-      },
+      (grant) => this.#executeWithBoundedCorrection(run, grant),
     );
 
     if (brokerResult.operation.status === "not-started") {
@@ -468,7 +549,8 @@ class DeepSeekHarnessNativeAgentRuntime implements NativeAgentRuntime {
         brokerResult.receipt,
       );
     }
-    const execution = brokerResult.operation.value;
+    const sequence = brokerResult.operation.value;
+    const execution = sequence.execution;
     if (execution.status === "failed") {
       return withCredentialEgress(execution.receipt, brokerResult.receipt);
     }
@@ -478,7 +560,7 @@ class DeepSeekHarnessNativeAgentRuntime implements NativeAgentRuntime {
           run,
           "provider-failed",
           "The DeepSeek Agent Runtime completed, but isolated egress cleanup failed.",
-          execution.startedAt,
+          sequence.initialStartedAt ?? execution.startedAt,
           execution.completedAt,
           true,
           execution.checkpoint,
@@ -490,6 +572,7 @@ class DeepSeekHarnessNativeAgentRuntime implements NativeAgentRuntime {
     }
 
     const eventStream = parseEventStream(execution.stdout);
+    const initialStartedAt = sequence.initialStartedAt ?? execution.startedAt;
     if (execution.status === "exited-nonzero") {
       const failure = nonzeroTerminal(eventStream?.errorCode);
       return withCredentialEgress(
@@ -497,7 +580,7 @@ class DeepSeekHarnessNativeAgentRuntime implements NativeAgentRuntime {
           run,
           failure.terminal,
           failure.summary,
-          execution.startedAt,
+          initialStartedAt,
           execution.completedAt,
           true,
           execution.checkpoint,
@@ -520,6 +603,7 @@ class DeepSeekHarnessNativeAgentRuntime implements NativeAgentRuntime {
           "invalid-output",
           "DeepSeek Harness returned a malformed or incomplete NDJSON stream.",
           execution.checkpoint,
+          initialStartedAt,
         ),
         brokerResult.receipt,
       );
@@ -535,6 +619,7 @@ class DeepSeekHarnessNativeAgentRuntime implements NativeAgentRuntime {
           "policy-denied",
           "DeepSeek Harness returned an unbound Research session.",
           undefined,
+          initialStartedAt,
         ),
         brokerResult.receipt,
       );
@@ -550,6 +635,7 @@ class DeepSeekHarnessNativeAgentRuntime implements NativeAgentRuntime {
           "invalid-output",
           "DeepSeek Harness returned an unsupported Agent Report.",
           execution.checkpoint,
+          initialStartedAt,
         ),
         brokerResult.receipt,
       );
@@ -565,6 +651,7 @@ class DeepSeekHarnessNativeAgentRuntime implements NativeAgentRuntime {
           "invalid-output",
           "DeepSeek Harness returned an invalid Candidate Recipe.",
           execution.checkpoint,
+          initialStartedAt,
         ),
         brokerResult.receipt,
       );
@@ -574,19 +661,30 @@ class DeepSeekHarnessNativeAgentRuntime implements NativeAgentRuntime {
       runId: run.runId,
       runtimeProfileDigest: run.agentRuntimeProfile.digest,
       terminal: "completed",
-      startedAt: execution.startedAt.toISOString(),
+      startedAt: initialStartedAt.toISOString(),
       completedAt: execution.completedAt.toISOString(),
       usage: {
         wallTimeMs: Math.max(
           0,
-          execution.completedAt.getTime() - execution.startedAt.getTime(),
+          execution.completedAt.getTime() - initialStartedAt.getTime(),
         ),
-        inputTokens: eventStream.inputTokens,
-        outputTokens: eventStream.outputTokens,
+        inputTokens: sequence.eventStreams.reduce(
+          (total, stream) => total + stream.inputTokens,
+          0,
+        ),
+        outputTokens: sequence.eventStreams.reduce(
+          (total, stream) => total + stream.outputTokens,
+          0,
+        ),
       },
       activity: {
-        subagents: eventStream.subagents,
-        tools: eventStream.tools,
+        subagents: sequence.eventStreams.reduce(
+          (total, stream) => total + stream.subagents,
+          0,
+        ),
+        tools: [
+          ...new Set(sequence.eventStreams.flatMap((stream) => stream.tools)),
+        ],
       },
       credentialEgress: brokerResult.receipt,
       isolation: {

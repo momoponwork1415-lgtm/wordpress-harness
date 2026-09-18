@@ -188,6 +188,10 @@ describe("DeepSeek Harness Native Agent Runtime", () => {
         },
       }),
     }).replaceAll("'", "'\\''");
+    const malformedReportEvent = JSON.stringify({
+      type: "final",
+      text: '{"schemaVersion":2,"assessments":[',
+    }).replaceAll("'", "'\\''");
     await writeFile(
       dockerExecutablePath,
       `#!/bin/sh
@@ -198,6 +202,7 @@ if [ "\${1:-}" = "info" ]; then
 fi
 if [ "\${1:-}" = "image" ]; then exit 0; fi
 is_version_probe=0
+is_resume=0
 has_network=0
 has_key=0
 has_base_url=0
@@ -208,6 +213,7 @@ provider_home=''
 previous=''
 for argument in "$@"; do
   if [ "$previous" = "--network" ] && [ "$argument" = "deepseek-internal" ]; then has_network=1; fi
+  if [ "$previous" = "--session-id" ]; then is_resume=1; fi
   [ "$argument" != "--env=DEEPSEEK_API_KEY=scoped-token" ] || has_key=1
   [ "$argument" != "--env=DEEPSEEK_BASE_URL=http://10.0.0.2:8080" ] || has_base_url=1
   [ "$argument" != "--env=DSH_HOME=/provider" ] || has_dsh_home=1
@@ -255,6 +261,19 @@ if [ "$mode" = "malformed" ]; then
   printf '%s' '{"persisted":true}' > "$provider_home/session-55555555-5555-4555-8555-555555555555.jsonl"
   printf '%s\n' '{"type":"session","sessionId":"session-55555555-5555-4555-8555-555555555555","cwd":"/workspace"}'
   printf '%s\n' 'not-json'
+  exit 0
+fi
+if [ "$mode" = "malformed-report" ] || [ "$mode" = "malformed-report-twice" ]; then
+  printf '%s' '{"persisted":true}' > "$provider_home/session-77777777-7777-4777-8777-777777777777.jsonl"
+  printf '%s\n' '{"type":"session","sessionId":"session-77777777-7777-4777-8777-777777777777","cwd":"/workspace"}'
+  printf '%s\n' '{"type":"status","phase":"step_end","turn":1,"step":1,"usage":{"inputTokens":1200,"outputTokens":300,"cacheReadTokens":50,"cacheWriteTokens":25,"reasoningTokens":100,"totalTokens":1675}}'
+  printf '%s\n' '{"type":"status","phase":"turn_end","turn":1,"reason":{"kind":"completed"}}'
+  if [ "$is_resume" -eq 1 ] && [ "$mode" = "malformed-report" ]; then
+    printf '%s' "$prompt" | grep -F 'Correct only the format of your previous final Research Report' >/dev/null
+    printf '%s\n' '${finalEvent}'
+  else
+    printf '%s\n' '${malformedReportEvent}'
+  fi
   exit 0
 fi
 printf '%s' '{"persisted":true}' > "$provider_home/session-11111111-1111-4111-8111-111111111111.jsonl"
@@ -364,6 +383,28 @@ printf '%s\n' '${finalEvent}'
       expiresAt: expect.any(String),
     });
 
+    await writeFile(`${dockerExecutablePath}.mode`, "malformed-report", "utf8");
+    const correctionRun = sealedNativeRunSchema.parse({
+      ...run,
+      runId: "run-deepseek-format-correction",
+      campaignId: "campaign-deepseek-format-correction",
+      campaignInputDigest: `sha256:${"d".repeat(64)}`,
+    });
+    await expect(runtime.execute(correctionRun)).resolves.toMatchObject({
+      terminal: "completed",
+      usage: { inputTokens: 2550, outputTokens: 600 },
+      activity: { subagents: 0, tools: [] },
+      checkpoint: {
+        sessionId: "session-77777777-7777-4777-8777-777777777777",
+      },
+      report: {
+        decision: {
+          kind: "stop",
+          basis: "No actionable frontier remains.",
+        },
+      },
+    });
+
     const failures = [
       {
         mode: "auth",
@@ -380,6 +421,11 @@ printf '%s\n' '${finalEvent}'
       {
         mode: "malformed-provider",
         character: "c",
+        terminal: "invalid-output",
+      },
+      {
+        mode: "malformed-report-twice",
+        character: "e",
         terminal: "invalid-output",
       },
     ] as const;
