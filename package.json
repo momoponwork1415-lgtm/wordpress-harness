@@ -6,6 +6,7 @@
   "bin": {
     "wordpress-harness": "./dist/cli.js",
     "wordpress-harness-claude-launcher": "./dist/operations/claude-quota-approved-campaign-launcher-cli.js",
+    "wordpress-harness-trials": "./dist/operations/independent-research-trial-launcher-cli.js",
     "wordpress-harness-doctor": "./dist/operations/campaign-readiness-doctor-cli.js"
   },
   "engines": {
