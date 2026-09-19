@@ -139,9 +139,12 @@ describe("Campaign Threat Context", () => {
       "Programme Research Boundary (effort and Candidate constraints, not a vulnerability oracle)",
     );
     expect(prompt).toContain(
-      "treat every Candidate and parked Programme Lead returned by an earlier completed Research run as immutable",
+      "Do not re-emit a Candidate or parked Programme Lead returned by an earlier completed Research run",
     );
-    expect(prompt).toContain("add the revision under a new id");
+    expect(prompt).toContain(
+      "Report only records first established in this run",
+    );
+    expect(prompt).toContain("report the revision under a new id");
     expect(prompt).toContain(
       "Do not spend a subagent or adversarial Candidate review on that lead",
     );

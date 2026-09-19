@@ -254,7 +254,7 @@ describe("autonomous Research continuation", () => {
                   kind: "stop",
                   basis: "No actionable source-bound frontier remains.",
                 },
-            [candidate()],
+            invocations === 1 ? [candidate()] : [],
           );
         },
       },
@@ -271,6 +271,10 @@ describe("autonomous Research continuation", () => {
         terminalResearchRunId: `${input.campaignId}:native:2`,
         candidates: [{ candidateId: candidate().candidateId }],
       },
+      nativeRuns: [
+        { report: { candidates: [{ candidateId: candidate().candidateId }] } },
+        { report: { candidates: [] } },
+      ],
     });
     campaigns.close();
   });
