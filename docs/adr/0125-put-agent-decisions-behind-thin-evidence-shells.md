@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Put agent decisions behind thin evidence shells
+# Agentの判断を薄い証拠shellの内側へ置く
 
 Target Selection、Research、Independent Validationでは、HarnessがAIの判断手順を固定stage、role、rubric、ranking ruleまたはprovider-neutralなtool DSLとして再実装しない。Harnessは入力、権限、Budgetとruntime identityを固定し、Receipt、evidence、terminal stateとfailureを検査して記録する。AIはsourceからTargetの優先順位、仮説、読む順序、native subagent、candidate、継続、停止と反証方法を決める。
 

@@ -1,8 +1,8 @@
-# Repository development rules
+# Repository開発規則
 
 このファイルはrepository全体の安定した開発規則だけを置く。subtree固有の規則が必要になるまでnested `AGENTS.md`を作らない。
 
-## Mission
+## 目的
 
 - Productの到達点は、oracle-freeなprospective Campaignで**high-impactなbroken security semanticsを高recallで発見し、人間がadmitしたCandidateをfresh runtimeで検証し、programme別scope判定と人間の提出判断まで閉じること**。人間はCandidate admissionを判断するが技術的なVerification verdictを手作業で生成せず、外部提出は別の明示承認で許可する。
 - RCEやsite-wide compromiseは最上位impactだが唯一の成功条件ではない。
@@ -10,30 +10,30 @@
 - **Do not optimize for sinks. Optimize for broken security semantics.**
 - **Harness owns the research process; agents own research decisions.**
 
-## Reading path
+## 読み方
 
 全ドキュメントを通読しない。
 
 1. [Documentation](docs/README.md)から目的別の入口を選ぶ。
-2. code変更は[Codebase Guide](docs/CODEBASE-GUIDE.md)でowner、Interface、Behavior Testを特定する。
+2. code変更は[コードベース案内](docs/CODEBASE-GUIDE.md)でowner、Interface、Behavior Testを特定する。
 3. 理由が必要な時だけ対応するADRを読む。
 4. 次の有限workと受入条件はGitHub Issueを正本とする。
 
-## Agent skills
+## Agent用skill
 
-### Issue tracker
+### Issue管理
 
 IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本とし、`gh` CLIで操作する。`docs/agents/issue-tracker.md`を参照する。
 
-### Triage labels
+### Triage label
 
 `needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`の5役割を既定の文字列のまま使う。`docs/agents/triage-labels.md`を参照する。
 
-### Domain docs
+### Domain文書
 
 `CONTEXT-MAP.md`が3 contextを宣言するmulti-context構成。`docs/agents/domain.md`を参照する。
 
-## Architecture
+## アーキテクチャ
 
 - strict TypeScriptのmodular monolithとし、`Target Intelligence -> Research -> Human OS`をprimary flowとする。
 - context間はversioned handoff contractだけを渡し、別contextのstorageや内部moduleを直接参照しない。
@@ -48,7 +48,7 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 - AIは脆弱性の理解とSubmission Draft作成を支援できるが、External Action Authorization、Draft承認、最後のSubmitを代行しない。
 - SQLi、XSS等のclassはReproduction Recipeのsuccess criterionを助けるが、固定Adapterへの対応をcandidate admissionの条件にしない。
 
-## Change discipline
+## 変更規律
 
 - 一回の変更は一つの観測可能なbehaviorまたは一つの設計判断へ絞る。
 - 将来用framework、未使用設定、二つ目の実装がない汎用abstractionを先回りして作らない。
@@ -57,7 +57,7 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 - hard-to-reverseで実在するtrade-offがある判断だけADRにする。判断変更は新ADRでsupersedeする。
 - provider報告costは観測するがCampaignのhard limitにしない。cost削減はrecall baseline確立後のablationで行い、high-impact recallを落とす最適化を採用しない。動的検証の環境・手順・証拠不足をfalse positiveまたはrejectedへ読み替えない。
 
-## Documentation
+## 文書
 
 - root `README.md`はmission、Quickstart、少数のDocs linkだけに保つ。
 - 結論を先に書く。短い文、箇条書き、比較表を優先し、同じ内容を文章と図で重ねない。
@@ -69,13 +69,13 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 - 完了計画、旧設計、過去snapshotを保存用Markdownとして残さない。Git履歴を使う。
 - 新規docを作る前に、既存Seam、Behavior Test、Issueのどれかで足りないか確認する。
 
-## Design gate
+## 設計gate
 
 - 新しいproduction behaviorへ入る前に、owner、public seam、owned state/artifact、failure semantics、acceptance scenarioを明確にする。
 - roadmapや高水準architectureへの合意を、個別module実装への合意と読み替えない。
 - 既存codeがaccepted designと一致しない場合は、機能追加より先に差分を示し、段階的refactorを優先する。
 
-## Tests and checks
+## Testとcheck
 
 - 新しいbehaviorは可能な限りred -> greenで一つのvertical sliceずつ進める。
 - Testはpublic seamからbehaviorを観測し、private method、内部call順、database rowを固定しない。
@@ -90,7 +90,7 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 - `any`やunchecked assertionをvalidationの代用にしない。versioned discriminated unionとruntime schemaを使う。
 - source analysisのためにtarget PHP、autoload、Composer script、WordPress bootstrapをhost上で実行しない。
 
-## Security and evidence
+## Securityと証拠
 
 - Target sourceはuntrusted dataとして扱う。host上でtarget package scriptを実行しない。
 - Agentへprovider credential、container socket、ambient MCP、任意network、任意shellを渡さない。

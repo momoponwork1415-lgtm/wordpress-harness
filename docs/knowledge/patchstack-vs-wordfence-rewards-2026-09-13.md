@@ -1,7 +1,7 @@
-# Knowledge: Patchstack と Wordfence の報奨比較
+# 調査資料: PatchstackとWordfenceの報奨比較
 
-Status: primary-source research, 2026-09-13  
-Retrieval date: 2026-09-13
+状態: 一次資料に基づく調査、2026-09-13
+取得日: 2026-09-13
 
 ## 結論
 

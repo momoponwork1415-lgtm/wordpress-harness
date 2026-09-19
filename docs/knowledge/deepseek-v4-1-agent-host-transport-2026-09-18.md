@@ -1,6 +1,6 @@
-# Knowledge: DeepSeek V4.1 Flashのagent-host transport
+# 調査資料: DeepSeek V4.1 Flashのagent-host transport
 
-Status: primary-source research, checked 2026-09-18
+状態: 一次資料に基づく調査、2026-09-18確認
 
 ## 結論
 
@@ -31,7 +31,7 @@ production実装へ進む条件は、exact `dsh` package versionとcontainer ima
 
 ## 第一候補: DeepSeek Harness headless
 
-### Process boundary
+### Processの境界
 
 公式CLI packageは`@deepseek-ai/dsh`、executableは`dsh`である。`dsh --profile headless`は一回のtaskを実行して終了し、`--json`では`session`、`status`、`text`、`thinking`、`tool_call`、`tool_result`、`final`をNDJSONで出す。completedのみexit 0で、aborted、error、turn不成立はexit 1になる。[CLI](https://github.com/deepseek-ai/deepseek-harness/blob/master/apps/cli/README.md) [headless contract](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/bundle/headless/README.md)
 
@@ -39,13 +39,13 @@ production実装へ進む条件は、exact `dsh` package versionとcontainer ima
 
 最初のeligible imageは`@deepseek-ai/dsh@0.1.6-alpha.2`をexact versionとnpm lockfile integrityでinstallし、imageをdigest pinする。launch前のprobeはimage内の`dsh --version`がprofileの`executableVersion`と一致することを確認する。version tagだけでなくpackage integrityとimage digestをbindするのは、developer previewのbreaking-change予告から導くrepository側の要件である。
 
-### Session create / resume
+### Sessionの作成と再開
 
 session idを省略するとfreshな`session-<uuid>`を作り、opening `session` eventがidを返す。同じcwd、root session、compatible compositionという条件を満たすpersisted sessionは、次のprocessで`--session-id <id>`により継続できる。存在しないidはempty sessionを作らず失敗する。[headless session contract](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/bundle/headless/README.md#choosing-the-session-identity)
 
 このためinitial runはstdinでResearch Promptを渡し、Checkpoint continuationだけ同じnative session idをopaqueに保持してresumeする。Harnessはhistory、context compactionまたはturn loopを再構築しない。
 
-### Native toolsとsubagents
+### Native toolとsubagent
 
 base-backed profileはmodel connection、file editing、shell、web search / fetch、subagents、task / goal tracking、durable sessionを含む。subagent serviceはfresh spawn、history-seeded fork、continuable child、follow-up、interrupt、child discoveryをnative capabilityとして持つ。[base bundle](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/bundle/base/README.md) [subagent contract](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/subagent/subagent/README.md)
 
@@ -53,7 +53,7 @@ baseのcontinuable child上限はdefault 8であり、このproductの「Root込
 
 DeepSeek Harnessのsandbox policyはfile effectsを`read-only / workspace-write / danger-full-access`へ分類するが、networkとprocess policyは語彙の外である。[sandbox policy](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/sandbox/sandbox-policy/README.md) よって専用profileのtool制限はdefense in depthであり、outer gVisor sandbox、read-only Target Snapshot、isolated scratch、egress allowlistの代わりにならない。
 
-### Structured outputとusage
+### 構造化出力とusage
 
 headless `--json`はrun event envelopeであって、`final.text`のJSON Schemaを強制するoptionではない。公開されるheadless設定は`task`、`sessionId`、`json`の三つで、terminal `final` eventはlossless answer textを運ぶ。[headless settings](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/bundle/headless/README.md#running-a-one-shot-task) [JSON projection source](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/bundle/headless/src/json-stream.ts)
 
@@ -63,7 +63,7 @@ raw DeepSeek APIには`response_format: {"type":"json_object"}`があるが、JS
 
 NDJSONの`step_end` statusは、全attemptがusageを報告した場合だけinput、output、total、cache read / write、reasoning tokenを含む。一つでもsampleが欠けるとpartial sumをexact totalに見せないためusageを省略する。[JSON projection usage source](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/bundle/headless/src/json-stream.ts) Receiptはこのprovider-reported usageを観測値として保存し、省略をzeroへ変換しない。
 
-### Failure semantics
+### 失敗時の扱い
 
 公式DeepSeek adapterはHTTP failureを`AUTH`、`QUOTA`、`RATE_LIMIT`、`CONTEXT_WINDOW_EXCEEDED`、`INVALID_REQUEST`、`SERVER`、その他の`HTTP_<status>`へ正規化し、さらに`MISSING_CREDENTIAL`、`INVALID_CREDENTIAL`、`TRANSPORT`、`ABORTED`、`TIMEOUT`、`STREAM_CLOSED`、`MALFORMED_RESPONSE`、`EMPTY_RESPONSE`を区別する。[dsh adapter failures](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/llm/llm-deepseek/README.md#failures-and-recovery) DeepSeek API自身は401をauthentication failure、402をinsufficient balance、429をrate limit、500 / 503をserver-side failureと定義する。[API Error Codes](https://api-docs.deepseek.com/quick_start/error_codes/)
 
@@ -71,7 +71,7 @@ NDJSONの`step_end` statusは、全attemptがusageを報告した場合だけinp
 
 Adapterは少なくとも次のように写像する。
 
-| Native outcome | Research outcome |
+| Native側の結果 | Research側の結果 |
 | --- | --- |
 | `MISSING_CREDENTIAL` / `INVALID_CREDENTIAL` / `AUTH` | resumable `provider-authentication-required` |
 | `QUOTA` / HTTP 402 / balance unavailable | resumable `provider-quota-exhausted` |
@@ -89,12 +89,12 @@ DeepSeekはCodex用のofficial setupを公開し、`deepseek-flash`をcustom mod
 
 | 観点 | DeepSeek Harness | Codex + DeepSeek |
 | --- | --- | --- |
-| host provenance | DeepSeek first-party agent host | DeepSeek公式support済みのOpenAI agent host |
-| current external seam | headless stdin + NDJSON、native session resume | 既存Codex native adapterのprocess / session seam |
+| hostの出所 | DeepSeek first-party agent host | DeepSeek公式support済みのOpenAI agent host |
+| 現在の外部seam | headless stdin + NDJSON、native session resume | 既存Codex native adapterのprocess / session seam |
 | native subagents | 公式base bundleがin-process spawn / fork / continuationを提供 | DeepSeek catalogがCodex multi-agent v2を宣言するが、実transport capabilityは固定Codex versionで再probeが必要 |
 | report enforcement | prompted JSON + Harness validation | 既存Codex schema-constrained outputを使えるなら有利。DeepSeek Responses互換での実測probeが必要 |
 | credential | dsh storeがagentへのsecret boundaryではない | 公式setupはconfigへAPI keyを直接保存 |
-| recommendation | provider-native第一候補 | credential proxyとcapability probeを通ればfallbackではなく同格のprofile experiment候補 |
+| 推奨 | provider-native第一候補 | credential proxyとcapability probeを通ればfallbackではなく同格のprofile experiment候補 |
 
 どちらか一方へ自動fallbackしてはならない。別transportは別Agent Runtime Profile、別integrity digest、別eligibility receiptとしてablationする。
 

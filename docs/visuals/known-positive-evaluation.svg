@@ -32,15 +32,15 @@
   <circle cx="1110" cy="10" r="225" fill="#17345c" opacity=".28"/>
 
   <g class="sans">
-    <text x="46" y="48" class="mono eyebrow" fill="#78aaff">EVALUATION · 2026-09-08 · DESKTOP</text>
-    <text x="46" y="94" class="title">Known-positive 4件</text>
+    <text x="46" y="48" class="mono eyebrow" fill="#78aaff">評価記録 · 2026-09-08</text>
+    <text x="46" y="94" class="title">既知positive 4件</text>
     <text x="46" y="124" class="subtitle">stageを混ぜずに到達点を数える。4/4はsource-level recoveryであり、未知脆弱性のrecallではない。</text>
 
     <g filter="url(#shadow)">
       <rect x="46" y="172" width="326" height="242" rx="22" fill="#123f38" stroke="#328669" stroke-width="1.5"/>
-      <text x="70" y="207" class="mono eyebrow" fill="#68d8a2">1 · DISCOVERY</text>
+      <text x="70" y="207" class="mono eyebrow" fill="#68d8a2">1 · 探索</text>
       <text x="70" y="265" class="number">4 / 4</text>
-      <text x="70" y="303" class="card">Candidate recovered</text>
+      <text x="70" y="303" class="card">Candidateを再発見</text>
       <circle cx="82" cy="346" r="9" fill="#68d8a2"/>
       <circle cx="116" cy="346" r="9" fill="#68d8a2"/>
       <circle cx="150" cy="346" r="9" fill="#68d8a2"/>
@@ -52,9 +52,9 @@
 
     <g filter="url(#shadow)">
       <rect x="424" y="172" width="326" height="242" rx="22" fill="#33265c" stroke="#826bd2" stroke-width="1.5"/>
-      <text x="448" y="207" class="mono eyebrow" fill="#b9a7ff">2 · FRESH SOURCE VALIDATION</text>
+      <text x="448" y="207" class="mono eyebrow" fill="#b9a7ff">2 · 新しいsessionでsource検証</text>
       <text x="448" y="265" class="number">4 / 4</text>
-      <text x="448" y="303" class="card">Finding generated</text>
+      <text x="448" y="303" class="card">Findingを生成</text>
       <circle cx="460" cy="346" r="9" fill="#b39aff"/>
       <circle cx="494" cy="346" r="9" fill="#b39aff"/>
       <circle cx="528" cy="346" r="9" fill="#b39aff"/>
@@ -66,9 +66,9 @@
 
     <g filter="url(#shadow)">
       <rect x="802" y="172" width="352" height="242" rx="22" fill="#392f22" stroke="#c99652" stroke-width="1.5"/>
-      <text x="826" y="207" class="mono eyebrow" fill="#f0bd78">3 · DYNAMIC REPRODUCTION</text>
+      <text x="826" y="207" class="mono eyebrow" fill="#f0bd78">3 · 動的再現</text>
       <text x="826" y="265" class="number">3 / 4</text>
-      <text x="826" y="303" class="card">Runtime effect observed</text>
+      <text x="826" y="303" class="card">runtime上の影響を観測</text>
       <circle cx="838" cy="346" r="9" fill="#e6aa68"/>
       <circle cx="872" cy="346" r="9" fill="#e6aa68"/>
       <circle cx="906" cy="346" r="9" fill="#e6aa68"/>
@@ -78,13 +78,13 @@
 
     <g filter="url(#shadow)">
       <rect x="46" y="458" width="1108" height="86" rx="22" fill="#182536" stroke="#45566c" stroke-width="1.4"/>
-      <text x="70" y="491" class="mono eyebrow" fill="#9cafc4">NEXT MEASUREMENT</text>
-      <text x="70" y="522" class="card">Prospective latest-version Campaign</text>
+      <text x="70" y="491" class="mono eyebrow" fill="#9cafc4">次に測ること</text>
+      <text x="70" y="522" class="card">最新版のprospective Campaign</text>
       <rect x="500" y="491" width="94" height="28" rx="14" fill="#604724"/>
       <text x="547" y="510" text-anchor="middle" class="small" fill="#ffe0ad">未実施</text>
       <text x="1130" y="510" text-anchor="end" class="body">ここから新規発見能力を測る</text>
     </g>
 
-    <text x="600" y="580" text-anchor="middle" class="tiny">Discovery 4/4 → Source Validation 4/4 → Dynamic observation 3/4</text>
+    <text x="600" y="580" text-anchor="middle" class="tiny">探索 4/4 → source検証 4/4 → 動的観測 3/4</text>
   </g>
 </svg>

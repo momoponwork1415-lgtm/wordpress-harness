@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Preserve native Research checkpoints opaquely
+# native Research Checkpointを不透明参照として保存する
 
 Research Rootのprovider-native conversationとscratchはprivateなAgent Checkpointとしてprovider Adapterに保存させ、Research Recordにはbindingとintegrityを持つopaque refだけをappendする。成功したResearch Reportだけを状態とする方式では、budgetやprovider interruptionで高価な探索内容が全損し、ADR 0125のresumeとprivate transcript refを満たせないためである。
 

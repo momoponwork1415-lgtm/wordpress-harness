@@ -1,7 +1,7 @@
-# Knowledge: 高volume WordPress researcherの探索workflow
+# 調査資料: 多数のWordPress脆弱性を報告するresearcherの探索workflow
 
-Status: primary-source research, 2026-09-13
-Retrieval date: 2026-09-13（追補: 2026-09-15）
+状態: 一次資料に基づく調査、2026-09-13
+取得日: 2026-09-13（追補: 2026-09-15）
 
 ## 結論
 
@@ -18,14 +18,14 @@ Retrieval date: 2026-09-13（追補: 2026-09-15）
 
 従って現行Harnessへの主要な含意は、agentを一Targetへ長時間当てるだけでなく、**oracle-freeな変更signalで調査frontierを作ること、Rootが異種仮説を回すこと、見つけたbroken security semanticsを関連componentへ横展開すること、最後は独立Validationでfalse positiveを落とすこと**である。単純なsink count、accepted profile count、または一つのclass campaignをrecallの代用品にしてはならない。
 
-## Evidence boundary
+## 証拠の境界
 
 - **Observed**は本人、公式conference abstract、Patchstack、Wordfenceが公開した内容、または公開profile表の再集計である。
 - **Inference**はObservedなclass・Target・時系列分布と公開workflowから導く仮説である。
 - profile表の再集計は2026-09-13時点のsnapshotであり、後日の追加・alias統合・publicationにより変わる。
 - 公開情報には監査したTarget総数、時間、棄却、duplicate、非発見runがない。二人のprecision、recall、Findings/Target、Findings/hourは算出しない。
 
-## Observed: Rafie Muhammad
+## 観測事実: Rafie Muhammad
 
 ### 追補: 公開動画と既知脆弱性の履歴（2026-09-15）
 
@@ -78,7 +78,7 @@ GiveWPの本人記事で観測できるloopは次の通りである（[GiveWP LF
 
 2024年の本人talkでは、million-install pluginは既に多く監査されcode qualityも高いためhitしにくく、10K/50K install帯ではFinding確率が上がるというTarget trade-offを説明する。また、sink-to-sourceとsource-to-sinkの両方を使うが主にsource側から追い、Target本体にFindingがなくてもshared libraryへpivotして多数pluginへ展開したcaseを示した（[target selection](https://www.youtube.com/watch?v=foOyhOUreno&t=277s)、[shared-library pivot](https://www.youtube.com/watch?v=foOyhOUreno&t=555s)、[source-first answer](https://www.youtube.com/watch?v=foOyhOUreno&t=2483s)）。
 
-## Observed: daroo
+## 観測事実: daroo
 
 ### profile countをhit rateへ使えない理由
 
@@ -109,7 +109,7 @@ Wordfenceの2026年3月実績では、darooはvalid in-scope 13件、$4,993、�
 
 同月のprogramme全体では1,718 submissions中、in-scopeは318件、18.5%に過ぎず、306 OOS、748 rejected、346 duplicateだった。これは個人のprecisionではないが、トップ研究者が活動する市場全体でも多数の棄却を前提にthroughputが成立していることを示す（[submission outcomes](https://www.wordfence.com/blog/2026/05/wordfence-bug-bounty-program-monthly-report-march-2026/#wordpress-software-vulnerability-submission-insights-march-2026)）。
 
-## Inference: 何がvolumeを作っているか
+## 推論: 何が報告数を生んでいるか
 
 ### 高confidence
 
@@ -142,7 +142,7 @@ Wordfenceの2026年3月実績では、darooはvalid in-scope 13件、$4,993、�
 7. **AI throughputとvalidationを分離する。** 複数codebaseへのbackground model投入は候補数を増やすが、Candidate admission、fresh source-only Independent Validation、fresh isolated reproductionを短絡しない。model出力をFinding countにしない。WordfenceではAI利用のself-reportが2025年末の16%から約66%へ増え、全体の報告volumeも453%増えたが、個人darooのAI利用証拠にはならない（[Wordfence AI report](https://www.wordfence.com/blog/2026/04/the-increasing-role-of-ai-in-vulnerability-research/)）。
 8. **比較可能なbaselineを先に作る。** 同じpublic frozen corpus、同じGrant、同じprovider条件でsingle run、複数run union、validated Finding数を測る。外部researcher profileは成功例の観察であり、Harness recall baselineではない。
 
-## Appendix: Rafieの直近公開20件とcurrent active installs
+## 付録: Rafieの直近公開20件と現在のactive installs
 
 ### 抽出基準
 
@@ -192,7 +192,7 @@ off-repo 9 unique pluginは公式vendor/product資料でcommercialまたはtheme
 
 最後に、このprofileは**公開された成功例だけ**を並べる。監査して何も出なかったplugin、棄却、duplicate、投入時間は含まれない。現在のactive installsを過去のTarget選定のproxyにしても、hit rateの分母または当時のpopularityは復元できない。
 
-## Limitations
+## 限界
 
 - Patchstack profile headerとtableには、Rafieの`42 Reports`対731 dated rows + 1,325 `No date` rows、darooの`300 Reports`対280 dated rowsという未解消の差がある。異なるprogramme/report/database creditを混ぜないため、dated table rowsだけを分布集計に使った。
 - Wordfenceのprofile publication dateとoriginal discovery/submission dateは同じとは限らない。90-day publication数を研究速度へ直接変換しない。

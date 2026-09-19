@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Record Native Run attempts before provider execution
+# provider実行前にNative Run Attemptを記録する
 
 Research Campaignsはproviderを呼ぶ前に、exactなSealed Native Run、そのdigestと開始時刻をappend-only Research Recordへ記録する。provider呼び出し後にReceiptだけを記録する方式では、process interruptionが「まだ実行していない」のか「quotaを消費したが記録できなかった」のかを区別できず、restart後の再実行が二重消費になり得るためである。
 

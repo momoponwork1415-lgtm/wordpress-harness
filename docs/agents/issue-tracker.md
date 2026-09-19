@@ -1,62 +1,62 @@
-# Issue tracker: GitHub
+# Issue管理: GitHub
 
-Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
+このrepositoryのIssueと仕様はGitHub Issuesを正本とし、すべて`gh` CLIで操作する。
 
-## Repository capabilities (probed 2026-09-04)
+## Repositoryで利用できる機能
 
-- Native **sub-issues** are enabled (`repos/:owner/:repo/issues/:n/sub_issues`).
-- Native **issue dependencies** are enabled (`issue_dependencies_summary` is present).
+2026-09-04の確認時点で、次の機能を利用できる。
 
-Both wayfinding fallbacks (task-list children, `Blocked by:` body lines) are therefore
-unnecessary on this repo. Use the native endpoints.
+- native sub-issue（`repos/:owner/:repo/issues/:n/sub_issues`）
+- native issue dependency（`issue_dependencies_summary`）
 
-## Conventions
+そのため、task listによる子Issue表現や、Issue本文の`Blocked by:`による代替表現は通常使わない。
 
-- **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
-- **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and also fetching labels.
-- **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
-- **Comment on an issue**: `gh issue comment <number> --body "..."`
-- **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
-- **Close**: `gh issue close <number> --comment "..."`
+## 記述言語
 
-Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
+- Issueのタイトル、目的、観測事実、必要な動作、受入条件、通常のcommentは日本語で書く。
+- 契約名、schema field、状態値、CLI、コード識別子、path、provider固有機能など、実装や外部仕様と照合する語は英語のまま残す。
+- 既存の英語Issueを更新するときは、意味・受入条件・label・依存関係を変えずに日本語化する。
+- 外部から引用する英文は必要な範囲だけ残し、日本語で要点を説明する。
 
-## Pull requests as a triage surface
+## 基本操作
 
-**PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
+- **作成:** `gh issue create --title "..." --body "..."`
+- **参照:** `gh issue view <number> --comments`。commentとlabelも確認する。
+- **一覧:** `gh issue list --state open --json number,title,body,labels,comments`へ、必要な`--label`と`--state`を指定する。
+- **comment:** `gh issue comment <number> --body "..."`
+- **labelの追加・削除:** `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
+- **close:** `gh issue close <number> --comment "..."`
 
-When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents:
+repositoryは`git remote -v`から判断する。clone内で実行する`gh`は通常これを自動で解決する。
 
-- **Read a PR**: `gh pr view <number> --comments` and `gh pr diff <number>` for the diff.
-- **List external PRs for triage**: `gh pr list --state open --json number,title,body,labels,author,authorAssociation,comments` then keep only `authorAssociation` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, or `NONE` (drop `OWNER`/`MEMBER`/`COLLABORATOR`).
-- **Comment / label / close**: `gh pr comment`, `gh pr edit --add-label`/`--remove-label`, `gh pr close`.
+## Pull Requestを依頼受付として使うか
 
-GitHub shares one number space across issues and PRs, so a bare `#42` may be either — resolve with `gh pr view 42` and fall back to `gh issue view 42`.
+外部Pull Requestを依頼受付としては使わない。将来この方針を変える場合だけ、外部PRをIssueと同じtriage対象にする。
 
-## When a skill says "publish to the issue tracker"
+GitHubではIssueとPull Requestが同じ番号空間を使う。`#42`だけでは区別できない場合、`gh pr view 42`を試し、該当しなければ`gh issue view 42`を使う。
 
-Create a GitHub issue.
+## SkillからIssue操作を求められた場合
 
-## When a skill says "fetch the relevant ticket"
+- 「Issue trackerへ公開する」はGitHub Issueを作る。
+- 「関連ticketを取得する」は`gh issue view <number> --comments`を実行する。
 
-Run `gh issue view <number> --comments`.
+## 実装状態とIssue状態を一致させる
 
-## Reconcile implementation and issue state
+- 編集・close前に受入条件と最新commentを読み、現在の公開InterfaceとBehavior Testへ照合する。
+- working treeの変更、local commit、GitHub default branchから到達できるcommitを区別する。localだけの作業を公開済み・merge済みと説明しない。
+- 実装Issueは、受入条件を満たし統合証拠がある場合だけcloseする。支持commitを示し、どのrevisionを試験したかを正確に記録する。
+- 一部だけ完了したIssueはopenのままにし、残る受入条件を本文へ記録する。子Issueの完了を親Issueの完了とみなさない。source-onlyの結果をruntime verification成立とみなさない。
+- 実装状態はCodebase Guide、有限作業はIssueへ置く。重複roadmapや日付付きstatus文書を作らず、既存の対応表とnative relationshipを更新する。
+- 過去commentは保持する。「未commit」など古くなった主張は書き換えず、現在の証拠を新しいcommentで補足する。
 
-- Read the acceptance criteria and recent comments before editing or closing an issue. Match them to the current public Interface and Behavior Tests.
-- Distinguish a working-tree change, a local commit, and a commit reachable from the GitHub default branch. Do not describe local-only work as published or merged on GitHub.
-- Close an implementation issue only when its acceptance is met and its integration evidence is available. Link the supporting commit and state exactly which revision was tested. A local test run does not test a different remote revision.
-- Keep partially completed issues open and state the remaining acceptance in the body. A completed child does not complete its parent; a source-only result does not establish runtime or human verification.
-- Keep implementation status in Codebase Guide and finite work in issues. Update the existing map and native relationships instead of creating a duplicate roadmap or a dated status document.
-- Preserve historical comments. Correct a stale claim such as "uncommitted" with current evidence rather than rewriting the comment's history.
+## Wayfinding操作
 
-## Wayfinding operations
+`/wayfinder`を使う場合、単一のmap Issueと、そのnative sub-issueを使う。
 
-Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
+- **Map:** `wayfinder:map` labelを持つ単一Issue。Notes / Decisions-so-far / Fogを本文に置く。
+- **子ticket:** mapへnative sub-issueとして接続し、`wayfinder:<type>`（`research` / `prototype` / `grilling` / `task`）labelを付ける。担当開始時に`gh issue edit <n> --add-assignee @me`でclaimする。
+- **Blocking:** GitHubのnative issue dependencyを正本にする。`repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by`へ、blockerのdatabase IDを送る。`#number`や`node_id`ではない。
+- **次の作業:** mapのopenな子Issueから、open blockerまたはassigneeがあるものを除き、map順で最初のものを選ぶ。
+- **完了:** Issueへ結果をcommentしてcloseし、mapのDecisions-so-farへcontext pointerを追記する。
 
-- **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map`.
-- **Child ticket**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.
-- **Blocking**: GitHub's **native issue dependencies** — the canonical, UI-visible representation. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only — the live gate). Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. A ticket is unblocked when every blocker is closed.
-- **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
-- **Claim**: `gh issue edit <n> --add-assignee @me` — the session's first write.
-- **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
+native sub-issueまたはdependencyが利用できないrepositoryだけ、task listや`Blocked by:`を代替として使う。

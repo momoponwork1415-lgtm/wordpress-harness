@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Separate the control plane, agent, and target trust zones
+# Control Plane、Agent、Targetのtrust zoneを分離する
 
 runtimeを三つのtrust zoneへ分離する。
 

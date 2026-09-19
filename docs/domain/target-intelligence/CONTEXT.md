@@ -37,4 +37,4 @@ WordPressの公開情報を観測し、AIが調査対象を提案する領域。
 - AIの提案と、人間による対象承認を分ける。
 - 制度の対象条件と、技術的な脆弱性の検証を分ける。
 
-選定・受け渡しの設計原則は[Research Design](../../RESEARCH-DESIGN.md#target-selection)、現在のModuleと回帰テストは[Codebase Guide](../../CODEBASE-GUIDE.md)、領域間の関係は[Context Map](../../../CONTEXT-MAP.md)を参照する。
+選定・受け渡しの設計原則は[探索設計](../../RESEARCH-DESIGN.md#target-selection)、現在のModuleと回帰テストは[コードベース案内](../../CODEBASE-GUIDE.md)、領域間の関係は[領域の対応表](../../../CONTEXT-MAP.md)を参照する。

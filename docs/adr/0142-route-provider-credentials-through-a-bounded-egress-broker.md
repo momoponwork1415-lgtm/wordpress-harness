@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Route raw provider credentials through a bounded egress broker
+# raw provider credentialを制限付きegress brokerへ通す
 
 API keyを必要とするDeepSeek runtimeでは、raw credentialをAgent Sandboxへmountまたはenvironmentとして渡さない。Trusted Control PlaneがResearch runごとに短命なgrantを作り、pinned imageを`runsc`で起動したcredential egress brokerだけへcredential fileを一時mountする。Agentはrun固有のinternal Docker network、broker endpointとscoped bearer tokenだけを受け取る。grantを最大1時間とする部分は、[ADR 0143](0143-continue-research-without-per-run-human-review.md)により、そのNative Runへ封印したCampaignの残り時間で失効する方式へ置き換えられた。
 

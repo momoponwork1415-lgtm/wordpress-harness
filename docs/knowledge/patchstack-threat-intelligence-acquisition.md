@@ -1,7 +1,7 @@
-# Knowledge: Known Duplicate確認のIntelligence Source
+# 調査資料: 既知重複を確認するIntelligence Source
 
-Status: primary-source research, 2026-09-05  
-Retrieval date: 2026-09-05
+状態: 一次資料に基づく調査、2026-09-05
+取得日: 2026-09-05
 
 ## 結論
 
@@ -37,7 +37,7 @@ Issue #102では **Patchstack Threat Intelligence APIもpublic databaseの自動
 | Credentials / quota | API利用にはactive accountと秘密のAPI keyが必要で、Wordfenceはrate limit、quota、throttling、suspensionを課せる（[Wordfence Intelligence Terms §§2–3](https://www.wordfence.com/wordfence-intelligence-terms-and-conditions/)）。 | keyをartifact、log、error、Gitへ残さない。auth、429、quota、revocationは`unavailable`側へ倒し、前回snapshotをsilentにfresh扱いしない。 |
 | Availability / completeness | Wordfenceはendpointがcomplete feedを返しdatabaseを継続更新すると説明する一方、一般Terms of ServiceはService availabilityを保証しない（[v3 documentation](https://www.wordfence.com/help/wordfence-intelligence/v3-accessing-and-consuming-the-vulnerability-data-feed/)、[Terms of Service: availability](https://www.wordfence.com/terms-of-service/)）。 | 「feed全体を取得した」と「世界中の既知情報を完全に含む」を区別する。fresh snapshotのno-matchも`not-observed`でありnegative proofではない。 |
 
-## Safe contract
+## 安全な契約
 
 ### 1. Entry gate
 
@@ -69,7 +69,7 @@ Webhookは早期refreshのtriggerに使えるが、created/replaced/deleted even
 
 public contractは次のclosed unionにする。status名はnegative proofを表現しない。
 
-| Status | 条件 | 禁止する読み替え |
+| 状態 | 条件 | 禁止する読み替え |
 | --- | --- | --- |
 | `known-duplicate` | freshなWordfence exact recordが、同じTargetと実質的に同じbroken security semantics/root causeを既に公開している。 | 同じpluginの別脆弱性、類似CWE、同じversionだけではduplicateにしない。 |
 | `not-observed` | requiredなWordfence refreshとidentity/range/semantics照合がすべて成功したが、checked-at時点で一致を観測しなかった。 | `novel`、`safe`、`not known anywhere`、自動submit許可を意味しない。 |
@@ -126,7 +126,7 @@ Wordfenceが無償のcomplete v3 feed、explicit license、record単位のcopyri
 
 この判断はKnown Duplicate確認だけを対象とし、programme directoryやDisclosure Route Observationを扱う別Issueのsource decisionを変更しない。
 
-## Acceptance scenarios for the next implementation issue
+## 次の実装Issueの受入シナリオ
 
 1. authenticated/versioned verified-Finding handoffなしではexact Wordfence queryを拒否する。
 2. callerが任意のFinding refやbooleanを渡してもgateを通れない。

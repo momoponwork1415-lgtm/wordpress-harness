@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Use strict TypeScript for the core
+# coreにstrict TypeScriptを使う
 
 Target Intelligence、Research、Human OS、provider AdapterとCLIのproduction coreはstrict TypeScriptで実装する。永続event、context handoffとnative agent outputはversioned discriminated unionとruntime schemaを使い、record、projectionとgateの更新漏れをexhaustive checkingで検出する。
 

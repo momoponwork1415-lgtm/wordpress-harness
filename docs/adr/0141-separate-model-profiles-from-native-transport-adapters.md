@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Separate model profiles from native transport adapters
+# model profileとnative transport Adapterを分離する
 
 Agent Runtime Profileをversionedかつself-digestingなadmission contractとし、transport kind、exact model、reasoning effort、executable version、sandbox image digest、prompt protocolとreport protocolを一つにbindする。central catalogはadmitted model / effort tupleとtransport capabilityの整合をprovider process起動前に検査する。compositionは`transportKind`だけで既存Adapterを選び、Adapterはprovider-native command、session、tool制限、outputとfailureの変換だけを所有する。
 

@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Bind source provenance to the Target File Manifest
+# source provenanceをTarget File Manifestへ結び付ける
 
 Researchのsource identityはTarget Intelligenceが取得時に作るCanonical File Manifestを正本とする。CampaignはTarget Snapshotとsource tree digestをsealし、Agent Runtimeはcontainer起動前に実際のread-only source treeを同じcanonical manifestとして再計算して一致を確認する。
 

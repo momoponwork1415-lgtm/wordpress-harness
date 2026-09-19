@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Replay Finding-bound recipes for dynamic reproduction
+# Findingに結び付いたrecipeを動的再現で実行する
 
 Human OSのDynamic Reproductionは、探索済みFindingをClaude Codeへ再読解させず、Finding ID、Target Snapshot digestとbody digestへbindしたprivate Reproduction Recipeをfresh labで一度だけ実行する。
 

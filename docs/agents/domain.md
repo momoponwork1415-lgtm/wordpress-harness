@@ -1,18 +1,18 @@
-# Domain Docs
+# Domain文書
 
-How the engineering skills should consume this repo's domain documentation when exploring the codebase.
+codebaseを調べるengineering skillが、このrepositoryのdomain文書をどう読むかを定める。
 
-## Before exploring, read these
+## 調査前に読むもの
 
-- **`CONTEXT-MAP.md`** at the repo root — it points at one `CONTEXT.md` per context. Read each one relevant to the topic.
-- **`CONTEXT.md`** at the repo root — the glossary for the Research context.
-- **`docs/adr/`** — read ADRs that touch the area you're about to work in. This repo keeps a single system-wide ADR directory; there are no context-scoped ADR directories.
+- repository rootの**`CONTEXT-MAP.md`** — contextごとの`CONTEXT.md`を示す。作業対象に関係するものだけ読む。
+- repository rootの**`CONTEXT.md`** — Research contextの用語集。
+- **`docs/adr/`** — 作業対象に関係するADRだけ読む。このrepositoryはsystem全体で一つのADR directoryを使い、context別のADR directoryを作らない。
 
-If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.
+これらのfileが存在しない場合は、指摘や先回りした作成提案をせず、そのまま進める。`/domain-modeling` skillは、用語や判断が実際に確定した時だけ必要な文書を作る。
 
-## File structure
+## File構成
 
-This repo is **multi-context** (a `CONTEXT-MAP.md` exists at the root). Contexts are bounded contexts, not packages, so each glossary lives under `docs/domain/` rather than beside a package's `src/`:
+このrepositoryは、rootに`CONTEXT-MAP.md`を持つ**multi-context**構成である。Contextはpackageではなくbounded contextなので、各用語集はpackageの`src/`横ではなく`docs/domain/`に置く。
 
 ```
 /
@@ -26,20 +26,20 @@ This repo is **multi-context** (a `CONTEXT-MAP.md` exists at the root). Contexts
 └── src/
 ```
 
-## Repository-specific gate
+## Repository固有のgate
 
-`pnpm docs:check` requires every relative Markdown link to resolve to an existing file.
+`pnpm docs:check`は、すべての相対Markdown linkが存在するfileを指すことを要求する。
 
-## Use the glossary's vocabulary
+## 用語集の語を使う
 
-When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in the owning `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
+Issue title、refactor提案、仮説、test名などでdomain概念を使う場合、ownerの`CONTEXT.md`が定義した語を使う。用語集が避けている同義語へずらさない。
 
-If the concept you need isn't in the glossary yet, that's a signal — either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
+必要な概念が用語集にない場合、projectが使わない語を作っていないか見直す。実際の不足なら`/domain-modeling`の対象として記録する。
 
-## Flag ADR conflicts
+## ADRとの矛盾を明示する
 
-If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
+出力が既存ADRと矛盾する場合、黙って上書きせず明示する。
 
 > _Contradicts ADR 0125 (put agent decisions behind thin evidence shells) — but worth reopening because…_
 
-This repo supersedes decisions with a new ADR rather than editing the old one, so say which ADR you would supersede.
+このrepositoryは旧ADRを編集せず、新しいADRで判断を置き換える。どのADRを置き換えるかを示す。

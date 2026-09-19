@@ -1,6 +1,6 @@
-# Codebase Guide
+# コードベース案内
 
-**変更したいことから担当Moduleを選び、必要な節だけ読む。** 各節にはInterface、所有する記録、不変条件、失敗時の扱い、sourceとBehavior Testを置く。正確なfield・定数はリンク先のcode、設計方針は[Research Design](RESEARCH-DESIGN.md)が正本。
+**変更したいことから担当Moduleを選び、必要な節だけ読む。** 各節にはInterface、所有する記録、不変条件、失敗時の扱い、sourceとBehavior Testを置く。正確なfield・定数はリンク先のcode、設計方針は[探索設計](RESEARCH-DESIGN.md)が正本。
 
 ## どこまでコードを読むか
 
@@ -8,7 +8,7 @@
 
 | 目的 | 読む範囲・読み終える地点 |
 | --- | --- |
-| 全体の役割を理解する | [Architecture](ARCHITECTURE.md)と下のModule索引まで |
+| 全体の役割を理解する | [全体構成](ARCHITECTURE.md)と下のModule索引まで |
 | Moduleを使う・仕様を確認する | その節のInterface・不変条件・失敗時の扱いと、該当する成功・失敗のBehavior Test。入力、結果、失敗時に呼び出し側がすべきことを説明できれば止める |
 | 振る舞いを変更する | 該当する公開methodから、変更する判断を所有するImplementationまで。関係しないAdapterや保存helperは追わない |
 | 外部接続や保存の障害を調べる | 失敗分類から担当Adapterまたは保存処理へ進む。そこで前提と失敗条件を確認する |
@@ -35,7 +35,8 @@ Interfaceとテストだけでは使い方が分からず内部を横断する�
 | Agentへ渡る入力の所在を確認する | Research / Runtime Adapter | [Agent input](#agent-input) |
 | 共通のJSON・source digestを調べる | Infrastructure | [Shared infrastructure](#shared-infrastructure) |
 
-## Current capability
+<a id="current-capability"></a>
+## 現在利用できる機能
 
 `implemented`はdeterministic Behavior Testで観測できる意味。実providerや未知Targetでの効果を証明する意味ではない。実測は[Knowledge](knowledge/)に置く。
 
@@ -380,6 +381,7 @@ Infrastructureはcontextの業務判断や記録の保存形式を所有しな�
 
 [Canonical JSON tests](../tests/infrastructure/canonical-json.test.ts)で保存文字列・ハッシュ値・配列順序・不正入力の拒否と2契約の違いを確認する。各contextでの保存と読み戻しは上記ModuleのBehavior Tests、取得側の接続は[Target Intake tests](../tests/target-intelligence/local-directory-target-intake.test.ts)と[Target Proposal tests](../tests/target-intelligence/target-proposals.test.ts)で確認する。
 
-## Repository gate
+<a id="repository-gate"></a>
+## Repositoryの品質gate
 
 `pnpm check`はformat、strict typecheck、Behavior Tests、build、documentation link checkを行う。テストはpublic Interfaceから観測し、private helperや内部call順を固定しない。

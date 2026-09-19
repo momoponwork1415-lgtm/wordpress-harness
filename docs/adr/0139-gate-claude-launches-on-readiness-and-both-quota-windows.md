@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Gate Claude launches on readiness and both quota windows
+# readinessと両quota windowでClaudeの起動を制御する
 
 承認済みClaude Campaignの起動前に、account readinessとrate limitを別のprivate observationとして要求し、5時間枠と7日枠の少ない方で起動数を制限する。status-lineから両windowの使用率とreset instantを得られない場合、またはreadyを示すfreshなoperator observationがない場合は起動しない。認証状態をquota欠落へ丸めると、loginが必要なのか観測producerが壊れたのかを運用者が区別できず、5時間枠だけを見ると7日枠を使い切るためである。
 

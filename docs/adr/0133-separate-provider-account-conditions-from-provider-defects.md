@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Separate provider account conditions from provider defects
+# provider accountの状態とprovider defectを分離する
 
 Native Run失敗Receiptで、provider accountの状態とprovider defectを別のterminalへ分ける。5時間枠等のusage limitを示すHTTP 429 envelopeは`provider-quota-exhausted`、model workが一度も発生しないままproviderへ認証できなかった失敗は`provider-unauthenticated`として記録する。Harness自身のwall-time / run budgetとproviderのbudget error envelopeは従来どおり`budget-exhausted`に残す。
 

@@ -3,7 +3,7 @@ status: accepted
 supersedes: [0127, 0130, 0131]
 ---
 
-# Promote admitted Candidates through runtime verification
+# 採用したCandidateをruntime verificationで昇格する
 
 Research Rootがすでにsourceから導いたCandidateを、別のsource-only Agentに再導出させない。RootはCandidateと同じResearch runでCandidate-boundなprivate reproduction recipeを作る。人間がCandidateをadmitした後、Human OSがfreshな使い捨てWordPress環境でそのrecipeを一度だけ実行する。`runtime-confirmed`からだけVerified Vulnerabilityを生成する。
 

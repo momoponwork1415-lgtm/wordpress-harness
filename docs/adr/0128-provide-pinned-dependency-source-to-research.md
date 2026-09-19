@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Provide pinned dependency source to Research
+# 版を固定したdependency sourceをResearchへ渡す
 
 ResearchとIndependent Validationへ、Target pluginに加えてWordPress core等のauthoritative Dependency Snapshotをread-only referenceとして渡す。framework APIの呼び出しからsecurity effectまでをmemoryで補完すると、plugin内のprimitiveを見つけてもcore側のconsumer、filter、escape、capability semanticsへ到達できず、source-onlyのchainを閉じられないためである。
 

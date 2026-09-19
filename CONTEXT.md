@@ -30,7 +30,7 @@ Target Intelligenceが受け渡した入力を受け取り、調査、継続の�
 | **Agent Checkpoint** | 同じ条件で会話と作業メモを再開するための非公開記録への参照。研究上の結論ではなく、Candidate Verificationや他の領域へ渡さない。 |
 | **Agent Run Diagnostic** | 失敗箇所、認証情報を除いた出力、再開用に受理できなかった隔離状態を保持する非公開の診断記録への参照。正常終了でも出力を拒否した場合は残す。自動再開には使わない。 |
 | **Next Action** | 次に確かめる具体的な問いとソースの位置。AIが継続を提案する根拠であり、Harnessが割り当てる作業キューではない。 |
-| **Research Candidate** | 攻撃者の前提、破られる安全上の性質、主張、入口からeffectまでのsource trace、既存controlへの反証と未解決事実を持つ検証候補。対象とする影響の範囲は[Research Design](docs/RESEARCH-DESIGN.md#goal)で定める。 |
+| **Research Candidate** | 攻撃者の前提、破られる安全上の性質、主張、入口からeffectまでのsource trace、既存controlへの反証と未解決事実を持つ検証候補。対象とする影響の範囲は[探索設計](docs/RESEARCH-DESIGN.md#goal)で定める。 |
 | **Candidate Verification Recipe Reference** | RootがCandidateと同じ調査runで作る非公開の動的手順へのcontent-addressed参照。本文やpayloadはResearch Recordへ入れない。 |
 | **Parked Programme Lead** | 現時点のソースでは対象となる影響への具体的なつながりが示せない手がかり。最小限の前提、影響上限、証拠だけを残し、Candidate ReviewやCandidate Verificationへ進めない。 |
 | **Human Candidate Review** | 探索を区切った時点のCandidate集合に対する人間の判断。Candidate Verificationへ進めるか、具体的な次手とともにResearchへ戻す。programme scopeはここで技術的な検証を止める条件にしない。 |
@@ -51,7 +51,7 @@ Target Intelligenceが受け渡した入力を受け取り、調査、継続の�
 - Native Run Attemptの開始、providerの終了、Receiptのdurableな記録を分け、orphaned attemptを未実行または失敗Receiptへ読み替えない。
 - 同じ履歴を継続するResearch Grant、freshなIndependent Research Trial、評価対象全体のEvaluation Sweepを分ける。
 
-権限・隔離・予算・失敗時の設計原則は[Research Design](docs/RESEARCH-DESIGN.md#trust-and-versioning)、現在のInterfaceと回帰テストは[Codebase Guide](docs/CODEBASE-GUIDE.md#research-campaigns)を参照する。
+権限・隔離・予算・失敗時の設計原則は[探索設計](docs/RESEARCH-DESIGN.md#trust-and-versioning)、現在のInterfaceと回帰テストは[コードベース案内](docs/CODEBASE-GUIDE.md#research-campaigns)を参照する。
 
 ## 使わない用語
 

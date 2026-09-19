@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Require control-challenged Research evidence
+# 防御への反証を含むResearch evidenceを要求する
 
 Research Report v2は、Candidateへ入口からeffectまでのordered source trace、最強のsource-visible controlに対するassessmentと未解決事実を要求し、Candidateにならなかった重要なrouteを`refuted`または`blocked`のResearch Assessmentとして残す。Candidateがないstopでも証拠なしに閉じないよう、Grant内で調べた領域をsource evidence付きで、未調査領域を明示するevidence summaryも必須にする。これはCloudflareのconcrete-invariantとcounterevidenceの規律を、ADR 0125のthin evidence shellへ適応する判断である。Approach Family、Hunter、Waveまたはcoverage assignmentをHarness stateにせず、Research Assessmentやevidence summaryをCoverage completion、探索完了または安全性の証明に使わない。
 

@@ -1,6 +1,6 @@
 # wp2shell と現行 Research loop の差分
 
-Status: primary-source comparison and runtime observation, checked 2026-09-18
+状態: 一次資料の比較とruntime観測、2026-09-18確認
 
 ## 結論
 
@@ -14,7 +14,7 @@ wp2shell promptから持ち込まないのは、task固有のpositive oracle、R
 
 ## 照合結果
 
-| Concern | wp2shellで実際に指示されたこと | 現行Research | 判定 |
+| 観点 | wp2shellで実際に指示されたこと | 現行Research | 判定 |
 | --- | --- | --- | --- |
 | Root / subagent | multi-agentを積極的に使い、同時最大4体。approach familyを分散し、Rootが反復的にsynthesize、challenge、redirect、new roundを起動する。具体的bugはadversarial agentで二重確認する。 | v3 Promptは積極的なnative subagent利用、最大4体、Rootだけの起動、反復synthesis / challenge / redirect / new round、adversarial double-checkを明記した（`prompts/wordpress-plugin-research-v3.md:18-28`）。各Runtimeも同じresource ceilingを強制する。 | **Promptと上限は一致。** fan-outの利用数をReceiptへ正確に残す観測は未解決。 |
 | 多様性と反復 | diverse portfolioを始め、収束したfamilyを別routeへ戻す。失敗した最初のwaveで止めず、blocked routeは新 mechanismがある時だけ再開し、複数roundを回す。 | v3 Promptは明示的なfamily registry、収束時のredirect、一routeによる支配の禁止、新機構だけによるblocked route再開、incompatible routeの複数round維持、遅いcross-pollination、first-wave failure後のfresh idea投入を明記した（`prompts/wordpress-plugin-research-v3.md:20-28,40`）。 | **Promptは一致。** v3 Campaignの実測が必要。 |

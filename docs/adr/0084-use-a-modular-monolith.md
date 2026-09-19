@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Use a modular monolith
+# modular monolithを使う
 
 初期systemは一つのstrict TypeScript deployableとして実装し、Target Intelligence、Research、Human OSをcontext-owned moduleへ分ける。半年から一年の反復開発では単一processと一つのtoolchainが運用・refactorを容易にする一方、context間のversioned contractと一方向の依存で将来の分離可能性を保てるため、初期microservicesまたは言語別servicesは採用しない。
 

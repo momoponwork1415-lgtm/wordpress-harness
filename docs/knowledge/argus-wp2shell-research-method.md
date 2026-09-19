@@ -1,6 +1,6 @@
-# Knowledge: Argusの10動詞とwp2shellのResearch method
+# 調査資料: Argusの10動詞とwp2shellのResearch方式
 
-Status: primary-source research, checked 2026-09-10
+状態: 一次資料に基づく調査、2026-09-10確認
 
 ## 結論
 
@@ -8,7 +8,7 @@ Argusの10動詞は、Research loopを評価するための有用な原則であ
 
 wp2shellはArgusのpromptではない。Searchlight CyberがOpenAIの[Cycle Double Cover Prompt](https://cdn.openai.com/pdf/04d1d1e4-bc75-476a-97cf-49055cd98d31/cdc_prompt.pdf)をWordPress向けに適応した一成功例である（[wp2shell exact prompt](https://www.slcyber.io/research/exploit-brokers-pay-500000-for-a-wordpress-rce-i-found-one-with-gpt5-6#the-story-of-wp2shell)）。このrepositoryはwp2shell promptの研究手法をすべて採用する。除外するのはtask固有のpositive oracle、RCE / `/flag`到達の強制と最低6時間の指定だけである。provider機能の再実装はprompt要素ではなく、採用方法に対する禁止事項である。
 
-## Evidence boundary
+## 証拠の境界
 
 「Observed」は一次資料が述べた事実、「Operational interpretation」はこのrepositoryへの適用案である。Argusの内部promptとarchitectureは非公開である。公開された成功例からprospective recall、miss、run varianceまたは各手法の因果効果は推定しない。
 
@@ -18,7 +18,7 @@ WordfenceによればArgusは、広く短いpathを追うPRISMとは別に、一
 
 以下はArgus内部の再現ではない。公開された10動詞を、Argusのdepth説明とwp2shell / CDC promptに照らしてこのrepository用に定義したものである。
 
-| Principle | Operational interpretation |
+| 原則 | このrepositoryでの運用上の解釈 |
 | --- | --- |
 | **confine** | Target、source world、tool、authority、environmentをCampaign境界内へ隔離し、研究対象と実行権限のscope driftを防ぐ。 |
 | **constrain** | attacker proximity、通常構成、eligible impact、oracle禁止、時間と同時実行上限を明示する。Prompt上のacceptance conditionとRuntime上の強制を混同しない。 |
@@ -33,7 +33,7 @@ WordfenceによればArgusは、広く短いpathを追うPRISMとは別に、一
 
 wp2shellとCDC promptは、固定assignmentを避けること、初期roundではfavored approachを多くのagentへ共有しないこと、approach familyの収束を検知してredirectすること、新機構なしにblocked routeを反復しないこと、incompatible routeを複数round維持すること、concrete resultをadversarialに確認すること、Rootが繰り返し統合して次roundを起動することを明示する。これは上表の `parallelize` から `iterate` を具体化するprompt techniqueであって、Harness-owned state machineの仕様ではない。
 
-## Development boundary
+## 開発上の境界
 
 直接採用する設計原則は次の責務分担である。
 
@@ -43,13 +43,13 @@ wp2shellとCDC promptは、固定assignmentを避けること、初期roundで�
 
 したがって、Claude Code、Codex等がnativeに提供するagent管理、session continuationまたはtool executionをprovider-neutralな模倣層として再実装しない。wp2shellは既存のmultiagent機能をPromptから利用し、元のCDC promptも既存の `multiagent v2` を動的に使うよう指示している。どちらの資料も独自のagent scheduler、message bus、context managerまたはtool protocolを実装するよう求めていない。
 
-## Anthropic reference harness comparison
+## Anthropic reference harnessとの比較
 
-Status: 未採用のreference / comparison input。現行設計の根拠ではない。
+状態: 未採用のreference / comparison input。現行設計の根拠ではない。
 
 Anthropicの[Best Practices（fixed commit）](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md)はClaude Mythos Previewを使ったdefensive security全般のfield practiceであり、WordPressのoracle-free source research仕様ではない。以下は将来の比較・ablation候補であって、採用済みbehaviorではない。
 
-| Reference principle | このrepositoryで検討できる形 |
+| 参照資料の原則 | このrepositoryで検討できる形 |
 | --- | --- |
 | system mapからtrust boundaryを把握し、最後にcomponentをまたぐchainを確認する（[lines 18-24](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L18-L24)） | Rootのnavigationと仮説生成を助ける入力として試す。固定Recon stage、partitionまたはcompletion proofにはしない。 |
 | noisyなdiscoveryとadversarial verificationを分離し、Finderとfilesystem / environment / conversationを共有しないclean sandboxでgradeする（[lines 47-69](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L47-L69)） | 現行のfresh Independent Validationと比較可能な独立原則。executable witnessは後段Human OSで扱い、source-only Research / Validationへruntimeを混ぜない。 |
@@ -59,7 +59,7 @@ Anthropicの[Best Practices（fixed commit）](https://github.com/anthropics/def
 | dependencyを全mountせず、agentのwishlistをreviewして必要分だけ渡す（[lines 183-184](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L183-L184)） | 人間が承認してpinしたread-only dependency snapshotを次Grantへ追加するseamとして検討できる。run中の任意downloadは許可しない。 |
 | model出力をreportではなくleadとして扱い、specific release、実interface、source位置を確認し、unfixed issueはprivateに報告する（[lines 218-249](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L218-L249)） | Candidate、Independent Validation、fresh runtime / human verification、external action authorizationという現行境界と比較する。AI関与と人間が確認した範囲を最終Draftに明記する案は将来検討とする。 |
 
-### Do not transplant directly
+### そのまま移植しないもの
 
 - precise sliceをReconが各Finderへ割り当てる方式、finder / critic / judge、vulnerability category別routerを固定orchestrationにしない。Reference自身のtask分解であり、Rootの研究判断をHarnessへ移す（[partition](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L26-L33)、[judge](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L71-L78)）。
 - git history、internal portal、production logを「全てcontextへ渡す」助言はoracle-free prospective Campaignへ適用しない（[lines 36-41](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L36-L41)）。公開前のTarget、Finding、PoC、payload、transcript、private log、credentialをGitまたはagentのambient contextへ入れない。Reference実装自身も `results/`、per-run state、Finding、triage、patch、incident / response artifactを追跡対象外にしている（[official `.gitignore`](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/.gitignore#L8-L35)）。これはstorage boundaryの比較材料であり、`.gitignore`だけをpublication authorizationにはしない。
@@ -69,7 +69,7 @@ Anthropicの[Best Practices（fixed commit）](https://github.com/anthropics/def
 - setup phaseの任意network、attack phaseの `--dangerously-skip-permissions`、supervisorの`$/finding` gateを採用しない。Referenceもこの二つのinfrastructure patternは必須ではないとする（[lines 187-212](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L187-L212)）。
 - private disclosure guidanceを「Harnessが自動送信してよい」と読まない。外部行動はAIがproposalを作るまでに留め、人間がexact Draftとdestinationを承認する。ReferenceのD&R節もirreversible actionは提案だけに留める（[lines 351-358](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L351-L358)）。
 
-## Sources do not justify
+## 資料からは正当化できないこと
 
 - Argusの10動詞を固定role、Wave、stage、queue、score、rank、schemaまたはagent数へ一対一対応させない。内部設計は非公開である。
 - 「model agnostic」をprovider-neutral tool DSLの根拠にしない。記事はmodel切替の内部実現方法を説明していない。

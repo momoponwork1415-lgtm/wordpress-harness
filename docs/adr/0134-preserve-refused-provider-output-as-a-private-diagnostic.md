@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Preserve refused provider output as a private diagnostic
+# 拒否したprovider outputをprivate diagnosticとして保存する
 
 Runtime Adapterがprocessとしては正常終了したrunをpolicy denialまたはinvalid outputとして退ける場合も、credential-redactedなprovider outputをprivate Agent Run Diagnosticへ保存し、そのopaque refをReceiptへ記録する。これまでこの経路のReceiptはsummaryだけを残し、providerのoutputを破棄していたため、記録からは判定を検証できなかった。
 

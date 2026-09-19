@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Make validated Findings the product success criterion
+# 検証済みFindingをProductの成功条件にする
 
 Productの診断coreの成功条件を、oracle-freeなDiscoveryがcandidateを発見し、別のfresh Independent Validationがsource evidenceから`source-validated` Findingを生成できることに置く。既知positiveの評価もcandidateだけでなくこのstageまでを測る。
 

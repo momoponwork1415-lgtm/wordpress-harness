@@ -2,7 +2,7 @@
 status: accepted
 ---
 
-# Share private artifact storage without merging domain meanings
+# domain上の意味を統合せずprivate artifact storageを共有する
 
 ResearchのAgent Checkpoint、Agent Run Diagnostic、Native Run Receipt recovery capsule、Candidate Verification Recipeは、一つのPrivate Artifact Store implementationで保存する。各artifactが個別に`mkdir`、temporary path、rename、digest検査、link検査とconflict処理を実装すると、安全規則が経路ごとにずれ、追加artifactのたびに同じfilesystem判断を複製するためである。
 

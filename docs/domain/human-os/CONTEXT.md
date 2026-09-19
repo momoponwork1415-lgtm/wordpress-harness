@@ -34,4 +34,4 @@ Candidate-bound dynamic verification、Verified Vulnerability、programme別scop
 - AIによる報告書作成の支援と、人間による許可・最後の提出を分ける。
 - 非公開証拠をGit、Verified Vulnerability、報告書へそのまま展開しない。
 
-隔離と外部行動の設計原則は[Research Design](../../RESEARCH-DESIGN.md#trust-and-versioning)、現在のInterfaceと回帰テストは[Codebase Guide](../../CODEBASE-GUIDE.md#human-os)、領域間の関係は[Context Map](../../../CONTEXT-MAP.md)を参照する。
+隔離と外部行動の設計原則は[探索設計](../../RESEARCH-DESIGN.md#trust-and-versioning)、現在のInterfaceと回帰テストは[コードベース案内](../../CODEBASE-GUIDE.md#human-os)、領域間の関係は[領域の対応表](../../../CONTEXT-MAP.md)を参照する。

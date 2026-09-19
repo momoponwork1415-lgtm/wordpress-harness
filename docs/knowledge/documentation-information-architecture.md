@@ -1,6 +1,6 @@
-# Knowledge: 文書の情報設計
+# 調査資料: 文書の情報設計
 
-Status: primary-source research, 2026-09-05
+状態: 一次資料に基づく調査、2026-09-05
 
 ## 結論
 
@@ -25,8 +25,8 @@ Status: primary-source research, 2026-09-05
 | `docs/README.md` | 次に何を読むか | 目的別Reading path |
 | `CODEBASE-GUIDE.md` | Moduleの契約と現在地は何か | Purpose、Interface、invariant、failure、status、source、Test |
 | `ARCHITECTURE.md` | 全体はどう分かれ、どう流れるか | Context、Module、主要flow、boundary |
-| ADR | なぜこの判断か | Context、Decision、Consequences、Status |
-| Knowledge | 何を調べ、何が分かったか | question、evidence、design implication |
+| ADR | なぜこの判断か | 前提、判断、結果、状態 |
+| 調査資料 | 何を調べ、何が分かったか | 問い、証拠、設計への含意 |
 
 Architecture Decisionは重要・高cost・大規模・高riskな判断と理由に限定し、本文との重複を避ける。arc42も重要な判断だけをADRとして保持し、Context、Decision、Status、Consequencesで記録する（[Architecture Decisions](https://docs.arc42.org/section-9/)）。
 
