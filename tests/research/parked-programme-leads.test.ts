@@ -220,6 +220,15 @@ describe("parked Programme Leads", () => {
     expect(prompt).toContain(
       "Promote it only when a concrete source-bound edge reaches an eligible impact",
     );
+    expect(prompt).toContain(
+      "Trace the exposed state across its full source-visible lifecycle before parking it",
+    );
+    expect(prompt).toContain(
+      "For a read primitive, inspect every material producer of the exposed store",
+    );
+    expect(prompt).toContain(
+      "For a write primitive, inspect the privileged consumers of the modified state",
+    );
   });
 
   it("preserves an OOS primitive without Candidate review or verification handoff", async () => {
@@ -307,7 +316,7 @@ describe("parked Programme Leads", () => {
     campaigns.close();
   });
 
-  it("preserves a completed run whose parked Lead identity conflicts", async () => {
+  it("keeps the first parked Lead when a later run reuses its identity", async () => {
     const directory = await mkdtemp(
       join(tmpdir(), "parked-lead-admission-conflict-"),
     );
@@ -358,15 +367,11 @@ describe("parked Programme Leads", () => {
 
     await expect(
       conductWithHumanAdvance(campaigns, input),
-    ).resolves.toMatchObject({ status: "incomplete" });
+    ).resolves.toMatchObject({ status: "coverage-closed" });
     await expect(
       campaigns.inspect({ campaignId: input.campaignId }),
     ).resolves.toMatchObject({
-      status: "incomplete",
-      admissionFailure: {
-        reason: "parked-programme-lead-identity-conflict",
-        runId: "campaign-parked-lead-admission-conflict-1:native:2",
-      },
+      status: "coverage-closed",
       parkedProgrammeLeads: [
         {
           leadId: "lead-profile-label-read",

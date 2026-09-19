@@ -50,7 +50,7 @@ describe("Research Method Prompt Sets", () => {
     {
       method: "wp2shell" as const,
       promptPath: "prompts/wordpress-plugin-research-v3.md",
-      promptSetId: "wordpress-plugin-research-wp2shell-v2",
+      promptSetId: "wordpress-plugin-research-wp2shell-v3",
     },
     {
       method: "cloudflare" as const,

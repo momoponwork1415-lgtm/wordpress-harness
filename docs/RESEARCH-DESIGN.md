@@ -70,7 +70,7 @@ Harnessによる強制条件は次に限定します。
 
 | 探索方式 | 標準Prompt Set | Rootが所有する探索の流れ |
 | --- | --- | --- |
-| `wp2shell` | `wordpress-plugin-research-wp2shell-v2` / [Prompt](../prompts/wordpress-plugin-research-v3.md) | 十分に異なる探索経路、複数回の反復、遅い知見の交差、繰り返しの統合と方向転換 |
+| `wp2shell` | `wordpress-plugin-research-wp2shell-v3` / [Prompt](../prompts/wordpress-plugin-research-v3.md) | 十分に異なる探索経路、複数回の反復、遅い知見の交差、繰り返しの統合と方向転換 |
 | `cloudflare` | `wordpress-plugin-research-cloudflare-v2` / [Prompt](../prompts/wordpress-plugin-research-cloudflare-v1.md) | ソースの偵察、調査範囲を意識した探索、敵対的な検証、ソースに基づく抜けの補完 |
 | `cloudflare-upstream` | `wordpress-plugin-research-cloudflare-upstream-c1c8a8c-v2` / [Prompt](../prompts/wordpress-plugin-research-cloudflare-upstream-v1.md) | 固定した公開版の全体監査手順、非公開台帳、探索・批評の波、新しいソースによる確認 |
 
@@ -96,7 +96,7 @@ Checkpoint、実行診断、Native Run Receipt、候補の再現手順は、同�
 
 AIが`continue`を返すと、Harnessは完了したrunの正確なCheckpointとソースに基づく次の手を、次の`SealedNativeRun`へ結び付けて自動開始します。候補の存在だけでは停止しません。AIが`stop`を返した時だけ、候補があれば人間による採否判断へ進み、なければ今回の探索範囲を閉じます。run数または総実行時間の安全上限へ達した時に具体的な次の手が残っていれば`incomplete`です。停止や「発見なし」へ読み替えません。
 
-一つの候補を得ただけでは停止しません。Rootは調査中の経路に限って、native subagentによる敵対的レビュー、知見の統合、方向転換を行います。プログラム境界上で、ソースから支持できる最大の影響が対象外であり、対象となる影響への具体的な接続もない手掛かりは、最小限の証拠を持つ保留手掛かりとして残します。保留手掛かりをsubagentへ委譲したり、人間の候補採否や動的検証へ流したりしません。新しいソース証拠がアカウント乗っ取り、管理者昇格、RCEなどの対象影響へ具体的につながった時だけ、調査中の経路または新しい候補へ昇格します。RCEへ伸びないことだけを理由に、重大なSQLインジェクションや格納型XSSを未完成扱いしません。支持数、モデルの確信度、到着順、static ruleへの不一致、Surface Map外であることを、候補の棄却や安全判定に使いません。
+一つの候補を得ただけでは停止しません。Rootは調査中の経路に限って、native subagentによる敵対的レビュー、知見の統合、方向転換を行います。プログラム境界上で、ソースから支持できる最大の影響が対象外であり、対象となる影響への具体的な接続もない手掛かりは、最小限の証拠を持つ保留手掛かりとして残します。保留する前に、公開された状態のライフサイクルをソース上で確認します。読み取りならその状態へ値を入れる経路、書き込みなら変更後の状態を利用する経路まで追い、入口の直接効果だけで最大影響を決めません。保留手掛かりをsubagentへ委譲したり、人間の候補採否や動的検証へ流したりしません。新しいソース証拠がアカウント乗っ取り、管理者昇格、RCEなどの対象影響へ具体的につながった時だけ、調査中の経路または新しい候補へ昇格します。RCEへ伸びないことだけを理由に、重大なSQLインジェクションや格納型XSSを未完成扱いしません。支持数、モデルの確信度、到着順、static ruleへの不一致、Surface Map外であることを、候補の棄却や安全判定に使いません。
 
 static解析や派生解析の出力があっても、ソースを読む補助と証拠の補助に限ります。探索範囲そのものや完了証明には使いません。現在のエージェント経路は生のソースを直接読みます。
 

@@ -222,13 +222,7 @@ function parkedProgrammeLeadsFor(
   for (const receipt of nativeRuns) {
     if (receipt.terminal !== "completed") continue;
     for (const lead of receipt.report.parkedProgrammeLeads ?? []) {
-      const prior = leads.get(lead.leadId);
-      if (prior !== undefined && canonicalJson(prior) !== canonicalJson(lead)) {
-        throw new Error(
-          `Parked Programme Lead identity was reused with different evidence: ${lead.leadId}`,
-        );
-      }
-      leads.set(lead.leadId, lead);
+      if (!leads.has(lead.leadId)) leads.set(lead.leadId, lead);
     }
   }
   return [...leads.values()];
@@ -696,19 +690,6 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
           summary:
             "Native Agent Runtime returned a parked Programme Lead without a Programme Research Boundary.",
         };
-      }
-      if (receipt.terminal === "completed" && admissionFailure === undefined) {
-        try {
-          parkedProgrammeLeadsFor([...view.nativeRuns, receipt]);
-        } catch {
-          admissionFailure = {
-            reason: "parked-programme-lead-identity-conflict",
-            runId: receipt.runId,
-            nativeRunReceiptDigest,
-            summary:
-              "Native Agent Runtime reused a parked Programme Lead identity with different evidence.",
-          };
-        }
       }
       this.#append(input.campaignId, "native-run.recorded", {
         schemaVersion: 1,
