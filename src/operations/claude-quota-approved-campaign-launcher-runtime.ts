@@ -216,6 +216,13 @@ async function claimAndLaunch(
   accountReadinessObservationDigest: string,
   quotaObservationDigest: string,
 ): Promise<LaunchReceipt | undefined> {
+  await mkdir(dirname(plan.databasePath), { recursive: true, mode: 0o700 });
+  await mkdir(dirname(plan.scratchDirectory), {
+    recursive: true,
+    mode: 0o700,
+  });
+  await mkdir(dirname(plan.logPath), { recursive: true, mode: 0o700 });
+
   const claimDirectory = join(receiptRoot, plan.id);
   try {
     await mkdir(claimDirectory, { mode: 0o700 });
@@ -228,7 +235,6 @@ async function claimAndLaunch(
   let processStarted = false;
   try {
     await mkdir(plan.scratchDirectory, { recursive: true, mode: 0o700 });
-    await mkdir(dirname(plan.logPath), { recursive: true, mode: 0o700 });
     const log = await open(plan.logPath, "a", 0o600);
     try {
       const child = spawn(

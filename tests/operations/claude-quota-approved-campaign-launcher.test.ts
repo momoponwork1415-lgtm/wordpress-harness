@@ -1,6 +1,6 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -575,6 +575,7 @@ describe("Claude quota-aware approved Campaign launcher", () => {
       plans: [
         {
           ...plan,
+          databasePath: join(directory, "database", `${plan.id}.sqlite`),
           scratchDirectory: join(directory, "scratch"),
           logPath: join(directory, "campaign.log"),
         },
@@ -612,6 +613,50 @@ describe("Claude quota-aware approved Campaign launcher", () => {
     }
   });
 
+  it("creates the database parent before claiming and launching", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "quota-database-parent-"));
+    const base = manifest();
+    const plan = base.plans[0]!;
+    const databasePath = join(
+      directory,
+      "campaign-state",
+      "nested",
+      "campaign.sqlite",
+    );
+    const input: ApprovedCampaignLaunchManifest = {
+      ...base,
+      runtime: {
+        ...base.runtime,
+        nodeExecutablePath: "/bin/true",
+      },
+      plans: [
+        {
+          ...plan,
+          databasePath,
+          scratchDirectory: join(directory, "scratch"),
+          logPath: join(directory, "logs", "campaign.log"),
+        },
+      ],
+    };
+
+    try {
+      const result = await dispatchApprovedCampaignLaunches({
+        manifest: input,
+        readiness: readiness(),
+        observation: quotaObservation(),
+        receiptRoot: join(directory, "receipts"),
+        workingDirectory: directory,
+        now: "2026-09-17T00:05:00.000Z",
+        dryRun: false,
+      });
+
+      expect(result.launched).toHaveLength(1);
+      expect((await stat(dirname(databasePath))).isDirectory()).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("does not reuse one quota observation after a launched process exits", async () => {
     const directory = await mkdtemp(join(tmpdir(), "quota-reservation-"));
     const base = manifest();
@@ -629,6 +674,7 @@ describe("Claude quota-aware approved Campaign launcher", () => {
       },
       plans: base.plans.slice(0, 2).map((plan) => ({
         ...plan,
+        databasePath: join(directory, "database", `${plan.id}.sqlite`),
         scratchDirectory: join(directory, "scratch", plan.id),
         logPath: join(directory, "logs", `${plan.id}.log`),
       })),
