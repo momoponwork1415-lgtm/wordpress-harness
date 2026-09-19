@@ -38,7 +38,7 @@ Harnessは探索判断そのものではなく、AIが安全に判断できる�
 | verify / record | 探索内の敵対的レビュー、別環境での動的検証、確認済み脆弱性、プログラムの対象範囲、追記専用Receiptを分離する |
 | iterate hard and fast | Rootが統合・反証・方向転換を繰り返し、ソースに基づく`continue`なら同じCheckpointから自動で次へ進む |
 
-wp2shell promptの探索手法は[wp2shell由来のPrompt](../prompts/wordpress-plugin-research-v5.md)へすべて取り入れます。具体的には、先入観なく生のソースから考えること、native multi-agentを積極的かつ動的に使うこと、固定担当を置かないこと、十分に異なる探索経路を持つこと、探索方式を明示して偏りを避けること、収束時に未調査の方式へ戻すこと、一つの有望経路だけに支配させないこと、新しい手段がある時だけ行き詰まった経路を再開すること、相性の悪い経路も複数回維持して後から知見を交差させること、具体的なバグを別視点で二重確認すること、Rootが統合・反証・方向転換・次の探索を繰り返すこと、最初の探索や現在の方式が失敗しただけで止めないこと、依存ソースを読んで欠けた接続や中間バグをつなぐことです。さらに、具体的なsource edgeを持つ経路ではsemantic neighborhoodを広げ、値の変換順序と権限を持つ状態のproducer / consumerをprivate scratchで追います。これは固定sink checklistやHarness-owned Coverageにはしません。
+wp2shell promptの探索手法は[wp2shell由来のPrompt](../prompts/wordpress-plugin-research-v6.md)へすべて取り入れます。具体的には、先入観なく生のソースから考えること、native multi-agentを積極的かつ動的に使うこと、固定担当を置かないこと、十分に異なる探索経路を持つこと、探索方式を明示して偏りを避けること、収束時に未調査の方式へ戻すこと、一つの有望経路だけに支配させないこと、新しい手段がある時だけ行き詰まった経路を再開すること、相性の悪い経路も複数回維持して後から知見を交差させること、具体的なバグを別視点で二重確認すること、Rootが統合・反証・方向転換・次の探索を繰り返すこと、最初の探索や現在の方式が失敗しただけで止めないこと、依存ソースを読んで欠けた接続や中間バグをつなぐことです。さらに、具体的なsource edgeを持つ経路ではsemantic neighborhoodを広げ、値の変換順序と権限を持つ状態のproducer / consumerをprivate scratchで追います。high-impact rootに具体的な参照が残る間は無関係な未読surfaceより先に閉じます。これは固定sink checklistやHarness-owned Coverageにはしません。
 
 wp2shell由来のPromptはCloudflareの公開security-audit skillからも、具体的な安全上の不変条件、ソースから見える最も強い防御の再構成、類似処理・旧処理・ライフサイクル・失敗経路の比較、異常時の試験を採用します。[Cloudflare由来のPrompt](../prompts/wordpress-plugin-research-cloudflare-v1.md)は、公開skillの偵察、調査範囲を意識した探索、敵対的な検証、抜けの補完を、Rootが所有する一つの連続探索へ適応します。固定Hunter、固定Wave、決定論的な調査台帳、発見件数による完了判定は、通常のCloudflare方式とwp2shell方式には採りません。比較実験用の[Cloudflare公開方式そのものに近いPrompt](../prompts/wordpress-plugin-research-cloudflare-upstream-v1.md)だけは、固定した公開skillの全体監査手順、非公開の調査台帳、探索・批評の波、新しいソースによる確認を探索方式の内部で維持します。その作業成果物をHarnessの状態、探索範囲の正本、安全性の証明には昇格させません。
 
@@ -70,7 +70,7 @@ Harnessによる強制条件は次に限定します。
 
 | 探索方式 | 標準Prompt Set | Rootが所有する探索の流れ |
 | --- | --- | --- |
-| `wp2shell` | `wordpress-plugin-research-wp2shell-v5` / [Prompt](../prompts/wordpress-plugin-research-v5.md) | 十分に異なる探索経路、複数回の反復、遅い知見の交差、semantic neighborhood、繰り返しの統合と方向転換 |
+| `wp2shell` | `wordpress-plugin-research-wp2shell-v6` / [Prompt](../prompts/wordpress-plugin-research-v6.md) | 十分に異なる探索経路、複数回の反復、遅い知見の交差、rootを優先したsemantic neighborhood、繰り返しの統合と方向転換 |
 | `cloudflare` | `wordpress-plugin-research-cloudflare-v2` / [Prompt](../prompts/wordpress-plugin-research-cloudflare-v1.md) | ソースの偵察、調査範囲を意識した探索、敵対的な検証、ソースに基づく抜けの補完 |
 | `cloudflare-upstream` | `wordpress-plugin-research-cloudflare-upstream-c1c8a8c-v2` / [Prompt](../prompts/wordpress-plugin-research-cloudflare-upstream-v1.md) | 固定した公開版の全体監査手順、非公開台帳、探索・批評の波、新しいソースによる確認 |
 

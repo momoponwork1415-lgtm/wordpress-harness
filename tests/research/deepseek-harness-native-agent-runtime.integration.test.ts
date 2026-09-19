@@ -169,7 +169,7 @@ describe("DeepSeek Harness Native Agent Runtime host integration", () => {
         ],
       });
       const researchPrompt = await readFile(
-        resolve("prompts/wordpress-plugin-research-v5.md"),
+        resolve("prompts/wordpress-plugin-research-v6.md"),
         "utf8",
       );
       const runtimeProfile = defineAgentRuntimeProfile({

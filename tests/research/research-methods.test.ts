@@ -49,8 +49,8 @@ describe("Research Method Prompt Sets", () => {
   it.each([
     {
       method: "wp2shell" as const,
-      promptPath: "prompts/wordpress-plugin-research-v5.md",
-      promptSetId: "wordpress-plugin-research-wp2shell-v5",
+      promptPath: "prompts/wordpress-plugin-research-v6.md",
+      promptSetId: "wordpress-plugin-research-wp2shell-v6",
     },
     {
       method: "cloudflare" as const,
@@ -78,7 +78,7 @@ describe("Research Method Prompt Sets", () => {
 
   it("expands a source-supported route through its semantic neighborhood", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v5.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v6.md"),
       "utf8",
     );
 
@@ -90,6 +90,23 @@ describe("Research Method Prompt Sets", () => {
     expect(prompt).toContain("authority and state transition");
     expect(prompt).toContain(
       "not a sink checklist, Harness-owned coverage unit, or completion proof",
+    );
+  });
+
+  it("closes a high-impact root before opening unrelated broad surfaces", async () => {
+    const prompt = await readFile(
+      join(process.cwd(), "prompts/wordpress-plugin-research-v6.md"),
+      "utf8",
+    );
+
+    expect(prompt).toContain("root-mechanism source map");
+    expect(prompt).toContain("encode, decode, strip, restore");
+    expect(prompt).toContain("internal sentinel or wrapper protocol");
+    expect(prompt).toContain(
+      "Prioritize these concrete root-neighborhood edges over opening an unrelated broad surface",
+    );
+    expect(prompt).toContain(
+      "A broad read Candidate is not source-complete until this producer review is resolved",
     );
   });
 

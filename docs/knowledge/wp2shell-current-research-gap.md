@@ -4,7 +4,7 @@
 
 ## 結論
 
-現行方式はwp2shellの研究手法を[WordPress Plugin Research v5](../../prompts/wordpress-plugin-research-v5.md)へ取り入れた。Daybreak、Opus、GLM、Grokの全てでnative subagentの実利用例を確認済みだが、下記の実測はv2導入前で、通常は一つのfan-out waveの後、約10〜22分で`stop`していた。v5が維持する反復round、adversarial double-check、control challenge、semantic neighborhood探索が実行上も定着したかは再評価が必要である。
+現行方式はwp2shellの研究手法を[WordPress Plugin Research v6](../../prompts/wordpress-plugin-research-v6.md)へ取り入れた。Daybreak、Opus、GLM、Grokの全てでnative subagentの実利用例を確認済みだが、下記の実測はv2導入前で、通常は一つのfan-out waveの後、約10〜22分で`stop`していた。privateなv5実測ではsemantic neighborhoodの展開を確認した一方、rootの具体的な参照を閉じる前に無関係な未読surfaceへ移るdriftも観測した。v6はroot-mechanism source mapを優先し、このdriftを抑える。反復round、adversarial double-check、control challengeとroot優先が実行上も定着したかは再評価が必要である。
 
 調査時点ではprovider間の制御と観測も揃っていなかった。最新DaybreakはRootごとに3体を起動する一方、source上には`multi_agent=false`が残り、OpusとGLMでは子agentがさらにagentを起動して最大同時4体を超えた。2026-09-10に全providerのRuntimeをRoot込み最大4体へ修正し、Claude Code / GLMとGrokはspawn depthも1へ制限した。一方、Opus、GLM、GrokのReceiptは実際にagentを使っても`activity.subagents=null`となる例があり、利用数の観測は未解決である。
 
