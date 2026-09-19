@@ -15,6 +15,7 @@ function parseJson(value: string): unknown {
       repairOneKnownTopLevelKey(value),
       repairOnePrematureItemArrayClosure(value),
       repairMissingEvidenceSummaryClosure(value),
+      repairOnePrematureTopLevelClosureBeforeDecision(value),
       repairOneMissingFinalObjectClosure(value),
     ]) {
       if (repaired === undefined) continue;
@@ -26,6 +27,50 @@ function parseJson(value: string): unknown {
     }
     return undefined;
   }
+}
+
+function repairOnePrematureTopLevelClosureBeforeDecision(
+  value: string,
+): string | undefined {
+  const malformed = '},"decision":';
+  const containers: string[] = [];
+  let insideString = false;
+  let escaped = false;
+  const matches: number[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]!;
+    if (insideString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        insideString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      insideString = true;
+      continue;
+    }
+    if (
+      character === "}" &&
+      containers.length === 1 &&
+      containers[0] === "{" &&
+      value.startsWith(malformed, index)
+    ) {
+      matches.push(index);
+    }
+    if (character === "{" || character === "[") {
+      containers.push(character);
+    } else if (character === "}" || character === "]") {
+      containers.pop();
+    }
+  }
+  const index = matches.length === 1 ? matches[0] : undefined;
+  return index === undefined
+    ? undefined
+    : `${value.slice(0, index)}${value.slice(index + 1)}`;
 }
 
 function repairOneRedundantObjectComma(value: string): string | undefined {

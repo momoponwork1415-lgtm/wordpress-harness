@@ -160,4 +160,38 @@ describe("prompted JSON Research Report parsing", () => {
 
     expect(parsePromptedJsonResearchReport(malformed)).toEqual(report());
   });
+
+  it("repairs one premature top-level closure before the decision", () => {
+    const malformed = JSON.stringify(report()).replace(
+      '],"decision":',
+      ']},"decision":',
+    );
+
+    expect(parsePromptedJsonResearchReport(malformed)).toEqual(report());
+  });
+
+  it("does not repair repeated premature top-level closures", () => {
+    const malformed = JSON.stringify(report()).replace(
+      '],"decision":',
+      ']},"decision":',
+    );
+
+    expect(
+      parsePromptedJsonResearchReport(`${malformed}\n${malformed}`),
+    ).toBeUndefined();
+  });
+
+  it("does not treat a nested decision boundary as a top-level closure", () => {
+    const encoded = JSON.stringify({
+      ...report(),
+      evidenceSummary: {
+        ...report().evidenceSummary,
+        ignored: { inner: {}, decision: {} },
+      },
+    });
+
+    expect(
+      parsePromptedJsonResearchReport(encoded.slice(0, -2)),
+    ).toBeUndefined();
+  });
 });
