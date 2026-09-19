@@ -1,50 +1,58 @@
-# System Walkthrough
+# 一件の処理の流れ
 
-**一件のTargetを例に、処理の順序と人間が判断する場所を追う。** これは設計上のflowであり、現在の接続状況は[Codebase Guide](CODEBASE-GUIDE.md#current-capability)で確認する。
+**一件の対象を例に、処理の順序と人間が判断する場所を追います。** これは設計上の流れです。現在どこまで接続されているかは[コードベース案内](CODEBASE-GUIDE.md#current-capability)で確認します。
 
-![一件のCampaignの処理順と人間の判断点](visuals/discovery-validation-architecture.svg)
+![一件のCampaignの処理順、自律探索、停止条件、人間の判断点](visuals/discovery-validation-architecture.svg)
 
-## 1. Select and approve
+## 1. 対象を選び、開始を承認する
 
-Target Intelligenceは取得したsourceと観測factからCandidate Poolを組み立て、AIがTarget Proposalを作る。人間がApproved Target Batchを承認すると、実行直前のfreshnessとsourceの一致を検査してCampaign InputをResearchへ渡す。
+対象情報の領域は、取得したソースと観測事実から候補群を組み立てます。AIが調査対象を提案し、人間が対象・順序・探索の安全上限を承認します。実行直前に版とソースが最新の観測に一致することを確認してから、`CampaignInput`を探索へ渡します。
 
-## 2. Conduct and review
+## 2. AIが探索を続け、止める
 
-Researchは承認済みCampaignのsafety envelope内で連続loopを実行する。AIが具体的でsource-boundな`continue`を返すと、Harnessはexact Checkpointから次のNative Runを自動開始する。AIが`stop`を返した後、Candidateがあれば人間のCandidate Reviewへ移る。
+探索は承認済みCampaignの安全上限内で連続して動きます。AIがソースコードに基づく具体的な次の手と`continue`を返すと、Harnessはその実行のCheckpointから次のNative Runを自動で始めます。候補が見つかっただけでは止めません。
 
-人間がCandidateを確認し、Candidate Verificationへ進めるものを選ぶ。Researchへ戻すCandidateがあれば、動的検証より先に戻る。Parked Programme LeadはCandidate Reviewへ進まない。
+| AIまたは実行基盤の結果 | 次に起きること |
+| --- | --- |
+| `continue`と具体的な次の手 | 同じCheckpointから自動継続する |
+| `stop`かつ候補あり | 人間による候補の採否判断へ進む |
+| `stop`かつ候補なし | 今回の探索範囲を閉じる |
+| 安全上限に到達したが次の手あり | `incomplete`として残し、探索完了にしない |
+| プロバイダー・認証・出力・保存の失敗 | 自動継続せず、失敗理由と再開可能性を残す |
 
-### 探索Agentへ渡す情報
+人間はAIが`stop`した後に候補を確認し、動的検証へ進めるものを選びます。探索へ戻す候補が一件でもあれば、動的検証より先に探索へ戻します。プログラム対象外で、対象となる影響へつながる具体的な経路がない手掛かりは保留し、この判断には出しません。
+
+### 探索エージェントへ渡す情報
 
 | 入力の役割 | 内容 |
 | --- | --- |
-| 対象と参照source | 固定版のread-only Target SnapshotとDependency Snapshots |
-| planning data | Campaign Threat ContextとProgramme Research Boundary |
-| 実行条件 | Prompt、Agent Runtime Profile、Permission Profile、Campaign safety envelope |
-| 探索内の継続 | 同じbindingのprivate Agent Checkpointと直前のRootが残したsource-bound next action |
+| 対象と参照ソース | 版を固定した読み取り専用の対象ソースと依存ソース |
+| 判断の前提 | 攻撃者の前提、対象とする影響、プログラム上の探索境界 |
+| 実行条件 | Prompt、実行環境、権限、Campaign全体の安全上限 |
+| 探索の継続 | 同じ入力に結び付いた非公開Checkpointと、直前のRoot AIが残した具体的な次の手 |
 
-RootはCandidateを返すとき、同じsource理解から最小の動的recipeも作る。Runtime Adapterはrecipe本文をGit外のprivate CASへ退避し、Research Recordには参照だけを残す。recipeがなければ`verification-preparation-needed`となる。
+Root AIは候補を返すとき、同じソース理解から最小の再現手順も作ります。実行Adapterは手順本文をGit外の非公開ストレージへ退避し、探索記録には参照だけを残します。手順がなければ`verification-preparation-needed`となり、候補そのものを棄却しません。
 
-oracle-free入力と権限制約の正本は[Research Design](RESEARCH-DESIGN.md#trust-and-versioning)。schema、prompt組立、入力例、recipeの保存場所は[GuideのAgent input](CODEBASE-GUIDE.md#agent-input)から辿る。
+既知脆弱性を答えとして与えない入力と権限制約の正本は[探索設計](RESEARCH-DESIGN.md#trust-and-versioning)です。schema、prompt組立、入力例、再現手順の保存場所は[コードベース案内のAgent input](CODEBASE-GUIDE.md#agent-input)から辿れます。
 
-## 3. Verify dynamically
+## 3. 新しい環境で動的に確かめる
 
-Human OSは人間がadmitしたCandidateだけをfreshな使い捨てWordPress / MySQL環境で検証する。Candidate-bound recipeを実Target interfaceへ一度だけ実行し、ソースから脆弱性を再導出する別runは置かない。
+人間による運用の領域は、人間が採用した候補だけを新しい使い捨てWordPress / MySQL環境で検証します。候補に結び付いた再現手順を実際の対象Interfaceへ一度だけ実行し、別のAIにソースから脆弱性を探し直させることはしません。
 
 | 結果 | 次の状態 |
 | --- | --- |
-| `runtime-confirmed` | Verified Vulnerabilityを作る |
-| `contradicted` | 通常前提とrecipeは完了したがeffectを観測しなかった記録を残す |
-| `incomplete` | 環境、依存、recipe、観測、cleanup、証拠の不足をnegativeと分けて残す |
+| `runtime-confirmed` | 技術的に確認済みの脆弱性を作る |
+| `contradicted` | 通常前提と再現手順は満たしたが、主張した影響を観測しなかった記録を残す |
+| `incomplete` | 環境、依存、再現手順、観測、後片付け、証拠の不足を反証と分けて残す |
 
-Verified VulnerabilityとResearch Coverageは別artifact。動的検証の結果で探索の完了状態を決めない。
+技術的に確認済みの脆弱性と探索範囲の記録は別の成果物です。動的検証の結果で探索の完了状態を決めません。
 
-## 4. Assess scope and decide
+## 4. 対象範囲を判定し、提出を決める
 
-Human OSはVerified Vulnerabilityを全configured programmeの最新scope snapshotへ照合する。`in-scope`だけにSubmission Candidateを作る。全programmeでOOS、scopeが曖昧、またはscope評価自体が失敗しても技術的なVerified Vulnerabilityは保持する。
+人間による運用の領域は、確認済み脆弱性を設定済みの全プログラムの最新対象範囲へ照合します。`in-scope`のプログラムだけに提出候補を作ります。すべて対象外、判断不能、または対象範囲の取得に失敗しても、技術的に確認済みの脆弱性は残します。
 
-AIはSubmission Draftの作成を支援する。人間が一つのSubmission Candidateを選び、exact Draft revisionとdestinationに対する外部行動を承認し、最後のSubmitも行う。
+AIは提出文案の作成を支援できます。人間が一つの提出候補を選び、提出先と文案の正確な版に対する外部行動を承認します。最後の提出操作も人間が行います。
 
 ## 再開・失敗を調べる
 
-通常flowから外れた状態、入力の競合、stale review、provider failure、Checkpointの再開条件は[GuideのResearch Campaigns](CODEBASE-GUIDE.md#research-campaigns)と[Native Agent Runtimes](CODEBASE-GUIDE.md#gvisor-native-agent-runtimes)に集約する。
+通常の流れから外れた状態、入力の競合、古い判断、プロバイダー障害、Checkpointの再開条件は[コードベース案内のResearch Campaigns](CODEBASE-GUIDE.md#research-campaigns)と[Native Agent Runtimes](CODEBASE-GUIDE.md#gvisor-native-agent-runtimes)に集約します。

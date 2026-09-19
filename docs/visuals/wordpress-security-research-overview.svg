@@ -1,88 +1,103 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="960" viewBox="0 0 1600 960" role="img" aria-labelledby="title desc" style="max-width:100%;height:auto">
-  <title id="title">WordPress Harness — 対象選定から提出判断まで</title>
-  <desc id="desc">PCブラウザ向けの横長全体図。Target Intelligenceが対象を承認し、Researchが固定ソースからCandidateとprivate recipeを作り、Human OSがfresh runtimeで検証する。確認済み脆弱性はprogramme scopeと分離して保持する。</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="860" viewBox="0 0 1600 860" role="img" aria-labelledby="overview-title overview-desc" style="max-width:100%;height:auto">
+  <title id="overview-title">WordPress Harnessの3領域と受け渡し</title>
+  <desc id="overview-desc">対象情報、探索、人間による運用の3領域について、各領域の責務、人間の判断点、領域間で渡す情報を示す。</desc>
   <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#526779"/></marker>
+    <marker id="overview-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#526779"/></marker>
     <style>
-      text{font-family:"Noto Sans CJK JP","Noto Sans JP",system-ui,sans-serif;fill:#172c3d}
-      .muted{fill:#526779}.inverse{fill:#fff}.inverseMuted{fill:#c8d6e0}.inverseLabel{fill:#9fc5dd}.eyebrow{font-size:15px;font-weight:700;letter-spacing:1.4px}.heading{font-size:36px;font-weight:750}.sub{font-size:18px}.cardTitle{font-size:26px;font-weight:750}.cardSub{font-size:17px}.label{font-size:14px;font-weight:700;letter-spacing:.6px}.body{font-size:17px}.small{font-size:14px}.gate{fill:#7c571d}.arrow{fill:none;stroke:#526779;stroke-width:3;marker-end:url(#arrow)}
+      text{font-family:"Noto Sans CJK JP","Noto Sans JP",system-ui,sans-serif;fill:#172c3d}.muted{fill:#526779}.title{font-size:36px;font-weight:750}.sub{font-size:18px}.zoneTitle{font-size:22px;font-weight:750}.boxTitle{font-size:19px;font-weight:750}.body{font-size:15px}.small{font-size:13px}.tag{font-size:12px;font-weight:700}.zone{fill:rgba(23,44,61,.018);stroke:#cdd9e3;stroke-width:1}.node{fill:#fff;stroke:#8797a5;stroke-width:1}.human{fill:#fff;stroke:#8797a5;stroke-width:1.2;stroke-dasharray:6 4}.focal{fill:#e6f3ee;stroke:#227567;stroke-width:1.2}.arrow{fill:none;stroke:#526779;stroke-width:2.4;marker-end:url(#overview-arrow)}.return{stroke-dasharray:7 6}.mask{fill:#f5f7fa}
     </style>
   </defs>
-  <rect width="1600" height="960" fill="#f5f7fa"/>
-  <text x="48" y="48" class="eyebrow muted">WORDPRESS SECURITY RESEARCH HARNESS / DESKTOP OVERVIEW</text>
-  <text x="48" y="97" class="heading">更新を入口に、深く探索し、実環境で確かめてから提出先を選ぶ</text>
-  <text x="48" y="133" class="sub muted">Harnessは権限・証拠・隔離・人間のgateを固定し、AIが仮説・読む順序・横展開・停止判断を持つ。</text>
 
-  <rect x="40" y="180" width="470" height="545" rx="18" fill="#fff" stroke="#cdd9e3" stroke-width="2"/>
-  <rect x="40" y="180" width="470" height="91" rx="18" fill="#e8f2fa"/>
-  <text x="68" y="220" class="cardTitle" fill="#236c9a">1  Target Intelligence</text>
-  <text x="68" y="250" class="cardSub" fill="#236c9a">何を今調べるかを決める</text>
-  <text x="68" y="310" class="label muted">入口</text>
-  <text x="68" y="342" class="body">WordPress.orgの更新差分・公開fact</text>
-  <text x="68" y="372" class="body">既探索version・programme情報</text>
-  <text x="68" y="419" class="label muted">AIの判断</text>
-  <text x="68" y="451" class="body">更新のsecurity relevanceと横展開価値</text>
-  <text x="68" y="481" class="body">深掘り候補と優先理由・不確実性</text>
-  <rect x="64" y="525" width="422" height="92" rx="12" fill="#fff5df" stroke="#e4c57e"/>
-  <text x="84" y="555" class="label gate">HUMAN GATE</text>
-  <text x="84" y="587" class="body">対象・順序・Budgetを承認</text>
-  <text x="68" y="661" class="label muted">所有する記録</text>
-  <text x="68" y="691" class="small">Observation / Candidate Pool / Approved Target Batch</text>
+  <rect width="1600" height="860" fill="#f5f7fa"/>
+  <text x="48" y="48" class="small muted" font-weight="700">WORDPRESS脆弱性調査基盤 / 全体構成</text>
+  <text x="48" y="97" class="title">3つの領域は、何を持ち、何を受け渡すか</text>
+  <text x="48" y="133" class="sub muted">Harnessは境界と証拠を守り、AIは探索を判断し、人間は開始・候補採否・外部行動を決める。</text>
 
-  <rect x="565" y="180" width="470" height="545" rx="18" fill="#fff" stroke="#cdd9e3" stroke-width="2"/>
-  <rect x="565" y="180" width="470" height="91" rx="18" fill="#e6f3ee"/>
-  <text x="593" y="220" class="cardTitle" fill="#227567">2  Research</text>
-  <text x="593" y="250" class="cardSub" fill="#227567">一つを深掘りし、同じ機構を横展開する</text>
-  <text x="593" y="310" class="label muted">探索Agentへ渡すもの</text>
-  <text x="593" y="342" class="body">read-only Target / Dependency Snapshots</text>
-  <text x="593" y="372" class="body">Threat Context / Programme Boundary</text>
-  <text x="593" y="402" class="body">Prompt / Permission / Campaign safety envelope</text>
-  <text x="593" y="449" class="label muted">Root AIが返すもの</text>
-  <text x="593" y="481" class="body">Candidate + source evidence + 次の探索案</text>
-  <text x="593" y="511" class="body">Candidate-bound private recipe</text>
-  <rect x="589" y="539" width="422" height="92" rx="12" fill="#fff5df" stroke="#e4c57e"/>
-  <text x="609" y="569" class="label gate">HUMAN GATE</text>
-  <text x="609" y="599" class="body">AI停止後のCandidate admission</text>
-  <text x="593" y="661" class="label muted">外へ渡すもの</text>
-  <text x="593" y="691" class="small">Candidate Verification Request（recipe本文はGit外）</text>
+  <rect x="40" y="184" width="440" height="516" rx="8" class="zone"/>
+  <rect x="580" y="184" width="440" height="516" rx="8" class="zone"/>
+  <rect x="1120" y="184" width="440" height="516" rx="8" class="zone"/>
+  <text x="72" y="224" class="zoneTitle">1  対象情報</text>
+  <text x="612" y="224" class="zoneTitle">2  探索</text>
+  <text x="1152" y="224" class="zoneTitle">3  人間による運用</text>
 
-  <rect x="1090" y="180" width="470" height="545" rx="18" fill="#fff" stroke="#cdd9e3" stroke-width="2"/>
-  <rect x="1090" y="180" width="470" height="91" rx="18" fill="#f0eafa"/>
-  <text x="1118" y="220" class="cardTitle" fill="#7551a4">3  Human OS</text>
-  <text x="1118" y="250" class="cardSub" fill="#7551a4">実効性・scope・提出許可を分離する</text>
-  <rect x="1118" y="301" width="414" height="86" rx="12" fill="#f7f4fb" stroke="#cdbce2"/>
-  <text x="1138" y="332" class="label" fill="#7551a4">FRESH DYNAMIC VERIFICATION</text>
-  <text x="1138" y="363" class="body">使い捨てWordPressでrecipeを一度実行</text>
-  <path d="M1325 388V420" class="arrow"/>
-  <rect x="1118" y="428" width="190" height="105" rx="12" fill="#e6f3ee" stroke="#82b5a6"/>
-  <text x="1138" y="460" class="label" fill="#227567">TECHNICAL TRUTH</text>
-  <text x="1138" y="491" class="body">Verified</text>
-  <text x="1138" y="516" class="body">Vulnerability</text>
-  <rect x="1324" y="428" width="208" height="105" rx="12" fill="#e8f2fa" stroke="#91b9d2"/>
-  <text x="1344" y="460" class="label" fill="#236c9a">PROGRAMME FIT</text>
-  <text x="1344" y="491" class="small">in / out / ambiguous</text>
-  <text x="1344" y="516" class="small">/ stale を全件評価</text>
-  <text x="1118" y="572" class="body">in-scopeだけ → Submission Candidate</text>
-  <text x="1118" y="602" class="small muted">OOSやscope障害でも技術的記録は消さない</text>
-  <rect x="1114" y="631" width="422" height="70" rx="12" fill="#fff5df" stroke="#e4c57e"/>
-  <text x="1134" y="660" class="label gate">HUMAN GATE</text>
-  <text x="1260" y="660" class="small">提出先・exact Draftを承認</text>
-  <text x="1134" y="686" class="small">最後のSubmitは人間が行う</text>
+  <!-- Connections are drawn before nodes. -->
+  <path d="M260 368V468" class="arrow"/>
+  <rect x="276" y="406" width="148" height="24" rx="4" class="mask"/>
+  <text x="288" y="423" class="small muted">対象・順序・安全上限</text>
 
-  <path d="M510 452H556" class="arrow"/>
-  <text x="533" y="427" class="small" text-anchor="middle">Campaign</text>
-  <text x="533" y="445" class="small" text-anchor="middle">Input</text>
-  <path d="M1035 452H1081" class="arrow"/>
-  <text x="1058" y="417" class="small" text-anchor="middle">Verification</text>
-  <text x="1058" y="435" class="small" text-anchor="middle">Request</text>
+  <path d="M440 518H512Q520 518 520 510V342Q520 334 528 334H620" class="arrow"/>
+  <rect x="532" y="408" width="156" height="24" rx="4" class="mask"/>
+  <text x="544" y="425" class="small muted">承認済みの探索入力</text>
 
-  <rect x="40" y="768" width="1520" height="142" rx="16" fill="#172c3d"/>
-  <text x="68" y="805" class="label inverseLabel">SYSTEM INVARIANTS</text>
-  <text x="68" y="842" class="body inverse">更新監視で広く入口を作る</text>
-  <text x="394" y="842" class="body inverse">選んだ一件はsource全体を深く読む</text>
-  <text x="806" y="842" class="body inverse">source再導出を二重にしない</text>
-  <text x="1128" y="842" class="body inverse">外部提出は自動化しない</text>
-  <text x="68" y="879" class="small inverseMuted">Candidate件数ではなく、stage別recall・duplicate率・runtime-confirm率・programme適合率を観測する。</text>
-  <text x="1532" y="879" class="small inverseMuted" text-anchor="end">詳細: Research Design / Codebase Guide</text>
+  <path d="M980 306H992Q1000 306 1000 298V232Q1000 224 992 224H808Q800 224 800 232V268" class="arrow return"/>
+  <rect x="836" y="192" width="128" height="24" rx="4" class="mask"/>
+  <text x="848" y="209" class="small muted">continue + 次の手</text>
+
+  <path d="M800 398V468" class="arrow"/>
+  <rect x="816" y="420" width="100" height="24" rx="4" class="mask"/>
+  <text x="828" y="437" class="small muted">stop + 候補</text>
+
+  <path d="M980 518H1052Q1060 518 1060 510V318Q1060 310 1068 310H1160" class="arrow"/>
+  <rect x="900" y="408" width="148" height="24" rx="4" class="mask"/>
+  <text x="912" y="425" class="small muted">候補の動的検証依頼</text>
+
+  <path d="M1240 360V418" class="arrow"/>
+  <path d="M1320 470H1352" class="arrow"/>
+  <path d="M1436 520V568" class="arrow"/>
+
+  <!-- Target Intelligence -->
+  <rect x="80" y="268" width="360" height="100" rx="8" class="node"/>
+  <text x="104" y="301" class="boxTitle">観測と対象提案</text>
+  <text x="104" y="330" class="body">更新・利用規模・連携・調査履歴を整理</text>
+  <text x="104" y="353" class="small muted">既知脆弱性を探索の答えとして渡さない</text>
+
+  <rect x="80" y="468" width="360" height="100" rx="8" class="human"/>
+  <text x="104" y="493" class="tag muted">人間の判断</text>
+  <text x="104" y="525" class="boxTitle">探索の開始を承認</text>
+  <text x="104" y="550" class="body">対象・順序・Campaign全体の安全上限</text>
+
+  <!-- Research -->
+  <rect x="620" y="268" width="360" height="130" rx="8" class="focal"/>
+  <text x="644" y="301" class="boxTitle" fill="#227567">自律探索</text>
+  <text x="644" y="330" class="body">仮説・読む順序・subagent・反証をAIが判断</text>
+  <text x="644" y="357" class="body">具体的な次の手があれば自動継続</text>
+  <text x="644" y="382" class="small muted">候補を見つけただけでは停止しない</text>
+
+  <rect x="620" y="468" width="360" height="100" rx="8" class="human"/>
+  <text x="644" y="493" class="tag muted">人間の判断</text>
+  <text x="644" y="525" class="boxTitle">候補の採否を決める</text>
+  <text x="644" y="550" class="body">AIがstopした後だけ動的検証へ進める</text>
+
+  <!-- Human OS -->
+  <rect x="1160" y="260" width="360" height="100" rx="8" class="node"/>
+  <text x="1184" y="293" class="boxTitle">新しい実環境で動的検証</text>
+  <text x="1184" y="322" class="body">候補に結び付いた再現手順を一度だけ実行</text>
+  <text x="1184" y="347" class="small muted">別AIに脆弱性を探し直させない</text>
+
+  <rect x="1160" y="418" width="160" height="102" rx="8" class="focal"/>
+  <text x="1184" y="451" class="boxTitle" fill="#227567">確認済み</text>
+  <text x="1184" y="478" class="boxTitle" fill="#227567">脆弱性</text>
+  <text x="1184" y="505" class="small muted">技術的な真偽</text>
+
+  <rect x="1352" y="418" width="168" height="102" rx="8" class="node"/>
+  <text x="1376" y="451" class="boxTitle">対象範囲</text>
+  <text x="1376" y="478" class="body">全プログラム</text>
+  <text x="1376" y="505" class="small muted">対象内 / 外 / 不明</text>
+
+  <rect x="1160" y="568" width="360" height="80" rx="8" class="human"/>
+  <text x="1184" y="593" class="tag muted">人間の判断</text>
+  <text x="1184" y="625" class="boxTitle">提出先と文案を承認し、人間が提出</text>
+
+  <line x1="40" y1="756" x2="1560" y2="756" stroke="#cdd9e3" stroke-width="1"/>
+  <text x="48" y="790" class="small muted">凡例</text>
+  <line x1="112" y1="784" x2="160" y2="784" stroke="#526779" stroke-width="2.4" marker-end="url(#overview-arrow)"/>
+  <text x="176" y="790" class="small">領域間の受け渡し</text>
+  <line x1="352" y1="784" x2="400" y2="784" stroke="#526779" stroke-width="2.4" stroke-dasharray="7 6" marker-end="url(#overview-arrow)"/>
+  <text x="416" y="790" class="small">探索内の自動継続</text>
+  <rect x="592" y="772" width="44" height="24" rx="6" class="human"/>
+  <text x="652" y="790" class="small">人間が判断する処理</text>
+  <rect x="840" y="772" width="44" height="24" rx="6" class="focal"/>
+  <text x="900" y="790" class="small">この図で注目する処理・記録</text>
+  <text x="1552" y="824" class="small muted" text-anchor="end">契約の詳細は「探索設計」と「コードベース案内」を参照</text>
 </svg>

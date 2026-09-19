@@ -1,83 +1,120 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040" role="img" aria-labelledby="title desc" style="max-width:100%;height:auto">
-  <title id="title">WordPress Harness — 一件のCandidateが提出候補になるまで</title>
-  <desc id="desc">PCブラウザ向けの横長ライフサイクル図。自律Research loop、Candidate admission、fresh dynamic verification、技術的なVerified Vulnerability、programme別scope、提出承認を示す。</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040" role="img" aria-labelledby="lifecycle-title lifecycle-desc" style="max-width:100%;height:auto">
+  <title id="lifecycle-title">探索の自動継続から提出承認までの処理順</title>
+  <desc id="lifecycle-desc">探索と人間による運用の2レーンで、AIによる自動継続、候補採否、新しい実環境での動的検証、プログラム対象範囲、提出承認までを示す。</desc>
   <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#526779"/></marker>
+    <marker id="lifecycle-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#526779"/></marker>
     <style>
-      text{font-family:"Noto Sans CJK JP","Noto Sans JP",system-ui,sans-serif;fill:#172c3d}.muted{fill:#526779}.title{font-size:36px;font-weight:750}.sub{font-size:18px}.lane{font-size:18px;font-weight:750}.boxTitle{font-size:19px;font-weight:750}.body{font-size:15px}.small{font-size:13px}.arrow{fill:none;stroke:#526779;stroke-width:3;marker-end:url(#arrow)}.back{stroke-dasharray:8 7}.gate{fill:#fff5df;stroke:#e4c57e}.normal{fill:#fff;stroke:#cdd9e3}.ok{fill:#e6f3ee;stroke:#82b5a6}.scope{fill:#e8f2fa;stroke:#91b9d2}
+      text{font-family:"Noto Sans CJK JP","Noto Sans JP",system-ui,sans-serif;fill:#172c3d}.muted{fill:#526779}.title{font-size:36px;font-weight:750}.sub{font-size:18px}.laneTitle{font-size:22px;font-weight:750}.boxTitle{font-size:19px;font-weight:750}.body{font-size:15px}.small{font-size:13px}.tag{font-size:12px;font-weight:700}.lane{fill:rgba(23,44,61,.018);stroke:#cdd9e3;stroke-width:1}.divider{stroke:#cdd9e3;stroke-width:1}.node{fill:#fff;stroke:#8797a5;stroke-width:1}.human{fill:#fff;stroke:#8797a5;stroke-width:1.2;stroke-dasharray:6 4}.optional{fill:rgba(23,44,61,.025);stroke:#8797a5;stroke-width:1;stroke-dasharray:5 4}.focal{fill:#e6f3ee;stroke:#227567;stroke-width:1.2}.arrow{fill:none;stroke:#526779;stroke-width:2.4;marker-end:url(#lifecycle-arrow)}.return{stroke-dasharray:7 6}.mask{fill:#f5f7fa}.note{fill:#eaf0f6;stroke:#cdd9e3;stroke-width:1}
     </style>
   </defs>
+
   <rect width="1600" height="1040" fill="#f5f7fa"/>
-  <text x="48" y="52" class="small muted" font-weight="700">ONE-CANDIDATE LIFECYCLE / HUMAN DECISIONS</text>
-  <text x="48" y="101" class="title">一件のCandidateは、どう検証され、どこへ提出できる状態になるか</text>
-  <text x="48" y="138" class="sub muted">黄色は人間の判断。緑は技術的な確認、青はprogrammeごとの適格性で、二つを混ぜない。</text>
+  <text x="48" y="48" class="small muted" font-weight="700">一件の処理順 / 自動継続と人間の判断</text>
+  <text x="48" y="97" class="title">いつAIが続け、いつ人間へ渡すか</text>
+  <text x="48" y="133" class="sub muted">continueは探索内で自動処理する。人間はAIのstop後に候補を選び、外部行動を承認する。</text>
 
-  <rect x="40" y="176" width="1520" height="218" rx="18" fill="#eef7f3" stroke="#c6ddd5"/>
-  <text x="64" y="210" class="lane" fill="#227567">RESEARCH — sourceを理解しCandidateと検証手順を作る</text>
-  <rect x="76" y="240" width="270" height="105" rx="12" class="normal"/>
-  <text x="96" y="273" class="boxTitle">Research Native Run</text>
-  <text x="96" y="302" class="body">Root + native subagents</text>
-  <text x="96" y="327" class="body muted">Campaign safety envelope内</text>
-  <path d="M346 292H405" class="arrow"/>
-  <rect x="414" y="240" width="292" height="105" rx="12" class="normal"/>
-  <text x="434" y="273" class="boxTitle">AI Continuation Decision</text>
-  <text x="434" y="302" class="body">continue / stop</text>
-  <text x="434" y="327" class="body muted">continueは同じCheckpoint</text>
-  <path d="M560 240V218H210V235" class="arrow back"/>
-  <path d="M706 292H765" class="arrow"/>
-  <rect x="774" y="240" width="282" height="105" rx="12" class="normal"/>
-  <text x="794" y="273" class="boxTitle">Research Candidate</text>
-  <text x="794" y="302" class="body">claim + source evidence</text>
-  <text x="794" y="327" class="body">+ private recipe ref</text>
-  <path d="M1056 292H1115" class="arrow"/>
-  <rect x="1124" y="240" width="342" height="105" rx="12" class="gate"/>
-  <text x="1144" y="273" class="boxTitle">Human Candidate Review</text>
-  <text x="1144" y="302" class="body">admit / concrete next actionで戻す</text>
-  <text x="1144" y="327" class="body muted">programme scopeは先取りしない</text>
-  <path d="M1295 240V218H915V235" class="arrow back"/>
+  <rect x="40" y="180" width="1520" height="320" rx="8" class="lane"/>
+  <rect x="40" y="540" width="1520" height="380" rx="8" class="lane"/>
+  <line x1="220" y1="180" x2="220" y2="500" class="divider"/>
+  <line x1="220" y1="540" x2="220" y2="920" class="divider"/>
+  <text x="64" y="224" class="laneTitle">探索</text>
+  <text x="64" y="252" class="small muted">AIが判断</text>
+  <text x="64" y="584" class="laneTitle">人間による運用</text>
+  <text x="64" y="612" class="small muted">実環境と外部行動</text>
 
-  <path d="M1295 345V438" class="arrow"/>
-  <text x="1313" y="411" class="body muted">admitted Candidateだけ</text>
-  <rect x="1056" y="446" width="478" height="86" rx="12" class="normal"/>
-  <text x="1080" y="479" class="boxTitle">Candidate Verification Request</text>
-  <text x="1080" y="507" class="body">Candidate + fixed source + digest-bound private recipe</text>
-  <rect x="76" y="446" width="426" height="86" rx="12" fill="#eaf0f6" stroke="#cdd9e3"/>
-  <text x="98" y="478" class="boxTitle">recipeがない場合</text>
-  <text x="98" y="507" class="body">verification-preparation-needed（棄却しない）</text>
+  <!-- Connections are drawn before nodes. -->
+  <path d="M580 282H632Q640 282 640 274V230Q640 222 632 222H438Q430 222 430 230V250" class="arrow return"/>
+  <rect x="456" y="184" width="160" height="22" rx="4" class="mask"/>
+  <text x="468" y="200" class="small muted">continue + 具体的な次の手</text>
 
-  <rect x="40" y="572" width="1520" height="328" rx="18" fill="#f7f4fb" stroke="#d8cae8"/>
-  <text x="64" y="607" class="lane" fill="#7551a4">HUMAN OS — fresh runtimeで実効性を確認し、その後にscopeを評価する</text>
-  <path d="M1295 532V648H1060" class="arrow"/>
-  <rect x="760" y="635" width="300" height="104" rx="12" class="normal"/>
-  <text x="780" y="668" class="boxTitle">Dynamic Verification</text>
-  <text x="780" y="697" class="body">fresh disposable WordPress</text>
-  <text x="780" y="722" class="body muted">recipeを一度だけ実行</text>
-  <path d="M760 687H690" class="arrow"/>
-  <rect x="394" y="635" width="296" height="104" rx="12" class="ok"/>
-  <text x="414" y="668" class="boxTitle" fill="#227567">Verified Vulnerability</text>
-  <text x="414" y="697" class="body">runtime-confirmedのみ</text>
-  <text x="414" y="722" class="body muted">技術的な真偽の記録</text>
-  <path d="M394 687H326" class="arrow"/>
-  <rect x="76" y="635" width="250" height="104" rx="12" fill="#eaf0f6" stroke="#cdd9e3"/>
-  <text x="96" y="668" class="boxTitle">その他の結果</text>
-  <text x="96" y="697" class="body">contradicted / incomplete</text>
-  <text x="96" y="722" class="small muted">不足を反証へ丸めない</text>
+  <path d="M580 305H700" class="arrow"/>
+  <rect x="592" y="268" width="96" height="24" rx="4" class="mask"/>
+  <text x="604" y="285" class="small muted">stop + 候補</text>
 
-  <path d="M542 739V788H704" class="arrow"/>
-  <rect x="712" y="772" width="354" height="96" rx="12" class="scope"/>
-  <text x="732" y="805" class="boxTitle" fill="#236c9a">Programme Scope Assessments</text>
-  <text x="732" y="834" class="body">configured programmeをすべて評価</text>
-  <text x="732" y="857" class="small muted">in / out / ambiguous / stale</text>
-  <path d="M1066 820H1124" class="arrow"/>
-  <rect x="1132" y="772" width="334" height="96" rx="12" class="normal"/>
-  <text x="1152" y="805" class="boxTitle">Submission Candidate</text>
-  <text x="1152" y="834" class="body">in-scopeのdestinationだけ</text>
-  <text x="1152" y="857" class="small muted">OOSでもVerified Vulnerabilityは残る</text>
+  <path d="M960 305H1100" class="arrow"/>
+  <rect x="976" y="268" width="108" height="24" rx="4" class="mask"/>
+  <text x="988" y="285" class="small muted">候補と再現手順</text>
 
-  <path d="M1299 868V925" class="arrow"/>
-  <rect x="985" y="932" width="575" height="72" rx="12" class="gate"/>
-  <text x="1009" y="963" class="boxTitle">Human External Action Gate</text>
-  <text x="1009" y="990" class="body">一つのdestination + exact Draftを承認。最後のSubmitも人間。</text>
-  <text x="48" y="1005" class="small muted">Research Coverageはこの流れと独立。Candidate件数やVerification結果を「安全性の証明」に使わない。</text>
+  <path d="M1180 360V414Q1180 422 1172 422H438Q430 422 430 414V360" class="arrow return"/>
+  <rect x="752" y="386" width="112" height="24" rx="4" class="mask"/>
+  <text x="764" y="403" class="small muted">追加調査へ戻す</text>
+
+  <path d="M1340 360V512Q1340 520 1332 520H1158Q1150 520 1150 528V590" class="arrow"/>
+  <rect x="1352" y="436" width="156" height="24" rx="4" class="mask"/>
+  <text x="1364" y="453" class="small muted">人間が採用した候補だけ</text>
+
+  <path d="M1000 640H840" class="arrow"/>
+  <rect x="856" y="603" width="128" height="24" rx="4" class="mask"/>
+  <text x="868" y="620" class="small muted">runtime-confirmed</text>
+
+  <path d="M720 690V760" class="arrow"/>
+  <rect x="736" y="708" width="116" height="24" rx="4" class="mask"/>
+  <text x="748" y="725" class="small muted">全プログラムを評価</text>
+
+  <path d="M840 805H1000" class="arrow"/>
+  <rect x="864" y="768" width="112" height="24" rx="4" class="mask"/>
+  <text x="876" y="785" class="small muted">対象内だけ</text>
+
+  <path d="M1300 640H1392Q1400 640 1400 648V872Q1400 880 1392 880H388Q380 880 380 872V850" class="arrow"/>
+  <rect x="856" y="844" width="112" height="24" rx="4" class="mask"/>
+  <text x="868" y="861" class="small muted">その他の結果</text>
+
+  <!-- Research lane nodes. -->
+  <rect x="280" y="250" width="300" height="110" rx="8" class="focal"/>
+  <text x="304" y="283" class="boxTitle" fill="#227567">自律探索</text>
+  <text x="304" y="312" class="body">同じCheckpointから継続</text>
+  <text x="304" y="339" class="small muted">候補だけでは止めず、次の手の有無で判断</text>
+
+  <rect x="700" y="250" width="260" height="110" rx="8" class="node"/>
+  <text x="724" y="283" class="boxTitle">探索候補</text>
+  <text x="724" y="312" class="body">主張 + ソース証拠</text>
+  <text x="724" y="339" class="small muted">+ 非公開の再現手順</text>
+
+  <rect x="1100" y="250" width="320" height="110" rx="8" class="human"/>
+  <text x="1124" y="275" class="tag muted">人間の判断</text>
+  <text x="1124" y="307" class="boxTitle">候補の採否</text>
+  <text x="1124" y="334" class="body">動的検証へ進める / 探索へ戻す</text>
+  <text x="1124" y="354" class="small muted">再現手順なし → 検証準備待ち</text>
+
+  <rect x="280" y="444" width="780" height="48" rx="6" class="note"/>
+  <text x="300" y="464" class="small muted">stop + 候補なし → 探索範囲を閉じる</text>
+  <text x="300" y="483" class="small muted">安全上限・外部失敗 + 次の手あり → incomplete</text>
+
+  <!-- Human OS lane nodes. -->
+  <rect x="1000" y="590" width="300" height="100" rx="8" class="node"/>
+  <text x="1024" y="623" class="boxTitle">動的検証</text>
+  <text x="1024" y="652" class="body">新しい使い捨てWordPress</text>
+  <text x="1024" y="677" class="small muted">再現手順を一度だけ実行</text>
+
+  <rect x="600" y="590" width="240" height="100" rx="8" class="focal"/>
+  <text x="624" y="623" class="boxTitle" fill="#227567">確認済み脆弱性</text>
+  <text x="624" y="652" class="body">runtime-confirmedのみ</text>
+  <text x="624" y="677" class="small muted">技術的な真偽を記録</text>
+
+  <rect x="260" y="760" width="240" height="90" rx="8" class="optional"/>
+  <text x="284" y="793" class="boxTitle">その他の結果</text>
+  <text x="284" y="822" class="body">contradicted / incomplete</text>
+  <text x="284" y="843" class="small muted">不足を反証へ丸めない</text>
+
+  <rect x="600" y="760" width="240" height="90" rx="8" class="node"/>
+  <text x="624" y="793" class="boxTitle">対象範囲を判定</text>
+  <text x="624" y="822" class="body">対象内 / 外 / 判断不能</text>
+  <text x="624" y="843" class="small muted">技術的な記録とは分離</text>
+
+  <rect x="1000" y="760" width="320" height="90" rx="8" class="human"/>
+  <text x="1024" y="785" class="tag muted">人間の判断</text>
+  <text x="1024" y="817" class="boxTitle">提出先と文案を承認</text>
+  <text x="1024" y="842" class="body">最後の提出操作も人間が行う</text>
+
+  <line x1="40" y1="960" x2="1560" y2="960" stroke="#cdd9e3" stroke-width="1"/>
+  <text x="48" y="994" class="small muted">凡例</text>
+  <line x1="112" y1="988" x2="160" y2="988" stroke="#526779" stroke-width="2.4" marker-end="url(#lifecycle-arrow)"/>
+  <text x="176" y="994" class="small">通常の処理</text>
+  <line x1="288" y1="988" x2="336" y2="988" stroke="#526779" stroke-width="2.4" stroke-dasharray="7 6" marker-end="url(#lifecycle-arrow)"/>
+  <text x="352" y="994" class="small">継続・差し戻し</text>
+  <rect x="492" y="976" width="44" height="24" rx="6" class="human"/>
+  <text x="552" y="994" class="small">人間が判断する処理</text>
+  <rect x="740" y="976" width="44" height="24" rx="6" class="focal"/>
+  <text x="800" y="994" class="small">この図で注目する処理・記録</text>
 </svg>

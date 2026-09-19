@@ -1,24 +1,24 @@
-# Context Map
+# 領域の対応表
 
-**3 contextは、それぞれの記録を所有し、versioned handoff contractで接続する。**
+**3つの領域は、それぞれの記録を所有し、版管理された受け渡し契約で接続します。**
 
-## Contexts
+## 3つの領域
 
-| Context / 用語集 | 所有する責務 |
+| 領域 / 用語集 | 所有する責務 |
 | --- | --- |
-| [Target Intelligence](docs/domain/target-intelligence/CONTEXT.md) | ecosystem観測、Target Proposal、人間のApproved Target Batch、dispatch |
-| [Research](CONTEXT.md) | 一Targetの自律Research Campaign、Human Candidate Review、Candidate Verification Request、Coverage |
-| [Human OS](docs/domain/human-os/CONTEXT.md) | dynamic verification、Verified Vulnerability、programme scope、Draft、外部行動のauthorization |
+| [対象情報](docs/domain/target-intelligence/CONTEXT.md) | 配布元の観測、調査対象の提案、人間が承認した対象群、探索への受け渡し |
+| [探索](CONTEXT.md) | 一対象の自律Campaign、人間による候補の採否判断、動的検証依頼、探索範囲の記録 |
+| [人間による運用](docs/domain/human-os/CONTEXT.md) | 動的検証、確認済み脆弱性、プログラムの対象範囲、提出文案、外部行動の承認 |
 
-## Relationships
+## 領域間の受け渡し
 
-| From → To | Handoff | 受け手の責務 |
+| 送り元 → 受け手 | 受け渡すもの | 受け手の責務 |
 | --- | --- | --- |
-| Target Intelligence → Research | admitted Campaign Input | 固定sourceと条件からCampaignを開始する。選定policyは再評価しない |
-| Research → Target Intelligence | Campaign Coverage Receipt | Candidateの詳細から切り離し、重複防止・resume・follow-upに使う |
-| Research → Human OS | Candidate Verification Request | Candidate-bound recipeをfreshな実環境で検証する |
-| Human OS → Research | Evidence Request | 具体的なproof gapを新しいResearch workとして扱う |
+| 対象情報 → 探索 | 承認済みの`CampaignInput` | 固定したソースと条件からCampaignを開始する。選定方針は再評価しない |
+| 探索 → 対象情報 | Campaignの探索範囲記録 | 候補の詳細から切り離し、重複防止・再開・再調査に使う |
+| 探索 → 人間による運用 | 候補の動的検証依頼 | 候補に結び付いた再現手順を新しい実環境で検証する |
+| 人間による運用 → 探索 | 追加証拠の依頼 | 不足している具体的な証拠を新しい探索作業として扱う |
 
-物理的に同じprocessやdatabaseを使っても、別contextのstorageや内部Moduleを直接参照・更新しない。raw model transcriptやwritable worker stateをhandoffにしない。
+物理的に同じprocessやdatabaseを使っていても、別領域の保存先や内部モジュールを直接読み書きしません。モデルの生の実行記録や書き込み可能な作業状態を受け渡し契約にはしません。
 
-関係を図で見るには[Architecture](docs/ARCHITECTURE.md)、現在のModuleとhandoffの接続状況は[Codebase Guide](docs/CODEBASE-GUIDE.md)、oracle-freeな入力とCandidate Verificationの制約は[Research Design](docs/RESEARCH-DESIGN.md)へ進む。
+関係を図で見るには[全体構成](docs/ARCHITECTURE.md)、現在のモジュールと受け渡しの接続状況は[コードベース案内](docs/CODEBASE-GUIDE.md)、既知脆弱性を答えとして与えない入力と候補検証の制約は[探索設計](docs/RESEARCH-DESIGN.md)へ進みます。

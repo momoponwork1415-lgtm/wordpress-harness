@@ -3,14 +3,14 @@ status: accepted
 supersedes: 0131
 ---
 
-# Continue Research without per-run human review
+# 探索中の継続を人間の確認待ちにしない
 
-人間がTargetとCampaign safety envelopeを承認した後の探索内では、Human Research Continuation Reviewを要求しない。provider-native Rootがcompleted Research Reportで具体的かつsource-boundな`continue`を返した場合、Research Campaignsはそのrunのexact Checkpointとnext actionを次のSealed Native Runへbindして自動開始する。Candidateが存在してもactionable frontierが残る間は継続し、Rootが`stop`を返した時だけHuman Candidate ReviewまたはCoverage closureへ進む。
+人間が対象とCampaign全体の安全上限を承認した後は、探索の継続に人間の確認を要求しない。プロバイダー固有のRootが完了報告で、ソースに基づく具体的な次の手と`continue`を返した場合、`ResearchCampaigns`はそのrunの正確なCheckpointと次の手を、次の`SealedNativeRun`へ結び付けて自動開始する。候補が存在しても、調べる価値のある経路が残る間は継続する。Rootが`stop`を返した時だけ、人間による候補の採否判断、または探索範囲の閉鎖へ進む。
 
-固定1時間のResearch Grant capと`researchGrantWallTimeMs`も廃止する。各Native Runは人間が事前承認したCampaign全体の残りwall timeをsafety allowanceとして受け取る。Native Run数とCampaign wall timeは異常な無限実行を防ぐ外側の安全枠であり、探索価値の判定には使わない。安全枠へ達した時点でsource-bound frontierが残る場合は`incomplete`とし、`stop`、no-findingまたはCoverage closureへ読み替えない。DeepSeekのcredential egress grantは固定1時間ではなく、このexact sealed allowanceで失効する。
+固定1時間の探索上限と`researchGrantWallTimeMs`も廃止する。各Native Runは、人間が事前承認したCampaign全体の残り実行時間を安全上限として受け取る。Native Run数とCampaign全体の実行時間は、異常な無限実行を防ぐ外側の安全枠であり、探索価値の判定には使わない。安全枠へ達した時に、ソースに基づく具体的な次の手が残る場合は`incomplete`とする。`stop`、「発見なし」、探索範囲の閉鎖へ読み替えない。DeepSeekの認証中継許可も固定1時間ではなく、そのNative Runへ封印した残り実行時間で失効する。
 
-Harnessは継続価値をpath数、Candidate数、confidenceまたは固定rubricで再判定しない。Rootが仮説、読む順序、subagent、synthesis、継続と停止を所有し、Harnessはinput、Checkpoint、next action、runtime、permission、receiptとsafety envelopeのbindingだけを検査する。provider failure、invalid output、policy denial、orphan、admission failureは通常のResearch continuationとして自動retryしない。
+Harnessは、経路数、候補数、確信度、固定評価表で継続価値を判定し直さない。Rootが仮説、読む順序、subagent、知見の統合、継続と停止を担当する。Harnessは入力、Checkpoint、次の手、実行環境、権限、Receipt、安全上限の結び付きだけを検査する。プロバイダー障害、不正な出力、方針による拒否、孤立した実行、結果の受入失敗は、通常の探索継続として自動再試行しない。
 
-人間のgateはCampaign開始、Rootの`stop`後のCandidate admission、探索scopeまたは権限の拡張、fresh runtime verification、programme scopeと外部行動に残す。これにより長い探索を一時間ごとに手作業で再開する待ち時間は消えるが、承認済みsafety envelopeを超える追加資源や権限は暗黙に付与されない。
+人間の判断は、Campaign開始、Rootの`stop`後の候補採否、探索範囲または権限の拡張、新しい実環境での動的検証、プログラムの対象範囲、外部行動に残す。これにより、長い探索を1時間ごとに手作業で再開する待ち時間はなくなる。ただし、承認済みの安全上限を超える追加資源や権限を暗黙には与えない。
 
-この判断はADR 0131全体、ADR 0132のResearch Grantごとの独立wall-time allowance、ADR 0135のGrantごとのHuman Review維持、およびADR 0142の固定一時間credential grantだけを置き換える。Candidate admission、costを観測値に留めること、credentialをAgentへ渡さないこと、fresh dynamic verificationとexternal actionのHuman Gateは維持する。
+この判断はADR 0131全体、ADR 0132のrunごとの独立実行時間、ADR 0135のrunごとの人間確認、ADR 0142の固定1時間の認証中継許可を置き換える。候補の採否、費用を観測値に留めること、認証情報をエージェントへ渡さないこと、新しい実環境での動的検証、外部行動のHuman Gateは維持する。

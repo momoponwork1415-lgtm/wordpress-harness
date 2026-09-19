@@ -61,7 +61,7 @@ Status: official-source comparison; Cloudflare security-audit-skillとAikido / D
 | --- | --- | --- |
 | Parentだけがshared run filesを更新する | **採用済み** | `ResearchCampaigns`だけがappend-only Research Recordを更新し、Runtime AdapterはReceiptとopaque refを返す。新しい共有JSON正本は作らない。 |
 | findingsとcoverageをschema検証する | **適応** | 現行ZodのCampaign Input、Native Receipt、Research Report、Review、Verification Requestを正本にする。Cloudflare schemaを直輸入せず、schema適合を技術的真偽にしない。 |
-| Reconnaissance、coverage-directed Hunt、adversarial Validate、Gapfill | **適応** | Cloudflare-derived Prompt SetのRoot-owned loopとして採る。固定Agent、Waveまたはdeterministic ledgerをHarness stateにせず、Gapfillはsource-bound continuation proposalとしてHuman Reviewへ渡す。 |
+| Reconnaissance、coverage-directed Hunt、adversarial Validate、Gapfill | **適応** | Cloudflare由来のPrompt Setで、Rootが所有する連続探索として採る。固定Agent、Wave、決定論的な台帳はHarnessの状態にしない。抜けの補完に具体的な次の手があれば`continue`として同じCheckpointから自動継続する。 |
 | `confirmed` / `needs_validation` / `rejected`を分ける | **適応** | Research Candidate、`verification-preparation-needed`、Candidate Verificationの`runtime-confirmed` / `contradicted` / `incomplete`、programme scopeを別々に保つ。名称間の一対一変換はしない。 |
 | 保存記録からreportを導出する | **採用** | Campaign `inspect`とHuman OSの保存済みviewから読み取り専用に説明・比較を導出する。reportの都合で元のverdictやCandidateを更新しない。 |
 | deterministic coverage ledgerとcritic wave | **適応方式では不採用、upstream比較方式では採用** | 通常のCloudflare-derived Promptではfixed coverage unit、wave、roleをHarness stateにしない。`cloudflare-upstream`比較方式だけはpinned skillのprivate scratch workflowとして保持し、Harness state、Research Coverageまたは安全性の証明へ昇格させない。 |
