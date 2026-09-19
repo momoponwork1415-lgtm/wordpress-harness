@@ -183,7 +183,13 @@ describe("Campaign Threat Context", () => {
       "Investigate these approved next actions during this Grant",
     );
     expect(prompt).toContain(
-      "Do not merely repeat them in decision.nextActions",
+      "consult the restored Checkpoint and scratch research history",
+    );
+    expect(prompt).toContain(
+      "Do not mechanically repeat a completed route unless an approved next action, new source evidence, a Candidate validation gap, or a concrete composition requires revisiting it",
+    );
+    expect(prompt).toContain(
+      "Do not merely repeat the approved actions in decision.nextActions",
     );
   });
 

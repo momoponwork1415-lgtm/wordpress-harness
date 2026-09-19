@@ -829,6 +829,22 @@ export interface CampaignCoverage {
   readonly status: "open" | "closed" | "incomplete";
 }
 
+export interface ResearchGrantProgress {
+  readonly runId: string;
+  readonly evidenceSummary: ResearchEvidenceSummary;
+}
+
+export interface ObservedResearchSourcePath {
+  readonly path: string;
+  readonly runIds: readonly string[];
+}
+
+export interface CampaignResearchProgress {
+  readonly completedGrants: readonly ResearchGrantProgress[];
+  readonly observedSourcePaths: readonly ObservedResearchSourcePath[];
+  readonly pendingNextActions: ResearchContinuationReviewRequest["nextActions"];
+}
+
 export interface NativeAgentRuntime {
   execute(run: SealedNativeRun): Promise<NativeRunReceipt>;
 }
@@ -870,6 +886,7 @@ export interface ResearchCampaignView extends CampaignOutcomeRef {
   readonly parkedProgrammeLeads: readonly ParkedProgrammeLead[];
   readonly candidateVerificationRequests: readonly CandidateVerificationRequest[];
   readonly verificationPreparationNeeded: readonly ResearchCandidate[];
+  readonly researchProgress: CampaignResearchProgress;
   readonly coverage: CampaignCoverage;
   readonly pendingCandidateReview?: CandidateReviewRequest;
   readonly pendingResearchContinuationReview?: ResearchContinuationReviewRequest;

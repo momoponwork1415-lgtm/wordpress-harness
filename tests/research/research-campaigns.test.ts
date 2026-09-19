@@ -346,6 +346,11 @@ describe("ResearchCampaigns", () => {
       reopened.inspect({ campaignId: "campaign-provider-failed-1" }),
     ).resolves.toMatchObject({
       status: "incomplete",
+      researchProgress: {
+        completedGrants: [],
+        observedSourcePaths: [],
+        pendingNextActions: [],
+      },
       nativeRuns: [
         {
           terminal: "provider-failed",
@@ -902,7 +907,37 @@ describe("ResearchCampaigns", () => {
             report: {
               schemaVersion: 2,
               assessments: [],
-              evidenceSummary: researchEvidenceSummaryFixture(),
+              evidenceSummary: {
+                examinedAreas: [
+                  {
+                    area:
+                      invocation === 1
+                        ? "Public write boundary"
+                        : "Privileged read boundary",
+                    evidence: [
+                      {
+                        path: "includes/shared.php",
+                        location: `grant-${invocation}`,
+                        observation:
+                          "The shared source path was revisited from a distinct approved frontier.",
+                      },
+                      {
+                        path:
+                          invocation === 1
+                            ? "includes/write.php"
+                            : "includes/read.php",
+                        location: "fixture",
+                        observation:
+                          invocation === 1
+                            ? "The first Grant inspected the public write path."
+                            : "The second Grant inspected the privileged read path.",
+                      },
+                    ],
+                  },
+                ],
+                unexaminedAreas:
+                  invocation === 1 ? ["Privileged read boundary"] : [],
+              },
               candidates: [],
               decision:
                 invocation === 1
@@ -933,6 +968,37 @@ describe("ResearchCampaigns", () => {
     });
     expect(invocation).toBe(1);
     await expect(
+      campaigns.inspect({ campaignId: "campaign-continues-1" }),
+    ).resolves.toMatchObject({
+      researchProgress: {
+        completedGrants: [
+          {
+            runId: "campaign-continues-1:native:1",
+            evidenceSummary: {
+              examinedAreas: [{ area: "Public write boundary" }],
+              unexaminedAreas: ["Privileged read boundary"],
+            },
+          },
+        ],
+        observedSourcePaths: [
+          {
+            path: "includes/shared.php",
+            runIds: ["campaign-continues-1:native:1"],
+          },
+          {
+            path: "includes/write.php",
+            runIds: ["campaign-continues-1:native:1"],
+          },
+        ],
+        pendingNextActions: [
+          {
+            question: "Which read path renders the persisted value?",
+            sourcePointers: ["includes/form.php"],
+          },
+        ],
+      },
+    });
+    await expect(
       conductWithHumanAdvance(campaigns, continuingInput),
     ).resolves.toMatchObject({ status: "coverage-closed" });
     await expect(
@@ -951,6 +1017,40 @@ describe("ResearchCampaigns", () => {
       researchContinuationReviews: [
         { decision: "continue-research", researchRunId: expect.any(String) },
       ],
+      researchProgress: {
+        completedGrants: [
+          {
+            runId: "campaign-continues-1:native:1",
+            evidenceSummary: {
+              examinedAreas: [{ area: "Public write boundary" }],
+            },
+          },
+          {
+            runId: "campaign-continues-1:native:2",
+            evidenceSummary: {
+              examinedAreas: [{ area: "Privileged read boundary" }],
+            },
+          },
+        ],
+        observedSourcePaths: [
+          {
+            path: "includes/shared.php",
+            runIds: [
+              "campaign-continues-1:native:1",
+              "campaign-continues-1:native:2",
+            ],
+          },
+          {
+            path: "includes/write.php",
+            runIds: ["campaign-continues-1:native:1"],
+          },
+          {
+            path: "includes/read.php",
+            runIds: ["campaign-continues-1:native:2"],
+          },
+        ],
+        pendingNextActions: [],
+      },
     });
     campaigns.close();
   });

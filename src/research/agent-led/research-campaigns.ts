@@ -22,6 +22,7 @@ import {
   type CampaignCommand,
   type CampaignOutcomeRef,
   type CampaignQuery,
+  type CampaignResearchProgress,
   type CampaignStatus,
   type CandidateReviewRequest,
   type HumanCandidateReview,
@@ -411,6 +412,43 @@ function researchContinuationNextActionsFor(
     );
   }
   return request.nextActions;
+}
+
+function researchProgressFor(
+  nativeRuns: readonly NativeRunReceipt[],
+  pendingRequest: ResearchContinuationReviewRequest | undefined,
+): CampaignResearchProgress {
+  const completedGrants = nativeRuns.flatMap((receipt) =>
+    receipt.terminal === "completed"
+      ? [
+          {
+            runId: receipt.runId,
+            evidenceSummary: receipt.report.evidenceSummary,
+          },
+        ]
+      : [],
+  );
+  const runIdsByPath = new Map<string, string[]>();
+  for (const grant of completedGrants) {
+    for (const area of grant.evidenceSummary.examinedAreas) {
+      for (const evidence of area.evidence) {
+        const runIds = runIdsByPath.get(evidence.path);
+        if (runIds === undefined) {
+          runIdsByPath.set(evidence.path, [grant.runId]);
+        } else if (!runIds.includes(grant.runId)) {
+          runIds.push(grant.runId);
+        }
+      }
+    }
+  }
+  return {
+    completedGrants,
+    observedSourcePaths: [...runIdsByPath].map(([path, runIds]) => ({
+      path,
+      runIds,
+    })),
+    pendingNextActions: pendingRequest?.nextActions ?? [],
+  };
 }
 
 function candidateVerificationRequestsFor(
@@ -1235,6 +1273,12 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
       parkedProgrammeLeads,
       candidateVerificationRequests,
       verificationPreparationNeeded,
+      researchProgress: researchProgressFor(
+        nativeRuns,
+        status === "research-review-pending"
+          ? currentResearchContinuationReviewRequest
+          : undefined,
+      ),
       ...(status === "candidate-review-pending" &&
       currentCandidateReviewRequest !== undefined
         ? {

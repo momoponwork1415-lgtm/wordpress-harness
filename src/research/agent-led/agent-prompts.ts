@@ -25,7 +25,7 @@ export function agentResearchPrompt(
   const researchContinuationNextActions =
     run.researchContinuationNextActions === undefined
       ? ""
-      : `\nHuman-approved Research continuation source-bound next actions: ${JSON.stringify(run.researchContinuationNextActions)}\nInvestigate these approved next actions during this Grant. Do not merely repeat them in decision.nextActions.`;
+      : `\nHuman-approved Research continuation source-bound next actions: ${JSON.stringify(run.researchContinuationNextActions)}\nInvestigate these approved next actions during this Grant. Before allocating new reading, consult the restored Checkpoint and scratch research history. Do not mechanically repeat a completed route unless an approved next action, new source evidence, a Candidate validation gap, or a concrete composition requires revisiting it. Do not merely repeat the approved actions in decision.nextActions.`;
   const threatContext =
     run.threatContext === undefined
       ? "none"

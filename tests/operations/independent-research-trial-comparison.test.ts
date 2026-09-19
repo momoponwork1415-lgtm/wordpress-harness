@@ -251,6 +251,25 @@ function campaignView(
   runs: readonly { run: SealedNativeRun; receipt: NativeRunReceipt }[],
   candidateVerificationRequests: readonly CandidateVerificationRequest[] = [],
 ): ResearchCampaignView {
+  const completedGrants = runs.flatMap(({ receipt }) =>
+    receipt.terminal === "completed"
+      ? [
+          {
+            runId: receipt.runId,
+            evidenceSummary: receipt.report.evidenceSummary,
+          },
+        ]
+      : [],
+  );
+  const observedPaths = [
+    ...new Set(
+      completedGrants.flatMap((grant) =>
+        grant.evidenceSummary.examinedAreas.flatMap((area) =>
+          area.evidence.map((evidence) => evidence.path),
+        ),
+      ),
+    ),
+  ];
   return {
     kind: "agent-led-campaign-outcome",
     schemaVersion: 3,
@@ -265,6 +284,20 @@ function campaignView(
     parkedProgrammeLeads: [],
     candidateVerificationRequests,
     verificationPreparationNeeded: [],
+    researchProgress: {
+      completedGrants,
+      observedSourcePaths: observedPaths.map((path) => ({
+        path,
+        runIds: completedGrants
+          .filter((grant) =>
+            grant.evidenceSummary.examinedAreas.some((area) =>
+              area.evidence.some((evidence) => evidence.path === path),
+            ),
+          )
+          .map((grant) => grant.runId),
+      })),
+      pendingNextActions: [],
+    },
     coverage: {
       status:
         status === "incomplete"
