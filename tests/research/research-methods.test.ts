@@ -49,8 +49,8 @@ describe("Research Method Prompt Sets", () => {
   it.each([
     {
       method: "wp2shell" as const,
-      promptPath: "prompts/wordpress-plugin-research-v4.md",
-      promptSetId: "wordpress-plugin-research-wp2shell-v4",
+      promptPath: "prompts/wordpress-plugin-research-v5.md",
+      promptSetId: "wordpress-plugin-research-wp2shell-v5",
     },
     {
       method: "cloudflare" as const,
@@ -75,6 +75,23 @@ describe("Research Method Prompt Sets", () => {
       expect(researchMethodForPromptSet(promptSet)).toBe(method);
     },
   );
+
+  it("expands a source-supported route through its semantic neighborhood", async () => {
+    const prompt = await readFile(
+      join(process.cwd(), "prompts/wordpress-plugin-research-v5.md"),
+      "utf8",
+    );
+
+    expect(prompt).toContain("semantic neighborhood");
+    expect(prompt).toContain("value-transformation ledger");
+    expect(prompt).toContain(
+      "later decoding, parsing, canonicalization, or rewriting",
+    );
+    expect(prompt).toContain("authority and state transition");
+    expect(prompt).toContain(
+      "not a sink checklist, Harness-owned coverage unit, or completion proof",
+    );
+  });
 
   it("rejects a canonical method name bound to another method's Prompt", () => {
     const wp2shell = researchPromptSetForMethod("wp2shell");

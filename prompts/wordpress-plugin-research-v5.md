@@ -1,4 +1,4 @@
-# WordPress Plugin Research v4
+# WordPress Plugin Research v5
 
 Conduct prospective zero-day research on the supplied WordPress plugin and pinned dependency source from first principles. Do not assume that a vulnerability exists. Seek concrete broken security semantics reachable by an unauthenticated visitor or a low-level authenticated Subscriber or Customer in an ordinary production deployment. Do not use vulnerability advisories, changelogs, Git history, patch diffs, the internet, or memory of known CVEs to infer a patched vulnerability.
 
@@ -38,6 +38,19 @@ Work from a concrete security invariant for every active route:
 5. Reconstruct the strongest source-visible control and explain whether it refutes, blocks, or fails to prevent the route.
 6. Record every decisive fact that source cannot establish instead of assuming it either way.
 
+When a route gains concrete source support, expand it through its semantic neighborhood before stopping, parking, or treating the first construction as representative. Let the source determine which neighboring dimensions are relevant:
+
+- compare sibling producers, accepted input carriers, lower-trust principals, and public or authenticated interfaces that can establish the same value or state;
+- compare alternate source-accepted representations such as encoded, decoded, normalized, fragmented, nested, or partially structured forms;
+- trace sanitizers, validators, decoders, canonicalizers, parsers, regular expressions, serializers, storage rewrites, and template or DOM interpretation in their actual order;
+- compare sibling consumers and output contexts that reuse the same stored value, identifier, option, metadata, or parsed structure.
+
+This is focused expansion of a source-supported route, not a sink checklist, Harness-owned coverage unit, or completion proof. Do not widen a route mechanically when the source shows no concrete connection to a neighboring producer, transformation, principal, interface, or consumer.
+
+Maintain a private scratch value-transformation ledger for every active route whose security depends on representation or interpretation. At each material boundary, record the value and its context, the transformation applied, the control that is claimed to make it safe, and the next component's interpretation. Explicitly determine whether later decoding, parsing, canonicalization, or rewriting can change the value's security meaning after an earlier control. Use only representations accepted by the source-visible interface; do not turn the ledger into a generic payload catalogue. The ledger is Root working memory, not Harness state or Report output.
+
+For an active authority and state transition, trace the lower-trust action through every source-visible write to roles, capabilities, options, user metadata, identities, recovery material, or equivalent authority-bearing state, and then to each privileged decision that consumes it. Compare sibling writers and consumers and the controls on both sides of the boundary. Do not infer privilege escalation from a broad write primitive alone; establish the exact ordinary-deployment path to the privileged effect.
+
 Read sibling, legacy, batch, retry, cancellation, migration, rollback, failure, and error paths that can produce the same effect. Compare controls for semantic equivalence rather than mere presence, and compare what one interface guarantees with what the next assumes. Test absent, empty, zero, negative, maximum, over-limit, duplicate, mixed-encoding, stale, revoked, reordered, concurrent, partially migrated, failed-dependency, and rollback states only where the source-visible interface accepts them. For a multi-step route, establish each step as a prerequisite and do not assume the later boundary.
 
 Read pinned dependency source to establish framework, library, PHP, database, or companion-component behavior instead of relying on memory or internet lookup. Dependencies complete the source world and may reveal a missing link in a chain, but they are not separate audit targets; report only security claims attributable to the target plugin. Do not invent unlikely configuration assumptions or attacker capabilities.
@@ -62,4 +75,4 @@ Research Assessments are Native Run-local evidence summaries. Do not re-emit an 
 
 Every report must include a run-local `evidenceSummary`. In `examinedAreas`, name source areas actually inspected during this run and cite at least one concrete source observation for each area. In `unexaminedAreas`, name material Target areas not inspected during this run; use an empty array only when none are known. This summary records evidence boundaries. It is not a Harness work queue, a coverage ledger, or proof that the Target is safe.
 
-Before stopping, review the private architecture summary and approach-family registry for underexplored families, unexplained source behavior, remaining gaps, and fresh constructions. Stop only when no actionable frontier or materially new source-grounded approach remains, and explain that evidence basis. Do not merely return because current approaches failed or agents reported no findings.
+Before stopping, review the private architecture summary and approach-family registry for underexplored families, unexplained source behavior, remaining gaps, fresh constructions, and source-supported routes whose relevant semantic neighborhood has not yet been resolved. Stop only when no actionable frontier or materially new source-grounded approach remains, and explain that evidence basis. Do not merely return because current approaches failed or agents reported no findings.

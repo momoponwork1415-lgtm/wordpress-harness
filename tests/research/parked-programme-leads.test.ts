@@ -164,7 +164,7 @@ function parkedLeadReceipt(run: SealedNativeRun) {
 describe("parked Programme Leads", () => {
   it("carries the wp2shell research method without its time and forced-RCE task", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v4.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v5.md"),
       "utf8",
     );
 
@@ -204,7 +204,7 @@ describe("parked Programme Leads", () => {
 
   it("spends deep exploration only on the programme-eligible vulnerability scope", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v4.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v5.md"),
       "utf8",
     );
 
