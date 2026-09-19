@@ -253,6 +253,118 @@ describe("provider Research Report materialization", () => {
     });
   });
 
+  it("canonicalizes provider source-trace roles from their ordered positions", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "provider-source-trace-"));
+    directories.push(directory);
+    const sealedRun = run();
+    const value = challengedReport(sealedRun.targetSnapshot.digest);
+    const candidate = value.candidates[0]!;
+    const first = candidate.sourceTrace[0]!;
+    const last = candidate.sourceTrace.at(-1)!;
+    const providerReport = {
+      ...value,
+      candidates: [
+        {
+          ...candidate,
+          sourceTrace: [
+            first,
+            {
+              ...first,
+              role: "entrypoint" as const,
+              location: "20",
+              observation: "A second input joins the ordered route.",
+            },
+            {
+              ...last,
+              role: "effect" as const,
+              location: "30",
+              observation: "An intermediate security-relevant effect occurs.",
+            },
+            {
+              ...last,
+              role: "sink" as const,
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(providerResearchReportSchema.safeParse(providerReport).success).toBe(
+      true,
+    );
+    const materialized = await materializeResearchReport(
+      providerReport,
+      sealedRun,
+      join(directory, "recipes"),
+    );
+
+    expect(
+      materialized.candidates[0]!.sourceTrace.map((step) => step.role),
+    ).toEqual(["entrypoint", "propagation", "propagation", "effect"]);
+    expect(
+      materialized.candidates[0]!.sourceTrace.map((step) => step.observation),
+    ).toEqual(
+      providerReport.candidates[0]!.sourceTrace.map((step) => step.observation),
+    );
+  });
+
+  it("inherits a control conclusion for provider evidence pointers without an observation", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "provider-control-evidence-"),
+    );
+    directories.push(directory);
+    const sealedRun = run();
+    const value = challengedReport(sealedRun.targetSnapshot.digest);
+    const candidate = value.candidates[0]!;
+    const assessment = value.assessments[0]!;
+    const candidateControl = candidate.controlAssessments[0]!;
+    const assessmentControl = assessment.controlAssessments[0]!;
+    const providerReport = {
+      ...value,
+      candidates: [
+        {
+          ...candidate,
+          controlAssessments: [
+            {
+              ...candidateControl,
+              evidence: candidateControl.evidence.map(
+                ({ observation: _observation, ...pointer }) => pointer,
+              ),
+            },
+          ],
+        },
+      ],
+      assessments: [
+        {
+          ...assessment,
+          controlAssessments: [
+            {
+              ...assessmentControl,
+              evidence: assessmentControl.evidence.map(
+                ({ observation: _observation, ...pointer }) => pointer,
+              ),
+            },
+          ],
+        },
+      ],
+    };
+
+    const materialized = await materializeResearchReport(
+      providerReport,
+      sealedRun,
+      join(directory, "recipes"),
+    );
+
+    expect(
+      materialized.candidates[0]!.controlAssessments[0]!.evidence[0]!
+        .observation,
+    ).toBe(candidateControl.conclusion);
+    expect(
+      materialized.assessments[0]!.controlAssessments[0]!.evidence[0]!
+        .observation,
+    ).toBe(assessmentControl.conclusion);
+  });
+
   it("rejects a Candidate without a challenged source trace", async () => {
     const directory = await mkdtemp(join(tmpdir(), "candidate-source-trace-"));
     directories.push(directory);

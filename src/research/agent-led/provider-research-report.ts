@@ -12,15 +12,26 @@ import {
   candidateVerificationRecipeSchema,
   researchCandidateSchema,
   researchReportSchema,
+  sourceEvidenceSchema,
   type ResearchReport,
   type SealedNativeRun,
 } from "./contracts.js";
 
 const MAX_CANDIDATE_RECIPE_BYTES = 256 * 1024;
 
+const providerSourceTraceSchema = z
+  .array(
+    sourceEvidenceSchema.extend({
+      role: z.string().min(1).max(32),
+    }),
+  )
+  .min(2)
+  .max(64);
+
 const providerCandidateSchema = researchCandidateSchema
-  .omit({ reproductionRecipe: true })
+  .omit({ reproductionRecipe: true, sourceTrace: true })
   .extend({
+    sourceTrace: providerSourceTraceSchema,
     reproductionRecipe: z
       .strictObject({
         kind: z.literal("candidate-verification-recipe"),
@@ -49,9 +60,80 @@ const providerCandidateSchema = researchCandidateSchema
       .optional(),
   });
 
-export const providerResearchReportSchema = researchReportSchema.extend({
+const strictProviderResearchReportSchema = researchReportSchema.extend({
   candidates: z.array(providerCandidateSchema),
 });
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function inheritControlEvidenceObservations(value: unknown): unknown {
+  const owner = record(value);
+  if (owner === undefined || !Array.isArray(owner.controlAssessments)) {
+    return value;
+  }
+  return {
+    ...owner,
+    controlAssessments: owner.controlAssessments.map((controlValue) => {
+      const control = record(controlValue);
+      if (
+        control === undefined ||
+        typeof control.conclusion !== "string" ||
+        !Array.isArray(control.evidence)
+      ) {
+        return controlValue;
+      }
+      return {
+        ...control,
+        evidence: control.evidence.map((evidenceValue) => {
+          const evidence = record(evidenceValue);
+          if (evidence === undefined || evidence.observation !== undefined) {
+            return evidenceValue;
+          }
+          return { ...evidence, observation: control.conclusion };
+        }),
+      };
+    }),
+  };
+}
+
+function normalizeProviderControlEvidence(value: unknown): unknown {
+  const report = record(value);
+  if (report === undefined) return value;
+  return {
+    ...report,
+    candidates: Array.isArray(report.candidates)
+      ? report.candidates.map(inheritControlEvidenceObservations)
+      : report.candidates,
+    assessments: Array.isArray(report.assessments)
+      ? report.assessments.map(inheritControlEvidenceObservations)
+      : report.assessments,
+  };
+}
+
+export const providerResearchReportSchema = z.preprocess(
+  normalizeProviderControlEvidence,
+  strictProviderResearchReportSchema,
+);
+
+function canonicalizeSourceTrace(
+  trace: z.infer<typeof providerSourceTraceSchema>,
+) {
+  // The domain role is positional; provider labels on interior evidence do not
+  // carry additional authority and must not weaken the internal trace contract.
+  return trace.map((step, index) => ({
+    ...step,
+    role:
+      index === 0
+        ? ("entrypoint" as const)
+        : index === trace.length - 1
+          ? ("effect" as const)
+          : ("propagation" as const),
+  }));
+}
 
 async function putRecipe(
   directory: string,
@@ -93,7 +175,15 @@ export async function materializeResearchReport(
   const providerReport = providerResearchReportSchema.parse(value);
   const candidates = await Promise.all(
     providerReport.candidates.map(async (candidate) => {
-      const { reproductionRecipe: body, ...claim } = candidate;
+      const {
+        reproductionRecipe: body,
+        sourceTrace,
+        ...providerClaim
+      } = candidate;
+      const claim = {
+        ...providerClaim,
+        sourceTrace: canonicalizeSourceTrace(sourceTrace),
+      };
       if (body === undefined) return claim;
       if (
         body.candidateId !== candidate.candidateId ||

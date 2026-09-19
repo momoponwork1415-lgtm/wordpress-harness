@@ -10,8 +10,235 @@ function parseJson(value: string): unknown {
   try {
     return JSON.parse(value) as unknown;
   } catch {
+    for (const repaired of [
+      repairOneRedundantObjectComma(value),
+      repairOneKnownTopLevelKey(value),
+      repairOnePrematureItemArrayClosure(value),
+      repairMissingEvidenceSummaryClosure(value),
+      repairOneMissingFinalObjectClosure(value),
+    ]) {
+      if (repaired === undefined) continue;
+      try {
+        return JSON.parse(repaired) as unknown;
+      } catch {
+        continue;
+      }
+    }
     return undefined;
   }
+}
+
+function repairOneRedundantObjectComma(value: string): string | undefined {
+  const containers: string[] = [];
+  let insideString = false;
+  let escaped = false;
+  let previousSignificant: string | undefined;
+  let repairs = 0;
+  let repaired = "";
+  for (const character of value) {
+    if (insideString) {
+      repaired += character;
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        insideString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      insideString = true;
+      previousSignificant = character;
+      repaired += character;
+      continue;
+    }
+    if (
+      character === "," &&
+      previousSignificant === "," &&
+      containers.at(-1) === "{"
+    ) {
+      repairs += 1;
+      if (repairs > 1) return undefined;
+      continue;
+    }
+    repaired += character;
+    if (/\s/.test(character)) continue;
+    if (character === "{" || character === "[") {
+      containers.push(character);
+    } else if (character === "}" || character === "]") {
+      containers.pop();
+    }
+    previousSignificant = character;
+  }
+  return repairs === 1 ? repaired : undefined;
+}
+
+function repairOnePrematureItemArrayClosure(value: string): string | undefined {
+  const malformed = '}]}],"controlAssessments":';
+  const repairedBoundary = '}],"controlAssessments":';
+  const matches: number[] = [];
+  let insideString = false;
+  let escaped = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]!;
+    if (insideString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        insideString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      insideString = true;
+      continue;
+    }
+    if (value.startsWith(malformed, index)) matches.push(index);
+  }
+  if (matches.length === 0 || matches.length > 64) return undefined;
+  let repaired = value;
+  for (const index of [...matches].reverse()) {
+    repaired = `${repaired.slice(0, index)}${repairedBoundary}${repaired.slice(index + malformed.length)}`;
+  }
+  return repaired;
+}
+
+function repairOneMissingFinalObjectClosure(value: string): string | undefined {
+  const containers: string[] = [];
+  let insideString = false;
+  let escaped = false;
+  let mismatched = false;
+  for (const character of value) {
+    if (insideString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        insideString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      insideString = true;
+    } else if (character === "{" || character === "[") {
+      containers.push(character);
+    } else if (character === "}" || character === "]") {
+      const expected = character === "}" ? "{" : "[";
+      if (containers.pop() !== expected) mismatched = true;
+    }
+  }
+  if (
+    insideString ||
+    mismatched ||
+    containers.length !== 1 ||
+    containers[0] !== "{"
+  ) {
+    return undefined;
+  }
+  const trimmed = value.trimEnd();
+  return `${trimmed}}${value.slice(trimmed.length)}`;
+}
+
+function repairMissingEvidenceSummaryClosure(
+  value: string,
+): string | undefined {
+  const malformed = '],"candidates":';
+  const matches: number[] = [];
+  let insideString = false;
+  let escaped = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]!;
+    if (insideString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        insideString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      insideString = true;
+      continue;
+    }
+    if (value.startsWith(malformed, index)) matches.push(index);
+  }
+  const index = matches.length === 1 ? matches[0] : undefined;
+  return index === undefined
+    ? undefined
+    : `${value.slice(0, index + 1)}}${value.slice(index + 1)}`;
+}
+
+const reportTopLevelKeys = [
+  "schemaVersion",
+  "evidenceSummary",
+  "candidates",
+  "assessments",
+  "parkedProgrammeLeads",
+  "decision",
+] as const;
+
+function repairOneKnownTopLevelKey(value: string): string | undefined {
+  const containers: string[] = [];
+  let insideString = false;
+  let escaped = false;
+  let previousSignificant: string | undefined;
+  let repairs = 0;
+  let repaired = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]!;
+    if (insideString) {
+      repaired += character;
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        insideString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      insideString = true;
+      previousSignificant = character;
+      repaired += character;
+      continue;
+    }
+    const topLevelKeyPosition =
+      containers.length === 1 &&
+      containers[0] === "{" &&
+      (previousSignificant === "{" || previousSignificant === ",");
+    if (topLevelKeyPosition && !/\s/.test(character)) {
+      const key = reportTopLevelKeys.find((candidate) => {
+        if (!value.startsWith(candidate, index)) return false;
+        let delimiterIndex = index + candidate.length;
+        while (/\s/.test(value[delimiterIndex] ?? "")) delimiterIndex += 1;
+        return value[delimiterIndex] === ":";
+      });
+      if (key !== undefined) {
+        repairs += 1;
+        if (repairs > 1) return undefined;
+        repaired += `"${key}"`;
+        index += key.length - 1;
+        previousSignificant = '"';
+        continue;
+      }
+    }
+    repaired += character;
+    if (/\s/.test(character)) continue;
+    if (character === "{" || character === "[") {
+      containers.push(character);
+    } else if (character === "}" || character === "]") {
+      containers.pop();
+    }
+    previousSignificant = character;
+  }
+  return repairs === 1 ? repaired : undefined;
 }
 
 function trailingJsonObject(value: string): unknown {
