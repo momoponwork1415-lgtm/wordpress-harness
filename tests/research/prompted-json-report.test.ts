@@ -51,6 +51,25 @@ function reportWithCandidate() {
 }
 
 describe("prompted JSON Research Report parsing", () => {
+  it("normalizes an omitted empty Candidate delta", () => {
+    const { candidates: _candidates, ...withoutCandidates } = report();
+
+    expect(
+      parsePromptedJsonResearchReport(JSON.stringify(withoutCandidates)),
+    ).toEqual(report());
+  });
+
+  it.each([null, {}])(
+    "rejects an invalid Candidate delta instead of normalizing %j",
+    (candidates) => {
+      expect(
+        parsePromptedJsonResearchReport(
+          JSON.stringify({ ...report(), candidates }),
+        ),
+      ).toBeUndefined();
+    },
+  );
+
   it("repairs one redundant comma between object members", () => {
     const malformed = JSON.stringify(report()).replace(
       ',"candidates"',

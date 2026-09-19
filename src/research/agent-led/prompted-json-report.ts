@@ -273,6 +273,18 @@ function trailingJsonObject(value: string): unknown {
   return undefined;
 }
 
+function normalizeOmittedCandidateDelta(value: unknown): unknown {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    Object.hasOwn(value, "candidates")
+  ) {
+    return value;
+  }
+  return { ...value, candidates: [] };
+}
+
 export function promptedJsonResearchPrompt(
   prompt: string,
   providerName: string,
@@ -290,7 +302,9 @@ export function parsePromptedJsonResearchReport(
 ): ProviderResearchReport | undefined {
   const whole = parseJson(value);
   const parsed = providerResearchReportSchema.safeParse(
-    whole === undefined ? trailingJsonObject(value) : whole,
+    normalizeOmittedCandidateDelta(
+      whole === undefined ? trailingJsonObject(value) : whole,
+    ),
   );
   return parsed.success ? parsed.data : undefined;
 }
