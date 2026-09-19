@@ -33,7 +33,7 @@
 
 Root AIは候補を返すとき、同じソース理解から最小の再現手順も作ります。実行Adapterは手順本文をGit外の非公開ストレージへ退避し、探索記録には参照だけを残します。手順がなければ`verification-preparation-needed`となり、候補そのものを棄却しません。
 
-既知脆弱性を答えとして与えない入力と権限制約の正本は[探索設計](RESEARCH-DESIGN.md#trust-and-versioning)です。schema、prompt組立、入力例、再現手順の保存場所は[コードベース案内のAgent input](CODEBASE-GUIDE.md#agent-input)から辿れます。
+既知脆弱性を答えとして与えない入力と権限制約の正本は[探索設計](RESEARCH-DESIGN.md#trust-and-versioning)です。スキーマ、プロンプトの組立、入力例、再現手順の保存場所は[コードベース案内のエージェント入力](CODEBASE-GUIDE.md#agent-input)から辿れます。
 
 ## 3. 新しい環境で動的に確かめる
 
@@ -55,4 +55,4 @@ AIは提出文案の作成を支援できます。人間が一つの提出候補
 
 ## 再開・失敗を調べる
 
-通常の流れから外れた状態、入力の競合、古い判断、プロバイダー障害、Checkpointの再開条件は[コードベース案内のResearch Campaigns](CODEBASE-GUIDE.md#research-campaigns)と[Native Agent Runtimes](CODEBASE-GUIDE.md#gvisor-native-agent-runtimes)に集約します。
+通常の流れから外れた状態、入力の競合、古い判断、プロバイダー障害、チェックポイントの再開条件は[コードベース案内の探索キャンペーン](CODEBASE-GUIDE.md#research-campaigns)と[標準エージェント実行環境](CODEBASE-GUIDE.md#gvisor-native-agent-runtimes)に集約します。

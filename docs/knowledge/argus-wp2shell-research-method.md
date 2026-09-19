@@ -1,4 +1,4 @@
-# 調査資料: Argusの10動詞とwp2shellのResearch方式
+# 調査資料: Argusの10動詞とwp2shellの探索方式
 
 状態: 一次資料に基づく調査、2026-09-10確認
 
@@ -43,7 +43,7 @@ wp2shellとCDC promptは、固定assignmentを避けること、初期roundで�
 
 したがって、Claude Code、Codex等がnativeに提供するagent管理、session continuationまたはtool executionをprovider-neutralな模倣層として再実装しない。wp2shellは既存のmultiagent機能をPromptから利用し、元のCDC promptも既存の `multiagent v2` を動的に使うよう指示している。どちらの資料も独自のagent scheduler、message bus、context managerまたはtool protocolを実装するよう求めていない。
 
-## Anthropic reference harnessとの比較
+## Anthropicの参考ハーネスとの比較
 
 状態: 未採用のreference / comparison input。現行設計の根拠ではない。
 

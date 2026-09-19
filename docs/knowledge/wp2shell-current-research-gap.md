@@ -1,4 +1,4 @@
-# wp2shell と現行 Research loop の差分
+# wp2shellと現行の探索反復手順の差分
 
 状態: 一次資料の比較とruntime観測、2026-09-18確認
 
@@ -26,7 +26,7 @@ wp2shell promptから持ち込まないのは、task固有のpositive oracle、R
 | Context / continuation | 著者はlong runの出力でSQLiを確認し、人間がstock WordPressで実行確認した後、RCEへ昇格できるか追加で質問し、約4時間後にchainを得た。単一promptだけの完全無人runではない。 | Rootの会話と作業領域を不透明なCheckpointとして保存し、入力・実行環境・ソースが同じ時だけ同じsessionを再開する（`src/research/agent-led/gvisor-agent-sandbox.ts:600-731,1076-1113`）。Rootが具体的な次の手と`continue`を返すと、そのCheckpointへ結び付けて自動継続する（`src/research/agent-led/research-campaigns.ts`、`src/research/agent-led/contracts.ts`）。 | **よく対応し、永続性は強い。** 時間切れ時にCheckpointを回収できなければ`incomplete`とする点も、結果消失を否定結果にしない改善である。 |
 | 出力とVerification | running outputを人間が読み、stock instanceでadmin email readを確認。その後に同じ研究をRCEへ延長し、人間が翌日chainを解読してreportを作った。fresh source-only validatorは記事にない。 | Research Report v2でResearch Assessment、control-challenged Candidate、parked Leadとcontinue / stopを返す。Human Candidate Review後、admitされたCandidateだけをfresh runtimeで一度検証し、`runtime-confirmed`だけがVerified Vulnerabilityになる。 | **意図的なassurance強化。** wp2shellの再現ではなくproduct workflowへの拡張。strict reportが探索終了やinvalid-outputを増やさないかは別に実測する必要がある。 |
 
-## Provider別の実測
+## プロバイダー別の実測
 
 調査時点のprivate execution evidenceを集計した。脆弱性内容ではなく探索topologyだけを記す。
 
@@ -45,7 +45,7 @@ wp2shellではlong runの出力を人間が読み、そこから同じ研究を�
 
 private prospective Campaignの一件では約26.7分、公開CVEを使ったTranslatePress評価では約22.8分の最終runがこの経路に入った。物理transcriptとcheckpoint directoryは残るため手動回収はできるが、DBからの通常resumeはできない。timeout時はCheckpointを残す実装（`src/research/agent-led/gvisor-agent-sandbox.ts:1163-1187`）と比べても不整合であり、意図的なwp2shell差分ではなく保存bugである。
 
-## Prompt量
+## プロンプト量
 
 Base Promptは30行だが、Threat Context、Programme Boundary、binding、timebox、transport条件を加えたDaybreak実投入例は61行、12,028文字だった。Opus実例も約11〜12KBである。GLMとGrokはさらにJSON SchemaをPrompt本文へ追加する（`src/research/agent-led/claude-code-native-agent-runtime.ts:284-285`、`src/research/agent-led/grok-native-agent-runtime.ts:60-74`）。wp2shellのexact promptよりかなり大きく、impactとexclusionの反復がidea generationを狭めるかはablation対象である。
 

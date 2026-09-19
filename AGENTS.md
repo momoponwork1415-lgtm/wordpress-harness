@@ -1,103 +1,103 @@
-# Repository開発規則
+# リポジトリ開発規則
 
-このファイルはrepository全体の安定した開発規則だけを置く。subtree固有の規則が必要になるまでnested `AGENTS.md`を作らない。
+このファイルにはリポジトリ全体の安定した開発規則だけを置く。サブツリー固有の規則が必要になるまで、入れ子の`AGENTS.md`を作らない。
 
 ## 目的
 
-- Productの到達点は、oracle-freeなprospective Campaignで**high-impactなbroken security semanticsを高recallで発見し、人間がadmitしたCandidateをfresh runtimeで検証し、programme別scope判定と人間の提出判断まで閉じること**。人間はCandidate admissionを判断するが技術的なVerification verdictを手作業で生成せず、外部提出は別の明示承認で許可する。
-- RCEやsite-wide compromiseは最上位impactだが唯一の成功条件ではない。
-- 通常運転はprovider-native Rootと必要に応じたnative subagentによるraw-source-firstの連続Research loop。source-boundで具体的な次手があればAIの`continue`を同じCheckpointから自動継続し、有望なactionable frontierがなければ根拠付きで停止する。固定1時間またはrun間の人間reviewを通常の停止条件にしない。
-- **Do not optimize for sinks. Optimize for broken security semantics.**
-- **Harness owns the research process; agents own research decisions.**
+- 製品の到達点は、既知脆弱性を答えとして使わない将来志向のキャンペーンで、**影響の大きい壊れたセキュリティ上の意味を高い再現率で発見し、人間が採用した候補を新しい実行環境で検証し、プログラム別の対象範囲判定と人間の提出判断まで完結させること**。人間は候補の採否を判断するが、技術的な検証結果を手作業で生成しない。外部提出には別の明示承認を必要とする。
+- RCEやサイト全体の侵害は最上位の影響だが、唯一の成功条件ではない。
+- 通常運転は、プロバイダー標準のルートエージェントと、必要に応じた標準サブエージェントによるソース優先の連続探索とする。ソースに結び付いた具体的な次の手があれば、AIの`continue`を同じチェックポイントから自動継続する。有望で実行可能な探索経路がなければ根拠付きで停止する。固定1時間または実行間の人間確認を通常の停止条件にしない。
+- **危険な処理の入口だけに最適化せず、壊れたセキュリティ上の意味を探す。**
+- **Harnessは探索手続きを管理し、エージェントは探索上の判断を担う。**
 
 ## 読み方
 
 全ドキュメントを通読しない。
 
-1. [Documentation](docs/README.md)から目的別の入口を選ぶ。
-2. code変更は[コードベース案内](docs/CODEBASE-GUIDE.md)でowner、Interface、Behavior Testを特定する。
+1. [ドキュメント案内](docs/README.md)から目的別の入口を選ぶ。
+2. コード変更は[コードベース案内](docs/CODEBASE-GUIDE.md)で担当、インターフェース、振る舞いテストを特定する。
 3. 理由が必要な時だけ対応するADRを読む。
-4. 次の有限workと受入条件はGitHub Issueを正本とする。
+4. 次の有限な作業と受入条件はGitHub Issueを正本とする。
 
-## Agent用skill
+## エージェント用スキル
 
 ### Issue管理
 
 IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本とし、`gh` CLIで操作する。`docs/agents/issue-tracker.md`を参照する。
 
-### Triage label
+### トリアージラベル
 
 `needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`の5役割を既定の文字列のまま使う。`docs/agents/triage-labels.md`を参照する。
 
-### Domain文書
+### ドメイン文書
 
-`CONTEXT-MAP.md`が3 contextを宣言するmulti-context構成。`docs/agents/domain.md`を参照する。
+`CONTEXT-MAP.md`が3つのコンテキストを宣言する複数コンテキスト構成。`docs/agents/domain.md`を参照する。
 
 ## アーキテクチャ
 
-- strict TypeScriptのmodular monolithとし、`Target Intelligence -> Research -> Human OS`をprimary flowとする。
-- context間はversioned handoff contractだけを渡し、別contextのstorageや内部moduleを直接参照しない。
-- Target Intelligenceはoracle-freeな事実からAIがTarget Proposalを作る。固定rank、diversity cap、Research Value Bandまたはreason codeを要求しない。人間がApproved Target Batchを作るまでResearchへdispatchせず、実行直前にversionとsourceのfreshnessを再確認する。Programme指定Campaignは公式scopeを既知脆弱性oracleと分離したProgramme Research Boundaryへbindする。eligible impactへの具体的なsource edgeがないOOS primitiveは軽量なParked Programme Leadとして保存し、subagent adversarial reviewやCandidate Reviewへ流さない。具体的な昇格経路だけを継続し、Candidateの最終的なprogramme scopeはruntime confirmation後にHuman OSで評価する。
-- Researchのexternal seamは`conduct`と`inspect`だけを持つdeepなResearch Campaigns Moduleに置き、Agent-led Researchの自律継続、Human Candidate Review、Candidate Verification Request、Coverage、BudgetとResearch Recordを隠す。
-- Research designは[Research DesignのDesign lineage](docs/RESEARCH-DESIGN.md#design-lineage)に定めるArgusの10動詞とwp2shell / Cycle Double Cover Promptを出発点にする。wp2shell promptの研究手法はすべてResearch Promptへ取り入れ、持ち込まないのはtask固有の「脆弱性が存在してRCE / `/flag`へ必ず到達する」というpositive-oracle goalと最低6時間の指定だけとする。最大4体は固定assignmentではなくresource ceiling、Approach Family RegistryはHarness stateではなくRootのscratchとする。このProductのmission、isolation、human gateへ適応しても、残るprompt要素を黙って省略しない。
-- Native Agent Runtimeはprovider/process/session/tool bindingとreceiptを所有するが研究判断を所有しない。Grok Buildを探索評価の第一選択とし、Claude Code、Codex等も独立Adapterとして使う。providerが既に持つmodel loop、context management、session resume、native subagent scheduling、message routingまたはtool orchestrationをprovider-neutral codeで再実装しない。Adapterはnative機能の設定、制限、integrity bindingとreceipt変換に留め、利用不能時はtyped failureにする。
-- Root AIはnative subagent、仮説、読む順序、synthesis、critique、Candidate、parked Leadと探索内の継続・停止を所有する。人間はCampaign開始、Candidate admission、権限・scope拡張と外部行動を所有する。HarnessはRootを含む同時active agent最大4体と承認済みCampaign safety envelopeだけをprovider runtimeで強制し、Finder数、role、Wave、Lease、Depth、Approach Familyまたは固定手順を実装しない。
-- staticまたは派生解析の出力があってもnavigationとevidenceの補助に限り、探索空間またはcompletion proofにしない。
-- Research RootはCandidateごとに最小のprivate reproduction recipeを作る。Human Candidate ReviewでadvanceされたCandidateだけをdigest-bound Candidate Verification RequestとしてHuman OSへ渡す。recipeを用意できないCandidateは`verification-preparation-needed`に留める。
-- Human OSはCandidateをfreshな隔離環境で動的検証する。`runtime-confirmed`だけがVerified Vulnerabilityを生成し、全configured programmeを独立にscope評価する。全programmeでOOSでも技術的なVerified Vulnerabilityは保持し、`in-scope`のprogrammeだけにSubmission Candidateを作る。
-- AIは脆弱性の理解とSubmission Draft作成を支援できるが、External Action Authorization、Draft承認、最後のSubmitを代行しない。
-- SQLi、XSS等のclassはReproduction Recipeのsuccess criterionを助けるが、固定Adapterへの対応をcandidate admissionの条件にしない。
+- strict TypeScriptのモジュラーモノリスとし、`Target Intelligence -> Research -> Human OS`を主要な流れとする。
+- コンテキスト間では版付きの受け渡し契約だけを渡し、別コンテキストの保存先や内部モジュールを直接参照しない。
+- Target Intelligenceは、既知脆弱性を答えとして含まない事実から、AIによる`Target Proposal`を作る。固定順位、多様性の上限、`Research Value Band`、理由コードは要求しない。人間が`Approved Target Batch`を作るまでResearchへ渡さず、実行直前に版とソースの鮮度を再確認する。プログラム指定のキャンペーンは、公式の対象範囲を既知脆弱性の答えから分離した`Programme Research Boundary`へ結び付ける。対象となる影響への具体的なソース上の接続がない対象外の原始的な手掛かりは、軽量な`Parked Programme Lead`として保存し、サブエージェントによる敵対的確認や候補確認へ流さない。具体的な昇格経路だけを継続し、候補が最終的にプログラム対象となるかは実行時の確認後にHuman OSで評価する。
+- Researchの公開境界は`conduct`と`inspect`だけを持つ深い`Research Campaigns`モジュールに置く。その内側に、エージェント主導探索の自律継続、`Human Candidate Review`、`Candidate Verification Request`、探索範囲、予算、`Research Record`を隠す。
+- 探索設計は[探索設計の出発点](docs/RESEARCH-DESIGN.md#design-lineage)に定めるArgusの10動詞と、wp2shell / Cycle Double Cover Promptを出発点にする。wp2shellプロンプトの探索手法はすべて探索プロンプトへ取り入れる。持ち込まないのは、課題固有の「脆弱性が存在してRCE / `/flag`へ必ず到達する」という正解付き目標と、最低6時間の指定だけとする。最大4体は固定担当ではなく資源上限であり、`Approach Family Registry`はHarnessの状態ではなくルートエージェントの作業メモとする。この製品の目的、隔離、人間ゲートへ適応させても、残るプロンプト要素を黙って省略しない。
+- `Native Agent Runtime`は、プロバイダー、プロセス、セッション、ツールとの結び付けと実行記録を所有するが、探索上の判断は所有しない。探索評価ではGrok Buildを第一選択とし、Claude Code、Codexなども独立したアダプターとして使う。プロバイダーが既に持つモデルの反復処理、コンテキスト管理、セッション再開、標準サブエージェントの予定管理、メッセージ配送、ツール操作を、プロバイダー共通コードで再実装しない。アダプターは標準機能の設定、制限、完全性の結び付け、実行記録への変換に留め、利用不能時は型付きの失敗にする。
+- ルートAIは、標準サブエージェント、仮説、読む順序、統合、批評、候補、保留中の手掛かり、探索内の継続・停止を所有する。人間はキャンペーン開始、候補の採否、権限・対象範囲の拡張、外部行動を所有する。Harnessは、ルートを含む同時稼働エージェント最大4体と、承認済みキャンペーンの安全上限だけをプロバイダー実行環境で強制する。探索役の数、役割、段階、貸出単位、深さ、探索方式、固定手順は実装しない。
+- 静的解析または派生解析の出力があっても、移動と証拠の補助に限り、探索空間や完了の証明にはしない。
+- 探索のルートエージェントは、候補ごとに最小の非公開再現手順を作る。`Human Candidate Review`で採用された候補だけを、ダイジェストで結び付けた`Candidate Verification Request`としてHuman OSへ渡す。再現手順を用意できない候補は`verification-preparation-needed`に留める。
+- Human OSは候補を新しい隔離環境で動的検証する。`runtime-confirmed`だけが`Verified Vulnerability`を生成し、設定済みの全プログラムについて対象範囲を独立に評価する。全プログラムで対象外でも技術的な`Verified Vulnerability`は保持し、`in-scope`のプログラムだけに`Submission Candidate`を作る。
+- AIは脆弱性の理解と`Submission Draft`の作成を支援できるが、`External Action Authorization`、文案の承認、最後の提出は代行しない。
+- SQLインジェクション、XSSなどの種類は再現手順の成功条件を明確にするために使えるが、固定アダプターへの対応を候補採用の条件にしない。
 
 ## 変更規律
 
-- 一回の変更は一つの観測可能なbehaviorまたは一つの設計判断へ絞る。
-- 将来用framework、未使用設定、二つ目の実装がない汎用abstractionを先回りして作らない。
-- public CLI、versioned schema、Module ownership、domain term、security invariantの変更は対応するTestと正本docを同じ変更で更新する。
-- private helperや局所algorithmの変更をdocへ文章で複製しない。
-- hard-to-reverseで実在するtrade-offがある判断だけADRにする。判断変更は新ADRでsupersedeする。
-- provider報告costは観測するがCampaignのhard limitにしない。cost削減はrecall baseline確立後のablationで行い、high-impact recallを落とす最適化を採用しない。動的検証の環境・手順・証拠不足をfalse positiveまたはrejectedへ読み替えない。
+- 一回の変更は、一つの観測可能な振る舞いまたは一つの設計判断へ絞る。
+- 将来用の枠組み、未使用設定、二つ目の実装がない汎用抽象化を先回りして作らない。
+- 公開CLI、版付きスキーマ、モジュールの所有権、ドメイン用語、セキュリティ上の不変条件を変更するときは、対応するテストと正本文書を同じ変更で更新する。
+- 非公開ヘルパーや局所アルゴリズムの変更を文書へ文章で複製しない。
+- 後戻りしにくく、実在するトレードオフがある判断だけADRにする。判断を変更するときは、新しいADRで置き換える。
+- プロバイダーが報告する費用は観測するが、キャンペーンの強制上限にはしない。費用削減は再現率の基準を確立した後のアブレーションで行い、重大な影響の再現率を落とす最適化は採用しない。動的検証の環境・手順・証拠不足を誤検知または棄却へ読み替えない。
 
 ## 文書
 
-- root `README.md`はmission、Quickstart、少数のDocs linkだけに保つ。
+- ルートの`README.md`は目的、クイックスタート、少数の文書リンクだけに保つ。
 - 結論を先に書く。短い文、箇条書き、比較表を優先し、同じ内容を文章と図で重ねない。
-- 現在の実装状態、source path、Behavior Test対応は`docs/CODEBASE-GUIDE.md`だけへ置く。
-- Module固有のSeamは`docs/CODEBASE-GUIDE.md`へPurpose、Interface、不変条件、failure semantics、Behavior Testの順でまとめる。
-- Architecture Viewは理解用の図に限定し、Seamの詳細を複製しない。
-- 実Targetの公開可能な実測と、現在の設計・評価で再利用する外部資料の調査noteは`docs/knowledge/`へ置き、通常のReading pathから外す。
-- Knowledgeは設計の正本にせず、採用した結論をArchitecture、Research Design、Codebase Guide、ADRのいずれかへ残す。
-- 完了計画、旧設計、過去snapshotを保存用Markdownとして残さない。Git履歴を使う。
-- 新規docを作る前に、既存Seam、Behavior Test、Issueのどれかで足りないか確認する。
+- 現在の実装状態、ソースのパス、振る舞いテストとの対応は`docs/CODEBASE-GUIDE.md`だけへ置く。
+- モジュール固有の境界は`docs/CODEBASE-GUIDE.md`へ、目的、インターフェース、不変条件、失敗時の意味、振る舞いテストの順でまとめる。
+- アーキテクチャ図は理解用に限定し、境界の詳細を複製しない。
+- 実対象の公開可能な実測と、現在の設計・評価で再利用する外部資料の調査メモは`docs/knowledge/`へ置き、通常の読む順から外す。
+- 調査資料は設計の正本にせず、採用した結論を全体構成、探索設計、コードベース案内、ADRのいずれかへ残す。
+- 完了した計画、旧設計、過去の状態を保存用Markdownとして残さない。Git履歴を使う。
+- 新規文書を作る前に、既存の境界、振る舞いテスト、Issueのどれかで足りないか確認する。
 
-## 設計gate
+## 設計ゲート
 
-- 新しいproduction behaviorへ入る前に、owner、public seam、owned state/artifact、failure semantics、acceptance scenarioを明確にする。
-- roadmapや高水準architectureへの合意を、個別module実装への合意と読み替えない。
-- 既存codeがaccepted designと一致しない場合は、機能追加より先に差分を示し、段階的refactorを優先する。
+- 新しい本番向けの振る舞いへ入る前に、担当、公開境界、所有する状態・成果物、失敗時の意味、受入シナリオを明確にする。
+- ロードマップや高水準アーキテクチャへの合意を、個別モジュールの実装への合意と読み替えない。
+- 既存コードが合意済み設計と一致しない場合は、機能追加より先に差分を示し、段階的なリファクタリングを優先する。
 
-## Testとcheck
+## テストと確認
 
-- 新しいbehaviorは可能な限りred -> greenで一つのvertical sliceずつ進める。
-- Testはpublic seamからbehaviorを観測し、private method、内部call順、database rowを固定しない。
-- mockはprovider CLI、clock、filesystem等のsystem seamへ限定する。
-- fixtureへprivate Target、未公開Finding、credentialを入れない。
-- commit前のrepository gateは`pnpm check`。
-- Target/Prompt/Runtime/Permission/Budget binding、AIのsource-bound `continue`によるexact Checkpoint自動継続、Rootの`stop`後のHuman Candidate Review、Parked Programme LeadのCandidate Review除外、Rootとnative subagentの権限制約、Root込み最大4体の同時実行上限、Candidate-bound private recipe、single fresh dynamic verification、Verified Vulnerabilityとprogramme scopeの分離、全programmeのscope評価、AI failureを棄却へ丸めないこと、external actionのhuman gateは回帰対象とする。旧schema、legacy replay、固定role orchestrationまたは未使用Adapterを新binaryへ残さない。
+- 新しい振る舞いは可能な限りred -> greenで、一つの縦断的な単位ずつ進める。
+- テストは公開境界から振る舞いを観測し、非公開メソッド、内部呼び出し順、データベース行を固定しない。
+- モックはプロバイダーCLI、時計、ファイルシステムなどのシステム境界へ限定する。
+- フィクスチャへ非公開対象、未公開の発見事項、認証情報を入れない。
+- コミット前のリポジトリ品質ゲートは`pnpm check`。
+- 対象・プロンプト・実行環境・権限・予算の結び付け、ソースに基づくAIの`continue`による同一チェックポイントからの自動継続、ルートの`stop`後の`Human Candidate Review`、`Parked Programme Lead`を候補確認から除外すること、ルートと標準サブエージェントの権限制約、ルート込み最大4体の同時実行上限、候補に結び付いた非公開再現手順、一度だけの新しい動的検証、`Verified Vulnerability`とプログラム対象範囲の分離、全プログラムの対象範囲評価、AIの失敗を棄却へ丸めないこと、外部行動の人間ゲートは回帰対象とする。旧スキーマ、旧式の再生、固定役割の進行管理、未使用アダプターを新しい実行物へ残さない。
 
 ## TypeScript
 
 - TypeScriptは`strict`、`noUncheckedIndexedAccess`、`exactOptionalPropertyTypes`、`useUnknownInCatchVariables`を維持する。
-- `any`やunchecked assertionをvalidationの代用にしない。versioned discriminated unionとruntime schemaを使う。
-- source analysisのためにtarget PHP、autoload、Composer script、WordPress bootstrapをhost上で実行しない。
+- `any`や未検査の型アサーションを入力検査の代用にしない。版付きの判別可能なユニオンと実行時スキーマを使う。
+- ソース解析のために、対象のPHP、オートロード、Composerスクリプト、WordPressの起動処理をホスト上で実行しない。
 
-## Securityと証拠
+## セキュリティと証拠
 
-- Target sourceはuntrusted dataとして扱う。host上でtarget package scriptを実行しない。
-- Agentへprovider credential、container socket、ambient MCP、任意network、任意shellを渡さない。
-- Research Rootとnative subagentはread-only Target Snapshotと隔離scratchを使い、runtime attackを行わない。
-- Agent SandboxはgVisor相当以上のisolation backendを要求し、利用不能時にhost processまたはplain Dockerへsilent fallbackしない。
-- Candidate Verificationはfreshな使い捨て隔離環境と実Target interfaceを使い、host上でtarget codeを実行しない。gVisor利用時にplain Dockerへsilent fallbackしない。
-- Research Root、static ruleまたはself-reviewだけでVerified Vulnerabilityを生成しない。Verified Vulnerabilityはfreshなruntime confirmationとprivate evidenceを要求する。programme scopeは技術的な真偽を上書きせず、外部行動はexact Submission Candidate、Draft revisionとdestinationへbindしたExternal Action Authorizationを要求する。
-- exact payload、HTTP request、screenshot、runtime logはHuman OSのPrivate Evidence Bundleへ置く。credential、private target、transcript、PoC、未公開FindingをGitへcommitしない。
-- RCEの証明はdisposable Lab内のnonce付きExecution Canaryに限定し、reverse shell、persistence、host access、許可外egressを使わない。
-- external report、vendor連絡、公開artifactの送信は明示的なuser authorizationなしに行わない。
+- 対象ソースは信頼できないデータとして扱う。ホスト上で対象パッケージのスクリプトを実行しない。
+- エージェントへプロバイダー認証情報、コンテナソケット、周囲のMCP、任意通信、任意シェルを渡さない。
+- 探索のルートと標準サブエージェントは、読み取り専用の`Target Snapshot`と隔離した作業領域を使い、実行時攻撃を行わない。
+- `Agent Sandbox`にはgVisor相当以上の隔離基盤を要求し、利用不能時にホストプロセスや通常のDockerへ暗黙に切り替えない。
+- `Candidate Verification`は新しい使い捨て隔離環境と実際の対象インターフェースを使い、ホスト上で対象コードを実行しない。gVisor利用時に通常のDockerへ暗黙に切り替えない。
+- 探索のルート、静的ルール、自己確認だけで`Verified Vulnerability`を生成しない。`Verified Vulnerability`には新しい環境での実行時確認と非公開証拠を要求する。プログラムの対象範囲は技術的な真偽を上書きしない。外部行動には、正確な`Submission Candidate`、文案の版、送信先へ結び付いた`External Action Authorization`を要求する。
+- 正確なペイロード、HTTPリクエスト、画面画像、実行時ログはHuman OSの`Private Evidence Bundle`へ置く。認証情報、非公開対象、会話記録、PoC、未公開の発見事項をGitへコミットしない。
+- RCEの証明は使い捨て検証環境内のnonce付き`Execution Canary`に限定し、リバースシェル、永続化、ホストアクセス、許可外の外向き通信を使わない。
+- 外部報告、ベンダー連絡、公開成果物の送信は、利用者の明示的な承認なしに行わない。

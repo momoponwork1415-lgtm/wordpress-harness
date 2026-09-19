@@ -1,4 +1,4 @@
-# 調査資料: 多数のWordPress脆弱性を報告するresearcherの探索workflow
+# 調査資料: 多数のWordPress脆弱性を報告する調査者の探索手順
 
 状態: 一次資料に基づく調査、2026-09-13
 取得日: 2026-09-13（追補: 2026-09-15）
@@ -40,7 +40,7 @@
 
 保存範囲とは別に、取得元の制約がある。Wordfence v3のProduction / Scanner Feedはともに全件を返し、絞り込み用の追加パラメーターを受け付けない。CWE（弱点の種類）はProduction Feedだけにあり、値が未設定の場合もある。**全件を取得する制約と、全件を永続保存する必要性は別の判断になる**（[Wordfence公式API仕様](https://www.wordfence.com/help/wordfence-intelligence/v3-accessing-and-consuming-the-vulnerability-data-feed/)）。
 
-### 公開portfolio
+### 公開実績
 
 Patchstack profileの公開表を全pageから再集計した。`Reported`が日付の731行だけをpublished observationとして扱い、`No date`の1,325行はpending等の意味を公式説明から確定できないためFinding数から除外した。profile headerの`42 Reports`とも意味を整合できない。従って以下はheader countではなく、同じprofileに表示されたdated database recordsの集計である（[Rafie Patchstack profile](https://patchstack.com/database/researchers/38daedf8-3237-4768-ae6e-be8e32979a65)）。
 
@@ -61,7 +61,7 @@ Patchstack profileの公開表を全pageから再集計した。`Reported`が日
 
 同じproduct nameへのdated recordsはWPLMS 17、ListingPro 12、XStore 10、XStore Core 8、GiveWP 7だった。名前が別でもtheme/core/add-onを同じecosystemと見なせる例があり、単一FindingでTargetを捨ててはいない。Patchstackの2024 reportにも、人気pluginのEssential Addons for Elementor、Gravity Forms、Fusion BuilderでRafieの高severity Findingが並ぶ（[State of WordPress Security in 2024](https://patchstack.com/whitepaper/state-of-wordpress-security-in-2024/)）。
 
-### 公開された探索loop
+### 公開された探索の反復手順
 
 GiveWPの本人記事で観測できるloopは次の通りである（[GiveWP LFI/RCE write-up](https://yeraisci.com/authenticated-lfi-and-rce-on-givewp-donation-wordpress-plugin-less-2202-cve-2022-31475-and-cve-2022-28700)）。
 
@@ -80,13 +80,13 @@ GiveWPの本人記事で観測できるloopは次の通りである（[GiveWP LF
 
 ## 観測事実: daroo
 
-### profile countをhit rateへ使えない理由
+### 公開件数を発見率へ使えない理由
 
 Wordfence profileは`331 All Time Discoveries`、`39 90 Day Published Submissions`を表示する。一方、Achievementは2026-03-20の`Submitted 1`から、05-01に5、05-27に10、07-28に25、09-10に50へ進んでいる（[daroo Wordfence profile](https://www.wordfence.com/threat-intel/vulnerabilities/researchers/daroo-2)）。Wordfenceはこのbadgeを、registered accountで同社bug bounty programへ**直接提出したvalid vulnerability**の累積として定義する（[Researcher Achievements](https://www.wordfence.com/threat-intel/bug-bounty-program/achievements)）。
 
 従って直接確認できる2026年の実績下限は、174日で少なくとも50 valid direct submissions、約2件/週である。331件はこれと同義ではない。Hall of Fameはold/new vulnerabilityの追加と複数aliasの統合を明示しているため、database上のAll Time Discoveriesには別route・過年度のcreditが混ざり得る（[Wordfence Hall of Fame](https://www.wordfence.com/threat-intel/vulnerabilities/researchers/)）。
 
-### classとTargetの分布
+### 種類と対象の分布
 
 同じidentityへlinkされたPatchstack profileの公開3 pageは、headerの`300 Reports`に対してdated rowを280件表示した。差の20件の状態は公開UIから確定できないため、以下は280件だけの集計である。対象期間は2025–2026、unique product nameは218で、そのうち170製品、78.0%は一件だけだった（[daroo Patchstack profile](https://patchstack.com/database/researchers/9f3ffb0b-5ad7-4756-86d2-cd63a1d09469)）。
 
@@ -111,14 +111,14 @@ Wordfenceの2026年3月実績では、darooはvalid in-scope 13件、$4,993、�
 
 ## 推論: 何が報告数を生んでいるか
 
-### 高confidence
+### 確信度が高いもの
 
 - Rafieのworkflowはmass monitoring/static analysisで候補を安く作り、人がdata flow・authority・precondition・chainを確認する。これは本人の共同talkと本人記事の両方に直接根拠がある。
 - Rafieの公開pipeline自体が約80% false positiveを許容し、一件30秒未満でtriageする。高いhit rateではなく、候補生成と棄却のunit cost差がthroughputを作る。
 - Rafieの2023–2024 volumeはfull-time specialistとしての組織的researchと重なる。同じ時間budgetの単発diagnosisとの比較ではない。
 - darooは少なくとも50件のvalid direct submissionを半年未満で作った。公開portfolioのclass shift、single-product比率、同日batchは、狭いsecurity-semantics familyを多数Targetへ横展開するcampaignと整合する。
 
-### 中confidence
+### 確信度が中程度のもの
 
 - darooの2025 Broken Access Control campaignは、WordPress固有のAJAX/REST hook、nonce、capability、object ownershipを横断的に確認するchecklistまたはqueryを使った可能性が高い。
 - 2026年のXSS / SQLi / object injectionへの急なshiftは、使えるquery、automation、Target source、programme incentiveの変化を示す可能性がある。
@@ -131,7 +131,7 @@ Wordfenceの2026年3月実績では、darooはvalid in-scope 13件、$4,993、�
 - accepted/public record数からhit rate、precision、recall、監査速度は出せない。
 - 高volume class campaignがhigh-impact recallを最大化するとは言えない。反復しやすいFindingの件数が増えただけの可能性もある。
 
-## Harnessへの含意
+## Harnessにとっての意味
 
 1. **Hit rateを定義し直す。** `published Findings / profile`ではなく、固定snapshot上の`validated Findings / researched Targets`、`validated Findings / Research Native Run`、time-to-first actionable Candidate、class/route diversityを分けて測る。non-finding runとrejectionも分母へ残す。
 2. **Lead precisionとResearch yieldを分ける。** `alerts -> inspected leads -> Candidates -> admitted Candidates -> validated Findings`を別々に記録し、false-positive率と一件当たり棄却時間を一緒に見る。80% FPでも秒単位triageならfrontier generatorとして有用である。
@@ -142,7 +142,7 @@ Wordfenceの2026年3月実績では、darooはvalid in-scope 13件、$4,993、�
 7. **AI throughputとvalidationを分離する。** 複数codebaseへのbackground model投入は候補数を増やすが、Candidate admission、fresh source-only Independent Validation、fresh isolated reproductionを短絡しない。model出力をFinding countにしない。WordfenceではAI利用のself-reportが2025年末の16%から約66%へ増え、全体の報告volumeも453%増えたが、個人darooのAI利用証拠にはならない（[Wordfence AI report](https://www.wordfence.com/blog/2026/04/the-increasing-role-of-ai-in-vulnerability-research/)）。
 8. **比較可能なbaselineを先に作る。** 同じpublic frozen corpus、同じGrant、同じprovider条件でsingle run、複数run union、validated Finding数を測る。外部researcher profileは成功例の観察であり、Harness recall baselineではない。
 
-## 付録: Rafieの直近公開20件と現在のactive installs
+## 付録: Rafieの直近公開20件と現在の有効インストール数
 
 ### 抽出基準
 

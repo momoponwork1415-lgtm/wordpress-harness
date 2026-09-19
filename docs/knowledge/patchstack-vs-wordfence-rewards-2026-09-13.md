@@ -35,7 +35,7 @@
 
 Wordfenceには対応する公開係数表がない。公開されているbonusは、active exploitation `+15%`、chain `+15%`、new technique `+10%`、十分な資料と容易なPoC `+10%`、1337 researcher `+5%`等である（[Reward schedule](https://www.wordfence.com/threat-intel/bug-bounty-program/payouts)）。
 
-## ScopeとFinding別の向き先
+## 対象範囲と発見事項別の報告先
 
 ### 未認証SQLi
 
@@ -45,7 +45,7 @@ Wordfenceではunauth/SubscriberのSQLiとstored XSSは500 installs以上で全�
 
 PatchstackではSQLiは`x2`で高AXPになるが、通常のDB読取SQLiは「backdoorをuploadしてaccessできる完全侵害」というZeroday要件を通常満たさず、収益は月間順位依存になる。従ってProduct Filter by WBWのような50K級unauth SQLiは、重複・scope確認後、収益面ではWordfenceへ出す方が合理的である。
 
-### 未認証RCE・任意PHP upload
+### 未認証RCE・任意PHPアップロード
 
 **両方を提出前に見積もり、Findingごとに一方を選ぶ**。
 
@@ -53,13 +53,13 @@ PatchstackではSQLiは`x2`で高AXPになるが、通常のDB読取SQLiは「ba
 - 設定、短い有効期間、ユーザー操作などがありPatchstack Zerodayから外れるなら、Wordfenceのper-finding報酬が有利になりやすい。Wordfenceはこれらの前提をbounty評価要素にはするが、通常の安全な設定変更まで一律にZeroday同様の「前提なし」とは要求していない（[Reward schedule](https://www.wordfence.com/threat-intel/bug-bounty-program/payouts)）。
 - Wordfenceの2026年公式実績には、50K installsのunauth PHP upload/RCEに$2,145がある（[Ninja Forms File Upload case](https://www.wordfence.com/blog/2026/04/50000-wordpress-sites-affected-by-arbitrary-file-upload-vulnerability-in-ninja-forms-file-upload-wordpress-plugin/)）。一方、100K unauth RCEには$4,290の実績があるが2025年提出であり、現行Findingへの保証には使えない（[ACF Extended case](https://www.wordfence.com/blog/2025/12/100000-wordpress-sites-affected-by-remote-code-execution-vulnerability-in-advanced-custom-fields-extended-wordpress-plugin/)）。
 
-### CSRF・管理者操作が必要なFinding
+### CSRF・管理者操作が必要な発見事項
 
 **この二択ではPatchstack**。ただし高収益カテゴリとはみなさない。
 
 Wordfenceの現行scopeはCSRFを明示的にout of scopeとしている（[program scope](https://www.wordfence.com/threat-intel/bug-bounty-program/)）。PatchstackはCSRFがfile operation、権限昇格、working-PoC付きRCE、広い侵害につながる設定変更に至る場合だけ受け付けるが、multi-step CSRFは除外する（[Patchstack rules §4.7](https://patchstack.com/articles/bug-bounty-guidelines-rules/)）。CSRF基本係数`x0.25`と`UI:R x0.5`により、受理されても低AXPになりやすい。§14.2の「最終影響の高い係数」と実採点の一貫性は公開情報だけでは保証できない。
 
-## Eligibilityと品質penalty
+## 適格性と品質上の減点
 
 | 項目 | Wordfence | Patchstack |
 | --- | --- | --- |

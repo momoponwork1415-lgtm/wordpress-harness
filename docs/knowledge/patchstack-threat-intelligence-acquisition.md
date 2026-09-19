@@ -1,4 +1,4 @@
-# 調査資料: 既知重複を確認するIntelligence Source
+# 調査資料: 既知重複を確認する情報源
 
 状態: 一次資料に基づく調査、2026-09-05
 取得日: 2026-09-05
@@ -26,7 +26,7 @@ Issue #102では **Patchstack Threat Intelligence APIもpublic databaseの自動
 - known recordをTarget Intake、Selection Receipt、Research inputへ渡すこと。
 - 「recordなし」をduplicateなしの保証にすること。
 
-## Wordfence Intelligenceをprimary sourceにできる理由
+## Wordfence Intelligenceを第一の情報源にできる理由
 
 | 観点 | 確認できた事実 | Harnessへの含意 |
 | --- | --- | --- |
@@ -39,7 +39,7 @@ Issue #102では **Patchstack Threat Intelligence APIもpublic databaseの自動
 
 ## 安全な契約
 
-### 1. Entry gate
+### 1. 入口の判定
 
 Exact Known Duplicate確認を開始できるのは、Human OSが所有するversioned verified-Finding handoffをTarget Intelligenceのpublic seamで真正性確認できた後だけとする。
 
@@ -53,7 +53,7 @@ Exact Known Duplicate確認を開始できるのは、Human OSが所有するver
 
 gate前にconsumerへ公開できるWordfence情報は、Issue #94が定めるoracle隔離済みVulnerability History Aggregateだけである。Target Intelligenceはexact recordをowned indexへ取り込めるが、CVE、affected version、patched version、CWE、advisory narrative、reference URLをTarget Intake、Candidate selection、Researchへ到達させない。
 
-### 2. Primary structured check
+### 2. 第一の構造化確認
 
 gate通過後、次の手順でWordfence snapshotを確認する。
 
@@ -65,7 +65,7 @@ gate通過後、次の手順でWordfence snapshotを確認する。
 
 Webhookは早期refreshのtriggerに使えるが、created/replaced/deleted eventの順序や完全配送だけへ依存しない。duplicate check直前にはfreshness policyを満たすcomplete snapshotが必要である。
 
-### 3. Known Duplicate Disposition
+### 3. 既知重複の扱い
 
 public contractは次のclosed unionにする。status名はnegative proofを表現しない。
 
@@ -78,7 +78,7 @@ public contractは次のclosed unionにする。status名はnegative proofを表
 
 `known-duplicate`は外部programmeへの自動actionではない。`not-observed`もsubmission許可ではない。どのstatusもResearchのcandidate、Validation conclusion、Finding成立過程を書き換えない。
 
-### 4. Provenance and storage
+### 4. 出所と保存
 
 Known Duplicate DispositionはHuman OSだけが受け取る、exact vulnerability detailsを含まない最小projectionにする。Target IntakeやResearchへ再公開しない。
 
@@ -110,7 +110,7 @@ Human OSのPrivate Evidence Bundleは以下を保持する。
 
 Wordfence dataのcopyにはrecordが持つDefiant/MITRE等のnotice、license、record hyperlinkを一緒に保持する。Private Evidence Bundleの内容をGit、通常log、Research Record、Target Intake Packetへ出さない。
 
-## Patchstackを採用しない判断
+## Patchstackを採用しない理由
 
 Patchstack Threat Intelligence APIは技術的にはsingle product/version lookup、batch、latest、advisory detailを提供するが、custom pricingかつrequest-based activationで、rate limitは契約ごとに設定される（[API overview](https://docs.patchstack.com/api-solutions/threat-intelligence-api/overview/)、[Extended guide](https://docs.patchstack.com/api-solutions/threat-intelligence-api/extended/)）。complete `/all`とcursor paginationはselected partners向けsurfaceにあり、通常のExtended surfaceからfull snapshot entitlementを推定できない（[NPM features](https://docs.patchstack.com/api-reference/threat-intelligence-npm/)）。
 
@@ -137,7 +137,7 @@ Wordfenceが無償のcomplete v3 feed、explicit license、record単位のcopyri
 7. record、CVE、advisory、reference、known routeがTarget Intake、Selection、Research inputへ現れない。
 8. replay時に同じsnapshot、Finding binding、policy versionから同じDispositionを再構成でき、再実行は新しいchecked-atを持つ不変recordとして追加される。
 
-## 残るdecision
+## 残る判断
 
 - verified-Finding handoffの発行者真正性を、署名envelope、durable receipt resolver、別のversioned mechanismのどれで保証するかは、Target IntelligenceとHuman OSのDesign Gateで決める。caller自己申告は候補にしない。
 - Wordfence Terms変更を検知した時は新snapshot ingestionを停止し、license review完了まで前回snapshotをfresh扱いしない。

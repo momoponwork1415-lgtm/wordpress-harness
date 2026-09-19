@@ -55,12 +55,12 @@
   <rect x="80" y="468" width="360" height="100" rx="8" class="human"/>
   <text x="104" y="493" class="tag muted">人間の判断</text>
   <text x="104" y="525" class="boxTitle">探索の開始を承認</text>
-  <text x="104" y="550" class="body">対象・順序・Campaign全体の安全上限</text>
+  <text x="104" y="550" class="body">対象・順序・キャンペーン全体の安全上限</text>
 
   <!-- Research -->
   <rect x="620" y="268" width="360" height="130" rx="8" class="focal"/>
   <text x="644" y="301" class="boxTitle" fill="#227567">自律探索</text>
-  <text x="644" y="330" class="body">仮説・読む順序・subagent・反証をAIが判断</text>
+  <text x="644" y="330" class="body">仮説・読む順序・サブエージェント・反証をAIが判断</text>
   <text x="644" y="357" class="body">具体的な次の手があれば自動継続</text>
   <text x="644" y="382" class="small muted">候補を見つけただけでは停止しない</text>
 

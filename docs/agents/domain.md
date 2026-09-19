@@ -1,45 +1,45 @@
-# Domain文書
+# ドメイン文書
 
-codebaseを調べるengineering skillが、このrepositoryのdomain文書をどう読むかを定める。
+コードベースを調べる開発スキルが、このリポジトリのドメイン文書をどう読むかを定める。
 
 ## 調査前に読むもの
 
-- repository rootの**`CONTEXT-MAP.md`** — contextごとの`CONTEXT.md`を示す。作業対象に関係するものだけ読む。
-- repository rootの**`CONTEXT.md`** — Research contextの用語集。
-- **`docs/adr/`** — 作業対象に関係するADRだけ読む。このrepositoryはsystem全体で一つのADR directoryを使い、context別のADR directoryを作らない。
+- リポジトリ直下の**`CONTEXT-MAP.md`** — コンテキストごとの`CONTEXT.md`を示す。作業対象に関係するものだけ読む。
+- リポジトリ直下の**`CONTEXT.md`** — Researchコンテキストの用語集。
+- **`docs/adr/`** — 作業対象に関係するADRだけ読む。このリポジトリはシステム全体で一つのADRディレクトリを使い、コンテキスト別のADRディレクトリを作らない。
 
-これらのfileが存在しない場合は、指摘や先回りした作成提案をせず、そのまま進める。`/domain-modeling` skillは、用語や判断が実際に確定した時だけ必要な文書を作る。
+これらのファイルが存在しない場合は、指摘や先回りした作成提案をせず、そのまま進める。`/domain-modeling`スキルは、用語や判断が実際に確定した時だけ必要な文書を作る。
 
-## File構成
+## ファイル構成
 
-このrepositoryは、rootに`CONTEXT-MAP.md`を持つ**multi-context**構成である。Contextはpackageではなくbounded contextなので、各用語集はpackageの`src/`横ではなく`docs/domain/`に置く。
+このリポジトリは、直下に`CONTEXT-MAP.md`を持つ**複数コンテキスト**構成である。コンテキストはパッケージではなく境界付けられたコンテキストなので、各用語集はパッケージの`src/`横ではなく`docs/domain/`に置く。
 
 ```
 /
-├── CONTEXT-MAP.md          ← index of the three contexts
-├── CONTEXT.md              ← glossary for the Research context
+├── CONTEXT-MAP.md          ← 3領域の索引
+├── CONTEXT.md              ← Research領域の用語集
 ├── docs/
-│   ├── adr/                ← system-wide decisions
+│   ├── adr/                ← システム全体の判断
 │   └── domain/
 │       ├── target-intelligence/CONTEXT.md
 │       └── human-os/CONTEXT.md
 └── src/
 ```
 
-## Repository固有のgate
+## リポジトリ固有のゲート
 
-`pnpm docs:check`は、すべての相対Markdown linkが存在するfileを指すことを要求する。
+`pnpm docs:check`は、すべての相対Markdownリンクが存在するファイルを指すことを要求する。
 
 ## 用語集の語を使う
 
-Issue title、refactor提案、仮説、test名などでdomain概念を使う場合、ownerの`CONTEXT.md`が定義した語を使う。用語集が避けている同義語へずらさない。
+Issueの題名、リファクタリング提案、仮説、テスト名などでドメイン概念を使う場合、担当領域の`CONTEXT.md`が定義した語を使う。用語集が避けている同義語へずらさない。
 
-必要な概念が用語集にない場合、projectが使わない語を作っていないか見直す。実際の不足なら`/domain-modeling`の対象として記録する。
+必要な概念が用語集にない場合、プロジェクトが使わない語を作っていないか見直す。実際の不足なら`/domain-modeling`の対象として記録する。
 
 ## ADRとの矛盾を明示する
 
 出力が既存ADRと矛盾する場合、黙って上書きせず明示する。
 
-> _Contradicts ADR 0125 (put agent decisions behind thin evidence shells) — but worth reopening because…_
+> _ADR 0125（エージェントの判断を薄い証拠shellの内側へ置く）と矛盾する。ただし、次の理由から再検討する価値がある……_
 
-このrepositoryは旧ADRを編集せず、新しいADRで判断を置き換える。どのADRを置き換えるかを示す。
+このリポジトリは旧ADRを編集せず、新しいADRで判断を置き換える。どのADRを置き換えるかを示す。

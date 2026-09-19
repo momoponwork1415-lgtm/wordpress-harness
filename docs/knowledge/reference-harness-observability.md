@@ -1,4 +1,4 @@
-# 調査資料: reference harnessの比較
+# 調査資料: 参考ハーネスの比較
 
 状態: 公式資料に基づく比較。Cloudflare security-audit-skillとAikido / DeepSeekの評価境界は2026-09-18に更新し、他資料は2026-09-15以前に確認した。
 
@@ -23,7 +23,7 @@
 | Wordfence PRISM / Argus | [PRISM profile](https://www.wordfence.com/threat-intel/vulnerabilities/researchers/prism)、[breadth / depth記事](https://www.wordfence.com/blog/2026/08/wordfence-argus-finds-complex-6-step-critical-rce-in-avada-theme-with-1-million-sales/) | WordPressでの発見例と運用方針。prompt、model、実装、missを含むrecall datasetは非公開。 |
 | Unit 42 NOVA | [公式記事](https://unit42.paloaltonetworks.com/frontier-ai-vulnerability-burst/) | 内部Harnessの集計と14-project model比較。公開source、target一覧、candidate判定記録はない。 |
 
-## 各方式が探索frontierとして扱うもの
+## 各方式が探索の前線として扱うもの
 
 | 方式 | 探索frontier | 次の手を決める主体 | 完了の意味 |
 | --- | --- | --- | --- |
@@ -40,7 +40,7 @@
 
 **推論:** 研究判断をagentが持つ構成と、人間の関与・検証証拠を分けて評価する必要がある。Promptだけではauthority、source integrity、durabilityを保証しない。wp2shell / CDCからの採用内容と適応理由は[設計の出発点](../RESEARCH-DESIGN.md#design-lineage)を正本とし、ここへ複製しない。
 
-## 公開agentic harness
+## 公開エージェント型ハーネス
 
 以下の「示唆」は設計比較からの推論であり、採用決定ではない。
 
@@ -117,7 +117,7 @@
 
 **推論:** single-run、union、再現率、Validation rejectionは異なる評価量である。この記事はmodel間・run間の差を示すが、長いturn数や特定の構成の因果効果を示していない。
 
-## 比較から得た案とpolicy上の境界
+## 比較から得た案と方針上の境界
 
 下表は参考案であり、implementation planや優先順位の正本ではない。採用には[変更gate](../RESEARCH-DESIGN.md#change-gate)と個別Issueを使う。
 

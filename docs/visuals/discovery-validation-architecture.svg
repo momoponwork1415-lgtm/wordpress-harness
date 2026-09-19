@@ -63,7 +63,7 @@
   <!-- Research lane nodes. -->
   <rect x="280" y="250" width="300" height="110" rx="8" class="focal"/>
   <text x="304" y="283" class="boxTitle" fill="#227567">自律探索</text>
-  <text x="304" y="312" class="body">同じCheckpointから継続</text>
+  <text x="304" y="312" class="body">同じチェックポイントから継続</text>
   <text x="304" y="339" class="small muted">候補だけでは止めず、次の手の有無で判断</text>
 
   <rect x="700" y="250" width="260" height="110" rx="8" class="node"/>
