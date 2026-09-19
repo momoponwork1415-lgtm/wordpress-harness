@@ -37,13 +37,13 @@
   <text x="593" y="310" class="label muted">探索Agentへ渡すもの</text>
   <text x="593" y="342" class="body">read-only Target / Dependency Snapshots</text>
   <text x="593" y="372" class="body">Threat Context / Programme Boundary</text>
-  <text x="593" y="402" class="body">Prompt / Permission / 最大1時間のGrant</text>
+  <text x="593" y="402" class="body">Prompt / Permission / Campaign safety envelope</text>
   <text x="593" y="449" class="label muted">Root AIが返すもの</text>
   <text x="593" y="481" class="body">Candidate + source evidence + 次の探索案</text>
   <text x="593" y="511" class="body">Candidate-bound private recipe</text>
   <rect x="589" y="539" width="422" height="92" rx="12" fill="#fff5df" stroke="#e4c57e"/>
-  <text x="609" y="569" class="label gate">TWO HUMAN GATES</text>
-  <text x="609" y="599" class="body">次のGrant / Candidate admission</text>
+  <text x="609" y="569" class="label gate">HUMAN GATE</text>
+  <text x="609" y="599" class="body">AI停止後のCandidate admission</text>
   <text x="593" y="661" class="label muted">外へ渡すもの</text>
   <text x="593" y="691" class="small">Candidate Verification Request（recipe本文はGit外）</text>
 

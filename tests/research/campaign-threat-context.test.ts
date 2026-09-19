@@ -79,7 +79,7 @@ function programmeBoundary() {
 function sealedRun(): SealedNativeRun {
   return {
     kind: "sealed-native-research-run",
-    schemaVersion: 1,
+    schemaVersion: 2,
     runId: "campaign-context:native:1",
     campaignId: "campaign-context",
     campaignInputDigest: digest("1"),
@@ -113,7 +113,6 @@ function sealedRun(): SealedNativeRun {
       id: "budget-v1",
       maxNativeRuns: 1,
       maxWallTimeMs: 300_000,
-      researchGrantWallTimeMs: 300_000,
       digest: digest("9"),
     },
     budgetAllowance: { maxWallTimeMs: 300_000 },
@@ -158,11 +157,11 @@ describe("Campaign Threat Context", () => {
       "Resume deep work only when a concrete source-bound edge could reach an eligible impact",
     );
     expect(prompt).toContain(
-      "A Research Grant is source investigation time, not a planning turn",
+      "This Native Run is source investigation time, not a planning turn",
     );
   });
 
-  it("tells a resumed Research Root to execute the human-approved next actions", () => {
+  it("tells a resumed Research Root to execute its prior next actions", () => {
     const prompt = agentResearchPrompt("Research from source.", {
       ...sealedRun(),
       researchContinuationNextActions: [
@@ -174,22 +173,22 @@ describe("Campaign Threat Context", () => {
     });
 
     expect(prompt).toContain(
-      "Human-approved Research continuation source-bound next actions",
+      "Prior Root Research continuation source-bound next actions",
     );
     expect(prompt).toContain(
       '"question":"Which callback consumes the stored identifier?"',
     );
     expect(prompt).toContain(
-      "Investigate these approved next actions during this Grant",
+      "Investigate or supersede these next actions during this run",
     );
     expect(prompt).toContain(
       "consult the restored Checkpoint and scratch research history",
     );
     expect(prompt).toContain(
-      "Do not mechanically repeat a completed route unless an approved next action, new source evidence, a Candidate validation gap, or a concrete composition requires revisiting it",
+      "Do not mechanically repeat a completed route unless a prior next action, new source evidence, a Candidate validation gap, or a concrete composition requires revisiting it",
     );
     expect(prompt).toContain(
-      "Do not merely repeat the approved actions in decision.nextActions",
+      "Do not merely repeat the prior actions in decision.nextActions",
     );
   });
 
@@ -214,7 +213,7 @@ describe("Campaign Threat Context", () => {
     expect(
       campaignInputSchema.safeParse({
         kind: "agent-led-campaign",
-        schemaVersion: 1,
+        schemaVersion: 2,
         campaignId: run.campaignId,
         targetSnapshot: run.targetSnapshot,
         dependencySnapshots: run.dependencySnapshots,
@@ -251,7 +250,7 @@ describe("Campaign Threat Context", () => {
     expect(
       campaignInputSchema.safeParse({
         kind: "agent-led-campaign",
-        schemaVersion: 1,
+        schemaVersion: 2,
         campaignId: run.campaignId,
         targetSnapshot: run.targetSnapshot,
         dependencySnapshots: run.dependencySnapshots,

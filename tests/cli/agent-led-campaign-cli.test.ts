@@ -73,7 +73,7 @@ describe("agent-led campaign CLI", () => {
     await writeFile(researchPromptPath, researchPrompt, "utf8");
     const input: CampaignInput = {
       kind: "agent-led-campaign",
-      schemaVersion: 1,
+      schemaVersion: 2,
       campaignId: "campaign-cli-agent-led",
       targetSnapshot: {
         id: "example-1.0.0",
@@ -108,7 +108,6 @@ describe("agent-led campaign CLI", () => {
         id: "agent-led-budget-v1",
         maxNativeRuns: 2,
         maxWallTimeMs: 600_000,
-        researchGrantWallTimeMs: 600_000,
         digest: digest("d"),
       },
     };
@@ -208,7 +207,7 @@ exit 90
 
     expect(exit).toBe(1);
     expect(errors.join("")).toContain(
-      "Usage: wordpress-harness campaign <conduct|conduct-approved|review-research|review-candidates|inspect>",
+      "Usage: wordpress-harness campaign <conduct|conduct-approved|review-candidates|inspect>",
     );
   });
 
@@ -239,7 +238,7 @@ exit 90
     await writeFile(researchPromptPath, researchPrompt, "utf8");
     const input: CampaignInput = {
       kind: "agent-led-campaign",
-      schemaVersion: 1,
+      schemaVersion: 2,
       campaignId: "campaign-cli-candidate-review",
       targetSnapshot: {
         id: "example-1.0.0",
@@ -258,7 +257,6 @@ exit 90
         id: "agent-led-budget-v1",
         maxNativeRuns: 3,
         maxWallTimeMs: 600_000,
-        researchGrantWallTimeMs: 600_000,
         digest: digest("d"),
       },
     };
@@ -459,203 +457,5 @@ exit 90
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
-  });
-
-  it("submits a digest-bound Human Research continuation review", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "research-review-cli-"));
-    const sourceDirectory = join(directory, "source");
-    const providerConfigDirectory = join(directory, "provider");
-    const scratchRootDirectory = join(directory, "scratch");
-    await Promise.all([
-      mkdir(sourceDirectory),
-      mkdir(providerConfigDirectory),
-      mkdir(scratchRootDirectory),
-    ]);
-    await writeFile(join(sourceDirectory, "plugin.php"), "<?php\n", "utf8");
-    const sourceTreeDigest = canonicalDigest({
-      kind: "canonical-file-manifest",
-      schemaVersion: 1,
-      entries: [
-        {
-          path: "plugin.php",
-          digest: `sha256:${createHash("sha256").update("<?php\n").digest("hex")}`,
-          size: 6,
-        },
-      ],
-    });
-    const researchPrompt = "Research broken security semantics from source.";
-    const researchPromptPath = join(directory, "research-prompt.txt");
-    await writeFile(researchPromptPath, researchPrompt, "utf8");
-    const input: CampaignInput = {
-      kind: "agent-led-campaign",
-      schemaVersion: 1,
-      campaignId: "campaign-cli-research-review",
-      targetSnapshot: {
-        id: "example-1.0.0",
-        pluginSlug: "example",
-        version: "1.0.0",
-        digest: digest("a"),
-        sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
-      },
-      promptSet: {
-        id: "agent-led-research-v1",
-        digest: promptTextDigest(researchPrompt),
-      },
-      agentRuntimeProfile: glmProfile(),
-      permissionProfile: { id: "source-only-v1", digest: digest("c") },
-      budgetEnvelope: {
-        id: "agent-led-budget-v1",
-        maxNativeRuns: 2,
-        maxWallTimeMs: 600_000,
-        researchGrantWallTimeMs: 60_000,
-        digest: digest("d"),
-      },
-    };
-    const databasePath = join(directory, "research.sqlite");
-    const campaigns = openResearchCampaigns({
-      databasePath,
-      runtime: {
-        async execute(run) {
-          if (run.kind !== "sealed-native-research-run") {
-            throw new Error("initial setup only runs Research");
-          }
-          return {
-            schemaVersion: 2,
-            runId: run.runId,
-            runtimeProfileDigest: run.agentRuntimeProfile.digest,
-            terminal: "completed",
-            startedAt: "2026-09-09T06:00:00.000Z",
-            completedAt: "2026-09-09T06:00:50.000Z",
-            usage: { wallTimeMs: 50_000 },
-            activity: { subagents: 1, tools: ["source.read"] },
-            isolation: {
-              backend: "gvisor",
-              runtime: "runsc",
-              fallbackUsed: false,
-            },
-            checkpoint: {
-              kind: "agent-checkpoint",
-              schemaVersion: 1,
-              checkpointId: `${run.runId}:checkpoint`,
-              stateDigest: digest("1"),
-              stateEntries: 1,
-              stateBytes: 1,
-              sessionId: "12121212-1212-4121-8121-121212121212",
-              targetSnapshotDigest: run.targetSnapshot.digest,
-              promptSetDigest: run.promptSet.digest,
-              runtimeProfileDigest: run.agentRuntimeProfile.digest,
-              permissionProfileDigest: run.permissionProfile.digest,
-            },
-            report: {
-              schemaVersion: 2,
-              assessments: [],
-              evidenceSummary: researchEvidenceSummaryFixture(),
-              candidates: [],
-              decision: {
-                kind: "continue",
-                reason: "One eligible authorization route remains open.",
-                nextActions: [
-                  {
-                    question:
-                      "Can the public callback update an administrator option?",
-                    sourcePointers: ["plugin.php"],
-                  },
-                ],
-              },
-            },
-          };
-        },
-      },
-    });
-    await campaigns.conduct(input);
-    const request = (await campaigns.inspect({ campaignId: input.campaignId }))
-      .pendingResearchContinuationReview;
-    campaigns.close();
-    if (request === undefined)
-      throw new Error("missing Research review request");
-    const reviewBody = {
-      kind: "human-research-continuation-review" as const,
-      schemaVersion: 1 as const,
-      reviewId: "research-review-cli-1",
-      campaignId: input.campaignId,
-      campaignInputDigest: request.campaignInputDigest,
-      researchRunId: request.researchRunId,
-      checkpointId: request.checkpoint.checkpointId,
-      checkpointStateDigest: request.checkpoint.stateDigest,
-      candidateSetDigest: request.candidateSetDigest,
-      parkedProgrammeLeadSetDigest: request.parkedProgrammeLeadSetDigest,
-      researchContinuationReviewRequestDigest: request.digest,
-      operator: {
-        identity: "human-operator-1",
-        decidedAt: "2026-09-09T06:01:00.000Z",
-      },
-      decision: "continue-research" as const,
-      reason: "The exact source-bound next action warrants another grant.",
-    };
-    const reviewPath = join(directory, "research-review.json");
-    await writeFile(
-      reviewPath,
-      JSON.stringify({ ...reviewBody, digest: canonicalDigest(reviewBody) }),
-      "utf8",
-    );
-    const dockerExecutablePath = join(directory, "fake-docker");
-    await writeFile(
-      dockerExecutablePath,
-      `#!/bin/sh
-set -eu
-if [ "\${1:-}" = "info" ]; then
-  printf '%s' '{}'
-  exit 0
-fi
-if [ "\${1:-}" = "image" ]; then exit 0; fi
-exit 90
-`,
-      { encoding: "utf8", mode: 0o700 },
-    );
-    await chmod(dockerExecutablePath, 0o700);
-    const output: string[] = [];
-    const errors: string[] = [];
-    const exit = await runCli(
-      [
-        "campaign",
-        "review-research",
-        "--database",
-        databasePath,
-        "--review",
-        reviewPath,
-        "--docker",
-        dockerExecutablePath,
-        "--image",
-        digest("f"),
-        "--source",
-        sourceDirectory,
-        "--provider-config",
-        providerConfigDirectory,
-        "--scratch",
-        scratchRootDirectory,
-        "--research-prompt",
-        researchPromptPath,
-      ],
-      {
-        stdout: (text: string) => output.push(text),
-        stderr: (text: string) => errors.push(text),
-      },
-    );
-    expect({ exit, errors }).toEqual({ exit: 0, errors: [] });
-    expect(JSON.parse(output[0] ?? "null")).toMatchObject({
-      campaignId: input.campaignId,
-      status: "incomplete",
-    });
-    const recorded = openResearchCampaigns({
-      databasePath,
-      runtime: { execute: () => Promise.reject(new Error("inspect only")) },
-    });
-    await expect(
-      recorded.inspect({ campaignId: input.campaignId }),
-    ).resolves.toMatchObject({
-      researchContinuationReviews: [{ reviewId: "research-review-cli-1" }],
-    });
-    recorded.close();
-    await rm(directory, { recursive: true, force: true });
   });
 });

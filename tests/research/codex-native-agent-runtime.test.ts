@@ -172,7 +172,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
     const researchPrompt = "Research broken security semantics from source.";
     const input: CampaignInput = {
       kind: "agent-led-campaign",
-      schemaVersion: 1,
+      schemaVersion: 2,
       campaignId: "campaign-codex-daybreak-native",
       targetSnapshot: {
         id: "target-plugin-1.0.0",
@@ -196,7 +196,6 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
         id: "agent-led-budget-v1",
         maxNativeRuns: 2,
         maxWallTimeMs: 600_000,
-        researchGrantWallTimeMs: 600_000,
         digest:
           "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       },
@@ -331,7 +330,7 @@ sleep 60
     const researchPrompt = "Research broken security semantics from source.";
     const input: CampaignInput = {
       kind: "agent-led-campaign",
-      schemaVersion: 1,
+      schemaVersion: 2,
       campaignId: "campaign-codex-timeout-diagnostic",
       targetSnapshot: {
         id: "target-plugin-1.0.0",
@@ -355,7 +354,6 @@ sleep 60
         id: "agent-led-budget-v1",
         maxNativeRuns: 1,
         maxWallTimeMs: 250,
-        researchGrantWallTimeMs: 250,
         digest:
           "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       },
@@ -514,7 +512,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
     const researchPrompt = "Research broken security semantics from source.";
     const input: CampaignInput = {
       kind: "agent-led-campaign",
-      schemaVersion: 1,
+      schemaVersion: 2,
       campaignId: "campaign-codex-policy-denied",
       targetSnapshot: {
         id: "target-plugin-1.0.0",
@@ -538,7 +536,6 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
         id: "agent-led-budget-v1",
         maxNativeRuns: 1,
         maxWallTimeMs: 600_000,
-        researchGrantWallTimeMs: 600_000,
         digest:
           "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       },

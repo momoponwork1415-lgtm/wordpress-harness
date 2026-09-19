@@ -77,7 +77,7 @@ Adapterは少なくとも次のように写像する。
 | `QUOTA` / HTTP 402 / balance unavailable | resumable `provider-quota-exhausted` |
 | `RATE_LIMIT` | resumable provider rate limit。quota exhaustionと分ける |
 | `TIMEOUT` / `TRANSPORT` / `SERVER` / HTTP 503 | resumable provider unavailable |
-| outer 1-hour deadline | Research Grant exhausted。provider timeoutと分ける |
+| outer deadline | 当時の1時間上限ではResearchが中断された。現行設計ではsealed Campaignの残りsafety allowanceを使い、provider timeoutと分ける |
 | completed + report schema mismatch | terminal attempt `invalid-output`。Finding rejectionにしない |
 | `MALFORMED_RESPONSE` / `STREAM_CLOSED` / `EMPTY_RESPONSE` after native retry policy | provider invalid output / unavailableとしてreceipt化する |
 

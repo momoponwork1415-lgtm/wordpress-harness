@@ -19,7 +19,7 @@ const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 function campaignInput(promptSet = researchPromptSetForMethod("cloudflare")) {
   return {
     kind: "agent-led-campaign" as const,
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     campaignId: "research-method-campaign",
     targetSnapshot: {
       id: "target-fixture-1",
@@ -37,10 +37,9 @@ function campaignInput(promptSet = researchPromptSetForMethod("cloudflare")) {
     }),
     permissionProfile: { id: "source-only-v1", digest: digest("c") },
     budgetEnvelope: {
-      id: "one-hour-v1",
+      id: "campaign-envelope-v1",
       maxNativeRuns: 2,
       maxWallTimeMs: 7_200_000,
-      researchGrantWallTimeMs: 3_600_000,
       digest: digest("d"),
     },
   };
@@ -51,17 +50,17 @@ describe("Research Method Prompt Sets", () => {
     {
       method: "wp2shell" as const,
       promptPath: "prompts/wordpress-plugin-research-v3.md",
-      promptSetId: "wordpress-plugin-research-wp2shell-v1",
+      promptSetId: "wordpress-plugin-research-wp2shell-v2",
     },
     {
       method: "cloudflare" as const,
       promptPath: "prompts/wordpress-plugin-research-cloudflare-v1.md",
-      promptSetId: "wordpress-plugin-research-cloudflare-v1",
+      promptSetId: "wordpress-plugin-research-cloudflare-v2",
     },
     {
       method: "cloudflare-upstream" as const,
       promptPath: "prompts/wordpress-plugin-research-cloudflare-upstream-v1.md",
-      promptSetId: "wordpress-plugin-research-cloudflare-upstream-c1c8a8c-v1",
+      promptSetId: "wordpress-plugin-research-cloudflare-upstream-c1c8a8c-v2",
     },
   ])(
     "binds the $method method name to one exact versioned Prompt Set",

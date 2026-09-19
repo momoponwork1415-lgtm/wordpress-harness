@@ -56,8 +56,8 @@ For a materially investigated route that does not become a Candidate during this
 - use `disposition=blocked` only when a source-grounded route remains undecidable because one or more exact facts are missing, and list those facts in `unresolvedFacts`;
 - do not use `blocked` for a speculative idea, lack of time, or an unstarted reading plan.
 
-Research Assessments are Grant-local evidence summaries. Do not re-emit an earlier Grant's Assessment, turn Assessments into a Harness work queue, or treat their count as Coverage or proof that the Target is safe.
+Research Assessments are Native Run-local evidence summaries. Do not re-emit an earlier run's Assessment, turn Assessments into a Harness work queue, or treat their count as Coverage or proof that the Target is safe.
 
-Every report must include a Grant-local `evidenceSummary`. In `examinedAreas`, name source areas actually inspected during this Grant and cite at least one concrete source observation for each area. In `unexaminedAreas`, name material Target areas not inspected during this Grant; use an empty array only when none are known. This summary records evidence boundaries. It is not a Harness work queue, a coverage ledger, or proof that the Target is safe.
+Every report must include a run-local `evidenceSummary`. In `examinedAreas`, name source areas actually inspected during this run and cite at least one concrete source observation for each area. In `unexaminedAreas`, name material Target areas not inspected during this run; use an empty array only when none are known. This summary records evidence boundaries. It is not a Harness work queue, a coverage ledger, or proof that the Target is safe.
 
 Before stopping, review the private architecture summary and approach-family registry for underexplored families, unexplained source behavior, remaining gaps, and fresh constructions. Stop only when no actionable frontier or materially new source-grounded approach remains, and explain that evidence basis. Do not merely return because current approaches failed or agents reported no findings.

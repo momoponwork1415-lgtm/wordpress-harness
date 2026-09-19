@@ -224,7 +224,7 @@ exit 75
       "Audit the immutable WordPress plugin source from first principles.";
     const input: CampaignInput = {
       kind: "agent-led-campaign",
-      schemaVersion: 1,
+      schemaVersion: 2,
       campaignId: "campaign-claude-native-1",
       targetSnapshot: {
         id: "target-plugin-1.0.0",
@@ -248,7 +248,6 @@ exit 75
         id: "agent-led-budget-v1",
         maxNativeRuns: 3,
         maxWallTimeMs: 600_000,
-        researchGrantWallTimeMs: 600_000,
         digest:
           "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       },
@@ -537,7 +536,7 @@ exit "$(cat '${providerExitPath}')"
     const researchPrompt = "Audit the immutable plugin from first principles.";
     const input: CampaignInput = {
       kind: "agent-led-campaign",
-      schemaVersion: 1,
+      schemaVersion: 2,
       campaignId: "campaign-claude-quota-1",
       targetSnapshot: {
         id: "target-plugin-1.0.0",
@@ -561,7 +560,6 @@ exit "$(cat '${providerExitPath}')"
         id: "agent-led-budget-v1",
         maxNativeRuns: 3,
         maxWallTimeMs: 600_000,
-        researchGrantWallTimeMs: 600_000,
         digest:
           "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       },

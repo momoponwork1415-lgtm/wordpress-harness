@@ -180,7 +180,7 @@ describe("DeepSeek Harness Native Agent Runtime host integration", () => {
       });
       const campaignInput: CampaignInput = {
         kind: "agent-led-campaign",
-        schemaVersion: 1,
+        schemaVersion: 2,
         campaignId: "campaign-deepseek-dsh-integration",
         targetSnapshot: {
           id: "target-deepseek-dsh-integration",
@@ -206,7 +206,6 @@ describe("DeepSeek Harness Native Agent Runtime host integration", () => {
           id: "budget-deepseek-dsh-integration",
           maxNativeRuns: 1,
           maxWallTimeMs: 60_000,
-          researchGrantWallTimeMs: 60_000,
           digest: `sha256:${"7".repeat(64)}`,
         },
       };

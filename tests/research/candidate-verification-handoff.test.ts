@@ -26,7 +26,7 @@ afterEach(async () => {
 function input() {
   return campaignInputSchema.parse({
     kind: "agent-led-campaign",
-    schemaVersion: 1,
+    schemaVersion: 2,
     campaignId: "campaign-candidate-handoff",
     targetSnapshot: {
       id: "target-1",
@@ -65,7 +65,6 @@ function input() {
       id: "budget-v1",
       maxNativeRuns: 2,
       maxWallTimeMs: 60_000,
-      researchGrantWallTimeMs: 60_000,
       digest:
         "sha256:6666666666666666666666666666666666666666666666666666666666666666",
     },

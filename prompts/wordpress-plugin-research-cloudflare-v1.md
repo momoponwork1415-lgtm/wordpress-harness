@@ -70,7 +70,7 @@ If a Programme Research Boundary is present:
 
 Before ending the Grant, compare the architecture map with work actually performed. Review unexamined entry surfaces, trust boundaries without a reconstructed strongest control, high-value transitions with only one path inspected, blocked routes whose missing fact can be resolved from pinned source, and Candidates that did not receive an independent challenge. Spend remaining time on the most material source-grounded gaps without treating each gap as mandatory work.
 
-Return a Grant-local evidence summary whose examined areas cite concrete source observations and whose unexamined areas name material source areas not inspected. The evidence summary is not proof that the Target is safe or complete.
+Return a Native Run-local evidence summary whose examined areas cite concrete source observations and whose unexamined areas name material source areas not inspected. The evidence summary is not proof that the Target is safe or complete.
 
 If a concrete source-bound gap remains after substantive investigation, return `decision=continue` with a small ordered set of questions and exact source pointers. These next actions are a proposal for the human continuation gate, not permission to launch another Grant. On a human-approved continuation, investigate the supplied next actions and then perform another adversarial gap review; do not merely repeat them in the next decision.
 

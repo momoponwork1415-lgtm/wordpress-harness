@@ -176,7 +176,6 @@ const usageSchema = z.strictObject({
 
 const campaignStatusSchema = z.enum([
   "research-continues",
-  "research-review-pending",
   "candidate-review-pending",
   "verification-preparation-needed",
   "candidate-verification-ready",

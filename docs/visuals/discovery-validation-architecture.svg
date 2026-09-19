@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040" role="img" aria-labelledby="title desc" style="max-width:100%;height:auto">
   <title id="title">WordPress Harness — 一件のCandidateが提出候補になるまで</title>
-  <desc id="desc">PCブラウザ向けの横長ライフサイクル図。Research Grant、人間の継続判断、Candidate admission、fresh dynamic verification、技術的なVerified Vulnerability、programme別scope、提出承認を示す。</desc>
+  <desc id="desc">PCブラウザ向けの横長ライフサイクル図。自律Research loop、Candidate admission、fresh dynamic verification、技術的なVerified Vulnerability、programme別scope、提出承認を示す。</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#526779"/></marker>
     <style>
@@ -16,14 +16,14 @@
   <rect x="40" y="176" width="1520" height="218" rx="18" fill="#eef7f3" stroke="#c6ddd5"/>
   <text x="64" y="210" class="lane" fill="#227567">RESEARCH — sourceを理解しCandidateと検証手順を作る</text>
   <rect x="76" y="240" width="270" height="105" rx="12" class="normal"/>
-  <text x="96" y="273" class="boxTitle">Research Grant</text>
+  <text x="96" y="273" class="boxTitle">Research Native Run</text>
   <text x="96" y="302" class="body">Root + native subagents</text>
-  <text x="96" y="327" class="body muted">最大1時間 / read-only source</text>
+  <text x="96" y="327" class="body muted">Campaign safety envelope内</text>
   <path d="M346 292H405" class="arrow"/>
-  <rect x="414" y="240" width="292" height="105" rx="12" class="gate"/>
-  <text x="434" y="273" class="boxTitle">Human Continuation Review</text>
-  <text x="434" y="302" class="body">続ける / Candidate Reviewへ</text>
-  <text x="434" y="327" class="body muted">継続時だけ同じCheckpoint</text>
+  <rect x="414" y="240" width="292" height="105" rx="12" class="normal"/>
+  <text x="434" y="273" class="boxTitle">AI Continuation Decision</text>
+  <text x="434" y="302" class="body">continue / stop</text>
+  <text x="434" y="327" class="body muted">continueは同じCheckpoint</text>
   <path d="M560 240V218H210V235" class="arrow back"/>
   <path d="M706 292H765" class="arrow"/>
   <rect x="774" y="240" width="282" height="105" rx="12" class="normal"/>

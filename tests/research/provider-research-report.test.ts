@@ -32,7 +32,7 @@ afterEach(async () => {
 function run() {
   return sealedNativeRunSchema.parse({
     kind: "sealed-native-research-run",
-    schemaVersion: 1,
+    schemaVersion: 2,
     runId: "run-1",
     campaignId: "campaign-1",
     campaignInputDigest: `sha256:${"1".repeat(64)}`,
@@ -66,7 +66,6 @@ function run() {
       id: "budget-1",
       maxNativeRuns: 1,
       maxWallTimeMs: 60_000,
-      researchGrantWallTimeMs: 60_000,
       digest: `sha256:${"7".repeat(64)}`,
     },
     budgetAllowance: { maxWallTimeMs: 60_000 },

@@ -13,11 +13,9 @@ import {
   candidateVerificationRequestSchema,
   candidateReviewRequestSchema,
   humanCandidateReviewSchema,
-  humanResearchContinuationReviewSchema,
   nativeRunReceiptSchema,
   sealedNativeRunSchema,
   researchAdmissionFailureSchema,
-  researchContinuationReviewRequestSchema,
   type CampaignInput,
   type CampaignCommand,
   type CampaignOutcomeRef,
@@ -26,9 +24,7 @@ import {
   type CampaignStatus,
   type CandidateReviewRequest,
   type HumanCandidateReview,
-  type HumanResearchContinuationReview,
   type CandidateVerificationRequest,
-  type ResearchContinuationReviewRequest,
   type NativeAgentRuntime,
   type NativeRunAttempt,
   type NativeRunReceipt,
@@ -49,7 +45,6 @@ const eventRowSchema = z.object({
     "native-run.recorded",
     "native-run.admission-failed",
     "candidate-review.recorded",
-    "research-continuation-review.recorded",
     "campaign.interrupted",
   ]),
   occurred_at: z.string(),
@@ -93,11 +88,6 @@ const candidateReviewRecordedPayloadSchema = z.strictObject({
   review: humanCandidateReviewSchema,
 });
 
-const researchContinuationReviewRecordedPayloadSchema = z.strictObject({
-  inputDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-  review: humanResearchContinuationReviewSchema,
-});
-
 const campaignInterruptedPayloadSchema = z.strictObject({
   inputDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
   interruption: campaignInterruptionSchema,
@@ -127,15 +117,6 @@ export class HumanCandidateReviewConflictError extends Error {
       `Human Candidate Review does not match the pending request: ${campaignId}`,
     );
     this.name = "HumanCandidateReviewConflictError";
-  }
-}
-
-export class HumanResearchContinuationReviewConflictError extends Error {
-  constructor(readonly campaignId: string) {
-    super(
-      `Human Research Continuation Review does not match the pending request: ${campaignId}`,
-    );
-    this.name = "HumanResearchContinuationReviewConflictError";
   }
 }
 
@@ -198,12 +179,7 @@ function budgetAllowance(
   const usage = budgetUsage(receipts);
   const remainingWallTimeMs =
     input.budgetEnvelope.maxWallTimeMs - usage.wallTimeMs;
-  return {
-    maxWallTimeMs: Math.min(
-      remainingWallTimeMs,
-      input.budgetEnvelope.researchGrantWallTimeMs,
-    ),
-  };
+  return { maxWallTimeMs: remainingWallTimeMs };
 }
 
 function exceededBudget(
@@ -263,13 +239,11 @@ function candidateReviewRequestFor(
   campaignInputDigest: string,
   terminalResearchRun: NativeRunReceipt | undefined,
   candidates: readonly ResearchCandidate[],
-  proceedFromContinuationReview = false,
 ): CandidateReviewRequest | undefined {
   if (
     terminalResearchRun === undefined ||
     terminalResearchRun.terminal !== "completed" ||
-    (terminalResearchRun.report.decision.kind !== "stop" &&
-      !proceedFromContinuationReview) ||
+    terminalResearchRun.report.decision.kind !== "stop" ||
     candidates.length === 0
   ) {
     return undefined;
@@ -290,41 +264,6 @@ function candidateReviewRequestFor(
   });
 }
 
-function researchContinuationReviewRequestFor(
-  campaignId: string,
-  campaignInputDigest: string,
-  researchRun: NativeRunReceipt | undefined,
-  candidates: readonly ResearchCandidate[],
-  parkedProgrammeLeads: readonly ParkedProgrammeLead[],
-): ResearchContinuationReviewRequest | undefined {
-  if (
-    researchRun === undefined ||
-    researchRun.terminal !== "completed" ||
-    researchRun.report.decision.kind !== "continue"
-  ) {
-    return undefined;
-  }
-  const candidateSetDigest = canonicalDigest(candidates);
-  const parkedProgrammeLeadSetDigest = canonicalDigest(parkedProgrammeLeads);
-  const body = {
-    kind: "research-continuation-review-request" as const,
-    schemaVersion: 2 as const,
-    campaignId,
-    campaignInputDigest,
-    researchRunId: researchRun.runId,
-    checkpoint: researchRun.checkpoint,
-    candidateSetDigest,
-    candidates: [...candidates],
-    parkedProgrammeLeadSetDigest,
-    parkedProgrammeLeads: [...parkedProgrammeLeads],
-    nextActions: researchRun.report.decision.nextActions,
-  };
-  return researchContinuationReviewRequestSchema.parse({
-    ...body,
-    digest: canonicalDigest(body),
-  });
-}
-
 function outcomeFor(view: ResearchCampaignView): CampaignOutcomeRef {
   return {
     kind: view.kind,
@@ -338,13 +277,11 @@ function outcomeFor(view: ResearchCampaignView): CampaignOutcomeRef {
 function activeCandidateReviewFor(
   view: ResearchCampaignView,
 ): HumanCandidateReview | undefined {
-  const continuationReview = activeResearchContinuationReviewFor(view);
   const request = candidateReviewRequestFor(
     view.campaignId,
     view.inputDigest,
     view.nativeRuns.at(-1),
     candidatesFor(view.nativeRuns),
-    continuationReview?.decision === "proceed-to-candidate-review",
   );
   return request === undefined
     ? undefined
@@ -353,72 +290,20 @@ function activeCandidateReviewFor(
       );
 }
 
-function activeResearchContinuationReviewFor(
-  view: ResearchCampaignView,
-): HumanResearchContinuationReview | undefined {
-  const request = researchContinuationReviewRequestFor(
-    view.campaignId,
-    view.inputDigest,
-    view.nativeRuns.at(-1),
-    candidatesFor(view.nativeRuns),
-    parkedProgrammeLeadsFor(view.nativeRuns),
-  );
-  return request === undefined
-    ? undefined
-    : view.researchContinuationReviews.find(
-        (review) =>
-          review.researchContinuationReviewRequestDigest === request.digest,
-      );
-}
-
 function researchContinuationNextActionsFor(
   view: ResearchCampaignView,
-): ResearchContinuationReviewRequest["nextActions"] | undefined {
-  const review = [...view.researchContinuationReviews]
-    .reverse()
-    .find((item) => item.decision === "continue-research");
-  if (review === undefined) return undefined;
-
-  const reviewedRunIndex = view.nativeRuns.findIndex(
-    (receipt) => receipt.runId === review.researchRunId,
-  );
-  if (reviewedRunIndex < 0) {
-    throw new Error(
-      `Human Research Continuation Review run is missing: ${review.researchRunId}`,
-    );
-  }
-  if (
-    view.nativeRuns
-      .slice(reviewedRunIndex + 1)
-      .some((receipt) => receipt.terminal === "completed")
-  ) {
-    return undefined;
-  }
-
-  const reviewedRuns = view.nativeRuns.slice(0, reviewedRunIndex + 1);
-  const request = researchContinuationReviewRequestFor(
-    view.campaignId,
-    view.inputDigest,
-    reviewedRuns.at(-1),
-    candidatesFor(reviewedRuns),
-    parkedProgrammeLeadsFor(reviewedRuns),
-  );
-  if (
-    request === undefined ||
-    request.digest !== review.researchContinuationReviewRequestDigest
-  ) {
-    throw new Error(
-      `Human Research Continuation Review binding mismatch: ${review.reviewId}`,
-    );
-  }
-  return request.nextActions;
+): SealedNativeRun["researchContinuationNextActions"] {
+  const latest = view.nativeRuns.at(-1);
+  return latest?.terminal === "completed" &&
+    latest.report.decision.kind === "continue"
+    ? latest.report.decision.nextActions
+    : undefined;
 }
 
 function researchProgressFor(
   nativeRuns: readonly NativeRunReceipt[],
-  pendingRequest: ResearchContinuationReviewRequest | undefined,
 ): CampaignResearchProgress {
-  const completedGrants = nativeRuns.flatMap((receipt) =>
+  const completedRuns = nativeRuns.flatMap((receipt) =>
     receipt.terminal === "completed"
       ? [
           {
@@ -429,25 +314,30 @@ function researchProgressFor(
       : [],
   );
   const runIdsByPath = new Map<string, string[]>();
-  for (const grant of completedGrants) {
-    for (const area of grant.evidenceSummary.examinedAreas) {
+  for (const run of completedRuns) {
+    for (const area of run.evidenceSummary.examinedAreas) {
       for (const evidence of area.evidence) {
         const runIds = runIdsByPath.get(evidence.path);
         if (runIds === undefined) {
-          runIdsByPath.set(evidence.path, [grant.runId]);
-        } else if (!runIds.includes(grant.runId)) {
-          runIds.push(grant.runId);
+          runIdsByPath.set(evidence.path, [run.runId]);
+        } else if (!runIds.includes(run.runId)) {
+          runIds.push(run.runId);
         }
       }
     }
   }
+  const latest = nativeRuns.at(-1);
   return {
-    completedGrants,
+    completedRuns,
     observedSourcePaths: [...runIdsByPath].map(([path, runIds]) => ({
       path,
       runIds,
     })),
-    pendingNextActions: pendingRequest?.nextActions ?? [],
+    pendingNextActions:
+      latest?.terminal === "completed" &&
+      latest.report.decision.kind === "continue"
+        ? latest.report.decision.nextActions
+        : [],
   };
 }
 
@@ -551,9 +441,6 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
     if (command.kind === "human-candidate-review") {
       return this.#recordCandidateReview(command);
     }
-    if (command.kind === "human-research-continuation-review") {
-      return this.#recordResearchContinuationReview(command);
-    }
     const input = campaignInputSchema.parse(command);
     const inputDigest = canonicalDigest(input);
     const existing = this.#readView(input.campaignId);
@@ -619,44 +506,6 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
     return this.#continueCampaign(view.input);
   }
 
-  #recordResearchContinuationReview(
-    review: HumanResearchContinuationReview,
-  ): Promise<CampaignOutcomeRef> {
-    const view = this.#requireView(review.campaignId);
-    const prior = view.researchContinuationReviews.find(
-      (continuationReview) => continuationReview.reviewId === review.reviewId,
-    );
-    if (prior !== undefined) {
-      if (prior.digest !== review.digest) {
-        throw new HumanResearchContinuationReviewConflictError(
-          review.campaignId,
-        );
-      }
-      return Promise.resolve(outcomeFor(view));
-    }
-    const pending = view.pendingResearchContinuationReview;
-    if (
-      pending === undefined ||
-      review.campaignInputDigest !== pending.campaignInputDigest ||
-      review.researchRunId !== pending.researchRunId ||
-      review.checkpointId !== pending.checkpoint.checkpointId ||
-      review.checkpointStateDigest !== pending.checkpoint.stateDigest ||
-      review.candidateSetDigest !== pending.candidateSetDigest ||
-      review.parkedProgrammeLeadSetDigest !==
-        pending.parkedProgrammeLeadSetDigest ||
-      review.researchContinuationReviewRequestDigest !== pending.digest ||
-      (review.decision === "proceed-to-candidate-review" &&
-        pending.candidates.length === 0)
-    ) {
-      throw new HumanResearchContinuationReviewConflictError(review.campaignId);
-    }
-    this.#append(review.campaignId, "research-continuation-review.recorded", {
-      inputDigest: view.inputDigest,
-      review,
-    });
-    return this.#continueCampaign(view.input);
-  }
-
   async #continueCampaign(input: CampaignInput): Promise<CampaignOutcomeRef> {
     const inputDigest = canonicalDigest(input);
     let view = this.#requireView(input.campaignId);
@@ -667,7 +516,7 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
       if (orphanedAttempt !== undefined) {
         const recovery = await this.#receiptStore.recover(orphanedAttempt.run);
         if (recovery.status !== "recovered") return outcomeFor(view);
-        this.#recordTerminalRun(
+        const admissionFailure = this.#recordTerminalRun(
           input,
           inputDigest,
           orphanedAttempt.run,
@@ -678,8 +527,15 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         if (exceededBudget(input, view.nativeRuns)) {
           this.#interruptForBudget(input, inputDigest, true);
           view = this.#requireView(input.campaignId);
+          return outcomeFor(view);
         }
-        return outcomeFor(view);
+        if (
+          recovery.receipt.terminal !== "completed" ||
+          admissionFailure !== undefined
+        ) {
+          return outcomeFor(view);
+        }
+        continue;
       }
       if (
         view.status === "coverage-closed" ||
@@ -721,7 +577,7 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         (view.nativeRuns.length === 0 ? input.resumeFrom : undefined);
       const run: SealedNativeRun = {
         kind: "sealed-native-research-run",
-        schemaVersion: 1,
+        schemaVersion: 2,
         runId: `${input.campaignId}:native:${ordinal}`,
         campaignId: input.campaignId,
         campaignInputDigest: inputDigest,
@@ -1006,7 +862,6 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
     const nativeRunAttempts: NativeRunAttempt[] = [];
     const nativeRuns: NativeRunReceipt[] = [];
     const candidateReviews: HumanCandidateReview[] = [];
-    const researchContinuationReviews: HumanResearchContinuationReview[] = [];
     let interruption: z.infer<typeof campaignInterruptionSchema> | undefined;
     let admissionFailure: ResearchAdmissionFailure | undefined;
     for (const row of rows.slice(1)) {
@@ -1101,30 +956,6 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
         admissionFailure = event.failure;
         continue;
       }
-      if (row.kind === "research-continuation-review.recorded") {
-        const event =
-          researchContinuationReviewRecordedPayloadSchema.parse(value);
-        if (
-          event.inputDigest !== definition.inputDigest ||
-          event.review.campaignId !== campaignId ||
-          event.review.campaignInputDigest !== definition.inputDigest
-        ) {
-          throw new Error(
-            `Human Research Continuation Review input binding mismatch: ${campaignId}`,
-          );
-        }
-        if (
-          researchContinuationReviews.some(
-            (review) => review.reviewId === event.review.reviewId,
-          )
-        ) {
-          throw new Error(
-            `Duplicate Human Research Continuation Review: ${event.review.reviewId}`,
-          );
-        }
-        researchContinuationReviews.push(event.review);
-        continue;
-      }
       if (row.kind === "candidate-review.recorded") {
         const event = candidateReviewRecordedPayloadSchema.parse(value);
         if (
@@ -1172,29 +1003,11 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
     const latest = admittedNativeRuns.at(-1);
     const candidates = candidatesFor(admittedNativeRuns);
     const parkedProgrammeLeads = parkedProgrammeLeadsFor(admittedNativeRuns);
-    const currentResearchContinuationReviewRequest =
-      researchContinuationReviewRequestFor(
-        campaignId,
-        definition.inputDigest,
-        latest,
-        candidates,
-        parkedProgrammeLeads,
-      );
-    const activeResearchContinuationReview =
-      currentResearchContinuationReviewRequest === undefined
-        ? undefined
-        : researchContinuationReviews.find(
-            (review) =>
-              review.researchContinuationReviewRequestDigest ===
-              currentResearchContinuationReviewRequest.digest,
-          );
     const currentCandidateReviewRequest = candidateReviewRequestFor(
       campaignId,
       definition.inputDigest,
       latest,
       candidates,
-      activeResearchContinuationReview?.decision ===
-        "proceed-to-candidate-review",
     );
     const activeCandidateReview =
       currentCandidateReviewRequest === undefined
@@ -1238,14 +1051,10 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
       status = "research-continues";
     } else if (
       reviewReturnsToResearch === true ||
-      activeResearchContinuationReview?.decision === "continue-research"
+      (latest?.terminal === "completed" &&
+        latest.report.decision.kind === "continue")
     ) {
       status = "research-continues";
-    } else if (
-      currentResearchContinuationReviewRequest !== undefined &&
-      activeResearchContinuationReview === undefined
-    ) {
-      status = "research-review-pending";
     } else if (
       currentCandidateReviewRequest !== undefined &&
       activeCandidateReview === undefined
@@ -1261,7 +1070,7 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
 
     return {
       kind: "agent-led-campaign-outcome",
-      schemaVersion: 3,
+      schemaVersion: 4,
       campaignId,
       inputDigest: definition.inputDigest,
       status,
@@ -1269,27 +1078,14 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
       nativeRunAttempts,
       nativeRuns,
       candidateReviews,
-      researchContinuationReviews,
       parkedProgrammeLeads,
       candidateVerificationRequests,
       verificationPreparationNeeded,
-      researchProgress: researchProgressFor(
-        nativeRuns,
-        status === "research-review-pending"
-          ? currentResearchContinuationReviewRequest
-          : undefined,
-      ),
+      researchProgress: researchProgressFor(nativeRuns),
       ...(status === "candidate-review-pending" &&
       currentCandidateReviewRequest !== undefined
         ? {
             pendingCandidateReview: currentCandidateReviewRequest,
-          }
-        : {}),
-      ...(status === "research-review-pending" &&
-      currentResearchContinuationReviewRequest !== undefined
-        ? {
-            pendingResearchContinuationReview:
-              currentResearchContinuationReviewRequest,
           }
         : {}),
       coverage: {

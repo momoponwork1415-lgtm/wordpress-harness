@@ -6,7 +6,7 @@ WordPress pluginを対象に、AIによるTarget提案、agent-led source resear
 >
 > **Harness owns authority, evidence, isolation and limits; agents own research decisions.**
 
-探索は一つの連続loopです。AIが具体的でsource-boundな次手を持つ間は継続を提案し、人間のreview後に同じCheckpointから次のResearch Grantを始めます。有望なactionable frontierがなければ停止を提案します。HarnessはFinder数、Wave、Depth、脆弱性class、読むfileまたは固定rubricを決めません。Unauthenticated SQLiやStored XSSはRCEへ伸ばさなくてもCandidateです。
+探索は一つの連続loopです。AIが具体的でsource-boundな次手を持つ間は、同じCheckpointから人間の介入なしに継続します。有望なactionable frontierがなくなった時に停止し、Candidateがあれば人間のadmissionへ渡します。HarnessはFinder数、Wave、Depth、脆弱性class、読むfileまたは固定rubricを決めません。Unauthenticated SQLiやStored XSSはRCEへ伸ばさなくてもCandidateです。
 
 Researchはnative agentをgVisor内で実行し、Target sourceはread-only、scratchだけをwriteableにします。Candidateの再現recipeはGit外のprivate CASへ保存し、承認後に別のfreshなWordPress環境で一度だけ実行します。技術的なVerified Vulnerabilityとprogramme scopeを分離し、providerやmodelへsilent fallbackしません。
 

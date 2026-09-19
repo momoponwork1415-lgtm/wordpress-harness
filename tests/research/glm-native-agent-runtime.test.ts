@@ -245,7 +245,7 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
     const researchPrompt = "Audit this immutable plugin from first principles.";
     const input: CampaignInput = {
       kind: "agent-led-campaign",
-      schemaVersion: 1,
+      schemaVersion: 2,
       campaignId: "campaign-glm-native-1",
       targetSnapshot: {
         id: "target-plugin-1.0.0",
@@ -269,7 +269,6 @@ node -e 'const fs=require("node:fs");const result=fs.readFileSync(process.argv[1
         id: "agent-led-budget-v1",
         maxNativeRuns: 2,
         maxWallTimeMs: 600_000,
-        researchGrantWallTimeMs: 600_000,
         digest:
           "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       },

@@ -74,7 +74,7 @@ describe("DeepSeek Harness Native Agent Runtime", () => {
     const runtimeProfile = profile();
     const run = sealedNativeRunSchema.parse({
       kind: "sealed-native-research-run",
-      schemaVersion: 1,
+      schemaVersion: 2,
       runId: "run-deepseek-no-key",
       campaignId: "campaign-deepseek-no-key",
       campaignInputDigest: `sha256:${"1".repeat(64)}`,
@@ -99,7 +99,6 @@ describe("DeepSeek Harness Native Agent Runtime", () => {
         id: "budget-1",
         maxNativeRuns: 1,
         maxWallTimeMs: 60_000,
-        researchGrantWallTimeMs: 60_000,
         digest: `sha256:${"7".repeat(64)}`,
       },
       budgetAllowance: { maxWallTimeMs: 60_000 },
@@ -309,7 +308,7 @@ printf '%s\n' '${finalEvent}'
     const runtimeProfile = profile();
     const run = sealedNativeRunSchema.parse({
       kind: "sealed-native-research-run",
-      schemaVersion: 1,
+      schemaVersion: 2,
       runId: "run-deepseek-1",
       campaignId: "campaign-deepseek-1",
       campaignInputDigest: `sha256:${"1".repeat(64)}`,
@@ -330,7 +329,6 @@ printf '%s\n' '${finalEvent}'
         id: "budget-1",
         maxNativeRuns: 1,
         maxWallTimeMs: 60_000,
-        researchGrantWallTimeMs: 60_000,
         digest: `sha256:${"7".repeat(64)}`,
       },
       budgetAllowance: { maxWallTimeMs: 60_000 },

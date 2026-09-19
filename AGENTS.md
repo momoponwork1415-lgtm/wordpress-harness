@@ -6,7 +6,7 @@
 
 - Productの到達点は、oracle-freeなprospective Campaignで**high-impactなbroken security semanticsを高recallで発見し、人間がadmitしたCandidateをfresh runtimeで検証し、programme別scope判定と人間の提出判断まで閉じること**。人間はCandidate admissionを判断するが技術的なVerification verdictを手作業で生成せず、外部提出は別の明示承認で許可する。
 - RCEやsite-wide compromiseは最上位impactだが唯一の成功条件ではない。
-- 通常運転はprovider-native Rootと必要に応じたnative subagentによるraw-source-firstのResearch loop。各Research Grantは最大1時間で止まり、source-boundで具体的な次手があればAIが継続を提案し、人間のreview後に同じCheckpointから次のGrantを開始する。有望なactionable frontierがなければ根拠付きで停止を提案する。
+- 通常運転はprovider-native Rootと必要に応じたnative subagentによるraw-source-firstの連続Research loop。source-boundで具体的な次手があればAIの`continue`を同じCheckpointから自動継続し、有望なactionable frontierがなければ根拠付きで停止する。固定1時間またはrun間の人間reviewを通常の停止条件にしない。
 - **Do not optimize for sinks. Optimize for broken security semantics.**
 - **Harness owns the research process; agents own research decisions.**
 
@@ -38,10 +38,10 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 - strict TypeScriptのmodular monolithとし、`Target Intelligence -> Research -> Human OS`をprimary flowとする。
 - context間はversioned handoff contractだけを渡し、別contextのstorageや内部moduleを直接参照しない。
 - Target Intelligenceはoracle-freeな事実からAIがTarget Proposalを作る。固定rank、diversity cap、Research Value Bandまたはreason codeを要求しない。人間がApproved Target Batchを作るまでResearchへdispatchせず、実行直前にversionとsourceのfreshnessを再確認する。Programme指定Campaignは公式scopeを既知脆弱性oracleと分離したProgramme Research Boundaryへbindする。eligible impactへの具体的なsource edgeがないOOS primitiveは軽量なParked Programme Leadとして保存し、subagent adversarial reviewやCandidate Reviewへ流さない。具体的な昇格経路だけを継続し、Candidateの最終的なprogramme scopeはruntime confirmation後にHuman OSで評価する。
-- Researchのexternal seamは`conduct`と`inspect`だけを持つdeepなResearch Campaigns Moduleに置き、Agent-led Research、両Human Review、Candidate Verification Request、Coverage、BudgetとResearch Recordを隠す。
+- Researchのexternal seamは`conduct`と`inspect`だけを持つdeepなResearch Campaigns Moduleに置き、Agent-led Researchの自律継続、Human Candidate Review、Candidate Verification Request、Coverage、BudgetとResearch Recordを隠す。
 - Research designは[Research DesignのDesign lineage](docs/RESEARCH-DESIGN.md#design-lineage)に定めるArgusの10動詞とwp2shell / Cycle Double Cover Promptを出発点にする。wp2shell promptの研究手法はすべてResearch Promptへ取り入れ、持ち込まないのはtask固有の「脆弱性が存在してRCE / `/flag`へ必ず到達する」というpositive-oracle goalと最低6時間の指定だけとする。最大4体は固定assignmentではなくresource ceiling、Approach Family RegistryはHarness stateではなくRootのscratchとする。このProductのmission、isolation、human gateへ適応しても、残るprompt要素を黙って省略しない。
 - Native Agent Runtimeはprovider/process/session/tool bindingとreceiptを所有するが研究判断を所有しない。Grok Buildを探索評価の第一選択とし、Claude Code、Codex等も独立Adapterとして使う。providerが既に持つmodel loop、context management、session resume、native subagent scheduling、message routingまたはtool orchestrationをprovider-neutral codeで再実装しない。Adapterはnative機能の設定、制限、integrity bindingとreceipt変換に留め、利用不能時はtyped failureにする。
-- Root AIはnative subagent、仮説、読む順序、synthesis、critique、Candidate、parked Lead、継続と停止の提案を所有する。人間は次のResearch GrantとCandidate admissionを所有する。HarnessはRootを含む同時active agent最大4体のresource ceilingだけをprovider runtimeで強制し、Finder数、role、Wave、Lease、Depth、Approach Familyまたは固定手順を実装しない。
+- Root AIはnative subagent、仮説、読む順序、synthesis、critique、Candidate、parked Leadと探索内の継続・停止を所有する。人間はCampaign開始、Candidate admission、権限・scope拡張と外部行動を所有する。HarnessはRootを含む同時active agent最大4体と承認済みCampaign safety envelopeだけをprovider runtimeで強制し、Finder数、role、Wave、Lease、Depth、Approach Familyまたは固定手順を実装しない。
 - staticまたは派生解析の出力があってもnavigationとevidenceの補助に限り、探索空間またはcompletion proofにしない。
 - Research RootはCandidateごとに最小のprivate reproduction recipeを作る。Human Candidate ReviewでadvanceされたCandidateだけをdigest-bound Candidate Verification RequestとしてHuman OSへ渡す。recipeを用意できないCandidateは`verification-preparation-needed`に留める。
 - Human OSはCandidateをfreshな隔離環境で動的検証する。`runtime-confirmed`だけがVerified Vulnerabilityを生成し、全configured programmeを独立にscope評価する。全programmeでOOSでも技術的なVerified Vulnerabilityは保持し、`in-scope`のprogrammeだけにSubmission Candidateを作る。
@@ -82,7 +82,7 @@ IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本と�
 - mockはprovider CLI、clock、filesystem等のsystem seamへ限定する。
 - fixtureへprivate Target、未公開Finding、credentialを入れない。
 - commit前のrepository gateは`pnpm check`。
-- Target/Prompt/Runtime/Permission/Budget binding、最大1時間のResearch Grant、両Human Review、Parked Programme LeadのCandidate Review除外、Rootとnative subagentの権限制約、Root込み最大4体の同時実行上限、Candidate-bound private recipe、single fresh dynamic verification、Verified Vulnerabilityとprogramme scopeの分離、全programmeのscope評価、AI failureを棄却へ丸めないこと、external actionのhuman gateは回帰対象とする。旧schema、legacy replay、固定role orchestrationまたは未使用Adapterを新binaryへ残さない。
+- Target/Prompt/Runtime/Permission/Budget binding、AIのsource-bound `continue`によるexact Checkpoint自動継続、Rootの`stop`後のHuman Candidate Review、Parked Programme LeadのCandidate Review除外、Rootとnative subagentの権限制約、Root込み最大4体の同時実行上限、Candidate-bound private recipe、single fresh dynamic verification、Verified Vulnerabilityとprogramme scopeの分離、全programmeのscope評価、AI failureを棄却へ丸めないこと、external actionのhuman gateは回帰対象とする。旧schema、legacy replay、固定role orchestrationまたは未使用Adapterを新binaryへ残さない。
 
 ## TypeScript
 

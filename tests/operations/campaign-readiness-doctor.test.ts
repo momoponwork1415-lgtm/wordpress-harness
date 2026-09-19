@@ -107,7 +107,7 @@ async function readyFixture(
   ]);
   const campaignInput: CampaignInput = {
     kind: "agent-led-campaign",
-    schemaVersion: 1,
+    schemaVersion: 2,
     campaignId: "campaign-doctor-ready-1",
     targetSnapshot: {
       id: "target-doctor-ready-1",
@@ -143,7 +143,6 @@ async function readyFixture(
       id: "budget-doctor-ready-1",
       maxNativeRuns: 1,
       maxWallTimeMs: 3_600_000,
-      researchGrantWallTimeMs: 3_600_000,
       digest: `sha256:${"f".repeat(64)}`,
     },
   };

@@ -131,7 +131,7 @@ export function admitApprovedTargetCampaign(
 
   return campaignInputSchema.parse({
     kind: "agent-led-campaign",
-    schemaVersion: 1,
+    schemaVersion: 2,
     campaignId: request.campaignId,
     targetSnapshot: {
       ...request.targetIntake.targetSnapshot,

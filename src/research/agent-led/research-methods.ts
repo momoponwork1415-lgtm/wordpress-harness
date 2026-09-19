@@ -6,22 +6,22 @@ export interface ResearchMethodPromptSet {
 }
 
 const wp2shellPromptDigest =
-  "sha256:555b260f9b846ae97d69c72863ac1099292cb403657ab6e3ef10218619547f00";
+  "sha256:52f140e279b142bfff285e594839cc55c36d711de159834c590f8d6576ad16d3";
 
 const promptSetByMethod = {
   wp2shell: {
-    id: "wordpress-plugin-research-wp2shell-v1",
+    id: "wordpress-plugin-research-wp2shell-v2",
     digest: wp2shellPromptDigest,
   },
   cloudflare: {
-    id: "wordpress-plugin-research-cloudflare-v1",
+    id: "wordpress-plugin-research-cloudflare-v2",
     digest:
-      "sha256:ad97b51be4cbe8e10e147bbed779a2db05c419fc8bbc78cdc26c1dbfedfe0113",
+      "sha256:673bae0698edd385871c9e18b8c8a51254bf307f7f8a8b9be26c600dab40e399",
   },
   "cloudflare-upstream": {
-    id: "wordpress-plugin-research-cloudflare-upstream-c1c8a8c-v1",
+    id: "wordpress-plugin-research-cloudflare-upstream-c1c8a8c-v2",
     digest:
-      "sha256:9372e9529bc9d5bf9daafca61598102e99ade13ac27d370e468a90e8c9061889",
+      "sha256:3c922fafba2f58126748eb36663ec78d067192737d11bea9b569251a727cb400",
   },
 } as const satisfies Record<ResearchMethod, ResearchMethodPromptSet>;
 
@@ -32,10 +32,6 @@ const canonicalPromptSets = new Map<
   [
     promptSetByMethod.wp2shell.id,
     { method: "wp2shell", digest: promptSetByMethod.wp2shell.digest },
-  ],
-  [
-    "wordpress-plugin-research-v3",
-    { method: "wp2shell", digest: wp2shellPromptDigest },
   ],
   [
     promptSetByMethod.cloudflare.id,

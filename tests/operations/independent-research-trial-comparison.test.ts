@@ -43,7 +43,7 @@ const runtimeProfile = defineAgentRuntimeProfile({
 function campaignInput(campaignId: string): CampaignInput {
   return {
     kind: "agent-led-campaign",
-    schemaVersion: 1,
+    schemaVersion: 2,
     campaignId,
     targetSnapshot: {
       id: "target-fixture-1",
@@ -56,10 +56,9 @@ function campaignInput(campaignId: string): CampaignInput {
     agentRuntimeProfile: runtimeProfile,
     permissionProfile: { id: "source-only-v1", digest: digest("d") },
     budgetEnvelope: {
-      id: "one-hour-v1",
+      id: "campaign-envelope-v1",
       maxNativeRuns: 3,
       maxWallTimeMs: 3_600_000,
-      researchGrantWallTimeMs: 3_600_000,
       digest: digest("e"),
     },
   };
@@ -148,7 +147,7 @@ const blockedAssessment: ResearchAssessment = {
 function runFor(input: CampaignInput, ordinal: number): SealedNativeRun {
   return {
     kind: "sealed-native-research-run",
-    schemaVersion: 1,
+    schemaVersion: 2,
     runId: `${input.campaignId}:native:${ordinal}`,
     campaignId: input.campaignId,
     campaignInputDigest: canonicalDigest(input),
@@ -251,7 +250,7 @@ function campaignView(
   runs: readonly { run: SealedNativeRun; receipt: NativeRunReceipt }[],
   candidateVerificationRequests: readonly CandidateVerificationRequest[] = [],
 ): ResearchCampaignView {
-  const completedGrants = runs.flatMap(({ receipt }) =>
+  const completedRuns = runs.flatMap(({ receipt }) =>
     receipt.terminal === "completed"
       ? [
           {
@@ -263,8 +262,8 @@ function campaignView(
   );
   const observedPaths = [
     ...new Set(
-      completedGrants.flatMap((grant) =>
-        grant.evidenceSummary.examinedAreas.flatMap((area) =>
+      completedRuns.flatMap((run) =>
+        run.evidenceSummary.examinedAreas.flatMap((area) =>
           area.evidence.map((evidence) => evidence.path),
         ),
       ),
@@ -272,7 +271,7 @@ function campaignView(
   ];
   return {
     kind: "agent-led-campaign-outcome",
-    schemaVersion: 3,
+    schemaVersion: 4,
     campaignId: input.campaignId,
     inputDigest: canonicalDigest(input),
     status,
@@ -280,21 +279,20 @@ function campaignView(
     nativeRunAttempts: runs.map(({ run, receipt }) => attemptFor(run, receipt)),
     nativeRuns: runs.map(({ receipt }) => receipt),
     candidateReviews: [],
-    researchContinuationReviews: [],
     parkedProgrammeLeads: [],
     candidateVerificationRequests,
     verificationPreparationNeeded: [],
     researchProgress: {
-      completedGrants,
+      completedRuns,
       observedSourcePaths: observedPaths.map((path) => ({
         path,
-        runIds: completedGrants
-          .filter((grant) =>
-            grant.evidenceSummary.examinedAreas.some((area) =>
+        runIds: completedRuns
+          .filter((run) =>
+            run.evidenceSummary.examinedAreas.some((area) =>
               area.evidence.some((evidence) => evidence.path === path),
             ),
           )
-          .map((grant) => grant.runId),
+          .map((run) => run.runId),
       })),
       pendingNextActions: [],
     },
@@ -331,7 +329,7 @@ function verificationRequest(
 }
 
 describe("Independent Research Trial comparison", () => {
-  it("counts Campaigns as trials while retaining Grant-local provenance and unknown cost", () => {
+  it("counts Campaigns as trials while retaining run-local provenance and unknown cost", () => {
     const inputs = [
       campaignInput("trial-one"),
       campaignInput("trial-two"),

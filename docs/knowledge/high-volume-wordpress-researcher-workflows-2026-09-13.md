@@ -133,7 +133,7 @@ Wordfenceの2026年3月実績では、darooはvalid in-scope 13件、$4,993、�
 
 ## Harnessへの含意
 
-1. **Hit rateを定義し直す。** `published Findings / profile`ではなく、固定snapshot上の`validated Findings / researched Targets`、`validated Findings / Research Grant`、time-to-first actionable Candidate、class/route diversityを分けて測る。non-finding runとrejectionも分母へ残す。
+1. **Hit rateを定義し直す。** `published Findings / profile`ではなく、固定snapshot上の`validated Findings / researched Targets`、`validated Findings / Research Native Run`、time-to-first actionable Candidate、class/route diversityを分けて測る。non-finding runとrejectionも分母へ残す。
 2. **Lead precisionとResearch yieldを分ける。** `alerts -> inspected leads -> Candidates -> admitted Candidates -> validated Findings`を別々に記録し、false-positive率と一件当たり棄却時間を一緒に見る。80% FPでも秒単位triageならfrontier generatorとして有用である。
 3. **Change-first frontierを評価する。** WordPress.org SVNの新規changesetをoracle-free signalとして使い、new/changed risky operation、public entry point、authority checkの変化をRootへ渡すablationを行う。static outputはnavigationであってCandidateやcompletion proofにしない。
 4. **Primitiveからsecurity semanticsへ進む。** risky functionを見つけた後、caller、input control、nonce、capability、role、object ownership、ordinary configuration、final impactをRootが追う。GiveWP型のmissing link探索をResearch Promptへ保つ。

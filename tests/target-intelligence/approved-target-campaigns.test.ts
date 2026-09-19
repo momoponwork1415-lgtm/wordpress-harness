@@ -54,7 +54,7 @@ function candidate(treeDigest: string): TargetCandidate {
 function policy(): ResearchCampaignPolicy {
   const body = {
     kind: "research-campaign-policy" as const,
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     id: "research-campaign-policy-v1",
     promptSet: { id: "research-prompt-v1", digest: digest("e") },
     agentRuntimeProfile: defineAgentRuntimeProfile({
@@ -71,7 +71,6 @@ function policy(): ResearchCampaignPolicy {
       id: "research-budget-v1",
       maxNativeRuns: 4,
       maxWallTimeMs: 1_800_000,
-      researchGrantWallTimeMs: 1_800_000,
       digest: digest("3"),
     },
   };
@@ -291,7 +290,7 @@ describe("ApprovedTargetCampaigns", () => {
           received = input;
           return {
             kind: "agent-led-campaign-outcome",
-            schemaVersion: 3,
+            schemaVersion: 4,
             campaignId: input.campaignId,
             inputDigest: canonicalDigest(input),
             status: "research-continues",
@@ -328,7 +327,7 @@ describe("ApprovedTargetCampaigns", () => {
           conducted = true;
           return {
             kind: "agent-led-campaign-outcome",
-            schemaVersion: 3,
+            schemaVersion: 4,
             campaignId: input.campaignId,
             inputDigest: canonicalDigest(input),
             status: "research-continues",

@@ -34,7 +34,7 @@ afterEach(async () => {
 
 const input: CampaignInput = {
   kind: "agent-led-campaign",
-  schemaVersion: 1,
+  schemaVersion: 2,
   campaignId: "campaign-agent-led-1",
   targetSnapshot: {
     id: "target-brizy-2.8.11",
@@ -73,7 +73,6 @@ const input: CampaignInput = {
     id: "budget-agent-led-v1",
     maxNativeRuns: 1,
     maxWallTimeMs: 600_000,
-    researchGrantWallTimeMs: 600_000,
     digest:
       "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
   },
@@ -150,43 +149,10 @@ async function conductWithHumanAdvance(
   campaignInput: CampaignInput,
 ) {
   let outcome = await campaigns.conduct(campaignInput);
-  while (
-    outcome.status === "research-review-pending" ||
-    outcome.status === "candidate-review-pending"
-  ) {
+  while (outcome.status === "candidate-review-pending") {
     const view = await campaigns.inspect({
       campaignId: campaignInput.campaignId,
     });
-    if (outcome.status === "research-review-pending") {
-      const request = view.pendingResearchContinuationReview;
-      if (request === undefined) {
-        throw new Error("missing Research continuation review request");
-      }
-      const reviewBody = {
-        kind: "human-research-continuation-review" as const,
-        schemaVersion: 1 as const,
-        reviewId: `research-review:${request.researchRunId}`,
-        campaignId: campaignInput.campaignId,
-        campaignInputDigest: request.campaignInputDigest,
-        researchRunId: request.researchRunId,
-        checkpointId: request.checkpoint.checkpointId,
-        checkpointStateDigest: request.checkpoint.stateDigest,
-        candidateSetDigest: request.candidateSetDigest,
-        parkedProgrammeLeadSetDigest: request.parkedProgrammeLeadSetDigest,
-        researchContinuationReviewRequestDigest: request.digest,
-        operator: {
-          identity: "test-human-reviewer",
-          decidedAt: "2026-09-09T00:00:00.000Z",
-        },
-        decision: "continue-research" as const,
-        reason: "The source-bound next actions warrant another Research Grant.",
-      };
-      outcome = await campaigns.conduct({
-        ...reviewBody,
-        digest: canonicalDigest(reviewBody),
-      });
-      continue;
-    }
     const request = view.pendingCandidateReview;
     if (request === undefined)
       throw new Error("missing Candidate review request");
@@ -347,7 +313,7 @@ describe("ResearchCampaigns", () => {
     ).resolves.toMatchObject({
       status: "incomplete",
       researchProgress: {
-        completedGrants: [],
+        completedRuns: [],
         observedSourcePaths: [],
         pendingNextActions: [],
       },
@@ -405,7 +371,7 @@ describe("ResearchCampaigns", () => {
     await expect(
       reopened.inspect({ campaignId: orphanedInput.campaignId }),
     ).resolves.toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       status: "incomplete",
       nativeRuns: [],
       nativeRunAttempts: [
@@ -482,7 +448,7 @@ describe("ResearchCampaigns", () => {
       },
     });
     await expect(reopened.conduct(recoverableInput)).resolves.toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       status: "coverage-closed",
     });
     expect(recoveryRuntimeInvocations).toBe(0);
@@ -689,7 +655,7 @@ describe("ResearchCampaigns", () => {
     campaigns.close();
   });
 
-  it("does not repeat a Research Grant into an exhausted provider quota", async () => {
+  it("does not repeat a Research run into an exhausted provider quota", async () => {
     const directory = await mkdtemp(join(tmpdir(), "research-quota-"));
     temporaryDirectories.push(directory);
     const quotaInput: CampaignInput = {
@@ -850,7 +816,7 @@ describe("ResearchCampaigns", () => {
     campaigns.close();
   });
 
-  it("continues only after a human accepts the next Research Grant", async () => {
+  it("continues automatically from the Root's exact Checkpoint", async () => {
     const directory = await mkdtemp(join(tmpdir(), "research-continues-"));
     temporaryDirectories.push(directory);
     const continuingInput: CampaignInput = {
@@ -964,43 +930,9 @@ describe("ResearchCampaigns", () => {
     });
 
     await expect(campaigns.conduct(continuingInput)).resolves.toMatchObject({
-      status: "research-review-pending",
+      status: "coverage-closed",
     });
-    expect(invocation).toBe(1);
-    await expect(
-      campaigns.inspect({ campaignId: "campaign-continues-1" }),
-    ).resolves.toMatchObject({
-      researchProgress: {
-        completedGrants: [
-          {
-            runId: "campaign-continues-1:native:1",
-            evidenceSummary: {
-              examinedAreas: [{ area: "Public write boundary" }],
-              unexaminedAreas: ["Privileged read boundary"],
-            },
-          },
-        ],
-        observedSourcePaths: [
-          {
-            path: "includes/shared.php",
-            runIds: ["campaign-continues-1:native:1"],
-          },
-          {
-            path: "includes/write.php",
-            runIds: ["campaign-continues-1:native:1"],
-          },
-        ],
-        pendingNextActions: [
-          {
-            question: "Which read path renders the persisted value?",
-            sourcePointers: ["includes/form.php"],
-          },
-        ],
-      },
-    });
-    await expect(
-      conductWithHumanAdvance(campaigns, continuingInput),
-    ).resolves.toMatchObject({ status: "coverage-closed" });
+    expect(invocation).toBe(2);
     await expect(
       campaigns.inspect({ campaignId: "campaign-continues-1" }),
     ).resolves.toMatchObject({
@@ -1014,11 +946,8 @@ describe("ResearchCampaigns", () => {
           report: { decision: { kind: "stop" } },
         },
       ],
-      researchContinuationReviews: [
-        { decision: "continue-research", researchRunId: expect.any(String) },
-      ],
       researchProgress: {
-        completedGrants: [
+        completedRuns: [
           {
             runId: "campaign-continues-1:native:1",
             evidenceSummary: {
@@ -1128,7 +1057,7 @@ describe("ResearchCampaigns", () => {
     await expect(
       campaigns.inspect({ campaignId: conflictInput.campaignId }),
     ).resolves.toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       status: "incomplete",
       admissionFailure: {
         reason: "candidate-identity-conflict",
@@ -1314,7 +1243,6 @@ describe("ResearchCampaigns", () => {
         ...input.budgetEnvelope,
         maxNativeRuns: 2,
         maxWallTimeMs: 50_000,
-        researchGrantWallTimeMs: 50_000,
       },
     };
     const campaigns = openResearchCampaigns({
@@ -1425,7 +1353,6 @@ describe("ResearchCampaigns", () => {
         ...input.budgetEnvelope,
         maxNativeRuns: 2,
         maxWallTimeMs: 100_000,
-        researchGrantWallTimeMs: 100_000,
       },
     };
     const seenRuns: SealedNativeRun[] = [];

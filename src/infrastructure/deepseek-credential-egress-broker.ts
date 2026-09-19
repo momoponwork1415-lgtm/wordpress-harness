@@ -191,7 +191,6 @@ export interface DeepSeekCredentialEgressBrokerOptions {
 
 const BROKER_ALIAS = "deepseek-egress";
 const BROKER_PORT = 8080;
-const MAX_GRANT_DURATION_MS = 60 * 60 * 1_000;
 const MAX_PROVIDER_ADDRESSES = 16;
 const DEEPSEEK_UPSTREAM_HOSTNAME = new URL(DEEPSEEK_UPSTREAM_ORIGIN).hostname;
 
@@ -299,8 +298,8 @@ function validateGrantDeadline(
 ): void {
   const deadline = new Date(request.expiresAt).getTime();
   const duration = deadline - now.getTime();
-  if (duration <= 0 || duration > MAX_GRANT_DURATION_MS) {
-    throw new Error("DeepSeek credential grant must expire within one hour");
+  if (duration <= 0) {
+    throw new Error("DeepSeek credential grant must expire in the future");
   }
 }
 

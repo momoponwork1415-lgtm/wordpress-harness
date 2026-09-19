@@ -189,22 +189,16 @@ export const programmeResearchBoundarySchema =
       }
     });
 
-const budgetEnvelopeSchema = z
-  .strictObject({
-    id: identifierSchema,
-    maxNativeRuns: z.number().int().positive(),
-    maxWallTimeMs: z.number().int().positive(),
-    researchGrantWallTimeMs: z.number().int().positive().max(3_600_000),
-    digest: digestSchema,
-  })
-  .refine((budget) => budget.researchGrantWallTimeMs <= budget.maxWallTimeMs, {
-    path: ["researchGrantWallTimeMs"],
-    message: "Research Grant cannot exceed the Campaign wall-time limit",
-  });
+const budgetEnvelopeSchema = z.strictObject({
+  id: identifierSchema,
+  maxNativeRuns: z.number().int().positive(),
+  maxWallTimeMs: z.number().int().positive(),
+  digest: digestSchema,
+});
 
 const researchCampaignPolicyBodySchema = z.strictObject({
   kind: z.literal("research-campaign-policy"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   id: identifierSchema,
   promptSet: researchPromptSetRefSchema,
   agentRuntimeProfile: agentRuntimeProfileSchema,
@@ -249,7 +243,7 @@ export const agentCheckpointRefSchema = z.strictObject({
 export const campaignInputSchema = z
   .strictObject({
     kind: z.literal("agent-led-campaign"),
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     campaignId: identifierSchema,
     targetSnapshot: targetSnapshotRefSchema,
     dependencySnapshots: dependencySnapshotsSchema.optional(),
@@ -485,71 +479,10 @@ export const candidateReviewRequestSchema = z
     }
   });
 
-const nextActionSchema = z.strictObject({
+export const researchNextActionSchema = z.strictObject({
   question: z.string().min(1),
   sourcePointers: z.array(z.string().min(1)),
 });
-
-export const researchContinuationReviewRequestSchema = z
-  .strictObject({
-    kind: z.literal("research-continuation-review-request"),
-    schemaVersion: z.literal(2),
-    campaignId: identifierSchema,
-    campaignInputDigest: digestSchema,
-    researchRunId: identifierSchema,
-    checkpoint: agentCheckpointRefSchema,
-    candidateSetDigest: digestSchema,
-    candidates: z.array(researchCandidateSchema),
-    parkedProgrammeLeadSetDigest: digestSchema,
-    parkedProgrammeLeads: z.array(parkedProgrammeLeadSchema),
-    nextActions: z.array(nextActionSchema).min(1),
-    digest: digestSchema,
-  })
-  .superRefine((request, context) => {
-    const {
-      digest,
-      candidateSetDigest,
-      candidates,
-      parkedProgrammeLeadSetDigest,
-      parkedProgrammeLeads,
-      ...body
-    } = request;
-    if (candidateSetDigest !== canonicalDigest(candidates)) {
-      context.addIssue({
-        code: "custom",
-        path: ["candidateSetDigest"],
-        message:
-          "Research continuation review request must bind the exact Candidate set",
-      });
-    }
-    if (
-      parkedProgrammeLeadSetDigest !== canonicalDigest(parkedProgrammeLeads)
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["parkedProgrammeLeadSetDigest"],
-        message:
-          "Research continuation review request must bind the exact parked Programme Lead set",
-      });
-    }
-    if (
-      digest !==
-      canonicalDigest({
-        ...body,
-        candidateSetDigest,
-        candidates,
-        parkedProgrammeLeadSetDigest,
-        parkedProgrammeLeads,
-      })
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["digest"],
-        message:
-          "Research continuation review request digest must bind its exact body",
-      });
-    }
-  });
 
 const humanCandidateReviewDecisionSchema = z.discriminatedUnion("disposition", [
   z.strictObject({
@@ -561,7 +494,7 @@ const humanCandidateReviewDecisionSchema = z.discriminatedUnion("disposition", [
     candidateId: identifierSchema,
     disposition: z.literal("return-to-research"),
     reason: z.string().min(1).max(4_000),
-    nextActions: z.array(nextActionSchema).min(1).max(32),
+    nextActions: z.array(researchNextActionSchema).min(1).max(32),
   }),
 ]);
 
@@ -605,52 +538,16 @@ export const humanCandidateReviewSchema = humanCandidateReviewBodySchema
     }
   });
 
-const humanResearchContinuationReviewBodySchema = z.strictObject({
-  kind: z.literal("human-research-continuation-review"),
-  schemaVersion: z.literal(1),
-  reviewId: identifierSchema,
-  campaignId: identifierSchema,
-  campaignInputDigest: digestSchema,
-  researchRunId: identifierSchema,
-  checkpointId: identifierSchema,
-  checkpointStateDigest: digestSchema,
-  candidateSetDigest: digestSchema,
-  parkedProgrammeLeadSetDigest: digestSchema,
-  researchContinuationReviewRequestDigest: digestSchema,
-  operator: z.strictObject({
-    identity: identifierSchema,
-    decidedAt: z.iso.datetime(),
-  }),
-  decision: z.enum(["continue-research", "proceed-to-candidate-review"]),
-  reason: z.string().min(1).max(4_000),
-});
-
-export const humanResearchContinuationReviewSchema =
-  humanResearchContinuationReviewBodySchema
-    .extend({ digest: digestSchema })
-    .superRefine((review, context) => {
-      const { digest, ...body } = review;
-      if (digest !== canonicalDigest(body)) {
-        context.addIssue({
-          code: "custom",
-          path: ["digest"],
-          message:
-            "Human Research Continuation Review digest must bind its exact body",
-        });
-      }
-    });
-
 export const campaignCommandSchema = z.discriminatedUnion("kind", [
   campaignInputSchema,
   humanCandidateReviewSchema,
-  humanResearchContinuationReviewSchema,
 ]);
 
 const researchDecisionSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("continue"),
     reason: z.string().min(1),
-    nextActions: z.array(nextActionSchema).min(1),
+    nextActions: z.array(researchNextActionSchema).min(1),
   }),
   z.strictObject({
     kind: z.literal("stop"),
@@ -746,7 +643,7 @@ export const nativeRunReceiptSchema = z.discriminatedUnion("terminal", [
 
 export const sealedNativeRunSchema = z.strictObject({
   kind: z.literal("sealed-native-research-run"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   runId: identifierSchema,
   campaignId: identifierSchema,
   campaignInputDigest: digestSchema,
@@ -761,7 +658,7 @@ export const sealedNativeRunSchema = z.strictObject({
   budgetAllowance: runBudgetAllowanceSchema,
   resumeFrom: agentCheckpointRefSchema.optional(),
   researchContinuationNextActions: z
-    .array(nextActionSchema)
+    .array(researchNextActionSchema)
     .min(1)
     .max(32)
     .optional(),
@@ -769,7 +666,7 @@ export const sealedNativeRunSchema = z.strictObject({
     .array(
       z.strictObject({
         candidateId: identifierSchema,
-        nextActions: z.array(nextActionSchema).min(1).max(32),
+        nextActions: z.array(researchNextActionSchema).min(1).max(32),
       }),
     )
     .min(1)
@@ -818,7 +715,6 @@ export const candidateVerificationRequestSchema = z
 
 export type CampaignStatus =
   | "research-continues"
-  | "research-review-pending"
   | "candidate-review-pending"
   | "verification-preparation-needed"
   | "candidate-verification-ready"
@@ -829,7 +725,7 @@ export interface CampaignCoverage {
   readonly status: "open" | "closed" | "incomplete";
 }
 
-export interface ResearchGrantProgress {
+export interface ResearchRunProgress {
   readonly runId: string;
   readonly evidenceSummary: ResearchEvidenceSummary;
 }
@@ -840,9 +736,9 @@ export interface ObservedResearchSourcePath {
 }
 
 export interface CampaignResearchProgress {
-  readonly completedGrants: readonly ResearchGrantProgress[];
+  readonly completedRuns: readonly ResearchRunProgress[];
   readonly observedSourcePaths: readonly ObservedResearchSourcePath[];
-  readonly pendingNextActions: ResearchContinuationReviewRequest["nextActions"];
+  readonly pendingNextActions: readonly ResearchNextAction[];
 }
 
 export interface NativeAgentRuntime {
@@ -861,7 +757,7 @@ export interface CampaignQuery {
 
 export interface CampaignOutcomeRef {
   readonly kind: "agent-led-campaign-outcome";
-  readonly schemaVersion: 3;
+  readonly schemaVersion: 4;
   readonly campaignId: string;
   readonly inputDigest: string;
   readonly status: CampaignStatus;
@@ -882,14 +778,12 @@ export interface ResearchCampaignView extends CampaignOutcomeRef {
   readonly nativeRunAttempts: readonly NativeRunAttempt[];
   readonly nativeRuns: readonly NativeRunReceipt[];
   readonly candidateReviews: readonly HumanCandidateReview[];
-  readonly researchContinuationReviews: readonly HumanResearchContinuationReview[];
   readonly parkedProgrammeLeads: readonly ParkedProgrammeLead[];
   readonly candidateVerificationRequests: readonly CandidateVerificationRequest[];
   readonly verificationPreparationNeeded: readonly ResearchCandidate[];
   readonly researchProgress: CampaignResearchProgress;
   readonly coverage: CampaignCoverage;
   readonly pendingCandidateReview?: CandidateReviewRequest;
-  readonly pendingResearchContinuationReview?: ResearchContinuationReviewRequest;
   readonly admissionFailure?: ResearchAdmissionFailure;
   readonly interruption?: CampaignInterruption;
 }
@@ -936,12 +830,7 @@ export type CandidateReviewRequest = z.infer<
   typeof candidateReviewRequestSchema
 >;
 export type HumanCandidateReview = z.infer<typeof humanCandidateReviewSchema>;
-export type HumanResearchContinuationReview = z.infer<
-  typeof humanResearchContinuationReviewSchema
->;
-export type ResearchContinuationReviewRequest = z.infer<
-  typeof researchContinuationReviewRequestSchema
->;
+export type ResearchNextAction = z.infer<typeof researchNextActionSchema>;
 export type CandidateVerificationRequest = z.infer<
   typeof candidateVerificationRequestSchema
 >;

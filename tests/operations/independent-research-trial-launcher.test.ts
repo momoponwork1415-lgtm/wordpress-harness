@@ -62,7 +62,7 @@ interface ApprovedRequestFixtureOptions {
 function campaignPolicy(promptDigest = digest("e")): ResearchCampaignPolicy {
   const body = {
     kind: "research-campaign-policy" as const,
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     id: "deepseek-pass-at-three-policy-v1",
     promptSet: { id: "research-v3", digest: promptDigest },
     agentRuntimeProfile: defineAgentRuntimeProfile({
@@ -76,7 +76,6 @@ function campaignPolicy(promptDigest = digest("e")): ResearchCampaignPolicy {
       id: "budget-pass-at-three",
       maxNativeRuns: 2,
       maxWallTimeMs: 3_600_000,
-      researchGrantWallTimeMs: 3_600_000,
       digest: digest("1"),
     },
   };

@@ -269,7 +269,7 @@ exit 75
     } as const;
     const input: CampaignInput = {
       kind: "agent-led-campaign",
-      schemaVersion: 1,
+      schemaVersion: 2,
       campaignId: "campaign-grok-native-1",
       targetSnapshot: {
         id: "target-plugin-1.0.0",
@@ -294,7 +294,6 @@ exit 75
         id: "agent-led-budget-v1",
         maxNativeRuns: 3,
         maxWallTimeMs: 600_000,
-        researchGrantWallTimeMs: 600_000,
         digest:
           "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       },
@@ -534,7 +533,7 @@ printf '{"text":"{\\"schemaVersion\\":2,\\"assessments\\":[],\\"evidenceSummary\
     const researchPrompt = "Audit the immutable plugin source.";
     const input: CampaignInput = {
       kind: "agent-led-campaign",
-      schemaVersion: 1,
+      schemaVersion: 2,
       campaignId: "campaign-grok-usage-denied-1",
       targetSnapshot: {
         id: "target-plugin-1.0.0",
@@ -558,7 +557,6 @@ printf '{"text":"{\\"schemaVersion\\":2,\\"assessments\\":[],\\"evidenceSummary\
         id: "agent-led-budget-v1",
         maxNativeRuns: 1,
         maxWallTimeMs: 600_000,
-        researchGrantWallTimeMs: 600_000,
         digest:
           "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       },

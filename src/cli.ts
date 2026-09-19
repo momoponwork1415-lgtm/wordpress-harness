@@ -9,7 +9,6 @@ import { createDeepSeekCredentialEgressBroker } from "./infrastructure/deepseek-
 import {
   campaignInputSchema,
   humanCandidateReviewSchema,
-  humanResearchContinuationReviewSchema,
   type CampaignInput,
 } from "./research/index.js";
 import {
@@ -28,7 +27,7 @@ import {
 import { admitApprovedTargetCampaign } from "./target-intelligence/approved-target-campaign/approved-target-campaigns.js";
 
 const usage =
-  "Usage: wordpress-harness campaign <conduct|conduct-approved|review-research|review-candidates|inspect> --database <path> ...";
+  "Usage: wordpress-harness campaign <conduct|conduct-approved|review-candidates|inspect> --database <path> ...";
 
 export interface CliIo {
   stdout(text: string): void;
@@ -183,7 +182,6 @@ export async function runCli(
       context !== "campaign" ||
       (command !== "conduct" &&
         command !== "conduct-approved" &&
-        command !== "review-research" &&
         command !== "review-candidates" &&
         command !== "inspect")
     ) {
@@ -191,14 +189,11 @@ export async function runCli(
     }
     const databasePath = resolve(readOption(args, "--database"));
 
-    if (command === "review-research" || command === "review-candidates") {
+    if (command === "review-candidates") {
       const reviewValue = JSON.parse(
         await readFile(readOption(args, "--review"), "utf8"),
       ) as unknown;
-      const review =
-        command === "review-research"
-          ? humanResearchContinuationReviewSchema.parse(reviewValue)
-          : humanCandidateReviewSchema.parse(reviewValue);
+      const review = humanCandidateReviewSchema.parse(reviewValue);
       const inspection = openResearchCampaigns({
         databasePath,
         runtime: unavailableInspectionRuntime(),

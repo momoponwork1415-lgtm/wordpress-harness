@@ -10,7 +10,7 @@ Target Intelligenceは取得したsourceと観測factからCandidate Poolを組�
 
 ## 2. Conduct and review
 
-Researchは一回最大1時間のResearch Grantを実行する。AIの継続提案を受けた人間は、同じCheckpointから次のGrantへ進むか、Candidate Reviewへ移るかを判断する。
+Researchは承認済みCampaignのsafety envelope内で連続loopを実行する。AIが具体的でsource-boundな`continue`を返すと、Harnessはexact Checkpointから次のNative Runを自動開始する。AIが`stop`を返した後、Candidateがあれば人間のCandidate Reviewへ移る。
 
 人間がCandidateを確認し、Candidate Verificationへ進めるものを選ぶ。Researchへ戻すCandidateがあれば、動的検証より先に戻る。Parked Programme LeadはCandidate Reviewへ進まない。
 
@@ -20,8 +20,8 @@ Researchは一回最大1時間のResearch Grantを実行する。AIの継続提�
 | --- | --- |
 | 対象と参照source | 固定版のread-only Target SnapshotとDependency Snapshots |
 | planning data | Campaign Threat ContextとProgramme Research Boundary |
-| 実行条件 | Prompt、Agent Runtime Profile、Permission Profile、Grantの許容時間 |
-| 承認済みの継続 | 同じbindingのprivate Agent Checkpointと人間が承認したnext action |
+| 実行条件 | Prompt、Agent Runtime Profile、Permission Profile、Campaign safety envelope |
+| 探索内の継続 | 同じbindingのprivate Agent Checkpointと直前のRootが残したsource-bound next action |
 
 RootはCandidateを返すとき、同じsource理解から最小の動的recipeも作る。Runtime Adapterはrecipe本文をGit外のprivate CASへ退避し、Research Recordには参照だけを残す。recipeがなければ`verification-preparation-needed`となる。
 

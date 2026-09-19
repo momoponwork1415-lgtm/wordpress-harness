@@ -7,7 +7,7 @@
 | Context / 用語集 | 所有する責務 |
 | --- | --- |
 | [Target Intelligence](docs/domain/target-intelligence/CONTEXT.md) | ecosystem観測、Target Proposal、人間のApproved Target Batch、dispatch |
-| [Research](CONTEXT.md) | 一TargetのCampaign、Research Grant、両Human Review、Candidate Verification Request、Coverage |
+| [Research](CONTEXT.md) | 一Targetの自律Research Campaign、Human Candidate Review、Candidate Verification Request、Coverage |
 | [Human OS](docs/domain/human-os/CONTEXT.md) | dynamic verification、Verified Vulnerability、programme scope、Draft、外部行動のauthorization |
 
 ## Relationships

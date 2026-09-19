@@ -55,7 +55,7 @@ function inputFor(campaignId: string, withBoundary = true): CampaignInput {
   };
   return {
     kind: "agent-led-campaign",
-    schemaVersion: 1,
+    schemaVersion: 2,
     campaignId,
     targetSnapshot: {
       id: "target-course-suite-fixture-1.0.0",
@@ -80,7 +80,6 @@ function inputFor(campaignId: string, withBoundary = true): CampaignInput {
       id: "budget-v1",
       maxNativeRuns: 2,
       maxWallTimeMs: 600_000,
-      researchGrantWallTimeMs: 60_000,
       digest: digest("f"),
     },
     ...(withBoundary
@@ -194,7 +193,7 @@ describe("parked Programme Leads", () => {
       "Do not merely return because current approaches failed or agents reported no findings",
     );
     expect(prompt).toContain(
-      "Every report must include a Grant-local `evidenceSummary`",
+      "Every report must include a run-local `evidenceSummary`",
     );
     expect(prompt).toContain(
       "It is not a Harness work queue, a coverage ledger",
@@ -394,7 +393,7 @@ describe("parked Programme Leads", () => {
     campaigns.close();
   });
 
-  it("keeps parked leads when a reviewed continuation later loses the provider", async () => {
+  it("keeps parked leads when autonomous continuation loses the provider", async () => {
     const directory = await mkdtemp(join(tmpdir(), "parked-lead-recovery-"));
     temporaryDirectories.push(directory);
     const input = inputFor("campaign-parked-lead-recovery-1");
@@ -433,42 +432,9 @@ describe("parked Programme Leads", () => {
       },
     });
 
-    await campaigns.conduct(input);
-    const pending = (await campaigns.inspect({ campaignId: input.campaignId }))
-      .pendingResearchContinuationReview;
-    if (pending === undefined)
-      throw new Error("missing Research review request");
-    expect(pending).toMatchObject({
-      parkedProgrammeLeads: [{ leadId: "lead-profile-label-read" }],
-      parkedProgrammeLeadSetDigest: expect.stringMatching(
-        /^sha256:[a-f0-9]{64}$/,
-      ),
+    await expect(campaigns.conduct(input)).resolves.toMatchObject({
+      status: "incomplete",
     });
-    const reviewBody = {
-      kind: "human-research-continuation-review" as const,
-      schemaVersion: 1 as const,
-      reviewId: "research-review-parked-lead-recovery-1",
-      campaignId: input.campaignId,
-      campaignInputDigest: pending.campaignInputDigest,
-      researchRunId: pending.researchRunId,
-      checkpointId: pending.checkpoint.checkpointId,
-      checkpointStateDigest: pending.checkpoint.stateDigest,
-      candidateSetDigest: pending.candidateSetDigest,
-      parkedProgrammeLeadSetDigest: pending.parkedProgrammeLeadSetDigest,
-      researchContinuationReviewRequestDigest: pending.digest,
-      operator: {
-        identity: "human-operator-1",
-        decidedAt: "2026-09-09T05:01:00.000Z",
-      },
-      decision: "continue-research" as const,
-      reason: "The separate authorization route warrants another grant.",
-    };
-    await expect(
-      campaigns.conduct({
-        ...reviewBody,
-        digest: canonicalDigest(reviewBody),
-      }),
-    ).resolves.toMatchObject({ status: "incomplete" });
     await expect(
       campaigns.inspect({ campaignId: input.campaignId }),
     ).resolves.toMatchObject({
