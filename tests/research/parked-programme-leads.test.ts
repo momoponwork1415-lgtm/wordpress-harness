@@ -164,7 +164,7 @@ function parkedLeadReceipt(run: SealedNativeRun) {
 describe("parked Programme Leads", () => {
   it("carries the wp2shell research method without its time and forced-RCE task", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v6.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v7.md"),
       "utf8",
     );
 
@@ -173,7 +173,7 @@ describe("parked Programme Leads", () => {
     expect(prompt).toContain("Do not use vulnerability advisories");
     expect(prompt).toContain("ordinary production deployment");
     expect(prompt).toContain("Use native subagents aggressively");
-    expect(prompt).toContain("do not use a fixed assignment");
+    expect(prompt).toContain("Do not use a fixed assignment");
     expect(prompt).toContain("explicit scratch registry of approach families");
     expect(prompt).toContain("rather than superficial wording");
     expect(prompt).toContain("redirect some toward underexplored families");
@@ -204,7 +204,7 @@ describe("parked Programme Leads", () => {
 
   it("spends deep exploration only on the programme-eligible vulnerability scope", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v6.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v7.md"),
       "utf8",
     );
 

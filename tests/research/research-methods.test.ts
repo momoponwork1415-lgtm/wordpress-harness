@@ -49,8 +49,8 @@ describe("Research Method Prompt Sets", () => {
   it.each([
     {
       method: "wp2shell" as const,
-      promptPath: "prompts/wordpress-plugin-research-v6.md",
-      promptSetId: "wordpress-plugin-research-wp2shell-v6",
+      promptPath: "prompts/wordpress-plugin-research-v7.md",
+      promptSetId: "wordpress-plugin-research-wp2shell-v7",
     },
     {
       method: "cloudflare" as const,
@@ -76,38 +76,45 @@ describe("Research Method Prompt Sets", () => {
     },
   );
 
-  it("expands a source-supported route through its semantic neighborhood", async () => {
+  it("preserves every wp2shell search-management technique without the task oracle", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v6.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v7.md"),
       "utf8",
     );
 
-    expect(prompt).toContain("semantic neighborhood");
-    expect(prompt).toContain("value-transformation ledger");
+    expect(prompt).toContain("Use native subagents aggressively");
+    expect(prompt).toContain("Do not use a fixed assignment");
+    expect(prompt).toContain("genuinely diverse portfolio");
+    expect(prompt).toContain("explicit scratch registry of approach families");
+    expect(prompt).toContain("redirect some toward underexplored families");
+    expect(prompt).toContain("Do not let one route dominate");
+    expect(prompt).toContain("materially new mechanism");
     expect(prompt).toContain(
-      "later decoding, parsing, canonicalization, or rewriting",
+      "incompatible routes alive through multiple rounds",
     );
-    expect(prompt).toContain("authority and state transition");
+    expect(prompt).toContain("cross-pollinating their ideas");
+    expect(prompt).toContain("adversarial subagents");
+    expect(prompt).toContain("root repeatedly synthesizes");
     expect(prompt).toContain(
-      "not a sink checklist, Harness-owned coverage unit, or completion proof",
+      "Failure of the current approaches or the first wave is not a reason to stop",
     );
+    expect(prompt).toContain("pinned dependency source");
+    expect(prompt).toContain("chain intermediate bugs");
+    expect(prompt).not.toContain("/flag");
+    expect(prompt).not.toContain("at least 6 hours");
   });
 
-  it("closes a high-impact root before opening unrelated broad surfaces", async () => {
+  it("keeps the canonical wp2shell Prompt compact and free of v6 procedures", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v6.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v7.md"),
       "utf8",
     );
 
-    expect(prompt).toContain("root-mechanism source map");
-    expect(prompt).toContain("encode, decode, strip, restore");
-    expect(prompt).toContain("internal sentinel or wrapper protocol");
-    expect(prompt).toContain(
-      "Prioritize these concrete root-neighborhood edges over opening an unrelated broad surface",
-    );
-    expect(prompt).toContain(
-      "A broad read Candidate is not source-complete until this producer review is resolved",
-    );
+    expect(Buffer.byteLength(prompt, "utf8")).toBeLessThan(7_000);
+    expect(prompt).not.toContain("semantic neighborhood");
+    expect(prompt).not.toContain("value-transformation ledger");
+    expect(prompt).not.toContain("root-mechanism source map");
+    expect(prompt).not.toContain("internal sentinel or wrapper protocol");
   });
 
   it("rejects a canonical method name bound to another method's Prompt", () => {

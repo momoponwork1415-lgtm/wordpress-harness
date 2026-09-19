@@ -38,9 +38,9 @@ Harnessは探索判断そのものではなく、AIが安全に判断できる�
 | verify / record | 探索内の敵対的レビュー、別環境での動的検証、確認済み脆弱性、プログラムの対象範囲、追記専用Receiptを分離する |
 | iterate hard and fast | Rootが統合・反証・方向転換を繰り返し、ソースに基づく`continue`なら同じCheckpointから自動で次へ進む |
 
-wp2shell promptの探索手法は[wp2shell由来のPrompt](../prompts/wordpress-plugin-research-v6.md)へすべて取り入れます。具体的には、先入観なく生のソースから考えること、native multi-agentを積極的かつ動的に使うこと、固定担当を置かないこと、十分に異なる探索経路を持つこと、探索方式を明示して偏りを避けること、収束時に未調査の方式へ戻すこと、一つの有望経路だけに支配させないこと、新しい手段がある時だけ行き詰まった経路を再開すること、相性の悪い経路も複数回維持して後から知見を交差させること、具体的なバグを別視点で二重確認すること、Rootが統合・反証・方向転換・次の探索を繰り返すこと、最初の探索や現在の方式が失敗しただけで止めないこと、依存ソースを読んで欠けた接続や中間バグをつなぐことです。さらに、具体的なsource edgeを持つ経路ではsemantic neighborhoodを広げ、値の変換順序と権限を持つ状態のproducer / consumerをprivate scratchで追います。high-impact rootに具体的な参照が残る間は無関係な未読surfaceより先に閉じます。これは固定sink checklistやHarness-owned Coverageにはしません。
+wp2shellの公開原文を[標準Prompt](../prompts/wordpress-plugin-research-v7.md)の正本とし、その探索手法をすべて維持します。具体的には、先入観なく生のソースから考えること、native multi-agentを積極的かつ動的に使うこと、固定担当を置かないこと、十分に異なる探索経路を持つこと、探索方式を明示して偏りを避けること、収束時に未調査の方式へ戻すこと、一つの有望経路だけに支配させないこと、新しい手段がある時だけ行き詰まった経路を再開すること、相性の悪い経路も複数回維持して後から知見を交差させること、具体的なバグを別視点で二重確認すること、Rootが統合・反証・方向転換・次の探索を繰り返すこと、最初の探索や現在の方式が失敗しただけで止めないこと、依存ソースを読んで欠けた接続や中間バグをつなぐことです。製品固有の対象影響、固定済み依存ソース、Candidateと継続差分の最小契約だけを加え、Cloudflare方式の手順、固定sink checklist、Harnessが所有するCoverageを混ぜません。
 
-wp2shell由来のPromptはCloudflareの公開security-audit skillからも、具体的な安全上の不変条件、ソースから見える最も強い防御の再構成、類似処理・旧処理・ライフサイクル・失敗経路の比較、異常時の試験を採用します。[Cloudflare由来のPrompt](../prompts/wordpress-plugin-research-cloudflare-v1.md)は、公開skillの偵察、調査範囲を意識した探索、敵対的な検証、抜けの補完を、Rootが所有する一つの連続探索へ適応します。固定Hunter、固定Wave、決定論的な調査台帳、発見件数による完了判定は、通常のCloudflare方式とwp2shell方式には採りません。比較実験用の[Cloudflare公開方式そのものに近いPrompt](../prompts/wordpress-plugin-research-cloudflare-upstream-v1.md)だけは、固定した公開skillの全体監査手順、非公開の調査台帳、探索・批評の波、新しいソースによる確認を探索方式の内部で維持します。その作業成果物をHarnessの状態、探索範囲の正本、安全性の証明には昇格させません。
+[Cloudflare由来のPrompt](../prompts/wordpress-plugin-research-cloudflare-v1.md)は、公開skillの偵察、調査範囲を意識した探索、敵対的な検証、抜けの補完を、Rootが所有する一つの連続探索へ適応する別方式です。固定Hunter、固定Wave、決定論的な調査台帳、発見件数による完了判定は通常のCloudflare方式には採りません。比較実験用の[Cloudflare公開方式そのものに近いPrompt](../prompts/wordpress-plugin-research-cloudflare-upstream-v1.md)だけは、固定した公開skillの全体監査手順、非公開の調査台帳、探索・批評の波、新しいソースによる確認を探索方式の内部で維持します。Cloudflare由来の手順や作業成果物を標準wp2shell Prompt、Harnessの状態、探索範囲の正本、安全性の証明へ昇格させません。
 
 持ち込まないのは、wp2shell固有の「脆弱性が存在し、未認証RCEから`/flag`へ必ず到達する」という正解の先出しと、最低6時間の指定だけです。元のCDC promptにある肯定解と最低8時間も同じ理由で採りません。最大4体は固定担当ではなく資源上限として使い、探索方式の一覧はRootの作業領域に置きます。実行中の依存ソース取得は、事前に固定した読み取り専用の依存ソースへ置き換えます。これは探索要素の省略ではなく、未知対象の調査、再現性、隔離、人間による候補採否へ適応するための境界です。速さを理由に証拠、隔離、候補採否を省略しません。
 
@@ -70,7 +70,7 @@ Harnessによる強制条件は次に限定します。
 
 | 探索方式 | 標準Prompt Set | Rootが所有する探索の流れ |
 | --- | --- | --- |
-| `wp2shell` | `wordpress-plugin-research-wp2shell-v6` / [Prompt](../prompts/wordpress-plugin-research-v6.md) | 十分に異なる探索経路、複数回の反復、遅い知見の交差、rootを優先したsemantic neighborhood、繰り返しの統合と方向転換 |
+| `wp2shell` | `wordpress-plugin-research-wp2shell-v7` / [Prompt](../prompts/wordpress-plugin-research-v7.md) | 十分に異なる探索経路、複数回の反復、遅い知見の交差、敵対的な二重確認、繰り返しの統合と方向転換 |
 | `cloudflare` | `wordpress-plugin-research-cloudflare-v2` / [Prompt](../prompts/wordpress-plugin-research-cloudflare-v1.md) | ソースの偵察、調査範囲を意識した探索、敵対的な検証、ソースに基づく抜けの補完 |
 | `cloudflare-upstream` | `wordpress-plugin-research-cloudflare-upstream-c1c8a8c-v2` / [Prompt](../prompts/wordpress-plugin-research-cloudflare-upstream-v1.md) | 固定した公開版の全体監査手順、非公開台帳、探索・批評の波、新しいソースによる確認 |
 
@@ -104,7 +104,9 @@ static解析や派生解析の出力があっても、ソースを読む補助�
 
 ## 独立試行による評価
 
-一つの独立探索試行は、以前の結果やCheckpointを入力せず、新しいCampaignとして始めます。Campaign内で同じCheckpointから自動継続するNative Run、プロバイダー通信の再試行、認証の再試行、出力形式の補正は、すべて同じ試行の一部です。独立試行数は増えません。固定した評価対象群の各対象へ一試行ずつ行う単位を「評価一巡」とします。外部資料の`pass@3`を参照する場合は、単一対象の3試行なのか、評価対象全体の3巡なのかを明記します。保存形式、Interface、探索方式の名前には使いません。
+DeepSeekを使う通常評価は、同じ対象と条件でfreshなCampaignを3回起動する`pass@3`とし、3試行のCandidateを出所付きの和集合として評価します。同じ主張らしく見えるCandidateも自動で同一化せず、各試行の記録を保持します。
+
+一つの独立探索試行は、以前の結果やCheckpointを入力せず、新しいCampaignとして始めます。Campaign内で同じCheckpointから自動継続するNative Run、プロバイダー通信の再試行、認証の再試行、出力形式の補正は、すべて同じ試行の一部です。独立試行数は増えません。固定した評価対象群の各対象へ一試行ずつ行う単位を「評価一巡」とします。保存形式、Interface、探索方式の名前には`pass@3`を使いません。
 
 同じ条件の反復を比べる時は、`campaignId`だけを変えます。対象・依存ソース、Prompt Set、攻撃者の前提、プログラム上の境界、`AgentRuntimeProfile`、権限、予算、toolとnetwork条件は固定します。各試行は`resumeFrom`を持たず、新しいプロバイダーsession、home、作業領域を使います。別試行の候補、Checkpoint、報告、人間の判断を入力しません。モデルやプロバイダーharnessのbuildを固定または実行時に確認できなければ、その同一性はunknownのまま表示します。異なる可能性がある結果を同一条件として集計しません。異なるPromptや探索方式を割り当てる比較は構成の比較実験であり、同一条件の反復とは分けます。
 
