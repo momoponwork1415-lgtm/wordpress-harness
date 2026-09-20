@@ -17,6 +17,7 @@ import {
   decideIndependentResearchTrialLaunches,
   comparisonRequestForIndependentResearchTrialApproval,
   defineIndependentResearchTrialApproval,
+  defineIndependentResearchTrialGateObservation,
   defineIndependentResearchTrialReadiness,
   independentResearchTrialApprovalSchema,
   type IndependentResearchTrialApprovalDefinition,
@@ -342,6 +343,7 @@ function approvalDefinition(): IndependentResearchTrialApprovalDefinition {
     expiresAt: "2026-09-18T09:00:00.000Z",
     maxReadinessAgeSeconds: 300,
     maxConcurrentTrials: 2,
+    launchPolicy: { kind: "all-approved" },
     runtime: {
       nodeExecutablePath: "/usr/bin/node",
       harnessCliPath: "/workspace/dist/cli.js",
@@ -442,7 +444,7 @@ describe("Independent Research Trial launcher", () => {
 
     expect(approval).toMatchObject({
       kind: "independent-research-trial-approval",
-      schemaVersion: 2,
+      schemaVersion: 3,
       approvalId: "deepseek-pass-at-three-1",
       trials: [
         {
@@ -472,6 +474,7 @@ describe("Independent Research Trial launcher", () => {
       approvalId: approval.approvalId,
       approvalDigest: approval.digest,
       accountReadinessDigest: accountReadiness.digest,
+      gateObservationDigest: null,
       selectedTrialIds: ["one", "two"],
       claimedTrialIds: [],
       activeClaims: 0,
@@ -486,7 +489,7 @@ describe("Independent Research Trial launcher", () => {
       defineIndependentResearchTrialApproval(approvalDefinition());
     const claimBody = {
       kind: "independent-research-trial-claim",
-      schemaVersion: 1,
+      schemaVersion: 2,
       approvalId: approval.approvalId,
       approvalDigest: approval.digest,
       trialId: "one",
@@ -494,6 +497,7 @@ describe("Independent Research Trial launcher", () => {
       campaignInputDigest: canonicalDigest(campaignInput("one")),
       accountReadinessDigest: readiness().digest,
       trialReadinessDigest: digest("8"),
+      gateObservationDigest: null,
       reservedNativeRuns: 2,
       reservedWallTimeMs: 3_600_000,
       claimedAt: "2026-09-18T08:04:30.000Z",
@@ -517,6 +521,126 @@ describe("Independent Research Trial launcher", () => {
       remainingNativeRuns: 4,
       remainingWallTimeMs: 7_200_000,
       reason: "launch-approved",
+    });
+  });
+
+  it("launches one production Trial first and releases two fresh follow-ups only after a Candidate signal", () => {
+    const base = approvalDefinition();
+    const approval = defineIndependentResearchTrialApproval({
+      ...base,
+      launchPolicy: {
+        kind: "candidate-gated-followups",
+        initialTrialId: "one",
+      },
+    });
+
+    const first = decideIndependentResearchTrialLaunches({
+      approval,
+      accountReadiness: readiness(),
+      claims: [],
+      now: "2026-09-18T08:05:00.000Z",
+    });
+    expect(first).toMatchObject({
+      selectedTrialIds: ["one"],
+      gateObservationDigest: null,
+      reason: "launch-approved",
+    });
+
+    const initialClaimBody = {
+      kind: "independent-research-trial-claim" as const,
+      schemaVersion: 2 as const,
+      approvalId: approval.approvalId,
+      approvalDigest: approval.digest,
+      trialId: "one",
+      campaignId: "campaign-one",
+      campaignInputDigest: canonicalDigest(campaignInput("one")),
+      accountReadinessDigest: readiness().digest,
+      trialReadinessDigest: digest("8"),
+      gateObservationDigest: null,
+      reservedNativeRuns: 2,
+      reservedWallTimeMs: 3_600_000,
+      claimedAt: "2026-09-18T08:04:30.000Z",
+    };
+    const initialClaim: IndependentResearchTrialClaim = {
+      ...initialClaimBody,
+      digest: canonicalDigest(initialClaimBody),
+    };
+    const gateObservation = defineIndependentResearchTrialGateObservation({
+      approvalId: approval.approvalId,
+      approvalDigest: approval.digest,
+      initialTrialId: "one",
+      campaignId: "campaign-one",
+      campaignInputDigest: canonicalDigest(campaignInput("one")),
+      state: "model-completed-with-candidates",
+      candidateRecordCount: 1,
+      campaignViewDigest: digest("a"),
+    });
+
+    const followUps = decideIndependentResearchTrialLaunches({
+      approval,
+      accountReadiness: readiness(),
+      claims: [{ claim: initialClaim, active: false }],
+      gateObservation,
+      now: "2026-09-18T08:05:00.000Z",
+    });
+    expect(followUps).toMatchObject({
+      selectedTrialIds: ["two", "three"],
+      gateObservationDigest: gateObservation.digest,
+      reason: "launch-approved",
+    });
+  });
+
+  it("does not spend follow-up Trials when the initial production Trial has no Candidate", () => {
+    const base = approvalDefinition();
+    const approval = defineIndependentResearchTrialApproval({
+      ...base,
+      launchPolicy: {
+        kind: "candidate-gated-followups",
+        initialTrialId: "one",
+      },
+    });
+    const claimBody = {
+      kind: "independent-research-trial-claim" as const,
+      schemaVersion: 2 as const,
+      approvalId: approval.approvalId,
+      approvalDigest: approval.digest,
+      trialId: "one",
+      campaignId: "campaign-one",
+      campaignInputDigest: canonicalDigest(campaignInput("one")),
+      accountReadinessDigest: readiness().digest,
+      trialReadinessDigest: digest("8"),
+      gateObservationDigest: null,
+      reservedNativeRuns: 2,
+      reservedWallTimeMs: 3_600_000,
+      claimedAt: "2026-09-18T08:04:30.000Z",
+    };
+    const claim: IndependentResearchTrialClaim = {
+      ...claimBody,
+      digest: canonicalDigest(claimBody),
+    };
+    const gateObservation = defineIndependentResearchTrialGateObservation({
+      approvalId: approval.approvalId,
+      approvalDigest: approval.digest,
+      initialTrialId: "one",
+      campaignId: "campaign-one",
+      campaignInputDigest: canonicalDigest(campaignInput("one")),
+      state: "model-completed-without-candidates",
+      candidateRecordCount: 0,
+      campaignViewDigest: digest("b"),
+    });
+
+    expect(
+      decideIndependentResearchTrialLaunches({
+        approval,
+        accountReadiness: readiness(),
+        claims: [{ claim, active: false }],
+        gateObservation,
+        now: "2026-09-18T08:05:00.000Z",
+      }),
+    ).toMatchObject({
+      selectedTrialIds: [],
+      gateObservationDigest: gateObservation.digest,
+      reason: "initial-trial-no-candidates",
     });
   });
 
@@ -695,6 +819,65 @@ describe("Independent Research Trial launcher", () => {
             receipt.accountReadinessDigest === accountReadiness.digest,
         ),
       ).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("dispatches only the initial production Trial before a gate observation exists", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "staged-trials-"));
+    const base = approvalDefinition();
+    const approval = defineIndependentResearchTrialApproval({
+      ...base,
+      launchPolicy: {
+        kind: "candidate-gated-followups",
+        initialTrialId: "one",
+      },
+      runtime: {
+        ...base.runtime,
+        nodeExecutablePath: "/bin/true",
+      },
+      trials: base.trials.map((trial) => ({
+        ...trial,
+        databasePath: join(directory, "database", `${trial.trialId}.sqlite`),
+        scratchDirectory: join(directory, "scratch", trial.trialId),
+        logPath: join(directory, "logs", `${trial.trialId}.log`),
+      })),
+    });
+    const inspectTrial = async (trial: (typeof approval.trials)[number]) => {
+      const input = campaignInputForIndependentResearchTrial(trial);
+      return defineIndependentResearchTrialReadiness({
+        approvalId: approval.approvalId,
+        approvalDigest: approval.digest,
+        trialId: trial.trialId,
+        campaignId: input.campaignId,
+        campaignInputDigest: canonicalDigest(input),
+        checkedAt: "2026-09-18T08:04:30.000Z",
+        status: "ready",
+        reason: "preflight-ready",
+      });
+    };
+
+    try {
+      const result = await dispatchIndependentResearchTrials({
+        approval,
+        accountReadiness: readiness(),
+        receiptRoot: join(directory, "receipts"),
+        workingDirectory: directory,
+        now: "2026-09-18T08:05:00.000Z",
+        dryRun: false,
+        inspectTrial,
+      });
+
+      expect(result).toMatchObject({
+        decision: {
+          selectedTrialIds: ["one"],
+          gateObservationDigest: null,
+          reason: "launch-approved",
+        },
+        claimed: [{ trialId: "one", gateObservationDigest: null }],
+        launched: [{ trialId: "one", gateObservationDigest: null }],
+      });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

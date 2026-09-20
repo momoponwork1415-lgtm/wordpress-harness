@@ -3,8 +3,15 @@ import { isAbsolute } from "node:path";
 import { z } from "zod";
 
 import { admitAgentRuntimeProfile } from "../infrastructure/agent-runtime-profile.js";
-import { canonicalDigest } from "../infrastructure/canonical-json.js";
-import type { CampaignInput } from "../research/index.js";
+import {
+  canonicalDigest,
+  canonicalJson,
+} from "../infrastructure/canonical-json.js";
+import type {
+  CampaignInput,
+  ResearchCampaignView,
+  ResearchCandidate,
+} from "../research/index.js";
 import { approvedTargetCampaignRequestSchema } from "../target-intelligence/approved-target-campaign/contracts.js";
 import { admitApprovedTargetCampaign } from "../target-intelligence/approved-target-campaign/approved-target-campaigns.js";
 import { deepSeekAccountReadinessObservationSchema } from "./deepseek-account-readiness.js";
@@ -32,6 +39,17 @@ const dependencySourceSchema = z.strictObject({
   mountName: z.string().regex(/^[a-z0-9][a-z0-9-]*$/u),
   directory: absolutePathSchema,
 });
+
+const independentResearchTrialLaunchPolicySchema = z.discriminatedUnion(
+  "kind",
+  [
+    z.strictObject({ kind: z.literal("all-approved") }),
+    z.strictObject({
+      kind: z.literal("candidate-gated-followups"),
+      initialTrialId: identifierSchema,
+    }),
+  ],
+);
 
 export const independentResearchTrialPlanSchema = z
   .strictObject({
@@ -119,12 +137,13 @@ export function campaignInputForIndependentResearchTrial(
 const independentResearchTrialApprovalBodySchema = z
   .strictObject({
     kind: z.literal("independent-research-trial-approval"),
-    schemaVersion: z.literal(2),
+    schemaVersion: z.literal(3),
     approvalId: identifierSchema,
     approvedAt: z.iso.datetime(),
     expiresAt: z.iso.datetime(),
     maxReadinessAgeSeconds: z.number().int().positive().max(3_600),
     maxConcurrentTrials: z.number().int().positive().max(3),
+    launchPolicy: independentResearchTrialLaunchPolicySchema,
     runtime: z.strictObject({
       nodeExecutablePath: absolutePathSchema,
       harnessCliPath: absolutePathSchema,
@@ -178,6 +197,24 @@ const independentResearchTrialApprovalBodySchema = z
         message:
           "Independent Trials sharing one account observation must share one provider config",
       });
+    }
+    if (approval.launchPolicy.kind === "candidate-gated-followups") {
+      const initialTrialId = approval.launchPolicy.initialTrialId;
+      if (approval.trials.length !== 3) {
+        context.addIssue({
+          code: "custom",
+          path: ["trials"],
+          message:
+            "Candidate-gated production launch requires exactly three Trials",
+        });
+      }
+      if (!approval.trials.some((trial) => trial.trialId === initialTrialId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["launchPolicy", "initialTrialId"],
+          message: "Initial Trial must be present in the approved Trial set",
+        });
+      }
     }
     let bindingDigests: ReadonlySet<string>;
     try {
@@ -245,7 +282,7 @@ export function defineIndependentResearchTrialApproval(
   const body = independentResearchTrialApprovalBodySchema.parse({
     ...fields,
     kind: "independent-research-trial-approval",
-    schemaVersion: 2,
+    schemaVersion: 3,
   });
   return independentResearchTrialApprovalSchema.parse({
     ...body,
@@ -270,6 +307,145 @@ export function comparisonRequestForIndependentResearchTrialApproval(
     expectedBinding: defineIndependentResearchTrialBinding(
       campaignInputForIndependentResearchTrial(first),
     ),
+  });
+}
+
+const independentResearchTrialGateObservationBodySchema = z
+  .strictObject({
+    kind: z.literal("independent-research-trial-gate-observation"),
+    schemaVersion: z.literal(1),
+    approvalId: identifierSchema,
+    approvalDigest: digestSchema,
+    initialTrialId: identifierSchema,
+    campaignId: identifierSchema,
+    campaignInputDigest: digestSchema,
+    state: z.enum([
+      "model-completed-with-candidates",
+      "model-completed-without-candidates",
+      "incomplete",
+    ]),
+    candidateRecordCount: z.number().int().nonnegative(),
+    campaignViewDigest: digestSchema,
+  })
+  .superRefine((observation, context) => {
+    const hasCandidates = observation.candidateRecordCount > 0;
+    if (
+      observation.state !== "incomplete" &&
+      (observation.state === "model-completed-with-candidates") !==
+        hasCandidates
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["candidateRecordCount"],
+        message: "Gate state must match Candidate presence",
+      });
+    }
+  });
+
+export const independentResearchTrialGateObservationSchema =
+  independentResearchTrialGateObservationBodySchema
+    .extend({ digest: digestSchema })
+    .superRefine((observation, context) => {
+      const { digest, ...body } = observation;
+      if (digest !== canonicalDigest(body)) {
+        context.addIssue({
+          code: "custom",
+          path: ["digest"],
+          message: "Independent Trial gate observation digest mismatch",
+        });
+      }
+    });
+
+export type IndependentResearchTrialGateObservation = z.infer<
+  typeof independentResearchTrialGateObservationSchema
+>;
+
+export function defineIndependentResearchTrialGateObservation(
+  definition: Omit<
+    z.input<typeof independentResearchTrialGateObservationBodySchema>,
+    "kind" | "schemaVersion"
+  >,
+): IndependentResearchTrialGateObservation {
+  const body = independentResearchTrialGateObservationBodySchema.parse({
+    kind: "independent-research-trial-gate-observation",
+    schemaVersion: 1,
+    ...definition,
+  });
+  return independentResearchTrialGateObservationSchema.parse({
+    ...body,
+    digest: canonicalDigest(body),
+  });
+}
+
+function candidateRecordCount(view: ResearchCampaignView): number {
+  const candidates = new Map<string, ResearchCandidate>();
+  for (const receipt of view.nativeRuns) {
+    if (receipt.terminal !== "completed") continue;
+    for (const candidate of receipt.report.candidates) {
+      const prior = candidates.get(candidate.candidateId);
+      if (
+        prior !== undefined &&
+        canonicalJson(prior) !== canonicalJson(candidate)
+      ) {
+        throw new Error(
+          `Research Candidate identity conflict in gate observation: ${candidate.candidateId}`,
+        );
+      }
+      candidates.set(candidate.candidateId, candidate);
+    }
+  }
+  return candidates.size;
+}
+
+function initialTrialModelCompleted(view: ResearchCampaignView): boolean {
+  return (
+    view.status !== "research-continues" &&
+    view.status !== "incomplete" &&
+    view.nativeRuns.length > 0 &&
+    view.nativeRuns.every((receipt) => receipt.terminal === "completed") &&
+    view.nativeRunAttempts.every((attempt) => attempt.status === "terminal")
+  );
+}
+
+export function observeIndependentResearchTrialGate(input: {
+  readonly approval: IndependentResearchTrialApproval;
+  readonly campaignView: ResearchCampaignView;
+}): IndependentResearchTrialGateObservation {
+  const approval = independentResearchTrialApprovalSchema.parse(input.approval);
+  if (approval.launchPolicy.kind !== "candidate-gated-followups") {
+    throw new Error("All-at-once Trial approvals do not have a stage gate");
+  }
+  const initialTrialId = approval.launchPolicy.initialTrialId;
+  const initialTrial = approval.trials.find(
+    (trial) => trial.trialId === initialTrialId,
+  );
+  if (initialTrial === undefined) {
+    throw new Error("Initial Trial is absent from the approval");
+  }
+  const expectedInput = campaignInputForIndependentResearchTrial(initialTrial);
+  const view = input.campaignView;
+  if (
+    view.campaignId !== expectedInput.campaignId ||
+    view.inputDigest !== canonicalDigest(view.input) ||
+    canonicalJson(view.input) !== canonicalJson(expectedInput)
+  ) {
+    throw new Error("Initial Trial Campaign view does not match approval");
+  }
+  const count = candidateRecordCount(view);
+  const state = !initialTrialModelCompleted(view)
+    ? "incomplete"
+    : count > 0
+      ? "model-completed-with-candidates"
+      : "model-completed-without-candidates";
+  return defineIndependentResearchTrialGateObservation({
+    approvalId: approval.approvalId,
+    approvalDigest: approval.digest,
+    initialTrialId: initialTrial.trialId,
+    campaignId: expectedInput.campaignId,
+    campaignInputDigest: canonicalDigest(expectedInput),
+    state,
+    candidateRecordCount: count,
+    campaignViewDigest: canonicalDigest(view),
   });
 }
 
@@ -323,7 +499,7 @@ export function defineIndependentResearchTrialReadiness(
 
 const independentResearchTrialClaimBodySchema = z.strictObject({
   kind: z.literal("independent-research-trial-claim"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   approvalId: identifierSchema,
   approvalDigest: digestSchema,
   trialId: identifierSchema,
@@ -331,6 +507,7 @@ const independentResearchTrialClaimBodySchema = z.strictObject({
   campaignInputDigest: digestSchema,
   accountReadinessDigest: digestSchema,
   trialReadinessDigest: digestSchema,
+  gateObservationDigest: digestSchema.nullable(),
   reservedNativeRuns: z.number().int().positive(),
   reservedWallTimeMs: z.number().int().positive(),
   claimedAt: z.iso.datetime(),
@@ -374,13 +551,18 @@ export type IndependentResearchTrialLaunchDecisionReason =
   | "trial-readiness-blocked"
   | "dispatch-lock-unavailable"
   | "concurrency-ceiling-reached"
-  | "aggregate-allowance-exhausted";
+  | "aggregate-allowance-exhausted"
+  | "initial-trial-running"
+  | "initial-trial-result-unavailable"
+  | "initial-trial-incomplete"
+  | "initial-trial-no-candidates";
 
 export interface IndependentResearchTrialLaunchDecision {
   readonly kind: "independent-research-trial-launch-decision";
   readonly approvalId: string;
   readonly approvalDigest: string;
   readonly accountReadinessDigest: string | null;
+  readonly gateObservationDigest: string | null;
   readonly selectedTrialIds: readonly string[];
   readonly claimedTrialIds: readonly string[];
   readonly activeClaims: number;
@@ -393,6 +575,7 @@ function noLaunch(
   approval: IndependentResearchTrialApproval,
   state: {
     readonly readinessDigest: string | null;
+    readonly gateObservationDigest: string | null;
     readonly claimedTrialIds: readonly string[];
     readonly activeClaims: number;
     readonly remainingNativeRuns: number;
@@ -405,6 +588,7 @@ function noLaunch(
     approvalId: approval.approvalId,
     approvalDigest: approval.digest,
     accountReadinessDigest: state.readinessDigest,
+    gateObservationDigest: state.gateObservationDigest,
     selectedTrialIds: [],
     claimedTrialIds: state.claimedTrialIds,
     activeClaims: state.activeClaims,
@@ -441,6 +625,7 @@ export function decideIndependentResearchTrialLaunches(input: {
   readonly accountReadiness:
     z.infer<typeof deepSeekAccountReadinessObservationSchema> | undefined;
   readonly claims: readonly IndependentResearchTrialClaimState[];
+  readonly gateObservation?: IndependentResearchTrialGateObservation;
   readonly unlaunchableTrialIds?: ReadonlySet<string>;
   readonly now: string;
 }): IndependentResearchTrialLaunchDecision {
@@ -495,8 +680,54 @@ export function decideIndependentResearchTrialLaunches(input: {
     input.accountReadiness === undefined
       ? undefined
       : deepSeekAccountReadinessObservationSchema.parse(input.accountReadiness);
+  const gateObservation =
+    input.gateObservation === undefined
+      ? undefined
+      : independentResearchTrialGateObservationSchema.parse(
+          input.gateObservation,
+        );
+  if (approval.launchPolicy.kind === "all-approved") {
+    if (
+      gateObservation !== undefined ||
+      claims.some(
+        (claimState) => claimState.claim.gateObservationDigest !== null,
+      )
+    ) {
+      throw new Error("All-at-once Trials must not bind a stage gate");
+    }
+  } else {
+    const initialTrialId = approval.launchPolicy.initialTrialId;
+    const initialClaim = claims.find(
+      (claimState) => claimState.claim.trialId === initialTrialId,
+    );
+    const followUpClaims = claims.filter(
+      (claimState) => claimState.claim.trialId !== initialTrialId,
+    );
+    if (initialClaim === undefined && followUpClaims.length > 0) {
+      throw new Error("Follow-up Trial was claimed before the initial Trial");
+    }
+    if (
+      initialClaim !== undefined &&
+      initialClaim.claim.gateObservationDigest !== null
+    ) {
+      throw new Error("Initial Trial claim must not bind a stage gate");
+    }
+    if (
+      followUpClaims.some(
+        (claimState) => claimState.claim.gateObservationDigest === null,
+      ) ||
+      new Set(
+        followUpClaims.map(
+          (claimState) => claimState.claim.gateObservationDigest,
+        ),
+      ).size > 1
+    ) {
+      throw new Error("Follow-up Trial claims must bind one stage gate");
+    }
+  }
   const state = {
     readinessDigest: readiness?.digest ?? null,
+    gateObservationDigest: gateObservation?.digest ?? null,
     claimedTrialIds,
     activeClaims,
     remainingNativeRuns,
@@ -525,6 +756,68 @@ export function decideIndependentResearchTrialLaunches(input: {
   if (readiness.status !== "ready") {
     return noLaunch(approval, state, accountFailureReason(readiness.status));
   }
+
+  let stageEligibleTrialIds: ReadonlySet<string> | undefined;
+  if (approval.launchPolicy.kind === "candidate-gated-followups") {
+    const initialTrialId = approval.launchPolicy.initialTrialId;
+    const initialClaim = claims.find(
+      (claimState) => claimState.claim.trialId === initialTrialId,
+    );
+    if (initialClaim === undefined) {
+      if (claims.length > 0) {
+        throw new Error("Follow-up Trial was claimed before the initial Trial");
+      }
+      stageEligibleTrialIds = new Set([initialTrialId]);
+    } else {
+      if (initialClaim.claim.gateObservationDigest !== null) {
+        throw new Error("Initial Trial claim must not bind a gate observation");
+      }
+      if (initialClaim.active) {
+        return noLaunch(approval, state, "initial-trial-running");
+      }
+      if (gateObservation === undefined) {
+        return noLaunch(approval, state, "initial-trial-result-unavailable");
+      }
+      const initialTrial = trialsById.get(initialTrialId);
+      if (
+        initialTrial === undefined ||
+        gateObservation.approvalId !== approval.approvalId ||
+        gateObservation.approvalDigest !== approval.digest ||
+        gateObservation.initialTrialId !== initialTrialId ||
+        gateObservation.campaignId !==
+          initialTrial.approvedTargetCampaignRequest.campaignId ||
+        gateObservation.campaignInputDigest !==
+          canonicalDigest(
+            campaignInputForIndependentResearchTrial(initialTrial),
+          )
+      ) {
+        throw new Error(
+          "Initial Trial gate observation does not match approval",
+        );
+      }
+      for (const claimState of claims) {
+        if (
+          claimState.claim.trialId !== initialTrialId &&
+          claimState.claim.gateObservationDigest !== gateObservation.digest
+        ) {
+          throw new Error(
+            "Follow-up Trial claim does not match the stage gate",
+          );
+        }
+      }
+      if (gateObservation.state === "incomplete") {
+        return noLaunch(approval, state, "initial-trial-incomplete");
+      }
+      if (gateObservation.state === "model-completed-without-candidates") {
+        return noLaunch(approval, state, "initial-trial-no-candidates");
+      }
+      stageEligibleTrialIds = new Set(
+        approval.trials
+          .filter((trial) => trial.trialId !== initialTrialId)
+          .map((trial) => trial.trialId),
+      );
+    }
+  }
   const processSlots = approval.maxConcurrentTrials - activeClaims;
   if (processSlots <= 0) {
     return noLaunch(approval, state, "concurrency-ceiling-reached");
@@ -535,6 +828,8 @@ export function decideIndependentResearchTrialLaunches(input: {
   for (const trial of approval.trials) {
     if (
       claimedIds.has(trial.trialId) ||
+      (stageEligibleTrialIds !== undefined &&
+        !stageEligibleTrialIds.has(trial.trialId)) ||
       input.unlaunchableTrialIds?.has(trial.trialId) === true
     ) {
       continue;
@@ -556,6 +851,8 @@ export function decideIndependentResearchTrialLaunches(input: {
     const hasReadinessEligibleTrial = approval.trials.some(
       (trial) =>
         !claimedIds.has(trial.trialId) &&
+        (stageEligibleTrialIds === undefined ||
+          stageEligibleTrialIds.has(trial.trialId)) &&
         input.unlaunchableTrialIds?.has(trial.trialId) !== true,
     );
     if (!hasReadinessEligibleTrial) {
@@ -568,6 +865,7 @@ export function decideIndependentResearchTrialLaunches(input: {
     approvalId: approval.approvalId,
     approvalDigest: approval.digest,
     accountReadinessDigest: readiness.digest,
+    gateObservationDigest: gateObservation?.digest ?? null,
     selectedTrialIds,
     claimedTrialIds,
     activeClaims,
