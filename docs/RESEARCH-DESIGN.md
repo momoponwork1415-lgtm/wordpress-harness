@@ -38,7 +38,7 @@ Harnessは探索判断そのものではなく、AIが安全に判断できる�
 | verify / record | 探索内の敵対的レビュー、別環境での動的検証、確認済み脆弱性、プログラムの対象範囲、追記専用Receiptを分離する |
 | iterate hard and fast | Rootが統合・反証・方向転換を繰り返し、ソースに基づく`continue`なら同じCheckpointから自動で次へ進む |
 
-wp2shellの公開原文を[標準Prompt](../prompts/wordpress-plugin-research-v7.md)の正本とし、その探索手法をすべて維持します。具体的には、先入観なく生のソースから考えること、native multi-agentを積極的かつ動的に使うこと、固定担当を置かないこと、十分に異なる探索経路を持つこと、探索方式を明示して偏りを避けること、収束時に未調査の方式へ戻すこと、一つの有望経路だけに支配させないこと、新しい手段がある時だけ行き詰まった経路を再開すること、相性の悪い経路も複数回維持して後から知見を交差させること、具体的なバグを別視点で二重確認すること、Rootが統合・反証・方向転換・次の探索を繰り返すこと、最初の探索や現在の方式が失敗しただけで止めないこと、依存ソースを読んで欠けた接続や中間バグをつなぐことです。製品固有の対象影響、固定済み依存ソース、Candidateと継続差分の最小契約だけを加え、固定sink checklistやHarnessが所有するCoverageを混ぜません。
+wp2shellの公開原文を[標準Prompt](../prompts/wordpress-plugin-research-v8.md)の正本とし、その探索手法をv2規模の短いbase Promptで維持します。具体的には、先入観なく生のソースから考えること、native multi-agentを積極的かつ動的に使うこと、固定担当を置かないこと、十分に異なる探索経路を持つこと、探索方式を明示して偏りを避けること、収束時に未調査の方式へ戻すこと、一つの有望経路だけに支配させないこと、新しい手段がある時だけ行き詰まった経路を再開すること、相性の悪い経路も複数回維持して後から知見を交差させること、具体的なバグを別視点で二重確認すること、Rootが統合・反証・方向転換・次の探索を繰り返すこと、最初の探索や現在の方式が失敗しただけで止めないこと、WordPress本体を含む固定済み依存ソースを読んで欠けた接続や中間バグをつなぐことです。製品固有の対象影響とCandidateの差分報告だけをbase Promptへ加え、証拠形式、非公開recipe、時間とCampaign bindingはrun固有のPromptで与えます。固定sink checklist、詳細な探索手順、Harnessが所有するCoverageをbase Promptへ混ぜません。
 
 持ち込まないのは、wp2shell固有の「脆弱性が存在し、未認証RCEから`/flag`へ必ず到達する」という正解の先出しと、最低6時間の指定だけです。元のCDC promptにある肯定解と最低8時間も同じ理由で採りません。最大4体は固定担当ではなく資源上限として使い、探索方式の一覧はRootの作業領域に置きます。実行中の依存ソース取得は、事前に固定した読み取り専用の依存ソースへ置き換えます。これは探索要素の省略ではなく、未知対象の調査、再現性、隔離、人間による候補採否へ適応するための境界です。速さを理由に証拠、隔離、候補採否を省略しません。
 
@@ -87,7 +87,7 @@ Harnessによる強制条件は次に限定します。
 
 | 探索方式 | 標準Prompt Set | Rootが所有する探索の流れ |
 | --- | --- | --- |
-| `wp2shell` | `wordpress-plugin-research-wp2shell-v7` / [Prompt](../prompts/wordpress-plugin-research-v7.md) | 十分に異なる探索経路、複数回の反復、遅い知見の交差、敵対的な二重確認、繰り返しの統合と方向転換 |
+| `wp2shell` | `wordpress-plugin-research-wp2shell-v8` / [Prompt](../prompts/wordpress-plugin-research-v8.md) | 十分に異なる探索経路、複数回の反復、遅い知見の交差、敵対的な二重確認、繰り返しの統合と方向転換 |
 
 標準IDとPrompt digestの対応は[`research-prompt-set.ts`](../src/research/agent-led/research-prompt-set.ts)で固定します。未知のID、異なる本文、旧PromptをProduction Researchへ渡す誤設定はprovider呼び出し前に拒否します。探索判断はPromptとプロバイダー固有のRootの内側に置きます。`ResearchCampaigns.conduct / inspect`、探索報告、人間による候補採否、Provider Adapterに方式選択のInterfaceは持たせません。
 

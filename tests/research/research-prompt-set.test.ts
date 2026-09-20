@@ -79,12 +79,12 @@ function campaignPolicy(
 describe("Canonical Research Prompt Set", () => {
   it("binds production Research to the exact wp2shell Prompt", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v7.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v8.md"),
       "utf8",
     );
 
     expect(canonicalResearchPromptSet).toEqual({
-      id: "wordpress-plugin-research-wp2shell-v7",
+      id: "wordpress-plugin-research-wp2shell-v8",
       digest: promptTextDigest(prompt),
     });
     expect(campaignInputSchema.safeParse(campaignInput()).success).toBe(true);
@@ -95,7 +95,7 @@ describe("Canonical Research Prompt Set", () => {
 
   it("preserves every wp2shell search-management technique without the task oracle", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v7.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v8.md"),
       "utf8",
     );
 
@@ -121,13 +121,15 @@ describe("Canonical Research Prompt Set", () => {
     expect(prompt).not.toContain("at least 6 hours");
   });
 
-  it("keeps the canonical wp2shell Prompt compact and free of v6 procedures", async () => {
+  it("keeps the canonical wp2shell Prompt v2-sized and free of later procedures", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v7.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v8.md"),
       "utf8",
     );
 
-    expect(Buffer.byteLength(prompt, "utf8")).toBeLessThan(7_000);
+    expect(Buffer.byteLength(prompt, "utf8")).toBeLessThan(6_500);
+    expect(prompt).toContain("WordPress core");
+    expect(prompt).toContain("first established during that run");
     expect(prompt).not.toContain("semantic neighborhood");
     expect(prompt).not.toContain("value-transformation ledger");
     expect(prompt).not.toContain("root-mechanism source map");

@@ -73,7 +73,7 @@ describe("agent-led campaign CLI", () => {
     const researchPromptPath = join(
       process.cwd(),
       "prompts",
-      "wordpress-plugin-research-v7.md",
+      "wordpress-plugin-research-v8.md",
     );
     const input: CampaignInput = {
       kind: "agent-led-campaign",
@@ -237,7 +237,7 @@ exit 90
     const researchPromptPath = join(
       process.cwd(),
       "prompts",
-      "wordpress-plugin-research-v7.md",
+      "wordpress-plugin-research-v8.md",
     );
     const input: CampaignInput = {
       kind: "agent-led-campaign",

@@ -172,7 +172,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
     await chmod(dockerExecutablePath, 0o700);
 
     const researchPrompt = await readFile(
-      join(process.cwd(), "prompts", "wordpress-plugin-research-v7.md"),
+      join(process.cwd(), "prompts", "wordpress-plugin-research-v8.md"),
       "utf8",
     );
     const input: CampaignInput = {
@@ -330,7 +330,7 @@ sleep 60
     await chmod(dockerExecutablePath, 0o700);
 
     const researchPrompt = await readFile(
-      join(process.cwd(), "prompts", "wordpress-plugin-research-v7.md"),
+      join(process.cwd(), "prompts", "wordpress-plugin-research-v8.md"),
       "utf8",
     );
     const input: CampaignInput = {
@@ -512,7 +512,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
     await chmod(dockerExecutablePath, 0o700);
 
     const researchPrompt = await readFile(
-      join(process.cwd(), "prompts", "wordpress-plugin-research-v7.md"),
+      join(process.cwd(), "prompts", "wordpress-plugin-research-v8.md"),
       "utf8",
     );
     const input: CampaignInput = {

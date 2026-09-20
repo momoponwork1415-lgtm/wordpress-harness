@@ -234,7 +234,7 @@ exit 75
     await chmod(dockerExecutablePath, 0o700);
 
     const researchPrompt = await readFile(
-      join(process.cwd(), "prompts", "wordpress-plugin-research-v7.md"),
+      join(process.cwd(), "prompts", "wordpress-plugin-research-v8.md"),
       "utf8",
     );
     const input: CampaignInput = {
@@ -599,7 +599,7 @@ exit "$(cat '${providerExitPath}')"
     await chmod(dockerExecutablePath, 0o700);
 
     const researchPrompt = await readFile(
-      join(process.cwd(), "prompts", "wordpress-plugin-research-v7.md"),
+      join(process.cwd(), "prompts", "wordpress-plugin-research-v8.md"),
       "utf8",
     );
     const input: CampaignInput = {

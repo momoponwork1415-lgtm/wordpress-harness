@@ -87,7 +87,7 @@ async function readyFixture(
   const databasePath = join(directory, "database", "campaign.sqlite");
   const promptPath = join(directory, "research.md");
   const prompt = await readFile(
-    join(process.cwd(), "prompts", "wordpress-plugin-research-v7.md"),
+    join(process.cwd(), "prompts", "wordpress-plugin-research-v8.md"),
     "utf8",
   );
   await Promise.all([
