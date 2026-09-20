@@ -62,4 +62,4 @@ completed Native RunのCandidate identityまたはProgramme Boundaryにsemantic 
 
 残る観測課題は、全providerのsubagent利用数と親子関係、v7 Promptでdivergent route・adversarial challenge・Root synthesis・追加roundが実際に起きるか、独立pass@3の和集合、早期stop、事前pinするdependencyの不足がrecallへ与える影響である。これらの有限workと受入条件はGitHub Issueを正本にする。
 
-要するに、wp2shellの研究手法はv7 Promptへ取り込み、Cloudflare由来の細則は別方式へ戻した。持ち込まないのは`positive oracle + RCE / /flag到達の強制 + 最低6時間`である。現在の主要な不確実性は、**v7の独立pass@3が反復roundと試行間varianceをどう回収するか、subagent活動を十分に観測できるか、source worldの境界がrecallへどう影響するか**である。
+要するに、wp2shellの研究手法はv7 Promptへ取り込み、Cloudflare由来の細則は別方式へ戻した。持ち込まないのは`positive oracle + RCE / /flag到達の強制 + 最低6時間`である。[TranslatePress 3.2.5の公開CVE評価](deepseek-wp2shell-v7-translatepress-known-cve-evaluation-2026-09-20.md)では、3試行の和集合が公開比較集合8件中4件となり、ATOは試行3だけが回収した。試行間varianceを回収できることは一対象で観測したが、subagent活動の完全な観測と、複数Targetでの再現率は引き続き評価する。
