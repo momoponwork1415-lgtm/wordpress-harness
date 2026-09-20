@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="860" viewBox="0 0 1600 860" role="img" aria-labelledby="overview-title overview-desc" style="max-width:100%;height:auto">
   <title id="overview-title">WordPress Harnessの3領域と受け渡し</title>
-  <desc id="overview-desc">対象情報、探索、人間による運用の3領域について、各領域の責務、人間の判断点、領域間で渡す情報を示す。</desc>
+  <desc id="overview-desc">対象情報、探索、人間による運用の3領域について、プログラム境界を含む対象選定、条件付き3試行、人間の判断点、領域間で渡す情報を示す。</desc>
   <defs>
     <marker id="overview-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#526779"/></marker>
     <style>
@@ -28,19 +28,19 @@
 
   <path d="M440 518H512Q520 518 520 510V342Q520 334 528 334H620" class="arrow"/>
   <rect x="532" y="408" width="156" height="24" rx="4" class="mask"/>
-  <text x="544" y="425" class="small muted">承認済みの探索入力</text>
+  <text x="528" y="425" class="small muted">承認済み対象 + 3試行計画</text>
 
   <path d="M980 306H992Q1000 306 1000 298V232Q1000 224 992 224H808Q800 224 800 232V268" class="arrow return"/>
   <rect x="836" y="192" width="128" height="24" rx="4" class="mask"/>
-  <text x="848" y="209" class="small muted">continue + 次の手</text>
+  <text x="824" y="209" class="small muted">試行内のcontinue + 次の手</text>
 
   <path d="M800 398V468" class="arrow"/>
-  <rect x="816" y="420" width="100" height="24" rx="4" class="mask"/>
-  <text x="828" y="437" class="small muted">stop + 候補</text>
+  <rect x="796" y="416" width="176" height="24" rx="4" class="mask"/>
+  <text x="808" y="433" class="small muted">完了した試行群 + 候補</text>
 
   <path d="M980 518H1052Q1060 518 1060 510V318Q1060 310 1068 310H1160" class="arrow"/>
-  <rect x="900" y="408" width="148" height="24" rx="4" class="mask"/>
-  <text x="912" y="425" class="small muted">候補の動的検証依頼</text>
+  <rect x="964" y="450" width="168" height="24" rx="4" class="mask"/>
+  <text x="976" y="467" class="small muted">候補の動的検証依頼</text>
 
   <path d="M1240 360V418" class="arrow"/>
   <path d="M1320 470H1352" class="arrow"/>
@@ -49,20 +49,20 @@
   <!-- Target Intelligence -->
   <rect x="80" y="268" width="360" height="100" rx="8" class="node"/>
   <text x="104" y="301" class="boxTitle">観測と対象提案</text>
-  <text x="104" y="330" class="body">更新・利用規模・連携・調査履歴を整理</text>
+  <text x="104" y="330" class="body">プログラム境界・公開履歴集約・更新を整理</text>
   <text x="104" y="353" class="small muted">既知脆弱性を探索の答えとして渡さない</text>
 
   <rect x="80" y="468" width="360" height="100" rx="8" class="human"/>
   <text x="104" y="493" class="tag muted">人間の判断</text>
   <text x="104" y="525" class="boxTitle">探索の開始を承認</text>
-  <text x="104" y="550" class="body">対象・順序・キャンペーン全体の安全上限</text>
+  <text x="104" y="550" class="body">対象群・各対象の3試行・全体の安全上限</text>
 
   <!-- Research -->
   <rect x="620" y="268" width="360" height="130" rx="8" class="focal"/>
-  <text x="644" y="301" class="boxTitle" fill="#227567">自律探索</text>
-  <text x="644" y="330" class="body">仮説・読む順序・サブエージェント・反証をAIが判断</text>
-  <text x="644" y="357" class="body">具体的な次の手があれば自動継続</text>
-  <text x="644" y="382" class="small muted">候補を見つけただけでは停止しない</text>
+  <text x="644" y="301" class="boxTitle" fill="#227567">条件付き3試行と自律探索</text>
+  <text x="644" y="330" class="body">複数対象の初回を独立並列、候補ありなら2試行追加</text>
+  <text x="644" y="357" class="body">各試行は具体的な次の手があれば自動継続</text>
+  <text x="644" y="382" class="small muted">後続へ初回結果を渡さず、候補だけでは停止しない</text>
 
   <rect x="620" y="468" width="360" height="100" rx="8" class="human"/>
   <text x="644" y="493" class="tag muted">人間の判断</text>

@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040" role="img" aria-labelledby="trials-title trials-desc" style="max-width:100%;height:auto">
+  <title id="trials-title">未知対象の本番探索で使う条件付き3試行</title>
+  <desc id="trials-desc">3試行を先に承認して初回だけを起動し、初回が完了して候補を返した場合だけ、結果を共有しない独立した追加2試行を並列起動する流れ。</desc>
+  <defs>
+    <marker id="trials-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#526779"/></marker>
+    <style>
+      text{font-family:"Noto Sans CJK JP","Noto Sans JP",system-ui,sans-serif;fill:#172c3d}.muted{fill:#526779}.title{font-size:36px;font-weight:750}.sub{font-size:18px}.boxTitle{font-size:19px;font-weight:750}.body{font-size:15px}.small{font-size:13px}.tag{font-size:12px;font-weight:700}.node{fill:#fff;stroke:#8797a5;stroke-width:1}.focal{fill:#e6f3ee;stroke:#227567;stroke-width:1.2}.warning{fill:#fff7e8;stroke:#c38b2f;stroke-width:1.2}.quiet{fill:#eef3f7;stroke:#8797a5;stroke-width:1}.arrow{fill:none;stroke:#526779;stroke-width:2.4;marker-end:url(#trials-arrow)}.branch{fill:none;stroke:#526779;stroke-width:2.2;marker-end:url(#trials-arrow)}.dash{stroke-dasharray:7 6}.mask{fill:#f5f7fa}.lane{fill:rgba(23,44,61,.018);stroke:#cdd9e3;stroke-width:1}
+    </style>
+  </defs>
+
+  <rect width="1600" height="1040" fill="#f5f7fa"/>
+  <text x="48" y="48" class="small muted" font-weight="700">未知対象の本番探索 / 条件付き3試行</text>
+  <text x="48" y="97" class="title">候補が出た時だけ、独立3試行へ広げる</text>
+  <text x="48" y="133" class="sub muted">複数対象を独立に並列化できる。各対象は3試行分を先に固定し、初回結果で追加起動だけを分岐する。</text>
+
+  <rect x="40" y="178" width="1520" height="780" rx="8" class="lane"/>
+
+  <path d="M800 300V362" class="arrow"/>
+  <path d="M800 482V548" class="arrow"/>
+  <path d="M580 598H232Q220 598 220 610V660" class="branch"/>
+  <path d="M1020 598H1368Q1380 598 1380 610V660" class="branch"/>
+  <path d="M800 648V690Q800 702 788 702H592Q580 702 580 714V720" class="branch"/>
+  <path d="M800 648V690Q800 702 812 702H1008Q1020 702 1020 714V720" class="branch"/>
+  <path d="M580 820V862Q580 874 592 874H788Q800 874 800 886V900" class="branch"/>
+  <path d="M1020 820V862Q1020 874 1008 874H812Q800 874 800 886V900" class="branch"/>
+
+  <rect x="300" y="210" width="1000" height="90" rx="8" class="node"/>
+  <text x="324" y="241" class="tag muted">起動前に人間が承認</text>
+  <text x="324" y="269" class="boxTitle">一対象につき、同じ依存ソース・Prompt・モデル・権限・安全上限を持つ3試行</text>
+  <text x="1276" y="269" class="small muted" text-anchor="end">最初に起動するのは試行1だけ</text>
+
+  <rect x="560" y="362" width="480" height="120" rx="8" class="focal"/>
+  <text x="584" y="395" class="boxTitle" fill="#227567">新しいCampaignで試行1を起動</text>
+  <text x="584" y="424" class="body">AIが仮説・読む順序・サブエージェントを判断</text>
+  <text x="584" y="451" class="small muted">具体的な次の手があれば、同じCheckpointから試行内で継続</text>
+
+  <rect x="580" y="548" width="440" height="100" rx="8" class="node"/>
+  <text x="604" y="581" class="boxTitle">試行1はモデル上完了したか</text>
+  <text x="604" y="610" class="body">完了した場合だけCandidate件数を見る</text>
+  <text x="604" y="635" class="small muted">種類・深刻度・確信度は起動条件にしない</text>
+
+  <rect x="60" y="660" width="320" height="170" rx="8" class="quiet"/>
+  <text x="84" y="693" class="boxTitle">完了 + Candidate 0件</text>
+  <text x="84" y="722" class="body">試行2・3は起動しない</text>
+  <text x="84" y="749" class="small muted">初回だけの結果として記録</text>
+  <text x="84" y="776" class="small muted">脆弱性が存在しない</text>
+  <text x="84" y="799" class="small muted">証明にはしない</text>
+
+  <rect x="1220" y="660" width="320" height="170" rx="8" class="warning"/>
+  <text x="1244" y="693" class="boxTitle">実行中・不完全・</text>
+  <text x="1244" y="720" class="boxTitle">結果を読めない</text>
+  <text x="1244" y="749" class="body">追加起動を止める</text>
+  <text x="1244" y="776" class="small muted">Candidate 0件へ読み替えない</text>
+  <text x="1244" y="799" class="small muted">弱い方式へ自動で切り替えない</text>
+
+  <rect x="400" y="720" width="360" height="100" rx="8" class="focal"/>
+  <text x="424" y="753" class="boxTitle" fill="#227567">独立した試行2</text>
+  <text x="424" y="782" class="body">新しいCampaign / Session / 作業領域</text>
+  <text x="424" y="807" class="small muted">試行1の候補・報告・Checkpointなし</text>
+
+  <rect x="840" y="720" width="360" height="100" rx="8" class="focal"/>
+  <text x="864" y="753" class="boxTitle" fill="#227567">独立した試行3</text>
+  <text x="864" y="782" class="body">試行2と並列に起動</text>
+  <text x="864" y="807" class="small muted">試行1の候補・報告・Checkpointなし</text>
+
+  <rect x="560" y="900" width="480" height="76" rx="8" class="node"/>
+  <text x="584" y="932" class="boxTitle">出所付きの候補集合を人間の採否へ渡す</text>
+  <text x="584" y="959" class="small muted">多数決や自動統合で技術的な確実性へ変換しない</text>
+
+  <rect x="396" y="562" width="160" height="24" rx="4" class="mask"/>
+  <text x="408" y="579" class="small muted">完了 + Candidate 0件</text>
+  <rect x="1032" y="562" width="170" height="24" rx="4" class="mask"/>
+  <text x="1044" y="579" class="small muted">完了以外・結果不明</text>
+  <rect x="714" y="663" width="172" height="24" rx="4" class="mask"/>
+  <text x="726" y="680" class="small muted">完了 + Candidate 1件以上</text>
+</svg>
