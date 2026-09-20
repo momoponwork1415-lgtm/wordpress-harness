@@ -973,7 +973,7 @@ describe("Independent Research Trial launcher", () => {
     const providerDirectory = join(directory, "provider");
     const promptPath = join(directory, "research.md");
     const prompt = await readFile(
-      join(process.cwd(), "prompts", "wordpress-plugin-research-v7.md"),
+      join(process.cwd(), "prompts", "wordpress-plugin-research-v8.md"),
       "utf8",
     );
     const targetContents = "<?php // target\n";

@@ -167,7 +167,7 @@ function parkedLeadReceipt(run: SealedNativeRun) {
 describe("parked Programme Leads", () => {
   it("carries the wp2shell research method without its time and forced-RCE task", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v7.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v8.md"),
       "utf8",
     );
 
@@ -195,19 +195,13 @@ describe("parked Programme Leads", () => {
     expect(prompt).toContain(
       "Do not merely return because current approaches failed or agents reported no findings",
     );
-    expect(prompt).toContain(
-      "Every report must include a run-local `evidenceSummary`",
-    );
-    expect(prompt).toContain(
-      "It is not a Harness work queue, a coverage ledger",
-    );
     expect(prompt).not.toContain("/flag");
     expect(prompt).not.toContain("at least 6 hours");
   });
 
   it("spends deep exploration only on the programme-eligible vulnerability scope", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v7.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v8.md"),
       "utf8",
     );
 
@@ -222,15 +216,6 @@ describe("parked Programme Leads", () => {
     );
     expect(prompt).toContain(
       "Promote it only when a concrete source-bound edge reaches an eligible impact",
-    );
-    expect(prompt).toContain(
-      "Trace the exposed state across its full source-visible lifecycle before parking it",
-    );
-    expect(prompt).toContain(
-      "For a read primitive, inspect every material producer of the exposed store",
-    );
-    expect(prompt).toContain(
-      "For a write primitive, inspect the privileged consumers of the modified state",
     );
   });
 

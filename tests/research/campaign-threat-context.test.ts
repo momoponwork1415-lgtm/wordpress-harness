@@ -163,6 +163,13 @@ describe("Campaign Threat Context", () => {
     expect(prompt).toContain(
       "This Native Run is source investigation time, not a planning turn",
     );
+    expect(prompt).toContain(
+      "Every report must also include a run-local evidenceSummary",
+    );
+    expect(prompt).toContain(
+      "For every Candidate, provide an ordered sourceTrace",
+    );
+    expect(prompt).toContain("HARNESS_RESULT JSON line");
   });
 
   it("tells a resumed Research Root to execute its prior next actions", () => {
