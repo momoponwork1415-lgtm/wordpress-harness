@@ -1,7 +1,0 @@
-interface:
-  display_name: "WordPressのソース検証"
-  short_description: "固定sourceから一つのWordPress候補を検証する"
-  default_prompt: "$wordpress-session-validationを使い、このWordPress Research Candidateを固定sourceから一緒に検証してください。"
-
-policy:
-  allow_implicit_invocation: true

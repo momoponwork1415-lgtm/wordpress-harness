@@ -2,7 +2,7 @@
 
 ## 結果
 
-wp2shell型Prompt、pinned WordPress source、provider-native Root / subagentを使った現在のResearch loopは、評価用known-positive 4件すべてでcandidateを回収し、fresh Independent Validationから`source-validated` Findingを生成した。これは4/4のsource-level recoveryであり、未知脆弱性のrecall、最新版での残存またはsubmission readinessを意味しない。
+2026-09-08時点の旧workflowでは、wp2shell型Prompt、pinned WordPress source、provider-native Root / subagentを使い、評価用known-positive 4件すべてでCandidateを回収し、当時のfresh source-only stageでも4件を支持した。これは当時の4/4 source-level recoveryであり、未知脆弱性のrecall、最新版での残存またはsubmission readinessを意味しない。このsource-only stageは[ADR 0135](../adr/0135-promote-candidates-through-runtime-verification.md)で廃止され、現行workflowの昇格条件はfresh Candidate Verificationの`runtime-confirmed`である。
 
 ![Known-positive 4件のstage別評価](../visuals/known-positive-evaluation.svg)
 
@@ -10,7 +10,7 @@ wp2shell型Prompt、pinned WordPress source、provider-native Root / subagentを
 
 ## 公開事例
 
-| Target | 公開記録 | Source Validation | 動的観測 |
+| Target | 公開記録 | 当時のsource-only確認 | 動的観測 |
 | --- | --- | --- | --- |
 | Brizy 2.8.11 Stored XSS | [CVE-2026-5324](https://www.cve.org/CVERecord?id=CVE-2026-5324) | 成立 | browser canaryを観測 |
 | Simply Schedule Appointments 1.6.9.29 SQLi | [CVE-2026-3658](https://www.cve.org/CVERecord?id=CVE-2026-3658) | 成立 | database readback canaryを観測 |

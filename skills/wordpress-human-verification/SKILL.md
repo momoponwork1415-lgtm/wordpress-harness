@@ -1,35 +1,33 @@
 ---
 name: wordpress-human-verification
-description: "source-validated Findingについて、正確な人間向け再現URL、認証情報、payload、attack stepを表示する新しい使い捨てWordPress Lab setup scriptを作る。直接実行できる手動再現またはformal human runtime verificationに使う。探索、source validation、修正、外部提出には使わない。"
+description: "Human Candidate Reviewで採用されたWordPress Candidate Verification Requestについて、正確な人間向け再現URL、認証情報、payload、attack stepを表示する新しい使い捨てLab setup scriptを作る。直接実行できる手動再現に使い、探索、source-only再検証、修正、外部提出には使わない。"
 ---
 
 # WordPress Human Verification
 
-Findingに結び付いたreproductionを、人間が実行できる一つのshell scriptにする。既定では、使い捨てLabを準備し、実際のruntime値を持つ完全なattack guideを表示し、Labを維持し、EnterまたはCtrl-Cで破棄する。決定的な操作は人間が行う。
+Candidate Verification Requestとそのprivate recipeに結び付いたreproductionを、人間が実行できる一つのshell scriptにする。使い捨てLabを準備し、実際のruntime値を持つ完全なattack guideを表示し、Labを維持し、EnterまたはCtrl-Cで破棄する。決定的な操作は人間が行う。
 
-`wordpress-harness`では、`AGENTS.md`、`docs/CODEBASE-GUIDE.md`のHuman OS節、現在のHuman Verification契約を読む。これらを正本とする。
+`wordpress-harness`では、`AGENTS.md`、`docs/CODEBASE-GUIDE.md`のHuman OS節、現在のCandidate Verification契約を読む。これらを正本とする。
 
 ## 必須入力
 
 wizardを次へ結び付ける。
 
-- 一つのimmutable source-validated FindingとTarget Snapshot digest
-- それを独立に検査した正確なAI Reproduction Record
+- Human Candidate Reviewで採用された一つのimmutable Candidate Verification Request
+- Requestのdigestと一致するCandidate-bound private recipe
 - recipeが使うtarget、WordPress、連携製品、imageの正確なversion
-- Findingに結び付いたrecipe、precondition、人間のaction、effect、private evidenceの期待値
-- AI runtimeと異なる新しいHuman Verification environment identity
+- recipeのprecondition、人間のaction、security effect、private evidenceの期待値
+- Researchや過去の検証で使っていない新しい使い捨てenvironment identity
 
-bindingまたは正確な手順が欠けていれば`incomplete`で止める。脆弱性を再探索したり、記憶からUI pathを作ったりしない。
+binding、recipe本文または正確な手順が欠けていれば`incomplete`で止める。Candidateをsourceから再探索したり、記憶からUI pathを作ったりしない。
 
 ## Modeを選ぶ
 
-人間がformal Human Verification Recordを明示的に求めない限り`setup-and-guide`を使う。このmodeではquestionnaire、checkpointごとの案内、screenshot/HAR収集、verdict質問、Human OS record作成を行わない。
-
-`formal-verification`は明示的に求められた場合だけ使う。guided checkpoint、evidence capture、制約付きverdict、Human OS readbackを追加できる。
+現在は`setup-and-guide`だけを使う。このmodeではquestionnaire、checkpointごとの案内、screenshot/HAR収集、verdict質問、Human OS record作成を行わない。人間の観測を受け付ける版付きHuman OS seamが実装されるまで、script-local JSONやMarkdownをformal verification recordとして扱わない。
 
 ## Lab Guideを作る
 
-[verification wizard template](assets/verification-wizard-template.sh)を使う。FindingのGit除外済みprivate directoryへcopyし、markerより下のFinding固有部分だけを作る。
+[verification wizard template](assets/verification-wizard-template.sh)を使う。RequestのGit除外済みprivate directoryへcopyし、markerより下のCandidate固有部分だけを作る。
 
 生成scriptは次を満たす。
 
@@ -44,7 +42,7 @@ bindingまたは正確な手順が欠けていれば`incomplete`で止める。�
 9. 人間がEnterまたはCtrl-Cを押すまで表示とLabを維持し、その後container、volume、network、loopback proxyを破棄する。
 10. 決定的な人間操作を自動化しない。
 
-installation、activation、account準備、version checkは自動化する。`setup-and-guide`ではURLをscriptへ貼り戻させたり、進捗質問へ答えさせたりしない。
+installation、activation、account準備、version checkは自動化する。URLをscriptへ貼り戻させたり、進捗質問へ答えさせたりしない。
 
 ## EvidenceとVerdict
 
@@ -52,13 +50,7 @@ installation、activation、account準備、version checkは自動化する。`s
 
 固定された覚えやすいcredentialを人間が求めた場合、新しい使い捨てlocalhost Labだけで使い、Lab専用と表示する。production、共有、永続environmentへ再利用しない。
 
-`formal-verification`だけで次のdispositionを使う。
-
-- `human-confirmed`: preconditionが一致し、正確な人間操作が完了し、claimされたsecurity effectを独立に観測した。
-- `disproved`: preconditionが一致し、正確な操作が完了し、境界を限定した証拠がclaimされた効果が起きなかったことを確立した。
-- `incomplete`: setup、binding、action、observation、evidenceのいずれかが欠落または曖昧。tool/UI failureを`disproved`にしない。
-
-`formal-verification`では`incomplete`でもprivate observation manifestを作る。リポジトリが対応する場合、private content-addressed storeへevidenceをimportし、公開Human OS seamから版付きHuman Verification Recordを作り、readbackする。script-local JSONはreadback成功までformal recordではない。
+このskillは`runtime-confirmed`、`contradicted`、`incomplete`を記録しない。これらは版付きCandidate Verification Recordとprivate evidenceを受け付けるHuman OSだけが所有する。setup失敗、binding不一致、操作不足または観測不足を`contradicted`へ読み替えない。
 
 Human confirmationは外部開示を許可しない。利用者が別途workflowを求め、正確な承認を与えない限り、外部報告を作成・承認・送信しない。
 

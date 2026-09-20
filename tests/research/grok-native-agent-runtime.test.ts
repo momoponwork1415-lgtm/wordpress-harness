@@ -17,10 +17,12 @@ import {
   grokBuildNativeTransport,
 } from "../../src/infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
-import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import { openGrokNativeAgentRuntime } from "../../src/research/agent-led/grok-native-agent-runtime.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
-import type { CampaignInput } from "../../src/research/index.js";
+import {
+  canonicalResearchPromptSet,
+  type CampaignInput,
+} from "../../src/research/index.js";
 import { conductWithHumanAdvance } from "./support/candidate-review.js";
 import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
@@ -253,8 +255,10 @@ exit 75
     );
     await chmod(dockerExecutablePath, 0o700);
 
-    const researchPrompt =
-      "Audit the immutable WordPress plugin source from first principles.";
+    const researchPrompt = await readFile(
+      join(process.cwd(), "prompts", "wordpress-plugin-research-v7.md"),
+      "utf8",
+    );
     const wordpressDependency = {
       id: "wordpress-core-7.1",
       mountName: "wordpress",
@@ -280,10 +284,7 @@ exit 75
         sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
       },
       dependencySnapshots: [wordpressDependency],
-      promptSet: {
-        id: "agent-led-research-v1",
-        digest: promptTextDigest(researchPrompt),
-      },
+      promptSet: canonicalResearchPromptSet,
       agentRuntimeProfile: grokProfile(),
       permissionProfile: {
         id: "gvisor-source-research-v1",
@@ -530,7 +531,10 @@ printf '{"text":"{\\"schemaVersion\\":2,\\"assessments\\":[],\\"evidenceSummary\
     );
     await chmod(dockerExecutablePath, 0o700);
 
-    const researchPrompt = "Audit the immutable plugin source.";
+    const researchPrompt = await readFile(
+      join(process.cwd(), "prompts", "wordpress-plugin-research-v7.md"),
+      "utf8",
+    );
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 2,
@@ -543,10 +547,7 @@ printf '{"text":"{\\"schemaVersion\\":2,\\"assessments\\":[],\\"evidenceSummary\
           "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
       },
-      promptSet: {
-        id: "agent-led-research-v1",
-        digest: promptTextDigest(researchPrompt),
-      },
+      promptSet: canonicalResearchPromptSet,
       agentRuntimeProfile: grokProfile(),
       permissionProfile: {
         id: "gvisor-source-research-v1",

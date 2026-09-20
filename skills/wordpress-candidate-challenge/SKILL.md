@@ -1,13 +1,13 @@
 ---
 name: wordpress-candidate-challenge
-description: "Independent Validationの前、または実行時検証の前に、WordPressのResearch Candidateを人間と対話しながら反証する。攻撃者位置、通常構成、source closure、影響上限、プログラム除外、反証証拠を確認する。探索、検証、再現、修正、外部開示は行わない。"
+description: "Candidate Verificationの前にHuman Candidate Reviewとして、WordPressのResearch Candidateを人間と対話しながら反証する。攻撃者位置、通常構成、source closure、影響上限、プログラム除外、反証証拠を確認する。探索、検証、再現、修正、外部開示は行わない。"
 ---
 
 # WordPress候補への反証質問
 
-sourceに結び付いた一つのResearch Candidateについて、人間がIndependent Validationへ進めるか、Researchへ戻すか、保留するかを判断できるようにする。これは監督付きのworkflow gateであり、技術的な最終判定でも外部行動の承認でもない。
+sourceに結び付いた一つのResearch Candidateについて、人間がCandidate Verificationへ進めるか、Researchへ戻すか、保留するかを判断できるようにする。これは監督付きのworkflow gateであり、技術的な最終判定でも外部行動の承認でもない。
 
-`wordpress-harness`では、`AGENTS.md`と`docs/CODEBASE-GUIDE.md`のResearch Campaigns節を読む。新しいIndependent Validationだけがsource-validated Findingを作れるという規則を維持する。
+`wordpress-harness`では、`AGENTS.md`と`docs/CODEBASE-GUIDE.md`のResearch Campaigns節を読む。Human Candidate Reviewで採用されたCandidateだけをfreshなCandidate Verificationへ渡し、`runtime-confirmed`だけがVerified Vulnerabilityを作れるという規則を維持する。
 
 ## 入力
 
@@ -42,14 +42,12 @@ claimを理解するためのsource closureまたは証拠が欠けていれば�
 
 次の一つだけを推奨し、人間の明示判断を待つ。
 
-- `advance-to-independent-validation`: 明白な反証仮説が解消され、新しいvalidatorに十分なsource closureがある。
+- `advance-to-candidate-verification`: 明白な反証仮説が解消され、Candidate-bound recipeとfresh runtimeで検証する価値がある。
 - `return-to-research`: sourceに結び付いた具体的な質問とsource pointerを示す。脆弱性種類や全面再scanは指定しない。
-- `park-programme-oos`: sourceが支持する最大効果が対象外で、対象内へつながる具体的な経路が残らない。
-- `hold-scope-ambiguous`: プログラム上の意味または必要な外部事実が未解決。
 
-どのdispositionでもCandidateと理由を保持する。`source-validated`や`disproven`を出さない。それらはIndependent Validationが所有する。対応する後続workflowと承認なしに、Validation、実行時再現、修正、vendor連絡、外部提出を開始しない。
+Programme scopeをこのReviewで先取りしない。技術的に検証する価値があるCandidateは、全programmeで対象外の可能性があってもCandidate Verificationへ進める。scopeは`runtime-confirmed`後にHuman OSが全configured programmeについて評価する。
 
-既にvalidation済みのCandidateへ適用する場合は`retrospective`と表示し、validation recordを書き換えない。`advance-to-independent-validation`を`advance-to-runtime-verification`へ置き換え、他のdispositionは維持する。
+どのdispositionでもCandidateと理由を保持する。`runtime-confirmed`、`contradicted`、`incomplete`を出さない。それらはCandidate Verificationが所有する。対応する後続workflowと承認なしに、実行時検証、修正、vendor連絡、外部提出を開始しない。
 
 ## 人間向けの結果
 

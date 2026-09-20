@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -31,7 +38,10 @@ import {
 import { runIndependentResearchTrialLauncherCli } from "../../src/operations/independent-research-trial-launcher-cli.js";
 import { inspectIndependentResearchTrialReadiness } from "../../src/operations/independent-research-trial-readiness.js";
 import type { DeepSeekAccountReadinessObservation } from "../../src/operations/deepseek-account-readiness.js";
-import type { CampaignInput } from "../../src/research/index.js";
+import {
+  canonicalResearchPromptSet,
+  type CampaignInput,
+} from "../../src/research/index.js";
 import {
   type ApprovedTargetCampaignRequest,
   type ResearchCampaignPolicy,
@@ -60,12 +70,14 @@ interface ApprovedRequestFixtureOptions {
   readonly promptDigest?: string;
 }
 
-function campaignPolicy(promptDigest = digest("e")): ResearchCampaignPolicy {
+function campaignPolicy(
+  promptDigest: string = canonicalResearchPromptSet.digest,
+): ResearchCampaignPolicy {
   const body = {
     kind: "research-campaign-policy" as const,
     schemaVersion: 2 as const,
     id: "deepseek-pass-at-three-policy-v1",
-    promptSet: { id: "research-v3", digest: promptDigest },
+    promptSet: { id: canonicalResearchPromptSet.id, digest: promptDigest },
     agentRuntimeProfile: defineAgentRuntimeProfile({
       id: "deepseek-v4-1",
       ...deepSeekHarnessNativeTransport,
@@ -960,7 +972,10 @@ describe("Independent Research Trial launcher", () => {
     const wordpressDirectory = join(directory, "wordpress");
     const providerDirectory = join(directory, "provider");
     const promptPath = join(directory, "research.md");
-    const prompt = "Inspect broken security semantics.\n";
+    const prompt = await readFile(
+      join(process.cwd(), "prompts", "wordpress-plugin-research-v7.md"),
+      "utf8",
+    );
     const targetContents = "<?php // target\n";
     await Promise.all([
       mkdir(targetDirectory),

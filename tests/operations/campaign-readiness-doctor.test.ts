@@ -1,5 +1,6 @@
 import {
   access,
+  readFile,
   mkdtemp,
   mkdir,
   readdir,
@@ -17,7 +18,6 @@ import {
   defineAgentRuntimeProfile,
 } from "../../src/infrastructure/agent-runtime-profile.js";
 import { measureCanonicalSourceTree } from "../../src/infrastructure/canonical-source-tree.js";
-import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import {
   formatCampaignReadinessReport,
   openCampaignReadinessDoctor,
@@ -26,7 +26,10 @@ import {
 } from "../../src/operations/campaign-readiness-doctor.js";
 import { runCampaignReadinessDoctorCli } from "../../src/operations/campaign-readiness-doctor-cli.js";
 import type { ApprovedCampaignLaunchManifest } from "../../src/operations/claude-quota-approved-campaign-launcher.js";
-import type { CampaignInput } from "../../src/research/index.js";
+import {
+  canonicalResearchPromptSet,
+  type CampaignInput,
+} from "../../src/research/index.js";
 import { PrivateArtifactStore } from "../../src/infrastructure/private-artifact-store.js";
 
 const checkedAt = "2026-09-18T06:00:00.000Z";
@@ -83,7 +86,10 @@ async function readyFixture(
   const scratchDirectory = join(directory, "scratch");
   const databasePath = join(directory, "database", "campaign.sqlite");
   const promptPath = join(directory, "research.md");
-  const prompt = "Inspect broken security semantics.\n";
+  const prompt = await readFile(
+    join(process.cwd(), "prompts", "wordpress-plugin-research-v7.md"),
+    "utf8",
+  );
   await Promise.all([
     mkdir(sourceDirectory),
     mkdir(dependencyDirectory),
@@ -125,10 +131,7 @@ async function readyFixture(
         sourceTree: dependencyTree,
       },
     ],
-    promptSet: {
-      id: "research-prompt-v3",
-      digest: promptTextDigest(prompt),
-    },
+    promptSet: canonicalResearchPromptSet,
     agentRuntimeProfile: defineAgentRuntimeProfile({
       id: "claude-profile-1",
       ...claudeCodeNativeTransport,

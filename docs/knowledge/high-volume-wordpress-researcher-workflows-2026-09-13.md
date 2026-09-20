@@ -139,7 +139,7 @@ Wordfenceの2026年3月実績では、darooはvalid in-scope 13件、$4,993、�
 4. **Primitiveからsecurity semanticsへ進む。** risky functionを見つけた後、caller、input control、nonce、capability、role、object ownership、ordinary configuration、final impactをRootが追う。GiveWP型のmissing link探索をResearch Promptへ保つ。
 5. **Pattern propagationをRoot decisionにする。** concrete Finding候補が出たら、同一Targetのsibling feature、bundled framework、vendor sibling、free/pro counterpartへ同じbroken semanticsがないか確認する。ただし固定class routerやHarness-owned checklistにはしない。
 6. **Breadthとdepthを両方残す。** daroo型cross-target campaignはthroughputを上げ、Rafie型product/ecosystem deepeningは一つのprimitiveを高impact chainへ伸ばす。Rootがapproach-family convergenceを検知し、異種routeを維持する。
-7. **AI throughputとvalidationを分離する。** 複数codebaseへのbackground model投入は候補数を増やすが、Candidate admission、fresh source-only Independent Validation、fresh isolated reproductionを短絡しない。model出力をFinding countにしない。WordfenceではAI利用のself-reportが2025年末の16%から約66%へ増え、全体の報告volumeも453%増えたが、個人darooのAI利用証拠にはならない（[Wordfence AI report](https://www.wordfence.com/blog/2026/04/the-increasing-role-of-ai-in-vulnerability-research/)）。
+7. **AI throughputとverificationを分離する。** 複数codebaseへのbackground model投入は候補数を増やすが、Human Candidate Reviewとfresh isolated Candidate Verificationを短絡しない。model出力をVerified Vulnerability数にしない。WordfenceではAI利用のself-reportが2025年末の16%から約66%へ増え、全体の報告volumeも453%増えたが、個人darooのAI利用証拠にはならない（[Wordfence AI report](https://www.wordfence.com/blog/2026/04/the-increasing-role-of-ai-in-vulnerability-research/)）。
 8. **比較可能なbaselineを先に作る。** 同じpublic frozen corpus、同じGrant、同じprovider条件でsingle run、複数run union、validated Finding数を測る。外部researcher profileは成功例の観察であり、Harness recall baselineではない。
 
 ## 付録: Rafieの直近公開20件と現在の有効インストール数

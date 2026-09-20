@@ -72,7 +72,7 @@ Selection Record全体をResearchへ渡さない。
 - 境界の意味に関与するruntime libraryまたはSDK source
 - sourceがなく利用を許可されたprotocol/API文書
 
-各sourceの版とdigestを記録し、読み取り専用でmountする。同じ一式をResearchとIndependent Validationへ渡す。依存製品はframework referenceであり、追加の監査対象ではない。
+各sourceの版とdigestを記録し、読み取り専用でResearchへ渡す。Human Candidate Reviewで採用されたCandidate Verification Requestは同じTargetとDependencyのbindingを引き継ぐ。依存製品はframework referenceであり、追加の監査対象ではない。
 
 ## 短いCampaign Threat Contextを書く
 
@@ -94,4 +94,4 @@ Selection Record全体をResearchへ渡さない。
 
 具体的な提案またはResearch Briefを作る場合は[Researchへの受け渡し](references/research-handoff.md)を読む。
 
-明示的な人間承認後、現在の`approved-target-campaign-request`を作り、`campaign conduct-approved`を実行する。受け渡し失敗または新しい人間権限が必要になるまで、同じtaskでResearchとIndependent Validationを継続する。
+明示的な人間承認後、現在の`approved-target-campaign-request`を作り、`campaign conduct-approved`を実行する。受け渡し失敗または新しい人間権限が必要になるまで、同じtaskでResearchを継続し、`stop`後のHuman Candidate Reviewへ進む。

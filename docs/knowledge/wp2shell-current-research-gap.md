@@ -4,7 +4,7 @@
 
 ## 結論
 
-現行方式はwp2shellの公開原文を正本とする[WordPress Plugin Research v7](../../prompts/wordpress-plugin-research-v7.md)である。課題固有のpositive oracle、RCE / `/flag`強制、最低6時間だけを除き、探索手法をすべて維持する。v5 / v6ではCloudflare由来の細則、semantic neighborhood、root-mechanism手順を積み増したが、TranslatePress 3.2.5のprivate実測でPromptが13.7KBへ膨らみ、一試行が最大8 Native Runまで継続した。v7ではそれらを標準wp2shell本文から外し、別方式のCloudflare PromptとHarnessの観測へ戻した。
+現行方式はwp2shellの公開原文を正本とする[WordPress Plugin Research v7](../../prompts/wordpress-plugin-research-v7.md)だけである。課題固有のpositive oracle、RCE / `/flag`強制、最低6時間だけを除き、探索手法をすべて維持する。v5 / v6では外部方式由来の細則、semantic neighborhood、root-mechanism手順を積み増したが、TranslatePress 3.2.5のprivate実測でPromptが13.7KBへ膨らみ、一試行が最大8 Native Runまで継続した。v7ではそれらを標準本文から外し、別のProduction Research Methodとしても残していない。
 
 調査時点ではprovider間の制御と観測も揃っていなかった。最新DaybreakはRootごとに3体を起動する一方、source上には`multi_agent=false`が残り、OpusとGLMでは子agentがさらにagentを起動して最大同時4体を超えた。2026-09-10に全providerのRuntimeをRoot込み最大4体へ修正し、Claude Code / GLMとGrokはspawn depthも1へ制限した。一方、Opus、GLM、GrokのReceiptは実際にagentを使っても`activity.subagents=null`となる例があり、利用数の観測は未解決である。
 
@@ -62,4 +62,4 @@ completed Native RunのCandidate identityまたはProgramme Boundaryにsemantic 
 
 残る観測課題は、全providerのsubagent利用数と親子関係、v7 Promptでdivergent route・adversarial challenge・Root synthesis・追加roundが実際に起きるか、独立pass@3の和集合、早期stop、事前pinするdependencyの不足がrecallへ与える影響である。これらの有限workと受入条件はGitHub Issueを正本にする。
 
-要するに、wp2shellの研究手法はv7 Promptへ取り込み、Cloudflare由来の細則は別方式へ戻した。持ち込まないのは`positive oracle + RCE / /flag到達の強制 + 最低6時間`である。[TranslatePress 3.2.5の公開CVE評価](deepseek-wp2shell-v7-translatepress-known-cve-evaluation-2026-09-20.md)では、3試行の和集合が公開比較集合8件中4件となり、ATOは試行3だけが回収した。試行間varianceを回収できることは一対象で観測したが、subagent活動の完全な観測と、複数Targetでの再現率は引き続き評価する。
+要するに、wp2shellの研究手法はv7 Promptへ取り込み、追加していた外部方式由来の細則は削除した。持ち込まないのは`positive oracle + RCE / /flag到達の強制 + 最低6時間`である。[TranslatePress 3.2.5の公開CVE評価](deepseek-wp2shell-v7-translatepress-known-cve-evaluation-2026-09-20.md)では、3試行の和集合が公開比較集合8件中4件となり、ATOは試行3だけが回収した。試行間varianceを回収できることは一対象で観測したが、subagent活動の完全な観測と、複数Targetでの再現率は引き続き評価する。

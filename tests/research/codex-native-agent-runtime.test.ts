@@ -18,10 +18,12 @@ import {
   defineAgentRuntimeProfile,
 } from "../../src/infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
-import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import { openCodexNativeAgentRuntime } from "../../src/research/agent-led/codex-native-agent-runtime.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
-import type { CampaignInput } from "../../src/research/index.js";
+import {
+  canonicalResearchPromptSet,
+  type CampaignInput,
+} from "../../src/research/index.js";
 import { conductWithHumanAdvance } from "./support/candidate-review.js";
 import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
@@ -169,7 +171,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
     );
     await chmod(dockerExecutablePath, 0o700);
 
-    const researchPrompt = "Research broken security semantics from source.";
+    const researchPrompt = await readFile(
+      join(process.cwd(), "prompts", "wordpress-plugin-research-v7.md"),
+      "utf8",
+    );
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 2,
@@ -182,10 +187,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
           "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
       },
-      promptSet: {
-        id: "agent-led-research-v1",
-        digest: promptTextDigest(researchPrompt),
-      },
+      promptSet: canonicalResearchPromptSet,
       agentRuntimeProfile: codexProfile("xhigh"),
       permissionProfile: {
         id: "gvisor-source-research-v1",
@@ -327,7 +329,10 @@ sleep 60
     );
     await chmod(dockerExecutablePath, 0o700);
 
-    const researchPrompt = "Research broken security semantics from source.";
+    const researchPrompt = await readFile(
+      join(process.cwd(), "prompts", "wordpress-plugin-research-v7.md"),
+      "utf8",
+    );
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 2,
@@ -340,10 +345,7 @@ sleep 60
           "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
       },
-      promptSet: {
-        id: "agent-led-research-v1",
-        digest: promptTextDigest(researchPrompt),
-      },
+      promptSet: canonicalResearchPromptSet,
       agentRuntimeProfile: codexProfile("max"),
       permissionProfile: {
         id: "gvisor-source-research-v1",
@@ -509,7 +511,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
     );
     await chmod(dockerExecutablePath, 0o700);
 
-    const researchPrompt = "Research broken security semantics from source.";
+    const researchPrompt = await readFile(
+      join(process.cwd(), "prompts", "wordpress-plugin-research-v7.md"),
+      "utf8",
+    );
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 2,
@@ -522,10 +527,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_inp
           "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
       },
-      promptSet: {
-        id: "agent-led-research-v1",
-        digest: promptTextDigest(researchPrompt),
-      },
+      promptSet: canonicalResearchPromptSet,
       agentRuntimeProfile: codexProfile("max"),
       permissionProfile: {
         id: "gvisor-source-research-v1",

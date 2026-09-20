@@ -1,7 +1,7 @@
 interface:
   display_name: "WordPressの人間による実行時検証"
-  short_description: "新しいLabでWordPress Findingを人間が検証する"
-  default_prompt: "$wordpress-human-verificationを使い、このFindingの人間向け実行時検証wizardを作ってください。"
+  short_description: "新しいLabでWordPress Candidateを人間が再現する"
+  default_prompt: "$wordpress-human-verificationを使い、このCandidate Verification Requestの人間向け実行時検証wizardを作ってください。"
 
 policy:
   allow_implicit_invocation: true

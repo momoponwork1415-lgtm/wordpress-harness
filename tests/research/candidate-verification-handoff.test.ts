@@ -12,6 +12,7 @@ import {
   type NativeAgentRuntime,
 } from "../../src/research/agent-led/contracts.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
+import { canonicalResearchPromptSet } from "../../src/research/agent-led/research-prompt-set.js";
 import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
 const directories: string[] = [];
@@ -41,11 +42,7 @@ function input() {
         bytes: 100,
       },
     },
-    promptSet: {
-      id: "research-v1",
-      digest:
-        "sha256:3333333333333333333333333333333333333333333333333333333333333333",
-    },
+    promptSet: canonicalResearchPromptSet,
     agentRuntimeProfile: defineAgentRuntimeProfile({
       id: "runtime-v1",
       transportKind: "test-native/v1",

@@ -10,6 +10,7 @@ import {
   type SealedNativeRun,
 } from "../../src/research/agent-led/contracts.js";
 import { agentResearchPrompt } from "../../src/research/agent-led/gvisor-agent-sandbox.js";
+import { canonicalResearchPromptSet } from "../../src/research/agent-led/research-prompt-set.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 
@@ -101,7 +102,7 @@ function sealedRun(): SealedNativeRun {
     ],
     threatContext: threatContext(),
     programmeBoundary: programmeBoundary(),
-    promptSet: { id: "research-prompt-v1", digest: digest("6") },
+    promptSet: canonicalResearchPromptSet,
     agentRuntimeProfile: defineAgentRuntimeProfile({
       id: "runtime-v1",
       ...claudeCodeNativeTransport,
