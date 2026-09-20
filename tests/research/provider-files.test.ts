@@ -91,6 +91,34 @@ describe("Provider credential files", () => {
     );
   });
 
+  it("stages a private provider environment and removes it before checkpointing", async () => {
+    const { destination } = await workspace();
+    const token = "synthetic-operator-oauth-token";
+    const credentials = new ProviderCredentialFiles([]);
+
+    await credentials.stageEnvironmentSettings(destination, [
+      { name: "CLAUDE_CODE_OAUTH_TOKEN", value: token },
+      { name: "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", value: "1" },
+    ]);
+
+    expect(
+      JSON.parse(await readFile(join(destination, "settings.json"), "utf8")),
+    ).toEqual({
+      env: {
+        CLAUDE_CODE_OAUTH_TOKEN: token,
+        CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
+      },
+    });
+    expect((await stat(join(destination, "settings.json"))).mode & 0o777).toBe(
+      0o600,
+    );
+    expect(credentials.redact(`failure: ${token}`)).toBe("failure: [REDACTED]");
+
+    await credentials.removeFrom(destination);
+
+    expect(await readdir(destination)).toEqual([]);
+  });
+
   it("refuses to overwrite a destination credential", async () => {
     const { source, destination } = await workspace();
     await writeFile(join(source, "auth.json"), credentialText);

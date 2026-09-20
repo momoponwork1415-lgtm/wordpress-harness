@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { z } from "zod";
 
 import { admitAgentRuntimeProfile } from "../../infrastructure/agent-runtime-profile.js";
+import { canonicalDigest } from "../../infrastructure/canonical-json.js";
+import { readPrivateProviderCredential } from "../../infrastructure/provider-private-credential.js";
 import {
   failedNativeRunReceipt,
   GvisorAgentSandbox,
@@ -22,6 +24,8 @@ import {
   type SealedNativeRun,
 } from "./contracts.js";
 import { providerResearchReportSchema } from "./provider-research-report.js";
+
+const CLAUDE_OAUTH_TOKEN_FILENAME = "claude-oauth-token";
 
 const modelUsageSchema = z.record(
   z.string(),
@@ -277,6 +281,22 @@ function wallTimeMs(
   );
 }
 
+function missingFile(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+function providerAuthenticationReceipt() {
+  const body = {
+    kind: "provider-authentication" as const,
+    schemaVersion: 1 as const,
+    provider: "anthropic" as const,
+    method: "operator-oauth-token" as const,
+    setup: "staged" as const,
+    cleanup: "removed" as const,
+  };
+  return { ...body, digest: canonicalDigest(body) };
+}
+
 function errorReceipt(
   run: SealedNativeRun,
   envelope: z.infer<typeof claudeErrorResultSchema>,
@@ -422,6 +442,7 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
     run: SealedNativeRun,
     glm: boolean,
     prompt: string,
+    oauthToken?: string,
   ): SandboxedAgentCommand {
     const reportSchema = providerResearchReportSchema;
     return {
@@ -433,9 +454,26 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
         "--env=CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1",
         "--env=HOME=/tmp/home",
       ],
-      ephemeralProviderCredentialFiles: [
-        glm ? "settings.json" : ".credentials.json",
-      ],
+      ...(oauthToken === undefined
+        ? {
+            ephemeralProviderCredentialFiles: [
+              glm ? "settings.json" : ".credentials.json",
+            ],
+          }
+        : {
+            ephemeralProviderEnvironment: [
+              {
+                name: "CLAUDE_CODE_OAUTH_TOKEN",
+                value: oauthToken,
+              },
+              {
+                name: "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB",
+                value: "1",
+              },
+              { name: "DISABLE_LOGIN_COMMAND", value: "1" },
+              { name: "DISABLE_LOGOUT_COMMAND", value: "1" },
+            ],
+          }),
       ephemeralProviderHomeMount: {
         path: "/provider",
         mode: "rw",
@@ -536,9 +574,30 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
       }
     }
 
+    let oauthToken: string | undefined;
+    if (!glm) {
+      try {
+        oauthToken = await readPrivateProviderCredential(
+          join(this.#providerConfigDirectory, CLAUDE_OAUTH_TOKEN_FILENAME),
+        );
+      } catch (error: unknown) {
+        if (!missingFile(error)) {
+          const now = this.#sandbox.now();
+          return failedNativeRunReceipt(
+            run,
+            "policy-denied",
+            "The operator-owned Claude OAuth token is unavailable or unsafe.",
+            now,
+            now,
+            false,
+          );
+        }
+      }
+    }
+
     let execution = await this.#sandbox.execute(
       run,
-      this.#command(run, glm, this.#sandbox.prompt(run)),
+      this.#command(run, glm, this.#sandbox.prompt(run), oauthToken),
     );
     if (execution.status === "failed") return execution.receipt;
     if (execution.status === "exited-nonzero") {
@@ -775,6 +834,9 @@ class ClaudeCodeNativeAgentRuntime implements NativeAgentRuntime {
             : reportedSubagents.reduce((total, spawned) => total + spawned, 0),
         tools: null,
       },
+      ...(oauthToken === undefined
+        ? {}
+        : { providerAuthentication: providerAuthenticationReceipt() }),
       isolation: {
         backend: "gvisor",
         runtime: "runsc",

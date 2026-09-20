@@ -6,6 +6,7 @@ import {
   realpath,
   rm,
   stat,
+  writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -15,6 +16,8 @@ export const providerFileNameSchema = z
   .string()
   .regex(/^[A-Za-z0-9.][A-Za-z0-9._-]*$/)
   .refine((value) => value !== "." && value !== "..");
+
+const providerEnvironmentNameSchema = z.string().regex(/^[A-Z][A-Z0-9_]*$/);
 
 function credentialSecrets(text: string): readonly string[] {
   const secrets = new Set<string>();
@@ -50,6 +53,7 @@ function credentialSecrets(text: string): readonly string[] {
 /** Owns copied credential files and the values to redact from diagnostics. */
 export class ProviderCredentialFiles {
   readonly #filenames: readonly string[];
+  readonly #generatedFilenames = new Set<string>();
   readonly #secrets: string[] = [];
 
   constructor(filenames: readonly string[]) {
@@ -77,10 +81,42 @@ export class ProviderCredentialFiles {
   }
 
   async removeFrom(directory: string): Promise<void> {
-    for (const candidate of this.#filenames) {
+    for (const candidate of [...this.#filenames, ...this.#generatedFilenames]) {
       const filename = providerFileNameSchema.parse(candidate);
       await rm(join(directory, filename), { force: true });
     }
+  }
+
+  async stageEnvironmentSettings(
+    destinationDirectory: string,
+    environment: readonly { readonly name: string; readonly value: string }[],
+  ): Promise<void> {
+    if (environment.length === 0) {
+      throw new Error("Provider environment credentials are empty");
+    }
+    const values: Record<string, string> = {};
+    for (const entry of environment) {
+      const name = providerEnvironmentNameSchema.parse(entry.name);
+      if (Object.hasOwn(values, name)) {
+        throw new Error(`Duplicate provider environment credential: ${name}`);
+      }
+      if (
+        entry.value.length === 0 ||
+        entry.value.length > 16_384 ||
+        /[\0\r\n]/u.test(entry.value)
+      ) {
+        throw new Error("Provider environment credential is invalid");
+      }
+      values[name] = entry.value;
+      this.#secrets.push(...credentialSecrets(entry.value));
+    }
+    const filename = "settings.json";
+    await writeFile(
+      join(destinationDirectory, filename),
+      `${JSON.stringify({ env: values })}\n`,
+      { encoding: "utf8", mode: 0o600, flag: "wx" },
+    );
+    this.#generatedFilenames.add(filename);
   }
 
   readonly redact = (text: string): string => {
