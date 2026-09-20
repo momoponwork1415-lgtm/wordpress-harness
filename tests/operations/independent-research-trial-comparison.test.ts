@@ -11,12 +11,16 @@ import {
   type CandidateVerificationView,
 } from "../../src/human-os/index.js";
 import {
+  defineIndependentResearchTrialHumanCandidateReview,
   defineIndependentResearchTrialBinding,
   defineIndependentResearchTrialComparisonRequest,
+  deriveHumanCandidateReviewsForIndependentResearchTrials,
   deriveIndependentResearchTrialComparison,
+  prepareIndependentResearchTrialCandidateReview,
 } from "../../src/operations/independent-research-trial-comparison.js";
 import type {
   AgentCheckpointRef,
+  CandidateReviewRequest,
   CandidateVerificationRequest,
   CampaignInput,
   NativeRunAttempt,
@@ -328,7 +332,281 @@ function verificationRequest(
   return { ...body, digest: canonicalDigest(body) };
 }
 
+function candidateReviewRequest(
+  input: CampaignInput,
+  run: SealedNativeRun,
+  candidates: readonly ResearchCandidate[],
+): CandidateReviewRequest {
+  const candidateSetDigest = canonicalDigest(candidates);
+  const body = {
+    kind: "candidate-review-request" as const,
+    schemaVersion: 2 as const,
+    campaignId: input.campaignId,
+    campaignInputDigest: canonicalDigest(input),
+    terminalResearchRunId: run.runId,
+    candidateSetDigest,
+    candidates: [...candidates],
+  };
+  return { ...body, digest: canonicalDigest(body) };
+}
+
+function candidateReviewComparisonFixture() {
+  const inputs = [
+    campaignInput("trial-review-one"),
+    campaignInput("trial-review-two"),
+    campaignInput("trial-review-no-candidate"),
+  ];
+  const runs = inputs.map((input) => runFor(input, 1));
+  const views = inputs.map((input, index) => {
+    const run = runs[index]!;
+    const candidates = index === 2 ? [] : [sharedCandidate];
+    const view = campaignView(
+      input,
+      candidates.length === 0 ? "coverage-closed" : "candidate-review-pending",
+      [
+        {
+          run,
+          receipt: completedReceipt(run, {
+            ...(candidates.length === 0 ? {} : { candidate: sharedCandidate }),
+          }),
+        },
+      ],
+    );
+    return candidates.length === 0
+      ? view
+      : {
+          ...view,
+          pendingCandidateReview: candidateReviewRequest(
+            input,
+            run,
+            candidates,
+          ),
+        };
+  });
+  const comparisonRequest = defineIndependentResearchTrialComparisonRequest({
+    comparisonId: "comparison-candidate-review",
+    trialCampaignIds: inputs.map((input) => input.campaignId),
+    expectedBinding: defineIndependentResearchTrialBinding(inputs[0]!),
+  });
+  const comparison = deriveIndependentResearchTrialComparison(
+    comparisonRequest,
+    { campaignViews: views },
+  );
+  return { inputs, runs, views, comparison };
+}
+
+function aggregateCandidateReviewFixture() {
+  const fixture = candidateReviewComparisonFixture();
+  return {
+    ...fixture,
+    request: prepareIndependentResearchTrialCandidateReview(
+      fixture.comparison,
+      { campaignViews: fixture.views },
+    ),
+  };
+}
+
 describe("Independent Research Trial comparison", () => {
+  it("prepares one provenance-preserving Human Candidate Review across terminal Trials", () => {
+    const { inputs, request } = aggregateCandidateReviewFixture();
+
+    expect(request.trialCampaignIds).toEqual(
+      inputs.map((input) => input.campaignId),
+    );
+    expect(request.candidateRecords).toMatchObject([
+      {
+        campaignId: "trial-review-one",
+        candidateId: "candidate-shared",
+        runIds: ["trial-review-one:native:1"],
+      },
+      {
+        campaignId: "trial-review-two",
+        candidateId: "candidate-shared",
+        runIds: ["trial-review-two:native:1"],
+      },
+    ]);
+    expect(request.originCandidateReviewRequests).toHaveLength(2);
+
+    const review = defineIndependentResearchTrialHumanCandidateReview(request, {
+      reviewId: "review-three-terminal-trials",
+      operator: {
+        identity: "human-reviewer",
+        decidedAt: "2026-09-20T10:00:00.000Z",
+      },
+      decisions: [
+        {
+          campaignId: "trial-review-one",
+          candidateId: "candidate-shared",
+          disposition: "advance-to-candidate-verification",
+          reason: "The Candidate warrants fresh runtime verification.",
+        },
+        {
+          campaignId: "trial-review-two",
+          candidateId: "candidate-shared",
+          disposition: "return-to-research",
+          reason: "The second Trial leaves one decisive source question.",
+          nextActions: [
+            {
+              question: "Does the normal save path preserve this value?",
+              sourcePointers: ["plugin.php:42"],
+            },
+          ],
+        },
+      ],
+    });
+    const originReviews =
+      deriveHumanCandidateReviewsForIndependentResearchTrials(request, review);
+
+    expect(originReviews).toHaveLength(2);
+    expect(originReviews).toMatchObject([
+      {
+        reviewId: "review-three-terminal-trials",
+        campaignId: "trial-review-one",
+        candidateReviewRequestDigest:
+          request.originCandidateReviewRequests[0]?.digest,
+        decisions: [{ disposition: "advance-to-candidate-verification" }],
+      },
+      {
+        reviewId: "review-three-terminal-trials",
+        campaignId: "trial-review-two",
+        candidateReviewRequestDigest:
+          request.originCandidateReviewRequests[1]?.digest,
+        decisions: [{ disposition: "return-to-research" }],
+      },
+    ]);
+  });
+
+  it.each(["incomplete", "incompatible"] as const)(
+    "refuses aggregate review while any Trial is %s",
+    (terminalFailure) => {
+      const firstInput = campaignInput(`trial-${terminalFailure}-one`);
+      const secondInput = campaignInput(`trial-${terminalFailure}-two`);
+      const failingInput =
+        terminalFailure === "incompatible"
+          ? {
+              ...secondInput,
+              budgetEnvelope: {
+                ...secondInput.budgetEnvelope,
+                digest: digest("9"),
+              },
+            }
+          : secondInput;
+      const firstRun = runFor(firstInput, 1);
+      const secondRun = runFor(failingInput, 1);
+      const views = [
+        campaignView(firstInput, "coverage-closed", [
+          { run: firstRun, receipt: completedReceipt(firstRun) },
+        ]),
+        campaignView(
+          failingInput,
+          terminalFailure === "incomplete" ? "incomplete" : "coverage-closed",
+          [
+            {
+              run: secondRun,
+              receipt:
+                terminalFailure === "incomplete"
+                  ? failedReceipt(secondRun)
+                  : completedReceipt(secondRun),
+            },
+          ],
+        ),
+      ];
+      const comparisonRequest = defineIndependentResearchTrialComparisonRequest(
+        {
+          comparisonId: `comparison-${terminalFailure}`,
+          trialCampaignIds: [firstInput.campaignId, failingInput.campaignId],
+          expectedBinding: defineIndependentResearchTrialBinding(firstInput),
+        },
+      );
+      const comparison = deriveIndependentResearchTrialComparison(
+        comparisonRequest,
+        { campaignViews: views },
+      );
+
+      expect(() =>
+        prepareIndependentResearchTrialCandidateReview(comparison, {
+          campaignViews: views,
+        }),
+      ).toThrow(/every planned Trial to be model-completed/);
+    },
+  );
+
+  it("requires one human decision for every provenance-distinct Candidate", () => {
+    const { request } = aggregateCandidateReviewFixture();
+
+    expect(() =>
+      defineIndependentResearchTrialHumanCandidateReview(request, {
+        reviewId: "review-with-missing-decision",
+        operator: {
+          identity: "human-reviewer",
+          decidedAt: "2026-09-20T10:00:00.000Z",
+        },
+        decisions: [
+          {
+            campaignId: "trial-review-one",
+            candidateId: "candidate-shared",
+            disposition: "advance-to-candidate-verification",
+            reason: "The first Trial Candidate is ready.",
+          },
+        ],
+      }),
+    ).toThrow(/must decide every exact origin Candidate once/);
+  });
+
+  it("rejects a pending Candidate Review Request that differs from comparison provenance", () => {
+    const { inputs, runs, views, comparison } =
+      candidateReviewComparisonFixture();
+    const changedCandidate = {
+      ...sharedCandidate,
+      claim: "A different claim was substituted after comparison.",
+    };
+    const mismatchedViews = [
+      {
+        ...views[0]!,
+        pendingCandidateReview: candidateReviewRequest(inputs[0]!, runs[0]!, [
+          changedCandidate,
+        ]),
+      },
+      ...views.slice(1),
+    ];
+
+    expect(() =>
+      prepareIndependentResearchTrialCandidateReview(comparison, {
+        campaignViews: mismatchedViews,
+      }),
+    ).toThrow(/Candidate provenance mismatch/);
+  });
+
+  it("rejects duplicate aggregate decisions for one origin Candidate", () => {
+    const { request } = aggregateCandidateReviewFixture();
+    const repeatedDecision = {
+      campaignId: "trial-review-one",
+      candidateId: "candidate-shared",
+      disposition: "advance-to-candidate-verification" as const,
+      reason: "The Candidate is ready.",
+    };
+
+    expect(() =>
+      defineIndependentResearchTrialHumanCandidateReview(request, {
+        reviewId: "review-with-duplicate-decision",
+        operator: {
+          identity: "human-reviewer",
+          decidedAt: "2026-09-20T10:00:00.000Z",
+        },
+        decisions: [
+          repeatedDecision,
+          repeatedDecision,
+          {
+            campaignId: "trial-review-two",
+            candidateId: "candidate-shared",
+            disposition: "advance-to-candidate-verification",
+            reason: "The second Candidate is ready.",
+          },
+        ],
+      }),
+    ).toThrow(/decisions must be unique/);
+  });
+
   it("counts Campaigns as trials while retaining run-local provenance and unknown cost", () => {
     const inputs = [
       campaignInput("trial-one"),

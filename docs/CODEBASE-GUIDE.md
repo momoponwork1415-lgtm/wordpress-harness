@@ -301,10 +301,10 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 <details>
 <summary>Operations — 保存済みCampaignを独立Trialとして読み取り専用で比較する</summary>
 
-- **目的:** exactなCampaign ID集合を一つの評価条件へ照合し、Campaign内の継続runやprovider retryを独立Trialへ数えずに、完了・未完了・不一致と後段結果を表示する。
-- **インターフェース:** `defineIndependentResearchTrialBinding`、`defineIndependentResearchTrialComparisonRequest`、`deriveIndependentResearchTrialComparison`。RequestはTarget / Dependency、Threat Context、Programme Boundary、Prompt、Runtime、Permission、Budgetとfresh startを自己digestへbindする。導出関数は`ResearchCampaignView`と任意の`CandidateVerificationView`だけを受け取る。
-- **所有する記録・不変条件:** mutable stateを持たない。Request順をTrial順として決定論的な自己digest付きviewを返す。CandidateはCampaign内のimmutableな同一IDだけを一recordへまとめて全run IDを保持し、別Campaign間では同じrecord digestでも統合しない。Assessmentはrun-local occurrenceのまま保持する。costまたはtoken欠損は`unknown`、未起動は`not-observed`であり0へ丸めない。technical verification、programme scope、Campaign statusとCoverageを別fieldにする。
-- **失敗時:** missing Campaignは`planned`、binding不一致またはresume開始は`incompatible`、失敗・orphan・administrative incompleteは`incomplete`として表示する。計画外Campaign、重複・改変されたview、Campaign Requestと一致しないHuman OS viewは例外で拒否する。比較はResearch、Human Candidate Review、Candidate Verificationまたは外部行動を起動しない。
+- **目的:** exactなCampaign ID集合を一つの評価条件へ照合し、Campaign内の継続runやprovider retryを独立Trialへ数えずに、完了・未完了・不一致と後段結果を表示する。全Trialのモデル実行完了後は、出自を保った一つのHuman Candidate Reviewへまとめる。
+- **インターフェース:** `defineIndependentResearchTrialBinding`、`defineIndependentResearchTrialComparisonRequest`、`deriveIndependentResearchTrialComparison`、`prepareIndependentResearchTrialCandidateReview`、`defineIndependentResearchTrialHumanCandidateReview`、`deriveHumanCandidateReviewsForIndependentResearchTrials`。RequestはTarget / Dependency、Threat Context、Programme Boundary、Prompt、Runtime、Permission、Budgetとfresh startを自己digestへbindする。比較は`ResearchCampaignView`と任意の`CandidateVerificationView`を受け取る。集約レビューは一度の人間判断を、既存のCampaign別`HumanCandidateReview`へ決定論的に分解する。
+- **所有する記録・不変条件:** mutable stateを持たない。Request順をTrial順として決定論的な自己digest付きviewを返す。CandidateはCampaign内のimmutableな同一IDだけを一recordへまとめて全run IDを保持し、別Campaign間では同じID・内容でも統合しない。集約レビューもCampaign、run、元のCandidate Review Requestのdigestを保ち、全Candidateを出自単位で一度ずつ判断する。Candidateのない完了TrialはTrial集合に残す。Assessmentはrun-local occurrenceのまま保持する。costまたはtoken欠損は`unknown`、未起動は`not-observed`であり0へ丸めない。technical verification、programme scope、Campaign statusとCoverageを別fieldにする。
+- **失敗時:** missing Campaignは`planned`、binding不一致またはresume開始は`incompatible`、失敗・orphan・administrative incompleteは`incomplete`として表示する。集約レビューは一つでも`model-completed`でないTrial、欠落・計画外・改変されたCampaign view、元Requestと一致しないCandidate、過不足のある人間判断を例外で拒否する。比較と集約はResearchの記録、継続、Candidate Verificationまたは外部行動を起動しない。
 
 **ソース / 振る舞いテスト:** [`independent-research-trial-comparison.ts`](../src/operations/independent-research-trial-comparison.ts) · [`independent-research-trial-comparison.test.ts`](../tests/operations/independent-research-trial-comparison.test.ts)
 
