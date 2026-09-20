@@ -77,6 +77,10 @@ export interface SandboxedAgentCommand {
     readonly containerMountPath?: string;
   }[];
   readonly ephemeralProviderCredentialFiles?: readonly string[];
+  readonly ephemeralProviderEnvironment?: readonly {
+    readonly name: string;
+    readonly value: string;
+  }[];
   readonly ephemeralProviderHomeMount?: {
     readonly path: string;
     readonly mode: "ro" | "rw";
@@ -532,12 +536,23 @@ export class GvisorAgentSandbox {
         }
         scratchDirectory = await mkdtemp(join(scratchRootDirectory, "run-"));
       }
-      if (command.ephemeralProviderCredentialFiles !== undefined) {
+      if (
+        command.ephemeralProviderCredentialFiles !== undefined ||
+        command.ephemeralProviderEnvironment !== undefined
+      ) {
         if (command.ephemeralProviderHomeMount === undefined) {
           throw new Error("Provider credentials require an isolated mount");
         }
         providerHome ??= await mkdtemp(join(scratchRootDirectory, "provider-"));
-        await credentials.copyTo(providerConfigDirectory, providerHome);
+        if (command.ephemeralProviderCredentialFiles !== undefined) {
+          await credentials.copyTo(providerConfigDirectory, providerHome);
+        }
+        if (command.ephemeralProviderEnvironment !== undefined) {
+          await credentials.stageEnvironmentSettings(
+            providerHome,
+            command.ephemeralProviderEnvironment,
+          );
+        }
       } else if (
         command.ephemeralProviderHomeMount !== undefined &&
         researchState === undefined

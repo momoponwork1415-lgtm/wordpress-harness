@@ -590,6 +590,29 @@ const agentRunIsolationSchema = z.strictObject({
   fallbackUsed: z.literal(false),
 });
 
+const providerAuthenticationReceiptBodySchema = z.strictObject({
+  kind: z.literal("provider-authentication"),
+  schemaVersion: z.literal(1),
+  provider: z.literal("anthropic"),
+  method: z.literal("operator-oauth-token"),
+  setup: z.literal("staged"),
+  cleanup: z.literal("removed"),
+});
+
+export const providerAuthenticationReceiptSchema =
+  providerAuthenticationReceiptBodySchema
+    .extend({ digest: digestSchema })
+    .superRefine((receipt, context) => {
+      const { digest, ...body } = receipt;
+      if (digest !== canonicalDigest(body)) {
+        context.addIssue({
+          code: "custom",
+          path: ["digest"],
+          message: "Provider authentication receipt digest mismatch",
+        });
+      }
+    });
+
 const agentRunFailureStageSchema = z.enum([
   "sandbox-preflight",
   "provider-version",
@@ -623,6 +646,7 @@ const agentRunReceiptShape = {
   usage: nativeRunUsageSchema,
   activity: nativeRunActivitySchema,
   credentialEgress: providerCredentialEgressReceiptSchema.optional(),
+  providerAuthentication: providerAuthenticationReceiptSchema.optional(),
 };
 
 export const nativeRunReceiptSchema = z.discriminatedUnion("terminal", [
@@ -820,6 +844,9 @@ export type ResearchAdmissionFailure = z.infer<
   typeof researchAdmissionFailureSchema
 >;
 export type NativeRunReceipt = z.infer<typeof nativeRunReceiptSchema>;
+export type ProviderAuthenticationReceipt = z.infer<
+  typeof providerAuthenticationReceiptSchema
+>;
 export type ParkedProgrammeLead = z.infer<typeof parkedProgrammeLeadSchema>;
 export type SealedNativeRun = z.infer<typeof sealedNativeRunSchema>;
 export type ResearchCandidate = z.infer<typeof researchCandidateSchema>;

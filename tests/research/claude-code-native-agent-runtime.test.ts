@@ -28,6 +28,7 @@ import { conductWithHumanAdvance } from "./support/candidate-review.js";
 import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
 const temporaryDirectories: string[] = [];
+const syntheticClaudeOauthToken = "synthetic-claude-oauth-token";
 
 function claudeProfile() {
   return defineAgentRuntimeProfile({
@@ -52,6 +53,7 @@ describe("Claude Code Native Agent Runtime", () => {
     temporaryDirectories.push(directory);
     const sourceDirectory = join(directory, "source");
     const providerConfigDirectory = join(directory, "provider-config");
+    const oauthTokenPath = join(providerConfigDirectory, "claude-oauth-token");
     const scratchRootDirectory = join(directory, "scratch");
     const evidenceSummaryJson = JSON.stringify(
       researchEvidenceSummaryFixture("public/save.php"),
@@ -64,6 +66,10 @@ describe("Claude Code Native Agent Runtime", () => {
     await writeFile(join(sourceDirectory, "plugin.php"), "<?php\n", "utf8");
     await Promise.all([
       writeFile(join(providerConfigDirectory, ".credentials.json"), "{}", {
+        encoding: "utf8",
+        mode: 0o600,
+      }),
+      writeFile(oauthTokenPath, `${syntheticClaudeOauthToken}\n`, {
         encoding: "utf8",
         mode: 0o600,
       }),
@@ -117,6 +123,9 @@ is_version_probe=0
 scratch=''
 previous=''
 for argument in "$@"; do
+  case "$argument" in
+    *'${syntheticClaudeOauthToken}'*) exit 68 ;;
+  esac
   if [ "$previous" = "--json-schema" ]; then
     case "$argument" in
       *'"$schema"'*) exit 84 ;;
@@ -174,7 +183,9 @@ fi
 case "$provider_mount" in
   "$scratch"/*) exit 94 ;;
 esac
-[ -f "$provider_mount/.credentials.json" ] || exit 97
+[ ! -e "$provider_mount/.credentials.json" ] || exit 97
+[ -f "$provider_mount/settings.json" ] || exit 70
+node -e 'const fs=require("node:fs");const value=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(value.env.CLAUDE_CODE_OAUTH_TOKEN!==process.argv[2]||value.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB!=="1")process.exit(1)' "$provider_mount/settings.json" '${syntheticClaudeOauthToken}'
 [ ! -e "$provider_mount/.mcp.json" ] || exit 98
 if [ -n "$new_session" ] || [ -n "$resume_session" ]; then
   [ "$provider_mount_mode" = 'rw' ] || exit 83
@@ -288,6 +299,40 @@ exit 75
     ]);
     expect(unadmittedOutcome).toMatchObject({ status: "incomplete" });
 
+    await chmod(oauthTokenPath, 0o644);
+    const unsafeCredentialCampaigns = openResearchCampaigns({
+      databasePath: join(directory, "unsafe-credential.sqlite"),
+      runtime: openClaudeCodeNativeAgentRuntime({
+        ...runtimeOptions,
+        image:
+          "sha256:b8bb6b8f8865dbabb70f03bb71639792fe1f5c4301a8cd874d212435e5cda355",
+      }),
+    });
+    const unsafeCredentialInput = {
+      ...input,
+      campaignId: "campaign-claude-unsafe-credential-1",
+    };
+    await expect(
+      unsafeCredentialCampaigns.conduct(unsafeCredentialInput),
+    ).resolves.toMatchObject({ status: "incomplete" });
+    await expect(
+      unsafeCredentialCampaigns.inspect({
+        campaignId: unsafeCredentialInput.campaignId,
+      }),
+    ).resolves.toMatchObject({
+      nativeRuns: [
+        {
+          terminal: "policy-denied",
+          failure: {
+            summary:
+              "The operator-owned Claude OAuth token is unavailable or unsafe.",
+          },
+        },
+      ],
+    });
+    unsafeCredentialCampaigns.close();
+    await chmod(oauthTokenPath, 0o600);
+
     const runtime = openClaudeCodeNativeAgentRuntime({
       ...runtimeOptions,
       image:
@@ -309,6 +354,15 @@ exit 75
       nativeRuns: [
         {
           terminal: "completed",
+          providerAuthentication: {
+            kind: "provider-authentication",
+            schemaVersion: 1,
+            provider: "anthropic",
+            method: "operator-oauth-token",
+            setup: "staged",
+            cleanup: "removed",
+            digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+          },
           usage: {
             wallTimeMs: 90_000,
             inputTokens: 10_500,
@@ -329,6 +383,10 @@ exit 75
         },
         {
           terminal: "completed",
+          providerAuthentication: {
+            method: "operator-oauth-token",
+            cleanup: "removed",
+          },
           usage: {
             wallTimeMs: 45_000,
             inputTokens: 4_250,
@@ -361,6 +419,12 @@ exit 75
     expect(
       checkpointEntries.some((path) => path.endsWith(".credentials.json")),
     ).toBe(false);
+    expect(
+      checkpointEntries.some((path) => path.endsWith("settings.json")),
+    ).toBe(false);
+    expect(
+      JSON.stringify(await campaigns.inspect({ campaignId: input.campaignId })),
+    ).not.toContain(syntheticClaudeOauthToken);
     expect(await readFile(join(sourceDirectory, "plugin.php"), "utf8")).toBe(
       "<?php\n",
     );
