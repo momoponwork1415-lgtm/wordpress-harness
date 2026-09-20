@@ -425,6 +425,8 @@ printf '%s\n' '${finalEvent}'
         mode: "malformed-report-twice",
         character: "e",
         terminal: "invalid-output",
+        summary:
+          "DeepSeek Harness returned an unsupported Agent Report (invalid_type@$).",
       },
     ] as const;
     for (const failure of failures) {
@@ -437,6 +439,9 @@ printf '%s\n' '${finalEvent}'
       });
       await expect(runtime.execute(failedRun)).resolves.toMatchObject({
         terminal: failure.terminal,
+        ...("summary" in failure
+          ? { failure: { summary: failure.summary } }
+          : {}),
       });
     }
   });

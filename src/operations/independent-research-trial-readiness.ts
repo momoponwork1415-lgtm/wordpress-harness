@@ -2,8 +2,6 @@ import { constants } from "node:fs";
 import { lstat, open, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
 
-import { z } from "zod";
-
 import { canonicalDigest } from "../infrastructure/canonical-json.js";
 import { verifyCanonicalSourceTree } from "../infrastructure/canonical-source-tree.js";
 import {
@@ -11,6 +9,7 @@ import {
   type NativeModelProcessResult,
   type NativeModelProcessRunOptions,
 } from "../infrastructure/native-model-process.js";
+import { openGvisorRuntimePreflight } from "../infrastructure/gvisor-runtime-preflight.js";
 import { promptTextDigest } from "../infrastructure/prompt-text.js";
 import { readPrivateProviderCredential } from "../infrastructure/provider-private-credential.js";
 import {
@@ -111,61 +110,6 @@ async function pathIsFresh(path: string): Promise<boolean> {
   }
 }
 
-function processEnvironment(): NodeJS.ProcessEnv {
-  return {
-    PATH: process.env.PATH ?? "",
-    LANG: "C",
-    LC_ALL: "C",
-    TZ: "UTC",
-  };
-}
-
-async function runDocker(
-  runProcess: ProcessRunner,
-  executablePath: string,
-  args: readonly string[],
-): Promise<NativeModelProcessResult | undefined> {
-  try {
-    return await runProcess({
-      executablePath,
-      args,
-      workingDirectory: process.cwd(),
-      environment: processEnvironment(),
-      timeoutMs: 10_000,
-      maxOutputBytes: 64 * 1024,
-    });
-  } catch {
-    return undefined;
-  }
-}
-
-function imageDigest(image: string): string {
-  const marker = image.lastIndexOf("sha256:");
-  return marker === -1 ? image : image.slice(marker);
-}
-
-const dockerImageInspectionSchema = z.looseObject({
-  Id: z.string().optional(),
-  RepoDigests: z.array(z.string()).nullable().optional(),
-});
-
-function imageMatches(output: string, image: string): boolean {
-  try {
-    const inspection = dockerImageInspectionSchema.parse(
-      JSON.parse(output) as unknown,
-    );
-    const expected = imageDigest(image);
-    return (
-      inspection.Id === expected ||
-      (inspection.RepoDigests ?? []).some(
-        (candidate) => imageDigest(candidate) === expected,
-      )
-    );
-  } catch {
-    return false;
-  }
-}
-
 async function sourceFailureReason(
   trial: IndependentResearchTrialPlan,
 ): Promise<string | undefined> {
@@ -250,80 +194,23 @@ export async function inspectIndependentResearchTrialReadiness(options: {
   }
 
   const runProcess = options.runProcess ?? runNativeModelProcess;
-  const docker = approval.runtime.dockerExecutablePath;
-  const dockerVersion = await runDocker(runProcess, docker, [
-    "version",
-    "--format",
-    "{{.Server.Version}}",
-  ]);
-  if (
-    dockerVersion === undefined ||
-    dockerVersion.kind !== "exited" ||
-    dockerVersion.exitCode !== 0 ||
-    dockerVersion.stdout.trim().length === 0
-  ) {
-    return unknown(approval, trial, checkedAt, "docker-unavailable");
-  }
-  const runtimes = await runDocker(runProcess, docker, [
-    "info",
-    "--format",
-    "{{json .Runtimes}}",
-  ]);
-  if (runtimes?.kind !== "exited" || runtimes.exitCode !== 0) {
-    return unknown(approval, trial, checkedAt, "docker-runtime-unavailable");
-  }
-  try {
-    const observed = z
-      .record(z.string(), z.unknown())
-      .parse(JSON.parse(runtimes.stdout) as unknown);
-    if (!Object.hasOwn(observed, "runsc")) {
-      return blocked(approval, trial, checkedAt, "runsc-unavailable");
-    }
-  } catch {
-    return unknown(approval, trial, checkedAt, "docker-runtime-invalid");
-  }
-  const image = await runDocker(runProcess, docker, [
-    "image",
-    "inspect",
-    "--format",
-    "{{json .}}",
-    trial.image,
-  ]);
-  if (
-    image?.kind !== "exited" ||
-    image.exitCode !== 0 ||
-    !imageMatches(image.stdout, trial.image)
-  ) {
-    return blocked(approval, trial, checkedAt, "image-unavailable");
-  }
-  const uid = typeof process.getuid === "function" ? process.getuid() : 0;
-  const gid = typeof process.getgid === "function" ? process.getgid() : 0;
-  const user = uid > 0 && gid > 0 ? `${uid}:${gid}` : "65534:65534";
-  const provider = await runDocker(runProcess, docker, [
-    "run",
-    "--rm",
-    "--pull=never",
-    "--runtime=runsc",
-    "--network=none",
-    "--read-only",
-    "--cap-drop=ALL",
-    "--security-opt=no-new-privileges",
-    "--pids-limit=32",
-    "--memory=256m",
-    "--cpus=1",
-    `--user=${user}`,
-    "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=64m",
-    "--entrypoint=dsh",
-    trial.image,
-    "--version",
-  ]);
-  if (
-    provider?.kind !== "exited" ||
-    provider.exitCode !== 0 ||
-    provider.stdout.trim().split(/\s/u)[0] !==
-      campaignInput.agentRuntimeProfile.executableVersion
-  ) {
-    return blocked(approval, trial, checkedAt, "provider-version-mismatch");
+  const preflight = await openGvisorRuntimePreflight({ runProcess }).inspect({
+    dockerExecutablePath: approval.runtime.dockerExecutablePath,
+    workingDirectory: process.cwd(),
+    image: trial.image,
+    provider: {
+      executable: "dsh",
+      versionTokenIndex: 0,
+      expectedVersion: campaignInput.agentRuntimeProfile.executableVersion,
+    },
+  });
+  const failedCheck = preflight.checks.find(
+    (check) => check.status !== "ready",
+  );
+  if (failedCheck !== undefined) {
+    return failedCheck.status === "unknown"
+      ? unknown(approval, trial, checkedAt, failedCheck.reason)
+      : blocked(approval, trial, checkedAt, failedCheck.reason);
   }
   return result(approval, trial, checkedAt, "ready", "preflight-ready");
 }

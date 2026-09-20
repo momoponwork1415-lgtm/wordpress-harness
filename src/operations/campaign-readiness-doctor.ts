@@ -12,6 +12,10 @@ import {
   type NativeModelProcessResult,
   type NativeModelProcessRunOptions,
 } from "../infrastructure/native-model-process.js";
+import {
+  openGvisorRuntimePreflight,
+  type GvisorRuntimePreflight,
+} from "../infrastructure/gvisor-runtime-preflight.js";
 import { promptTextDigest } from "../infrastructure/prompt-text.js";
 import { PrivateArtifactStore } from "../infrastructure/private-artifact-store.js";
 import { campaignInputSchema } from "../research/index.js";
@@ -166,42 +170,6 @@ function unknown(
 
 function fileSystemError(error: unknown, code: string): boolean {
   return error instanceof Error && "code" in error && error.code === code;
-}
-
-function processEnvironment(): NodeJS.ProcessEnv {
-  return {
-    PATH: process.env.PATH ?? "",
-    LANG: "C",
-    LC_ALL: "C",
-    TZ: "UTC",
-  };
-}
-
-function expectedImageDigest(image: string): string {
-  const marker = image.lastIndexOf("sha256:");
-  return marker === -1 ? image : image.slice(marker);
-}
-
-const dockerImageInspectionSchema = z.looseObject({
-  Id: z.string().optional(),
-  RepoDigests: z.array(z.string()).nullable().optional(),
-});
-
-function imageInspectionMatches(output: string, image: string): boolean {
-  try {
-    const inspection = dockerImageInspectionSchema.parse(
-      JSON.parse(output) as unknown,
-    );
-    const digest = expectedImageDigest(image);
-    return (
-      inspection.Id === digest ||
-      (inspection.RepoDigests ?? []).some(
-        (repoDigest) => expectedImageDigest(repoDigest) === digest,
-      )
-    );
-  } catch {
-    return false;
-  }
 }
 
 function runtimeExecutable(kind: string):
@@ -599,33 +567,15 @@ function launchCapacityCheck(input: {
 }
 
 class DefaultCampaignReadinessDoctor implements CampaignReadinessDoctor {
-  readonly #runProcess: ProcessRunner;
+  readonly #preflight: GvisorRuntimePreflight;
   readonly #clock: () => Date;
 
   constructor(options: {
-    readonly runProcess: ProcessRunner;
+    readonly preflight: GvisorRuntimePreflight;
     readonly clock: () => Date;
   }) {
-    this.#runProcess = options.runProcess;
+    this.#preflight = options.preflight;
     this.#clock = options.clock;
-  }
-
-  async #docker(
-    executablePath: string,
-    args: readonly string[],
-  ): Promise<NativeModelProcessResult | undefined> {
-    try {
-      return await this.#runProcess({
-        executablePath,
-        args,
-        workingDirectory: process.cwd(),
-        environment: processEnvironment(),
-        timeoutMs: 10_000,
-        maxOutputBytes: 64 * 1024,
-      });
-    } catch {
-      return undefined;
-    }
   }
 
   async #infrastructureChecks(
@@ -636,186 +586,53 @@ class DefaultCampaignReadinessDoctor implements CampaignReadinessDoctor {
       input.campaignInput.agentRuntimeProfile,
       image,
     );
-    const dockerPath = input.manifest.runtime.dockerExecutablePath;
-    const dockerProbe = await this.#docker(dockerPath, [
-      "version",
-      "--format",
-      "{{.Server.Version}}",
-    ]);
-    const docker =
-      dockerProbe?.kind === "exited" &&
-      dockerProbe.exitCode === 0 &&
-      dockerProbe.stdout.trim().length > 0
-        ? ready("docker", "docker-available", "Docker is available.")
-        : dockerProbe?.kind === "timed-out" ||
-            dockerProbe?.kind === "output-limit-exceeded"
-          ? unknown(
-              "docker",
-              "docker-probe-incomplete",
-              "Docker availability could not be determined.",
-            )
-          : blocked("docker", "docker-unavailable", "Docker is unavailable.");
-
-    let runsc: CampaignReadinessCheck;
-    let runscAvailable = false;
-    if (docker.status !== "ready") {
-      runsc = unknown(
-        "runsc",
-        "docker-required",
-        "runsc availability cannot be determined without Docker.",
-      );
-    } else {
-      const runtimeProbe = await this.#docker(dockerPath, [
-        "info",
-        "--format",
-        "{{json .Runtimes}}",
-      ]);
-      if (runtimeProbe?.kind === "exited" && runtimeProbe.exitCode === 0) {
-        try {
-          const runtimes = z
-            .record(z.string(), z.unknown())
-            .parse(JSON.parse(runtimeProbe.stdout) as unknown);
-          runscAvailable = Object.hasOwn(runtimes, "runsc");
-          runsc = runscAvailable
-            ? ready(
-                "runsc",
-                "runsc-available",
-                "Docker exposes the required runsc runtime.",
-              )
-            : blocked(
-                "runsc",
-                "runsc-unavailable",
-                "Docker does not expose the required runsc runtime.",
-              );
-        } catch {
-          runsc = unknown(
-            "runsc",
-            "runsc-observation-invalid",
-            "Docker returned an invalid runtime observation.",
-          );
-        }
-      } else {
-        runsc = blocked(
-          "runsc",
-          "runsc-unavailable",
-          "Docker runtime availability could not be confirmed.",
-        );
-      }
-    }
-
-    let imageCheck: CampaignReadinessCheck;
-    let imageAvailable = false;
-    if (docker.status !== "ready") {
-      imageCheck = unknown(
-        "image",
-        "docker-required",
-        "The pinned image cannot be inspected without Docker.",
-      );
-    } else {
-      const imageProbe = await this.#docker(dockerPath, [
-        "image",
-        "inspect",
-        "--format",
-        "{{json .}}",
-        image,
-      ]);
-      if (imageProbe?.kind === "exited" && imageProbe.exitCode === 0) {
-        imageAvailable = imageInspectionMatches(imageProbe.stdout, image);
-        if (imageAvailable && profileAdmission.status === "image-mismatch") {
-          imageAvailable = false;
-          imageCheck = blocked(
-            "image",
-            "runtime-profile-image-mismatch",
-            "The launch image does not match the image bound by the Agent Runtime profile.",
-          );
-        } else {
-          imageCheck = imageAvailable
-            ? ready(
-                "image",
-                "image-digest-available",
-                "The exact pinned Agent image is available.",
-              )
-            : blocked(
-                "image",
-                "image-digest-mismatch",
-                "Docker did not return the required Agent image digest.",
-              );
-        }
-      } else {
-        imageCheck = blocked(
-          "image",
-          "image-unavailable",
-          "The exact pinned Agent image is unavailable.",
-        );
-      }
-    }
-
-    let provider: CampaignReadinessCheck;
     const command =
       profileAdmission.status === "admitted"
         ? runtimeExecutable(profileAdmission.profile.transportKind)
         : undefined;
-    if (profileAdmission.status !== "admitted") {
-      provider = blocked(
-        "provider-version",
-        `runtime-profile-${profileAdmission.status}`,
-        "The Agent Runtime profile is not admitted for this launch image.",
-      );
-    } else if (command === undefined) {
-      provider = blocked(
-        "provider-version",
-        "runtime-profile-unsupported",
-        "The Agent Runtime profile has no admitted provider executable.",
-      );
-    } else if (!runscAvailable || !imageAvailable) {
-      provider = unknown(
-        "provider-version",
-        "sandbox-required",
-        "The provider executable cannot be inspected without runsc and the pinned image.",
-      );
-    } else {
-      const uid = typeof process.getuid === "function" ? process.getuid() : 0;
-      const gid = typeof process.getgid === "function" ? process.getgid() : 0;
-      const user = uid > 0 && gid > 0 ? `${uid}:${gid}` : "65534:65534";
-      const providerProbe = await this.#docker(dockerPath, [
-        "run",
-        "--rm",
-        "--pull=never",
-        "--runtime=runsc",
-        "--network=none",
-        "--read-only",
-        "--cap-drop=ALL",
-        "--security-opt=no-new-privileges",
-        "--pids-limit=32",
-        "--memory=256m",
-        "--cpus=1",
-        `--user=${user}`,
-        "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=64m",
-        `--entrypoint=${command.executable}`,
-        image,
-        "--version",
-      ]);
-      const tokens =
-        providerProbe?.kind === "exited"
-          ? providerProbe.stdout.trim().split(/[\s(]/u)
-          : [];
-      const observed = tokens[command.versionTokenIndex];
-      provider =
-        providerProbe?.kind === "exited" &&
-        providerProbe.exitCode === 0 &&
-        observed === input.campaignInput.agentRuntimeProfile.executableVersion
-          ? ready(
-              "provider-version",
-              "provider-version-matches",
-              "The sandboxed provider executable version matches the sealed profile.",
-            )
-          : blocked(
-              "provider-version",
-              "provider-version-mismatch",
-              "The sandboxed provider executable version does not match the sealed profile.",
-            );
-    }
-    return [docker, runsc, imageCheck, provider];
+    const preflight = await this.#preflight.inspect({
+      dockerExecutablePath: input.manifest.runtime.dockerExecutablePath,
+      workingDirectory: process.cwd(),
+      image,
+      ...(command === undefined
+        ? {}
+        : {
+            provider: {
+              ...command,
+              expectedVersion:
+                input.campaignInput.agentRuntimeProfile.executableVersion,
+            },
+          }),
+    });
+    return preflight.checks.map((item): CampaignReadinessCheck => {
+      if (
+        item.id === "image" &&
+        item.status === "ready" &&
+        profileAdmission.status === "image-mismatch"
+      ) {
+        return blocked(
+          "image",
+          "runtime-profile-image-mismatch",
+          "The launch image does not match the image bound by the Agent Runtime profile.",
+        );
+      }
+      if (item.id !== "provider-version") return item;
+      if (profileAdmission.status !== "admitted") {
+        return blocked(
+          "provider-version",
+          `runtime-profile-${profileAdmission.status}`,
+          "The Agent Runtime profile is not admitted for this launch image.",
+        );
+      }
+      if (command === undefined) {
+        return blocked(
+          "provider-version",
+          "runtime-profile-unsupported",
+          "The Agent Runtime profile has no admitted provider executable.",
+        );
+      }
+      return item;
+    });
   }
 
   async inspect(
@@ -944,8 +761,9 @@ export function openCampaignReadinessDoctor(
     readonly clock?: () => Date;
   } = {},
 ): CampaignReadinessDoctor {
+  const runProcess = options.runProcess ?? runNativeModelProcess;
   return new DefaultCampaignReadinessDoctor({
-    runProcess: options.runProcess ?? runNativeModelProcess,
+    preflight: openGvisorRuntimePreflight({ runProcess }),
     clock: options.clock ?? (() => new Date()),
   });
 }

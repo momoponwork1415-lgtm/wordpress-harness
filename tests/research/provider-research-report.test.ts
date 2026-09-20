@@ -269,7 +269,7 @@ describe("provider Research Report materialization", () => {
             first,
             {
               ...first,
-              role: "entrypoint" as const,
+              role: "persistence of forged privileged state" as const,
               location: "20",
               observation: "A second input joins the ordered route.",
             },

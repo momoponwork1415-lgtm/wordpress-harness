@@ -345,11 +345,42 @@ Use the source tools for the investigation before producing the final answer. At
 export function parsePromptedJsonResearchReport(
   value: string,
 ): ProviderResearchReport | undefined {
+  const inspected = inspectPromptedJsonResearchReport(value);
+  return inspected.status === "accepted" ? inspected.report : undefined;
+}
+
+export type PromptedJsonResearchReportInspection =
+  | {
+      readonly status: "accepted";
+      readonly report: ProviderResearchReport;
+    }
+  | {
+      readonly status: "rejected";
+      readonly issueSummary: string;
+    };
+
+export function inspectPromptedJsonResearchReport(
+  value: string,
+): PromptedJsonResearchReportInspection {
   const whole = parseJson(value);
   const parsed = providerResearchReportSchema.safeParse(
     normalizeOmittedCandidateDelta(
       whole === undefined ? trailingJsonObject(value) : whole,
     ),
   );
-  return parsed.success ? parsed.data : undefined;
+  if (parsed.success) {
+    return { status: "accepted", report: parsed.data };
+  }
+  return {
+    status: "rejected",
+    issueSummary: parsed.error.issues
+      .slice(0, 3)
+      .map(
+        (issue) =>
+          `${issue.code}@${
+            issue.path.length === 0 ? "$" : issue.path.join(".")
+          }`,
+      )
+      .join(", "),
+  };
 }

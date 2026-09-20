@@ -22,7 +22,7 @@ import {
   type SealedNativeRun,
 } from "./contracts.js";
 import {
-  parsePromptedJsonResearchReport,
+  inspectPromptedJsonResearchReport,
   promptedJsonResearchPrompt,
 } from "./prompted-json-report.js";
 
@@ -468,8 +468,8 @@ class DeepSeekHarnessNativeAgentRuntime implements NativeAgentRuntime {
       initialEventStream.finalText !== undefined &&
       checkpoint !== undefined &&
       checkpoint.sessionId === initialEventStream.sessionId &&
-      parsePromptedJsonResearchReport(initialEventStream.finalText) ===
-        undefined &&
+      inspectPromptedJsonResearchReport(initialEventStream.finalText).status ===
+        "rejected" &&
       remainingWallTimeMs > 0;
 
     if (canCorrect) {
@@ -624,22 +624,23 @@ class DeepSeekHarnessNativeAgentRuntime implements NativeAgentRuntime {
         brokerResult.receipt,
       );
     }
-    const providerReport = parsePromptedJsonResearchReport(
+    const providerReportInspection = inspectPromptedJsonResearchReport(
       eventStream.finalText,
     );
-    if (providerReport === undefined) {
+    if (providerReportInspection.status === "rejected") {
       return withCredentialEgress(
         await refusedNativeRunReceipt(
           run,
           execution,
           "invalid-output",
-          "DeepSeek Harness returned an unsupported Agent Report.",
+          `DeepSeek Harness returned an unsupported Agent Report (${providerReportInspection.issueSummary}).`,
           execution.checkpoint,
           initialStartedAt,
         ),
         brokerResult.receipt,
       );
     }
+    const providerReport = providerReportInspection.report;
     let report;
     try {
       report = await this.#sandbox.materializeReport(run, providerReport);

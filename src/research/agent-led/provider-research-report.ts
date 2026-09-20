@@ -22,7 +22,7 @@ const MAX_CANDIDATE_RECIPE_BYTES = 256 * 1024;
 const providerSourceTraceSchema = z
   .array(
     sourceEvidenceSchema.extend({
-      role: z.string().min(1).max(32),
+      role: z.string().min(1),
     }),
   )
   .min(2)
