@@ -13,4 +13,4 @@ Recipe本文、payload、正確なrequestはGit外のcontent-addressed storeへ�
 
 これにより、同じsource reasoningの二重実行を減らし、昇格条件を実際の到達可能性とsecurity effectへ移せる。代償として独立したsource再読による冗長性を失い、fresh runtime、通常構成、recipe品質がpromotionの依存になる。環境、依存、手順、観測、cleanupまたは証拠の不足は`incomplete`として残し、反証へ丸めない。
 
-この判断はADR 0127、0130、0131のIndependent Validation、source-only Finding生成、programme scopeによるpre-verification holdに関する部分を置き換える。候補の採否と外部行動のHuman Gateは維持する。Research GrantごとのHuman Reviewを維持する部分は、[ADR 0143](0143-continue-research-without-per-run-human-review.md)により置き換えられた。
+この判断は、以前のsource-only再確認、source-only Finding生成、programme scopeによるpre-verification holdを置き換える。候補の採否と外部行動のHuman Gateは維持する。Native RunごとのHuman Reviewは、[ADR 0143](0143-continue-research-without-per-run-human-review.md)により廃止された。

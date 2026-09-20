@@ -39,7 +39,7 @@ wp2shellとCDC promptは、固定assignmentを避けること、初期roundで�
 
 - **Research Prompt / Root AI:** goal、現実的precondition、異種仮説、読む順序、subagentの動的利用、synthesis、challenge、priority、continue / stop判断を持つ。
 - **Provider-native runtime:** 既に提供するplanning、native subagent orchestration、message routing、session / context、tool lifecycle、result synthesisを使う。
-- **Harness:** Target / Prompt / Runtime / Permission / Budget binding、isolation、versioned handoff、append-only evidence、Human Candidate Review、fresh dynamic verification、external action gateだけを強制する。
+- **Harness:** Target / Prompt / Runtime / Permission / Campaign safety limitのbinding、isolation、versioned handoff、append-only evidence、Human Candidate Review、fresh dynamic verification、external action gateだけを強制する。
 
 したがって、Claude Code、Codex等がnativeに提供するagent管理、session continuationまたはtool executionをprovider-neutralな模倣層として再実装しない。wp2shellは既存のmultiagent機能をPromptから利用し、元のCDC promptも既存の `multiagent v2` を動的に使うよう指示している。どちらの資料も独自のagent scheduler、message bus、context managerまたはtool protocolを実装するよう求めていない。
 
@@ -56,7 +56,7 @@ Anthropicの[Best Practices（fixed commit）](https://github.com/anthropics/def
 | severityをclass名ではなく具体的preconditionから導出し、model評価をground truthにしない（[lines 84-99](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L84-L99)） | Candidateのattacker proximity、ordinary configuration、reachability、impactを先に記録する方法を評価する。CVSS数値計算が必要ならdeterministic toolへ分離する。 |
 | 同じPromptでもrun varianceがあるため複数runのunionを見る（[lines 114-118](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L114-L118)） | 凍結した公開evaluation corpusでsingle-run、union、再現率を分けて測る候補。production CampaignのFindingを支持数で採否しない。 |
 | partial chainのmissing primitiveを一つのagentに言語化させ、fresh sessionへ具体的gapとして渡す（[lines 135-142](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L135-L142)） | 同一Checkpointを継続する方式とのablation候補。通常CampaignではRootのsource-bound next actionをexact Checkpointへbindして自動継続する。 |
-| dependencyを全mountせず、agentのwishlistをreviewして必要分だけ渡す（[lines 183-184](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L183-L184)） | 人間が承認してpinしたread-only dependency snapshotを次Grantへ追加するseamとして検討できる。run中の任意downloadは許可しない。 |
+| dependencyを全mountせず、agentのwishlistをreviewして必要分だけ渡す（[lines 183-184](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L183-L184)） | 人間が承認してpinしたread-only dependency snapshotを後続Campaignへ追加するseamとして検討できる。run中の任意downloadは許可しない。 |
 | model出力をreportではなくleadとして扱い、specific release、実interface、source位置を確認し、unfixed issueはprivateに報告する（[lines 218-249](https://github.com/anthropics/defending-code-reference-harness/blob/d3bea6b5793b5f3d59a75ebe69a58efa88383145/docs/best-practices.md#L218-L249)） | Research Candidate、Human Candidate Review、fresh Candidate Verification、external action authorizationという現行境界と比較する。AI関与と人間が確認した範囲を最終Draftに明記する案は将来検討とする。 |
 
 ### そのまま移植しないもの
