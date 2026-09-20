@@ -21,6 +21,16 @@
 
 ## エージェント用スキル
 
+### 対象選定
+
+WordPressの探索対象を比較し、既知脆弱性の答えをResearchへ漏らさずに承認済みCampaignへ渡すときは、リポジトリ管理の[WordPress対象選定skill](skills/wordpress-target-selection/SKILL.md)を使う。
+
+### 候補の反証と検証
+
+- Independent Validationへ送る前に人間と候補を反証するときは、[候補への反証質問skill](skills/wordpress-candidate-challenge/SKILL.md)を使う。
+- 固定sourceから一つのCandidateを監督付きで再確認するときは、[ソース検証skill](skills/wordpress-session-validation/SKILL.md)を使う。
+- source-validated Findingを新しい使い捨てLabで人間が実行時検証するときは、[人間による実行時検証skill](skills/wordpress-human-verification/SKILL.md)を使う。
+
 ### Issue管理
 
 IssueはGitHub Issues（`momoponwork1415-lgtm/wordpress-harness`）を正本とし、`gh` CLIで操作する。`docs/agents/issue-tracker.md`を参照する。
