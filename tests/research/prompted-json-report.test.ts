@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { parsePromptedJsonResearchReport } from "../../src/research/agent-led/prompted-json-report.js";
+import {
+  inspectPromptedJsonResearchReport,
+  parsePromptedJsonResearchReport,
+} from "../../src/research/agent-led/prompted-json-report.js";
 import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
 function report() {
@@ -51,6 +54,18 @@ function reportWithCandidate() {
 }
 
 describe("prompted JSON Research Report parsing", () => {
+  it("reports schema issue codes and paths without exposing provider content", () => {
+    const { evidenceSummary: _evidenceSummary, ...withoutEvidenceSummary } =
+      report();
+
+    expect(
+      inspectPromptedJsonResearchReport(JSON.stringify(withoutEvidenceSummary)),
+    ).toEqual({
+      status: "rejected",
+      issueSummary: "invalid_type@evidenceSummary",
+    });
+  });
+
   it("normalizes an omitted empty Candidate delta", () => {
     const { candidates: _candidates, ...withoutCandidates } = report();
 
