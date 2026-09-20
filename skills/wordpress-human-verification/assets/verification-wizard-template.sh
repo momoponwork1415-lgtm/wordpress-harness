@@ -56,6 +56,6 @@ trap on_error ERR
 trap on_signal INT TERM
 trap cleanup EXIT
 
-# FINDING-SPECIFIC SETUP AND GUIDE START HERE. Replace everything below this line.
+# CANDIDATE-SPECIFIC SETUP AND GUIDE START HERE. Replace everything below this line.
 banner "Unauthored WordPress Disposable Lab"
-fail "This template must be bound to an exact Finding before it is run."
+fail "This template must be bound to an exact Candidate Verification Request before it is run."
