@@ -190,7 +190,6 @@ Prompt、runtime、権限、探索方針の変更は進行中Campaignへ適用�
 ## 参考資料
 
 - [ADR 0125](adr/0125-put-agent-decisions-behind-thin-evidence-shells.md)
-- [ADR 0127](adr/0127-make-validated-findings-the-product-success-criterion.md)
 - [ADR 0128](adr/0128-provide-pinned-dependency-source-to-research.md)
 - [ADR 0132](adr/0132-treat-provider-cost-as-observational-telemetry.md)
 - [ADR 0135](adr/0135-promote-candidates-through-runtime-verification.md)
