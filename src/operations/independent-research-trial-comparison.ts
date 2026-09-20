@@ -10,10 +10,15 @@ import {
   canonicalJson,
 } from "../infrastructure/canonical-json.js";
 import {
+  candidateReviewRequestSchema,
   campaignInputSchema,
+  humanCandidateReviewSchema,
   researchAssessmentSchema,
   researchCandidateSchema,
+  researchNextActionSchema,
+  type CandidateReviewRequest,
   type CampaignInput,
+  type HumanCandidateReview,
   type NativeRunReceipt,
   type ResearchCampaignView,
   type ResearchCandidate,
@@ -276,6 +281,214 @@ export const independentResearchTrialComparisonSchema =
 
 export type IndependentResearchTrialComparison = z.infer<
   typeof independentResearchTrialComparisonSchema
+>;
+
+const independentResearchTrialCandidateRecordSchema = z
+  .strictObject({
+    campaignId: identifierSchema,
+    candidateId: identifierSchema,
+    runIds: z.array(identifierSchema).min(1),
+    candidateRecordDigest: digestSchema,
+    candidateReviewRequestDigest: digestSchema,
+    candidate: researchCandidateSchema,
+  })
+  .superRefine((record, context) => {
+    if (record.candidateId !== record.candidate.candidateId) {
+      context.addIssue({
+        code: "custom",
+        path: ["candidateId"],
+        message: "Independent Trial Candidate identity must match its body",
+      });
+    }
+    if (record.candidateRecordDigest !== canonicalDigest(record.candidate)) {
+      context.addIssue({
+        code: "custom",
+        path: ["candidateRecordDigest"],
+        message: "Independent Trial Candidate digest must bind its body",
+      });
+    }
+  });
+
+const independentResearchTrialCandidateReviewRequestBodySchema = z
+  .strictObject({
+    kind: z.literal("independent-research-trial-candidate-review-request"),
+    schemaVersion: z.literal(1),
+    comparisonId: identifierSchema,
+    comparisonDigest: digestSchema,
+    trialCampaignIds: z.array(identifierSchema).min(1).max(100),
+    originCandidateReviewRequests: z
+      .array(candidateReviewRequestSchema)
+      .min(1)
+      .max(100),
+    candidateRecords: z
+      .array(independentResearchTrialCandidateRecordSchema)
+      .min(1),
+  })
+  .superRefine((request, context) => {
+    if (
+      new Set(request.trialCampaignIds).size !== request.trialCampaignIds.length
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["trialCampaignIds"],
+        message: "Independent Trial Campaign identities must be unique",
+      });
+    }
+
+    const planned = new Set(request.trialCampaignIds);
+    const originByCampaign = new Map<string, CandidateReviewRequest>();
+    for (const [
+      index,
+      origin,
+    ] of request.originCandidateReviewRequests.entries()) {
+      if (!planned.has(origin.campaignId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["originCandidateReviewRequests", index, "campaignId"],
+          message: "Origin Candidate Review must belong to a planned Trial",
+        });
+      }
+      if (originByCampaign.has(origin.campaignId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["originCandidateReviewRequests", index, "campaignId"],
+          message: "Each Trial may have only one origin Candidate Review",
+        });
+      }
+      originByCampaign.set(origin.campaignId, origin);
+    }
+
+    const recordKeys = new Set<string>();
+    for (const [index, record] of request.candidateRecords.entries()) {
+      const key = `${record.campaignId}\u0000${record.candidateId}`;
+      if (recordKeys.has(key)) {
+        context.addIssue({
+          code: "custom",
+          path: ["candidateRecords", index],
+          message:
+            "Independent Trial Candidate provenance must be unique per Campaign",
+        });
+      }
+      recordKeys.add(key);
+
+      const origin = originByCampaign.get(record.campaignId);
+      const candidate = origin?.candidates.find(
+        (item) => item.candidateId === record.candidateId,
+      );
+      if (
+        origin === undefined ||
+        record.candidateReviewRequestDigest !== origin.digest ||
+        candidate === undefined ||
+        canonicalJson(candidate) !== canonicalJson(record.candidate)
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["candidateRecords", index],
+          message:
+            "Independent Trial Candidate must bind its exact origin review request",
+        });
+      }
+    }
+
+    for (const [
+      requestIndex,
+      origin,
+    ] of request.originCandidateReviewRequests.entries()) {
+      for (const candidate of origin.candidates) {
+        const key = `${origin.campaignId}\u0000${candidate.candidateId}`;
+        if (!recordKeys.has(key)) {
+          context.addIssue({
+            code: "custom",
+            path: ["originCandidateReviewRequests", requestIndex, "candidates"],
+            message:
+              "Every origin Candidate must retain one aggregate provenance record",
+          });
+        }
+      }
+    }
+  });
+
+export const independentResearchTrialCandidateReviewRequestSchema =
+  independentResearchTrialCandidateReviewRequestBodySchema
+    .extend({ digest: digestSchema })
+    .superRefine((request, context) => {
+      const { digest, ...body } = request;
+      if (digest !== canonicalDigest(body)) {
+        context.addIssue({
+          code: "custom",
+          path: ["digest"],
+          message: "Independent Trial Candidate Review request digest mismatch",
+        });
+      }
+    });
+
+export type IndependentResearchTrialCandidateReviewRequest = z.infer<
+  typeof independentResearchTrialCandidateReviewRequestSchema
+>;
+
+const independentResearchTrialHumanCandidateReviewDecisionSchema =
+  z.discriminatedUnion("disposition", [
+    z.strictObject({
+      campaignId: identifierSchema,
+      candidateId: identifierSchema,
+      disposition: z.literal("advance-to-candidate-verification"),
+      reason: z.string().min(1).max(4_000),
+    }),
+    z.strictObject({
+      campaignId: identifierSchema,
+      candidateId: identifierSchema,
+      disposition: z.literal("return-to-research"),
+      reason: z.string().min(1).max(4_000),
+      nextActions: z.array(researchNextActionSchema).min(1).max(32),
+    }),
+  ]);
+
+const independentResearchTrialHumanCandidateReviewBodySchema = z
+  .strictObject({
+    kind: z.literal("independent-research-trial-human-candidate-review"),
+    schemaVersion: z.literal(1),
+    reviewId: identifierSchema,
+    candidateReviewRequestDigest: digestSchema,
+    operator: z.strictObject({
+      identity: identifierSchema,
+      decidedAt: z.iso.datetime(),
+    }),
+    decisions: z
+      .array(independentResearchTrialHumanCandidateReviewDecisionSchema)
+      .min(1),
+  })
+  .superRefine((review, context) => {
+    const decisions = new Set<string>();
+    for (const [index, decision] of review.decisions.entries()) {
+      const key = `${decision.campaignId}\u0000${decision.candidateId}`;
+      if (decisions.has(key)) {
+        context.addIssue({
+          code: "custom",
+          path: ["decisions", index],
+          message:
+            "Independent Trial Human Candidate Review decisions must be unique",
+        });
+      }
+      decisions.add(key);
+    }
+  });
+
+export const independentResearchTrialHumanCandidateReviewSchema =
+  independentResearchTrialHumanCandidateReviewBodySchema
+    .extend({ digest: digestSchema })
+    .superRefine((review, context) => {
+      const { digest, ...body } = review;
+      if (digest !== canonicalDigest(body)) {
+        context.addIssue({
+          code: "custom",
+          path: ["digest"],
+          message: "Independent Trial Human Candidate Review digest mismatch",
+        });
+      }
+    });
+
+export type IndependentResearchTrialHumanCandidateReview = z.infer<
+  typeof independentResearchTrialHumanCandidateReviewSchema
 >;
 
 type CompatibilityIssue = z.infer<typeof compatibilityIssueSchema>;
@@ -596,5 +809,231 @@ export function deriveIndependentResearchTrialComparison(
   return independentResearchTrialComparisonSchema.parse({
     ...body,
     digest: canonicalDigest(body),
+  });
+}
+
+function candidateKey(campaignId: string, candidateId: string): string {
+  return `${campaignId}\u0000${candidateId}`;
+}
+
+export function prepareIndependentResearchTrialCandidateReview(
+  candidateComparison: IndependentResearchTrialComparison,
+  input: { readonly campaignViews: readonly ResearchCampaignView[] },
+): IndependentResearchTrialCandidateReviewRequest {
+  const comparison =
+    independentResearchTrialComparisonSchema.parse(candidateComparison);
+  const trialCampaignIds = comparison.trials.map((trial) => trial.campaignId);
+  const planned = new Set(trialCampaignIds);
+  const campaignViews = validateCampaignViews(input.campaignViews, planned);
+
+  if (comparison.trials.some((trial) => trial.state !== "model-completed")) {
+    throw new Error(
+      "Independent Trial Candidate Review requires every planned Trial to be model-completed",
+    );
+  }
+  if (campaignViews.size !== trialCampaignIds.length) {
+    throw new Error(
+      "Independent Trial Candidate Review requires every planned Campaign view",
+    );
+  }
+
+  const originCandidateReviewRequests: CandidateReviewRequest[] = [];
+  const candidateRecords: z.infer<
+    typeof independentResearchTrialCandidateRecordSchema
+  >[] = [];
+
+  for (const campaignId of trialCampaignIds) {
+    const view = campaignViews.get(campaignId);
+    if (view === undefined) {
+      throw new Error(
+        `Independent Trial Candidate Review is missing a Campaign: ${campaignId}`,
+      );
+    }
+    const comparisonRecords = comparison.candidateRecords.filter(
+      (record) => record.campaignId === campaignId,
+    );
+    if (comparisonRecords.length === 0) {
+      if (view.pendingCandidateReview !== undefined) {
+        throw new Error(
+          `Candidate-free Trial has an unexpected pending review: ${campaignId}`,
+        );
+      }
+      continue;
+    }
+
+    if (view.pendingCandidateReview === undefined) {
+      throw new Error(
+        `Candidate-bearing Trial is missing its pending review: ${campaignId}`,
+      );
+    }
+    const origin = candidateReviewRequestSchema.parse(
+      view.pendingCandidateReview,
+    );
+    if (
+      origin.campaignId !== campaignId ||
+      origin.campaignInputDigest !== view.inputDigest ||
+      origin.candidates.length !== comparisonRecords.length
+    ) {
+      throw new Error(
+        `Independent Trial origin Candidate Review does not match its Campaign: ${campaignId}`,
+      );
+    }
+
+    const candidatesById = new Map(
+      origin.candidates.map((candidate) => [candidate.candidateId, candidate]),
+    );
+    for (const record of comparisonRecords) {
+      const candidate = candidatesById.get(record.candidateId);
+      if (
+        !record.compatible ||
+        candidate === undefined ||
+        canonicalJson(candidate) !== canonicalJson(record.candidate)
+      ) {
+        throw new Error(
+          `Independent Trial Candidate provenance mismatch: ${campaignId}/${record.candidateId}`,
+        );
+      }
+      candidateRecords.push({
+        campaignId,
+        candidateId: record.candidateId,
+        runIds: record.runIds,
+        candidateRecordDigest: record.candidateRecordDigest,
+        candidateReviewRequestDigest: origin.digest,
+        candidate: record.candidate,
+      });
+    }
+    originCandidateReviewRequests.push(origin);
+  }
+
+  const body = independentResearchTrialCandidateReviewRequestBodySchema.parse({
+    kind: "independent-research-trial-candidate-review-request",
+    schemaVersion: 1,
+    comparisonId: comparison.comparisonId,
+    comparisonDigest: comparison.digest,
+    trialCampaignIds,
+    originCandidateReviewRequests,
+    candidateRecords,
+  });
+  return independentResearchTrialCandidateReviewRequestSchema.parse({
+    ...body,
+    digest: canonicalDigest(body),
+  });
+}
+
+function requireExactIndependentResearchTrialDecisions(
+  request: IndependentResearchTrialCandidateReviewRequest,
+  review: IndependentResearchTrialHumanCandidateReview,
+): void {
+  if (review.candidateReviewRequestDigest !== request.digest) {
+    throw new Error(
+      "Independent Trial Human Candidate Review request binding mismatch",
+    );
+  }
+  const expected = new Set(
+    request.candidateRecords.map((record) =>
+      candidateKey(record.campaignId, record.candidateId),
+    ),
+  );
+  const actual = new Set(
+    review.decisions.map((decision) =>
+      candidateKey(decision.campaignId, decision.candidateId),
+    ),
+  );
+  if (
+    expected.size !== actual.size ||
+    [...expected].some((key) => !actual.has(key))
+  ) {
+    throw new Error(
+      "Independent Trial Human Candidate Review must decide every exact origin Candidate once",
+    );
+  }
+}
+
+export function defineIndependentResearchTrialHumanCandidateReview(
+  candidateRequest: IndependentResearchTrialCandidateReviewRequest,
+  definition: {
+    readonly reviewId: string;
+    readonly operator: {
+      readonly identity: string;
+      readonly decidedAt: string;
+    };
+    readonly decisions: readonly z.infer<
+      typeof independentResearchTrialHumanCandidateReviewDecisionSchema
+    >[];
+  },
+): IndependentResearchTrialHumanCandidateReview {
+  const request =
+    independentResearchTrialCandidateReviewRequestSchema.parse(
+      candidateRequest,
+    );
+  const body = independentResearchTrialHumanCandidateReviewBodySchema.parse({
+    kind: "independent-research-trial-human-candidate-review",
+    schemaVersion: 1,
+    reviewId: definition.reviewId,
+    candidateReviewRequestDigest: request.digest,
+    operator: definition.operator,
+    decisions: [...definition.decisions],
+  });
+  const review = independentResearchTrialHumanCandidateReviewSchema.parse({
+    ...body,
+    digest: canonicalDigest(body),
+  });
+  requireExactIndependentResearchTrialDecisions(request, review);
+  return review;
+}
+
+export function deriveHumanCandidateReviewsForIndependentResearchTrials(
+  candidateRequest: IndependentResearchTrialCandidateReviewRequest,
+  candidateReview: IndependentResearchTrialHumanCandidateReview,
+): readonly HumanCandidateReview[] {
+  const request =
+    independentResearchTrialCandidateReviewRequestSchema.parse(
+      candidateRequest,
+    );
+  const review =
+    independentResearchTrialHumanCandidateReviewSchema.parse(candidateReview);
+  requireExactIndependentResearchTrialDecisions(request, review);
+
+  return request.originCandidateReviewRequests.map((origin) => {
+    const decisions = origin.candidates.map((candidate) => {
+      const decision = review.decisions.find(
+        (item) =>
+          item.campaignId === origin.campaignId &&
+          item.candidateId === candidate.candidateId,
+      );
+      if (decision === undefined) {
+        throw new Error(
+          `Independent Trial Candidate decision is missing: ${origin.campaignId}/${candidate.candidateId}`,
+        );
+      }
+      return decision.disposition === "advance-to-candidate-verification"
+        ? {
+            candidateId: decision.candidateId,
+            disposition: decision.disposition,
+            reason: decision.reason,
+          }
+        : {
+            candidateId: decision.candidateId,
+            disposition: decision.disposition,
+            reason: decision.reason,
+            nextActions: decision.nextActions,
+          };
+    });
+    const body = {
+      kind: "human-candidate-review" as const,
+      schemaVersion: 1 as const,
+      reviewId: review.reviewId,
+      campaignId: origin.campaignId,
+      campaignInputDigest: origin.campaignInputDigest,
+      terminalResearchRunId: origin.terminalResearchRunId,
+      candidateSetDigest: origin.candidateSetDigest,
+      candidateReviewRequestDigest: origin.digest,
+      operator: review.operator,
+      decisions,
+    };
+    return humanCandidateReviewSchema.parse({
+      ...body,
+      digest: canonicalDigest(body),
+    });
   });
 }
