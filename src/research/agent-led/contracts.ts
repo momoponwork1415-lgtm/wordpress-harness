@@ -3,7 +3,7 @@ import { z } from "zod";
 import { agentRuntimeProfileSchema } from "../../infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../../infrastructure/canonical-json.js";
 import { providerCredentialEgressReceiptSchema } from "../../infrastructure/deepseek-credential-egress-broker.js";
-import { canonicalResearchPromptDigest } from "./research-methods.js";
+import { canonicalResearchPromptSet } from "./research-prompt-set.js";
 
 export { agentRuntimeProfileSchema } from "../../infrastructure/agent-runtime-profile.js";
 
@@ -20,15 +20,23 @@ const immutableRefSchema = z.strictObject({
   digest: digestSchema,
 });
 
-export const researchPromptSetRefSchema = immutableRefSchema.superRefine(
+export const researchPromptSetRefSchema = immutableRefSchema;
+
+const canonicalResearchPromptSetRefSchema = immutableRefSchema.superRefine(
   (promptSet, context) => {
-    const expectedDigest = canonicalResearchPromptDigest(promptSet.id);
-    if (expectedDigest !== undefined && promptSet.digest !== expectedDigest) {
+    if (promptSet.id !== canonicalResearchPromptSet.id) {
+      context.addIssue({
+        code: "custom",
+        path: ["id"],
+        message:
+          "Production Research requires the canonical wp2shell Prompt Set",
+      });
+    }
+    if (promptSet.digest !== canonicalResearchPromptSet.digest) {
       context.addIssue({
         code: "custom",
         path: ["digest"],
-        message:
-          "Canonical Research Method Prompt Set id requires its exact digest",
+        message: "Canonical wp2shell Prompt Set requires its exact digest",
       });
     }
   },
@@ -200,7 +208,7 @@ const researchCampaignPolicyBodySchema = z.strictObject({
   kind: z.literal("research-campaign-policy"),
   schemaVersion: z.literal(2),
   id: identifierSchema,
-  promptSet: researchPromptSetRefSchema,
+  promptSet: canonicalResearchPromptSetRefSchema,
   agentRuntimeProfile: agentRuntimeProfileSchema,
   permissionProfile: immutableRefSchema,
   budgetEnvelope: budgetEnvelopeSchema,
@@ -249,7 +257,7 @@ export const campaignInputSchema = z
     dependencySnapshots: dependencySnapshotsSchema.optional(),
     threatContext: campaignThreatContextSchema.optional(),
     programmeBoundary: programmeResearchBoundarySchema.optional(),
-    promptSet: researchPromptSetRefSchema,
+    promptSet: canonicalResearchPromptSetRefSchema,
     agentRuntimeProfile: agentRuntimeProfileSchema,
     permissionProfile: immutableRefSchema,
     budgetEnvelope: budgetEnvelopeSchema,

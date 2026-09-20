@@ -18,10 +18,12 @@ import {
   defineAgentRuntimeProfile,
 } from "../../src/infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
-import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
 import { openClaudeCodeNativeAgentRuntime } from "../../src/research/agent-led/claude-code-native-agent-runtime.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
-import type { CampaignInput } from "../../src/research/index.js";
+import {
+  canonicalResearchPromptSet,
+  type CampaignInput,
+} from "../../src/research/index.js";
 import { conductWithHumanAdvance } from "./support/candidate-review.js";
 import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
 
@@ -220,8 +222,10 @@ exit 75
     );
     await chmod(dockerExecutablePath, 0o700);
 
-    const researchPrompt =
-      "Audit the immutable WordPress plugin source from first principles.";
+    const researchPrompt = await readFile(
+      join(process.cwd(), "prompts", "wordpress-plugin-research-v7.md"),
+      "utf8",
+    );
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 2,
@@ -234,10 +238,7 @@ exit 75
           "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
       },
-      promptSet: {
-        id: "agent-led-research-v1",
-        digest: promptTextDigest(researchPrompt),
-      },
+      promptSet: canonicalResearchPromptSet,
       agentRuntimeProfile: claudeProfile(),
       permissionProfile: {
         id: "gvisor-source-research-v1",
@@ -533,7 +534,10 @@ exit "$(cat '${providerExitPath}')"
     );
     await chmod(dockerExecutablePath, 0o700);
 
-    const researchPrompt = "Audit the immutable plugin from first principles.";
+    const researchPrompt = await readFile(
+      join(process.cwd(), "prompts", "wordpress-plugin-research-v7.md"),
+      "utf8",
+    );
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 2,
@@ -546,10 +550,7 @@ exit "$(cat '${providerExitPath}')"
           "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
       },
-      promptSet: {
-        id: "agent-led-research-v1",
-        digest: promptTextDigest(researchPrompt),
-      },
+      promptSet: canonicalResearchPromptSet,
       agentRuntimeProfile: claudeProfile(),
       permissionProfile: {
         id: "gvisor-source-research-v1",

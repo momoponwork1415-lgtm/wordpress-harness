@@ -21,15 +21,7 @@ export {
   sourceEvidenceSchema,
   targetSnapshotRefSchema,
 } from "./agent-led/contracts.js";
-export {
-  canonicalResearchPromptDigest,
-  researchMethodForPromptSet,
-  researchPromptSetForMethod,
-} from "./agent-led/research-methods.js";
-export type {
-  ResearchMethod,
-  ResearchMethodPromptSet,
-} from "./agent-led/research-methods.js";
+export { canonicalResearchPromptSet } from "./agent-led/research-prompt-set.js";
 export type {
   CandidateReviewRequest,
   CampaignCommand,

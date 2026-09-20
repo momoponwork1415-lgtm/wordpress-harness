@@ -5,7 +5,10 @@ import {
   claudeCodeNativeTransport,
   defineAgentRuntimeProfile,
 } from "../../src/infrastructure/agent-runtime-profile.js";
-import type { CampaignInput } from "../../src/research/index.js";
+import {
+  canonicalResearchPromptSet,
+  type CampaignInput,
+} from "../../src/research/index.js";
 import {
   openApprovedTargetCampaigns,
   type ApprovedTargetCampaignRequest,
@@ -56,7 +59,7 @@ function policy(): ResearchCampaignPolicy {
     kind: "research-campaign-policy" as const,
     schemaVersion: 2 as const,
     id: "research-campaign-policy-v1",
-    promptSet: { id: "research-prompt-v1", digest: digest("e") },
+    promptSet: canonicalResearchPromptSet,
     agentRuntimeProfile: defineAgentRuntimeProfile({
       id: "claude-code-research-v1",
       ...claudeCodeNativeTransport,

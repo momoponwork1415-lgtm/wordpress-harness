@@ -11,8 +11,10 @@ import {
   defineAgentRuntimeProfile,
   glmClaudeCodeNativeTransport,
 } from "../../src/infrastructure/agent-runtime-profile.js";
-import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
-import type { CampaignInput } from "../../src/research/index.js";
+import {
+  canonicalResearchPromptSet,
+  type CampaignInput,
+} from "../../src/research/index.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
 import { researchEvidenceSummaryFixture } from "../research/support/research-evidence-summary.js";
 
@@ -68,9 +70,11 @@ describe("agent-led campaign CLI", () => {
         },
       ],
     });
-    const researchPrompt = "Research broken security semantics from source.";
-    const researchPromptPath = join(directory, "research-prompt.txt");
-    await writeFile(researchPromptPath, researchPrompt, "utf8");
+    const researchPromptPath = join(
+      process.cwd(),
+      "prompts",
+      "wordpress-plugin-research-v7.md",
+    );
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 2,
@@ -95,10 +99,7 @@ describe("agent-led campaign CLI", () => {
           },
         },
       ],
-      promptSet: {
-        id: "agent-led-research-v1",
-        digest: promptTextDigest(researchPrompt),
-      },
+      promptSet: canonicalResearchPromptSet,
       agentRuntimeProfile: glmProfile(),
       permissionProfile: {
         id: "gvisor-source-research-v1",
@@ -233,9 +234,11 @@ exit 90
         },
       ],
     });
-    const researchPrompt = "Research broken security semantics from source.";
-    const researchPromptPath = join(directory, "research-prompt.txt");
-    await writeFile(researchPromptPath, researchPrompt, "utf8");
+    const researchPromptPath = join(
+      process.cwd(),
+      "prompts",
+      "wordpress-plugin-research-v7.md",
+    );
     const input: CampaignInput = {
       kind: "agent-led-campaign",
       schemaVersion: 2,
@@ -247,10 +250,7 @@ exit 90
         digest: digest("a"),
         sourceTree: { digest: sourceTreeDigest, entries: 1, bytes: 6 },
       },
-      promptSet: {
-        id: "agent-led-research-v1",
-        digest: promptTextDigest(researchPrompt),
-      },
+      promptSet: canonicalResearchPromptSet,
       agentRuntimeProfile: glmProfile(),
       permissionProfile: { id: "source-only-v1", digest: digest("c") },
       budgetEnvelope: {

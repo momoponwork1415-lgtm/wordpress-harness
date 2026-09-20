@@ -6,7 +6,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { defineAgentRuntimeProfile } from "../../src/infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
-import type { CampaignInput } from "../../src/research/index.js";
+import {
+  canonicalResearchPromptSet,
+  type CampaignInput,
+} from "../../src/research/index.js";
 import type {
   AgentCheckpointRef,
   NativeAgentRuntime,
@@ -49,11 +52,7 @@ const input: CampaignInput = {
       bytes: 6,
     },
   },
-  promptSet: {
-    id: "prompt-agent-led-v1",
-    digest:
-      "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-  },
+  promptSet: canonicalResearchPromptSet,
   agentRuntimeProfile: defineAgentRuntimeProfile({
     id: "runtime-scripted-v1",
     transportKind: "scripted-native-agent/v1",

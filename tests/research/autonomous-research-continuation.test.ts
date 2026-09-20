@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { defineAgentRuntimeProfile } from "../../src/infrastructure/agent-runtime-profile.js";
 import {
   campaignInputSchema,
+  canonicalResearchPromptSet,
   type CampaignInput,
 } from "../../src/research/index.js";
 import type {
@@ -62,7 +63,7 @@ function campaignInput(
       digest: digest("a"),
       sourceTree: { digest: digest("9"), entries: 10, bytes: 1_024 },
     },
-    promptSet: { id: "research-v1", digest: digest("b") },
+    promptSet: canonicalResearchPromptSet,
     agentRuntimeProfile: defineAgentRuntimeProfile({
       id: "runtime-v1",
       transportKind: "scripted-native-agent/v1",

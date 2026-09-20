@@ -38,9 +38,7 @@ Harnessは探索判断そのものではなく、AIが安全に判断できる�
 | verify / record | 探索内の敵対的レビュー、別環境での動的検証、確認済み脆弱性、プログラムの対象範囲、追記専用Receiptを分離する |
 | iterate hard and fast | Rootが統合・反証・方向転換を繰り返し、ソースに基づく`continue`なら同じCheckpointから自動で次へ進む |
 
-wp2shellの公開原文を[標準Prompt](../prompts/wordpress-plugin-research-v7.md)の正本とし、その探索手法をすべて維持します。具体的には、先入観なく生のソースから考えること、native multi-agentを積極的かつ動的に使うこと、固定担当を置かないこと、十分に異なる探索経路を持つこと、探索方式を明示して偏りを避けること、収束時に未調査の方式へ戻すこと、一つの有望経路だけに支配させないこと、新しい手段がある時だけ行き詰まった経路を再開すること、相性の悪い経路も複数回維持して後から知見を交差させること、具体的なバグを別視点で二重確認すること、Rootが統合・反証・方向転換・次の探索を繰り返すこと、最初の探索や現在の方式が失敗しただけで止めないこと、依存ソースを読んで欠けた接続や中間バグをつなぐことです。製品固有の対象影響、固定済み依存ソース、Candidateと継続差分の最小契約だけを加え、Cloudflare方式の手順、固定sink checklist、Harnessが所有するCoverageを混ぜません。
-
-[Cloudflare由来のPrompt](../prompts/wordpress-plugin-research-cloudflare-v1.md)は、公開skillの偵察、調査範囲を意識した探索、敵対的な検証、抜けの補完を、Rootが所有する一つの連続探索へ適応する別方式です。固定Hunter、固定Wave、決定論的な調査台帳、発見件数による完了判定は通常のCloudflare方式には採りません。比較実験用の[Cloudflare公開方式そのものに近いPrompt](../prompts/wordpress-plugin-research-cloudflare-upstream-v1.md)だけは、固定した公開skillの全体監査手順、非公開の調査台帳、探索・批評の波、新しいソースによる確認を探索方式の内部で維持します。Cloudflare由来の手順や作業成果物を標準wp2shell Prompt、Harnessの状態、探索範囲の正本、安全性の証明へ昇格させません。
+wp2shellの公開原文を[標準Prompt](../prompts/wordpress-plugin-research-v7.md)の正本とし、その探索手法をすべて維持します。具体的には、先入観なく生のソースから考えること、native multi-agentを積極的かつ動的に使うこと、固定担当を置かないこと、十分に異なる探索経路を持つこと、探索方式を明示して偏りを避けること、収束時に未調査の方式へ戻すこと、一つの有望経路だけに支配させないこと、新しい手段がある時だけ行き詰まった経路を再開すること、相性の悪い経路も複数回維持して後から知見を交差させること、具体的なバグを別視点で二重確認すること、Rootが統合・反証・方向転換・次の探索を繰り返すこと、最初の探索や現在の方式が失敗しただけで止めないこと、依存ソースを読んで欠けた接続や中間バグをつなぐことです。製品固有の対象影響、固定済み依存ソース、Candidateと継続差分の最小契約だけを加え、固定sink checklistやHarnessが所有するCoverageを混ぜません。
 
 持ち込まないのは、wp2shell固有の「脆弱性が存在し、未認証RCEから`/flag`へ必ず到達する」という正解の先出しと、最低6時間の指定だけです。元のCDC promptにある肯定解と最低8時間も同じ理由で採りません。最大4体は固定担当ではなく資源上限として使い、探索方式の一覧はRootの作業領域に置きます。実行中の依存ソース取得は、事前に固定した読み取り専用の依存ソースへ置き換えます。これは探索要素の省略ではなく、未知対象の調査、再現性、隔離、人間による候補採否へ適応するための境界です。速さを理由に証拠、隔離、候補採否を省略しません。
 
@@ -85,17 +83,15 @@ Harnessによる強制条件は次に限定します。
 <a id="agent-led-research"></a>
 ## エージェントによる探索
 
-探索方式はPrompt SetとしてCampaign開始前に選び、モデルやプロバイダーの通信方式とは独立して結び付けます。現在の標準方式は次の3つです。
+探索方式はwp2shell由来のPrompt Set一つです。Campaign開始前に正本のIDと本文digestを固定し、モデルやプロバイダーの通信方式とは独立して結び付けます。
 
 | 探索方式 | 標準Prompt Set | Rootが所有する探索の流れ |
 | --- | --- | --- |
 | `wp2shell` | `wordpress-plugin-research-wp2shell-v7` / [Prompt](../prompts/wordpress-plugin-research-v7.md) | 十分に異なる探索経路、複数回の反復、遅い知見の交差、敵対的な二重確認、繰り返しの統合と方向転換 |
-| `cloudflare` | `wordpress-plugin-research-cloudflare-v2` / [Prompt](../prompts/wordpress-plugin-research-cloudflare-v1.md) | ソースの偵察、調査範囲を意識した探索、敵対的な検証、ソースに基づく抜けの補完 |
-| `cloudflare-upstream` | `wordpress-plugin-research-cloudflare-upstream-c1c8a8c-v2` / [Prompt](../prompts/wordpress-plugin-research-cloudflare-upstream-v1.md) | 固定した公開版の全体監査手順、非公開台帳、探索・批評の波、新しいソースによる確認 |
 
-標準IDとPrompt digestの対応は[`research-methods.ts`](../src/research/agent-led/research-methods.ts)で固定します。別方式の本文や旧Promptを同じ名前で実行する誤設定は拒否します。方式固有の探索判断はPromptとプロバイダー固有のRootの内側に置きます。`ResearchCampaigns.conduct / inspect`、探索報告、人間による候補採否、Provider AdapterのInterfaceは方式ごとに分岐させません。
+標準IDとPrompt digestの対応は[`research-prompt-set.ts`](../src/research/agent-led/research-prompt-set.ts)で固定します。未知のID、異なる本文、旧PromptをProduction Researchへ渡す誤設定はprovider呼び出し前に拒否します。探索判断はPromptとプロバイダー固有のRootの内側に置きます。`ResearchCampaigns.conduct / inspect`、探索報告、人間による候補採否、Provider Adapterに方式選択のInterfaceは持たせません。
 
-プロバイダー固有のRoot agentは対象ソース全体を読み、プラグインが依存するWordPress本体などの挙動を、版を固定した依存ソースから解決します。どの方式でもnative subagentを積極的かつ動的に使い、依存ソース自体を別の監査対象にはしません。Harnessが実行環境で強制するのは、Rootを含めて同時に動けるエージェントが最大4体という資源上限だけです。実際の数、役割、探索回数、脆弱性の種類、読むファイルは指定しません。Rootだけが最大3体のsubagentを起動し、役割、終了後の再投入、次の探索を決めます。探索評価ではGrokを先に使います。利用できない時に同じCampaignを暗黙に別モデルへ切り替えず、GLM 5.3など別の`RuntimeProfile`を結び付けた新しいCampaignとして比較します。
+プロバイダー固有のRoot agentは対象ソース全体を読み、プラグインが依存するWordPress本体などの挙動を、版を固定した依存ソースから解決します。native subagentを積極的かつ動的に使い、依存ソース自体を別の監査対象にはしません。Harnessが実行環境で強制するのは、Rootを含めて同時に動けるエージェントが最大4体という資源上限だけです。実際の数、役割、探索回数、脆弱性の種類、読むファイルは指定しません。Rootだけが最大3体のsubagentを起動し、役割、終了後の再投入、次の探索を決めます。探索評価ではGrokを先に使います。利用できない時に同じCampaignを暗黙に別モデルへ切り替えず、GLM 5.3など別の`RuntimeProfile`を結び付けた新しいCampaignとして比較します。
 
 Campaign全体には、人間が承認したNative Run数と総実行時間の安全上限を持たせます。固定1時間を通常の停止点にはしません。各`SealedNativeRun`はCampaignに残る実行時間を受け取り、プロバイダー固有のRootが自然に構造化報告を返すまで探索できます。Harnessはプロバイダーを呼ぶ前に、正確な`SealedNativeRun`、digest、開始時刻を`NativeRunAttempt`として追記します。Receiptは非公開の回復用成果物へ原子的に確定した後だけ、終了eventへ追記します。開始eventだけが残った試行は孤立状態であり、自動再実行しません。同じrun、runtime profile、Receipt digestに一致する成果物だけを回復し、欠落・破損・不一致があれば`incomplete`のまま残します。
 

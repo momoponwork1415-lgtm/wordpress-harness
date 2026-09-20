@@ -1,7 +1,0 @@
-{
-  "source": "https://github.com/cloudflare/security-audit-skill.git",
-  "commit": "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8",
-  "license": "MIT",
-  "importedAt": "2026-09-19",
-  "purpose": "Pinned upstream source for the cloudflare-upstream Research Method"
-}

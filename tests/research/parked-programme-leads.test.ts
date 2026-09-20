@@ -6,7 +6,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { defineAgentRuntimeProfile } from "../../src/infrastructure/agent-runtime-profile.js";
 import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
-import type { CampaignInput } from "../../src/research/index.js";
+import {
+  canonicalResearchPromptSet,
+  type CampaignInput,
+} from "../../src/research/index.js";
 import type { SealedNativeRun } from "../../src/research/agent-led/contracts.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
 import { conductWithHumanAdvance } from "./support/candidate-review.js";
@@ -64,7 +67,7 @@ function inputFor(campaignId: string, withBoundary = true): CampaignInput {
       digest: digest("a"),
       sourceTree: { digest: digest("9"), entries: 10, bytes: 1_024 },
     },
-    promptSet: { id: "research-v1", digest: digest("b") },
+    promptSet: canonicalResearchPromptSet,
     agentRuntimeProfile: defineAgentRuntimeProfile({
       id: "runtime-v1",
       transportKind: "scripted-native-agent/v1",

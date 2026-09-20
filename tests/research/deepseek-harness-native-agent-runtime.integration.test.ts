@@ -16,8 +16,10 @@ import type {
   ProviderCredentialEgressReceipt,
 } from "../../src/infrastructure/deepseek-credential-egress-broker.js";
 import { runNativeModelProcess } from "../../src/infrastructure/native-model-process.js";
-import { promptTextDigest } from "../../src/infrastructure/prompt-text.js";
-import type { CampaignInput } from "../../src/research/index.js";
+import {
+  canonicalResearchPromptSet,
+  type CampaignInput,
+} from "../../src/research/index.js";
 import { openDeepSeekHarnessNativeAgentRuntime } from "../../src/research/agent-led/deepseek-harness-native-agent-runtime.js";
 import { openResearchCampaigns } from "../../src/research/agent-led/research-campaigns.js";
 import { researchEvidenceSummaryFixture } from "./support/research-evidence-summary.js";
@@ -193,10 +195,7 @@ describe("DeepSeek Harness Native Agent Runtime host integration", () => {
             bytes: Buffer.byteLength(source),
           },
         },
-        promptSet: {
-          id: "prompt-deepseek-dsh-integration",
-          digest: promptTextDigest(researchPrompt),
-        },
+        promptSet: canonicalResearchPromptSet,
         agentRuntimeProfile: runtimeProfile,
         permissionProfile: {
           id: "source-only-deepseek-dsh-integration",

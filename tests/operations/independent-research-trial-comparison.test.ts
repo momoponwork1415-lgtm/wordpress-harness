@@ -26,7 +26,7 @@ import type {
   ResearchCandidate,
   SealedNativeRun,
 } from "../../src/research/agent-led/contracts.js";
-import { researchPromptSetForMethod } from "../../src/research/agent-led/research-methods.js";
+import { canonicalResearchPromptSet } from "../../src/research/agent-led/research-prompt-set.js";
 import { researchEvidenceSummaryFixture } from "../research/support/research-evidence-summary.js";
 
 function digest(character: string): string {
@@ -52,7 +52,7 @@ function campaignInput(campaignId: string): CampaignInput {
       digest: digest("a"),
       sourceTree: { digest: digest("b"), entries: 1, bytes: 6 },
     },
-    promptSet: { id: "research-method-fixture-v1", digest: digest("c") },
+    promptSet: canonicalResearchPromptSet,
     agentRuntimeProfile: runtimeProfile,
     permissionProfile: { id: "source-only-v1", digest: digest("d") },
     budgetEnvelope: {
@@ -450,24 +450,27 @@ describe("Independent Research Trial comparison", () => {
 
   it("makes missing and incompatible trials explicit", () => {
     const baseline = campaignInput("trial-baseline");
-    const promptMismatch = {
-      ...campaignInput("trial-prompt-mismatch"),
+    const permissionMismatch = {
+      ...campaignInput("trial-permission-mismatch"),
       targetSnapshot: {
         ...baseline.targetSnapshot,
         id: "target-alias-with-same-source",
       },
-      promptSet: researchPromptSetForMethod("cloudflare"),
+      permissionProfile: {
+        id: "different-source-only-profile-v1",
+        digest: digest("f"),
+      },
     };
     const resumedInput = {
       ...campaignInput("trial-resumed"),
       resumeFrom: checkpointFor(runFor(baseline, 1)),
     };
-    const promptRun = runFor(promptMismatch, 1);
+    const permissionRun = runFor(permissionMismatch, 1);
     const resumedRun = runFor(resumedInput, 1);
     const request = defineIndependentResearchTrialComparisonRequest({
       comparisonId: "comparison-incompatible",
       trialCampaignIds: [
-        promptMismatch.campaignId,
+        permissionMismatch.campaignId,
         resumedInput.campaignId,
         "trial-missing",
       ],
@@ -476,10 +479,12 @@ describe("Independent Research Trial comparison", () => {
 
     const comparison = deriveIndependentResearchTrialComparison(request, {
       campaignViews: [
-        campaignView(promptMismatch, "coverage-closed", [
+        campaignView(permissionMismatch, "coverage-closed", [
           {
-            run: promptRun,
-            receipt: completedReceipt(promptRun, { estimatedCostUsd: 0.1 }),
+            run: permissionRun,
+            receipt: completedReceipt(permissionRun, {
+              estimatedCostUsd: 0.1,
+            }),
           },
         ]),
         campaignView(resumedInput, "coverage-closed", [
@@ -494,9 +499,9 @@ describe("Independent Research Trial comparison", () => {
 
     expect(comparison.trials).toMatchObject([
       {
-        campaignId: "trial-prompt-mismatch",
+        campaignId: "trial-permission-mismatch",
         state: "incompatible",
-        compatibilityIssues: ["target-snapshot", "prompt-set"],
+        compatibilityIssues: ["target-snapshot", "permission-profile"],
       },
       {
         campaignId: "trial-resumed",
