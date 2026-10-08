@@ -95,7 +95,7 @@ export const deepSeekHarnessNativeTransport = {
   transportKind: "deepseek-harness-native/v1",
   executableVersion: "0.1.6-alpha.2",
   sandboxImageDigest:
-    "sha256:e23300f3efa693d9f52c429ff05f443df0577ae3f3e4f9f26842a7dc685ace29",
+    "sha256:b32d05d54ba4de9151176e21a3098f0e129f49cd25b6f03344b88534b503d7ea",
   promptProtocol: "stdin",
   reportProtocol: "prompted-json",
 } as const;
