@@ -215,6 +215,34 @@ function candidatesFor(
   return [...candidates.values()];
 }
 
+function candidateProgrammeBoundaryFailure(
+  receipt: Extract<NativeRunReceipt, { terminal: "completed" }>,
+  boundary: CampaignInput["programmeBoundary"],
+): string | undefined {
+  if (receipt.report.candidates.length === 0 || boundary === undefined) {
+    return undefined;
+  }
+  const admission = boundary.candidateAdmission;
+  if (admission === undefined) {
+    return "The Programme Research Boundary has no machine-checkable Candidate admission allowlist.";
+  }
+  for (const candidate of receipt.report.candidates) {
+    if (
+      candidate.attackerPosition === undefined ||
+      !admission.eligibleAttackerPositions.includes(candidate.attackerPosition)
+    ) {
+      return `Research Candidate ${candidate.candidateId} did not declare an eligible attacker position.`;
+    }
+    if (
+      candidate.priorityImpact === undefined ||
+      !admission.priorityImpacts.includes(candidate.priorityImpact)
+    ) {
+      return `Research Candidate ${candidate.candidateId} did not declare an eligible priority impact.`;
+    }
+  }
+  return undefined;
+}
+
 function parkedProgrammeLeadsFor(
   nativeRuns: readonly NativeRunReceipt[],
 ): readonly ParkedProgrammeLead[] {
@@ -674,6 +702,20 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
             nativeRunReceiptDigest,
             summary:
               "Native Agent Runtime reused a Candidate identity with different evidence.",
+          };
+        }
+      }
+      if (receipt.terminal === "completed" && admissionFailure === undefined) {
+        const summary = candidateProgrammeBoundaryFailure(
+          receipt,
+          run.programmeBoundary,
+        );
+        if (summary !== undefined) {
+          admissionFailure = {
+            reason: "candidate-outside-programme-boundary",
+            runId: receipt.runId,
+            nativeRunReceiptDigest,
+            summary,
           };
         }
       }

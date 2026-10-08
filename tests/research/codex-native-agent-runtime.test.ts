@@ -139,8 +139,20 @@ const schema = JSON.parse(readFileSync(process.argv[2], "utf8"));
 if (!schema.required.includes("evidenceSummary")) process.exit(1);
 const candidate = schema.properties.candidates.items;
 if (!candidate.required.includes("reproductionRecipe")) process.exit(1);
+if (!candidate.required.includes("attackerPosition")) process.exit(1);
+if (!candidate.required.includes("priorityImpact")) process.exit(1);
 if (
   !candidate.properties.reproductionRecipe.anyOf.some(
+    (branch) => branch.type === "null",
+  )
+) {
+  process.exit(1);
+}
+if (
+  !candidate.properties.attackerPosition.anyOf.some(
+    (branch) => branch.type === "null",
+  ) ||
+  !candidate.properties.priorityImpact.anyOf.some(
     (branch) => branch.type === "null",
   )
 ) {
@@ -161,7 +173,7 @@ printf '%s\n' '{"type":"item.completed","item":{"id":"item-collab","type":"colla
 if [ "$is_resume" -eq 0 ]; then
   printf '%s\n' '{"type":"item.completed","item":{"id":"item-2","type":"agent_message","text":"{\\"schemaVersion\\":2,\\"assessments\\":[],\\"evidenceSummary\\":${escapedEvidenceSummaryJson},\\"candidates\\":[],\\"decision\\":{\\"kind\\":\\"continue\\",\\"reason\\":\\"One source-bound question remains.\\",\\"nextActions\\":[{\\"question\\":\\"Trace the final route.\\",\\"sourcePointers\\":[\\"plugin.php\\"]}]}}"}}'
 else
-  printf '%s\n' '{"type":"item.completed","item":{"id":"item-2","type":"agent_message","text":"{\\"schemaVersion\\":2,\\"assessments\\":[],\\"evidenceSummary\\":${escapedEvidenceSummaryJson},\\"candidates\\":[{\\"candidateId\\":\\"candidate-codex-stored-xss-1\\",\\"attackerPremise\\":\\"An unauthenticated visitor can submit the public form.\\",\\"brokenSecurityProperty\\":\\"Persisted attacker input must be inert in privileged output.\\",\\"claim\\":\\"A public form value is stored and rendered to an administrator without escaping.\\",\\"evidence\\":[{\\"path\\":\\"plugin.php\\",\\"location\\":\\"handler:1\\",\\"observation\\":\\"The public value crosses a stored output boundary.\\"}],\\"sourceTrace\\":[{\\"role\\":\\"entrypoint\\",\\"path\\":\\"plugin.php\\",\\"location\\":\\"handler:1\\",\\"observation\\":\\"The public form accepts attacker input.\\"},{\\"role\\":\\"effect\\",\\"path\\":\\"plugin.php\\",\\"location\\":\\"handler:1\\",\\"observation\\":\\"The stored value reaches administrator output.\\"}],\\"controlAssessments\\":[{\\"control\\":\\"Output escaping\\",\\"evidence\\":[{\\"path\\":\\"plugin.php\\",\\"location\\":\\"handler:1\\",\\"observation\\":\\"No escaping is applied at the output boundary.\\"}],\\"conclusion\\":\\"No source-visible control prevents the stored output effect.\\"}],\\"unresolvedFacts\\":[],\\"reproductionRecipe\\":null}],\\"decision\\":{\\"kind\\":\\"stop\\",\\"reason\\":null,\\"nextActions\\":null,\\"basis\\":\\"No actionable frontier remains.\\"},\\"parkedProgrammeLeads\\":[]}"}}'
+  printf '%s\n' '{"type":"item.completed","item":{"id":"item-2","type":"agent_message","text":"{\\"schemaVersion\\":2,\\"assessments\\":[],\\"evidenceSummary\\":${escapedEvidenceSummaryJson},\\"candidates\\":[{\\"candidateId\\":\\"candidate-codex-stored-xss-1\\",\\"attackerPosition\\":null,\\"priorityImpact\\":null,\\"attackerPremise\\":\\"An unauthenticated visitor can submit the public form.\\",\\"brokenSecurityProperty\\":\\"Persisted attacker input must be inert in privileged output.\\",\\"claim\\":\\"A public form value is stored and rendered to an administrator without escaping.\\",\\"evidence\\":[{\\"path\\":\\"plugin.php\\",\\"location\\":\\"handler:1\\",\\"observation\\":\\"The public value crosses a stored output boundary.\\"}],\\"sourceTrace\\":[{\\"role\\":\\"entrypoint\\",\\"path\\":\\"plugin.php\\",\\"location\\":\\"handler:1\\",\\"observation\\":\\"The public form accepts attacker input.\\"},{\\"role\\":\\"effect\\",\\"path\\":\\"plugin.php\\",\\"location\\":\\"handler:1\\",\\"observation\\":\\"The stored value reaches administrator output.\\"}],\\"controlAssessments\\":[{\\"control\\":\\"Output escaping\\",\\"evidence\\":[{\\"path\\":\\"plugin.php\\",\\"location\\":\\"handler:1\\",\\"observation\\":\\"No escaping is applied at the output boundary.\\"}],\\"conclusion\\":\\"No source-visible control prevents the stored output effect.\\"}],\\"unresolvedFacts\\":[],\\"reproductionRecipe\\":null}],\\"decision\\":{\\"kind\\":\\"stop\\",\\"reason\\":null,\\"nextActions\\":null,\\"basis\\":\\"No actionable frontier remains.\\"},\\"parkedProgrammeLeads\\":[]}"}}'
 fi
 printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":200,"cache_write_input_tokens":300,"output_tokens":100,"reasoning_output_tokens":50}}'
 `,

@@ -26,7 +26,7 @@ WordPressの公開情報を観測し、AIが調査対象を提案する領域。
 | **Dispatch Admission** | 承認内容と現在の観測を照合し、実行直前の識別情報、版、ファイル一覧のハッシュ、鮮度を確認する判断。 |
 | **Target Intake Packet** | 実行前の確認に使う版付きソース情報。対象の識別情報、ファイル一覧、出所を持ち、既知脆弱性や探索手順は含めない。 |
 | **Campaign Threat Context** | 提案時に把握した通常構成、攻撃者の立場、守る性質、信頼の境界、重要な状態変化、依存関係、不確実性をまとめた判断材料。読む順序、役割、停止条件を命令しない。 |
-| **Programme Research Boundary** | 公式資料に基づく対象範囲、優先する影響、除外条件、不確実性、その扱いを固定した記録。参加者の資格や導入数などの対象選定条件は含めず、独立検証へも渡さない。 |
+| **Programme Research Boundary** | 公式資料に基づく対象範囲、優先する影響、除外条件、不確実性、その扱いと、Research Candidateに許す攻撃者位置・impactの機械判定用allowlistを固定した記録。現行allowlistの攻撃者位置はunauthenticated、Subscriber、Customerに限る。参加者の資格や導入数などの対象選定条件は含めず、独立検証へも渡さない。 |
 | **Approved Target Campaign Request** | 一件の承認済み対象について、現在の観測、取得情報、調査方針、依存ソース、背景情報、制度の対象範囲を結び付け、実行前の確認と調査開始を求める入力。 |
 | **Campaign Coverage Receipt** | Researchから戻る対象単位の進行状況。Findingの内容と分けて、終了、未完了、再開条件を伝える。 |
 

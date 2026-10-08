@@ -41,6 +41,26 @@ function inputFor(campaignId: string, withBoundary = true): CampaignInput {
       "Stored Cross-Site Scripting or SQL Injection.",
       "Unauthorized data alteration or read with a critical programme-qualified effect.",
     ],
+    candidateAdmission: {
+      eligibleAttackerPositions: [
+        "unauthenticated" as const,
+        "subscriber" as const,
+        "customer" as const,
+      ],
+      priorityImpacts: [
+        "arbitrary-php-file-upload" as const,
+        "arbitrary-php-file-read" as const,
+        "arbitrary-php-file-deletion" as const,
+        "arbitrary-options-update" as const,
+        "remote-code-execution" as const,
+        "authentication-bypass-to-administrator" as const,
+        "privilege-escalation-to-administrator" as const,
+        "stored-cross-site-scripting" as const,
+        "sql-injection" as const,
+        "critical-unauthorized-data-alteration" as const,
+        "critical-unauthorized-data-read" as const,
+      ],
+    },
     explicitExclusions: [
       "A source primitive with no concrete path to an eligible impact.",
     ],
@@ -161,10 +181,81 @@ function parkedLeadReceipt(run: SealedNativeRun) {
   };
 }
 
+function candidateReceipt(
+  run: SealedNativeRun,
+  classification?: Readonly<{
+    attackerPosition: "unauthenticated" | "subscriber" | "customer";
+    priorityImpact: "stored-cross-site-scripting" | "remote-code-execution";
+  }>,
+) {
+  const receipt = parkedLeadReceipt(run);
+  return {
+    ...receipt,
+    report: {
+      ...receipt.report,
+      candidates: [
+        {
+          candidateId: "candidate-stored-xss",
+          attackerPremise:
+            classification === undefined
+              ? "A Contributor can save markup through the block editor."
+              : "The declared lower-trust actor can save markup through the public interface.",
+          ...(classification ?? {}),
+          brokenSecurityProperty:
+            "Stored attacker markup must remain inert in administrator output.",
+          claim:
+            "Attacker-controlled markup is stored and rendered to an administrator without output escaping.",
+          evidence: [
+            {
+              path: "src/render/block.php",
+              location: "render_block:41",
+              observation:
+                "The stored attacker value is emitted without contextual escaping.",
+            },
+          ],
+          sourceTrace: [
+            {
+              role: "entrypoint" as const,
+              path: "src/api/save-block.php",
+              location: "save_block:19",
+              observation:
+                "The endpoint accepts the attacker-controlled value.",
+            },
+            {
+              role: "effect" as const,
+              path: "src/render/block.php",
+              location: "render_block:41",
+              observation:
+                "The stored value is emitted in administrator output.",
+            },
+          ],
+          controlAssessments: [
+            {
+              control: "Output escaping",
+              evidence: [
+                {
+                  path: "src/render/block.php",
+                  location: "render_block:41",
+                  observation:
+                    "No contextual escaping is applied at the output boundary.",
+                },
+              ],
+              conclusion:
+                "No source-visible control makes the stored markup inert.",
+            },
+          ],
+          unresolvedFacts: [],
+        },
+      ],
+      parkedProgrammeLeads: [],
+    },
+  };
+}
+
 describe("parked Programme Leads", () => {
   it("carries the wp2shell research method without its time and forced-RCE task", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v7.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v9.md"),
       "utf8",
     );
 
@@ -204,7 +295,7 @@ describe("parked Programme Leads", () => {
 
   it("spends deep exploration only on the programme-eligible vulnerability scope", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v7.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v9.md"),
       "utf8",
     );
 
@@ -221,14 +312,9 @@ describe("parked Programme Leads", () => {
       "Promote it only when a concrete source-bound edge reaches an eligible impact",
     );
     expect(prompt).toContain(
-      "Trace the exposed state across its full source-visible lifecycle before parking it",
+      "Before parking a read, inspect every material producer of its store",
     );
-    expect(prompt).toContain(
-      "For a read primitive, inspect every material producer of the exposed store",
-    );
-    expect(prompt).toContain(
-      "For a write primitive, inspect the privileged consumers of the modified state",
-    );
+    expect(prompt).toContain("for a write, inspect its privileged consumers");
   });
 
   it("preserves an OOS primitive without Candidate review or verification handoff", async () => {
@@ -267,6 +353,118 @@ describe("parked Programme Leads", () => {
     });
     expect(view.pendingCandidateReview).toBeUndefined();
     expect(invocations).toBe(1);
+    campaigns.close();
+  });
+
+  it("rejects a Candidate whose attacker position is outside the Programme Boundary", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "candidate-outside-programme-boundary-"),
+    );
+    temporaryDirectories.push(directory);
+    const input = inputFor("campaign-candidate-outside-boundary-1");
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "research.sqlite"),
+      runtime: {
+        async execute(run) {
+          return candidateReceipt(run);
+        },
+      },
+    });
+
+    await expect(campaigns.conduct(input)).resolves.toMatchObject({
+      status: "incomplete",
+    });
+    const view = await campaigns.inspect({ campaignId: input.campaignId });
+    expect(view).toMatchObject({
+      status: "incomplete",
+      admissionFailure: {
+        reason: "candidate-outside-programme-boundary",
+        runId: "campaign-candidate-outside-boundary-1:native:1",
+      },
+      candidateVerificationRequests: [],
+    });
+    expect(view.pendingCandidateReview).toBeUndefined();
+    campaigns.close();
+  });
+
+  it("admits a classified Candidate inside the Programme Boundary", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "candidate-inside-programme-boundary-"),
+    );
+    temporaryDirectories.push(directory);
+    const input = inputFor("campaign-candidate-inside-boundary-1");
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "research.sqlite"),
+      runtime: {
+        async execute(run) {
+          return candidateReceipt(run, {
+            attackerPosition: "unauthenticated",
+            priorityImpact: "stored-cross-site-scripting",
+          });
+        },
+      },
+    });
+
+    await expect(campaigns.conduct(input)).resolves.toMatchObject({
+      status: "candidate-review-pending",
+    });
+    const view = await campaigns.inspect({ campaignId: input.campaignId });
+    expect(view.admissionFailure).toBeUndefined();
+    expect(view.pendingCandidateReview?.candidates).toMatchObject([
+      {
+        attackerPosition: "unauthenticated",
+        priorityImpact: "stored-cross-site-scripting",
+      },
+    ]);
+    campaigns.close();
+  });
+
+  it("rejects a Candidate whose impact is outside the Programme Boundary", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "candidate-impact-outside-programme-boundary-"),
+    );
+    temporaryDirectories.push(directory);
+    const baseInput = inputFor("campaign-candidate-impact-outside-boundary-1");
+    const boundary = baseInput.programmeBoundary;
+    if (boundary === undefined) throw new Error("missing boundary fixture");
+    const { digest: _digest, ...boundaryBody } = boundary;
+    const restrictedBoundaryBody = {
+      ...boundaryBody,
+      candidateAdmission: {
+        eligibleAttackerPositions: ["unauthenticated" as const],
+        priorityImpacts: ["stored-cross-site-scripting" as const],
+      },
+    };
+    const input: CampaignInput = {
+      ...baseInput,
+      programmeBoundary: {
+        ...restrictedBoundaryBody,
+        digest: canonicalDigest(restrictedBoundaryBody),
+      },
+    };
+    const campaigns = openResearchCampaigns({
+      databasePath: join(directory, "research.sqlite"),
+      runtime: {
+        async execute(run) {
+          return candidateReceipt(run, {
+            attackerPosition: "unauthenticated",
+            priorityImpact: "remote-code-execution",
+          });
+        },
+      },
+    });
+
+    await expect(campaigns.conduct(input)).resolves.toMatchObject({
+      status: "incomplete",
+    });
+    await expect(
+      campaigns.inspect({ campaignId: input.campaignId }),
+    ).resolves.toMatchObject({
+      admissionFailure: {
+        reason: "candidate-outside-programme-boundary",
+      },
+      candidateVerificationRequests: [],
+    });
     campaigns.close();
   });
 

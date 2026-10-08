@@ -1,5 +1,7 @@
 export {
   agentRuntimeProfileSchema,
+  candidateAttackerPositionSchema,
+  candidatePriorityImpactSchema,
   candidateReviewRequestSchema,
   campaignCommandSchema,
   campaignInputSchema,
@@ -32,6 +34,8 @@ export type {
 } from "./agent-led/research-methods.js";
 export type {
   CandidateReviewRequest,
+  CandidateAttackerPosition,
+  CandidatePriorityImpact,
   CampaignCommand,
   CampaignInput,
   CampaignOutcomeRef,

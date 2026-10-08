@@ -49,8 +49,8 @@ describe("Research Method Prompt Sets", () => {
   it.each([
     {
       method: "wp2shell" as const,
-      promptPath: "prompts/wordpress-plugin-research-v7.md",
-      promptSetId: "wordpress-plugin-research-wp2shell-v7",
+      promptPath: "prompts/wordpress-plugin-research-v9.md",
+      promptSetId: "wordpress-plugin-research-wp2shell-v9",
     },
     {
       method: "cloudflare" as const,
@@ -78,7 +78,7 @@ describe("Research Method Prompt Sets", () => {
 
   it("preserves every wp2shell search-management technique without the task oracle", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v7.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v9.md"),
       "utf8",
     );
 
@@ -106,11 +106,11 @@ describe("Research Method Prompt Sets", () => {
 
   it("keeps the canonical wp2shell Prompt compact and free of v6 procedures", async () => {
     const prompt = await readFile(
-      join(process.cwd(), "prompts/wordpress-plugin-research-v7.md"),
+      join(process.cwd(), "prompts/wordpress-plugin-research-v9.md"),
       "utf8",
     );
 
-    expect(Buffer.byteLength(prompt, "utf8")).toBeLessThan(7_000);
+    expect(Buffer.byteLength(prompt, "utf8")).toBeLessThan(7_600);
     expect(prompt).not.toContain("semantic neighborhood");
     expect(prompt).not.toContain("value-transformation ledger");
     expect(prompt).not.toContain("root-mechanism source map");

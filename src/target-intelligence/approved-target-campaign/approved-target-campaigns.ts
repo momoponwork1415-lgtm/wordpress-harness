@@ -19,6 +19,7 @@ import {
 
 export type ApprovedTargetCampaignErrorCode =
   | "campaign-policy-mismatch"
+  | "candidate-admission-invalid"
   | "target-intake-mismatch"
   | "source-closure-invalid";
 
@@ -96,6 +97,9 @@ export function admitApprovedTargetCampaign(
   requestValue: ApprovedTargetCampaignRequest,
 ): CampaignInput {
   const request = approvedTargetCampaignRequestSchema.parse(requestValue);
+  if (request.programmeBoundary.candidateAdmission === undefined) {
+    throw new ApprovedTargetCampaignError("candidate-admission-invalid");
+  }
   const batch = request.approvedBatch;
   const approved = batch.approvedTargets.find(
     (target) => target.candidateId === request.candidateId,

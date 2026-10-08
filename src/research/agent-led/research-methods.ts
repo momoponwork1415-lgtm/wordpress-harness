@@ -6,11 +6,11 @@ export interface ResearchMethodPromptSet {
 }
 
 const wp2shellPromptDigest =
-  "sha256:84366819d2049d16013661c901a3cebfc54f2d52c7dfd033579abdfabd464efb";
+  "sha256:9669a7167ba44d0d796790e445196594a54a34b010b521e69875b8ea872605d1";
 
 const promptSetByMethod = {
   wp2shell: {
-    id: "wordpress-plugin-research-wp2shell-v7",
+    id: "wordpress-plugin-research-wp2shell-v9",
     digest: wp2shellPromptDigest,
   },
   cloudflare: {

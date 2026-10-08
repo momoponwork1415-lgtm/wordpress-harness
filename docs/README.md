@@ -9,6 +9,7 @@
 | 全体の責務と受け渡し | [全体構成](ARCHITECTURE.md) — 3領域の関係を1枚で見る |
 | 一件の処理順と人間の判断点 | [処理の流れ](SYSTEM-WALKTHROUGH.md) |
 | 変更箇所・契約・テスト・未接続箇所 | [コードベース案内](CODEBASE-GUIDE.md) |
+| Issueから実装・CIまでの開発手順とスキルの使い分け | [開発手順](agents/development.md) |
 | 探索・停止・候補検証の設計原則 | [探索設計](RESEARCH-DESIGN.md) |
 | 用語の意味 | [領域の対応表](../CONTEXT-MAP.md)から担当領域の用語集へ |
 | 次の有限作業と受入条件 | [GitHub Issues](https://github.com/momoponwork1415-lgtm/wordpress-harness/issues) |

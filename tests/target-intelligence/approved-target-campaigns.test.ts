@@ -199,6 +199,26 @@ function request(): ApprovedTargetCampaignRequest {
       "Unauthenticated visitor, Subscriber, or customer.",
     ],
     priorityImpacts: ["High-impact broken security semantics."],
+    candidateAdmission: {
+      eligibleAttackerPositions: [
+        "unauthenticated" as const,
+        "subscriber" as const,
+        "customer" as const,
+      ],
+      priorityImpacts: [
+        "arbitrary-php-file-upload" as const,
+        "arbitrary-php-file-read" as const,
+        "arbitrary-php-file-deletion" as const,
+        "arbitrary-options-update" as const,
+        "remote-code-execution" as const,
+        "authentication-bypass-to-administrator" as const,
+        "privilege-escalation-to-administrator" as const,
+        "stored-cross-site-scripting" as const,
+        "sql-injection" as const,
+        "critical-unauthorized-data-alteration" as const,
+        "critical-unauthorized-data-read" as const,
+      ],
+    },
     explicitExclusions: ["Business logic bugs."],
     excludedAssets: ["WordPress core."],
     sourceRefs: [{ id: "wordfence-scope-snapshot", digest: digest("d") }],
@@ -345,6 +365,39 @@ describe("ApprovedTargetCampaigns", () => {
         },
       }),
     ).rejects.toMatchObject({ code: "target-intake-mismatch" });
+    expect(conducted).toBe(false);
+  });
+
+  it("rejects a Programme Boundary without a machine-checkable Candidate admission allowlist", async () => {
+    const approvedRequest = request();
+    const { candidateAdmission: _candidateAdmission, ...boundaryBody } =
+      approvedRequest.programmeBoundary;
+    const { digest: _digest, ...unsignedBoundaryBody } = boundaryBody;
+    let conducted = false;
+    const campaigns = openApprovedTargetCampaigns({
+      campaigns: {
+        async conduct(input) {
+          conducted = true;
+          return {
+            kind: "agent-led-campaign-outcome",
+            schemaVersion: 4,
+            campaignId: input.campaignId,
+            inputDigest: canonicalDigest(input),
+            status: "research-continues",
+          };
+        },
+      },
+    });
+
+    await expect(
+      campaigns.conduct({
+        ...approvedRequest,
+        programmeBoundary: {
+          ...unsignedBoundaryBody,
+          digest: canonicalDigest(unsignedBoundaryBody),
+        },
+      }),
+    ).rejects.toMatchObject({ code: "candidate-admission-invalid" });
     expect(conducted).toBe(false);
   });
 

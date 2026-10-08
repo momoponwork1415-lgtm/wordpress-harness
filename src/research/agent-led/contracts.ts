@@ -144,6 +144,37 @@ const programmeBoundaryListSchema = z
   .min(1)
   .max(64);
 
+export const candidateAttackerPositionSchema = z.enum([
+  "unauthenticated",
+  "subscriber",
+  "customer",
+]);
+
+export const candidatePriorityImpactSchema = z.enum([
+  "arbitrary-php-file-upload",
+  "arbitrary-php-file-read",
+  "arbitrary-php-file-deletion",
+  "arbitrary-options-update",
+  "remote-code-execution",
+  "authentication-bypass-to-administrator",
+  "privilege-escalation-to-administrator",
+  "stored-cross-site-scripting",
+  "sql-injection",
+  "critical-unauthorized-data-alteration",
+  "critical-unauthorized-data-read",
+]);
+
+const programmeCandidateAdmissionSchema = z.strictObject({
+  eligibleAttackerPositions: z
+    .array(candidateAttackerPositionSchema)
+    .min(1)
+    .max(candidateAttackerPositionSchema.options.length),
+  priorityImpacts: z
+    .array(candidatePriorityImpactSchema)
+    .min(1)
+    .max(candidatePriorityImpactSchema.options.length),
+});
+
 const programmeResearchBoundaryBodySchema = z.strictObject({
   kind: z.literal("programme-research-boundary"),
   schemaVersion: z.literal(1),
@@ -152,6 +183,9 @@ const programmeResearchBoundaryBodySchema = z.strictObject({
   checkedAt: z.iso.datetime(),
   eligibleAttackerPositions: programmeBoundaryListSchema,
   priorityImpacts: programmeBoundaryListSchema,
+  // Optional only so immutable pre-fix Boundary records remain inspectable.
+  // Approved Target dispatch requires it for every new Campaign.
+  candidateAdmission: programmeCandidateAdmissionSchema.optional(),
   explicitExclusions: z.array(programmeBoundaryTextSchema).max(64),
   excludedAssets: z.array(programmeBoundaryTextSchema).max(64),
   sourceRefs: z.array(immutableRefSchema).min(1).max(16),
@@ -435,7 +469,11 @@ export const candidateVerificationRecipeSchema =
 export const researchCandidateSchema = z.strictObject({
   candidateId: identifierSchema,
   attackerPremise: z.string().min(1),
+  // Optional for unbound and immutable legacy reports; a bound Campaign
+  // rejects the run unless both classifications are present and admitted.
+  attackerPosition: candidateAttackerPositionSchema.optional(),
   brokenSecurityProperty: z.string().min(1),
+  priorityImpact: candidatePriorityImpactSchema.optional(),
   claim: z.string().min(1),
   evidence: z.array(sourceEvidenceSchema).min(1),
   sourceTrace: researchSourceTraceSchema,
@@ -681,6 +719,7 @@ export const campaignInterruptionSchema = z.strictObject({
 export const researchAdmissionFailureSchema = z.strictObject({
   reason: z.enum([
     "candidate-identity-conflict",
+    "candidate-outside-programme-boundary",
     "parked-programme-lead-without-boundary",
     "parked-programme-lead-identity-conflict",
   ]),
@@ -815,6 +854,12 @@ export type NativeRunReceipt = z.infer<typeof nativeRunReceiptSchema>;
 export type ParkedProgrammeLead = z.infer<typeof parkedProgrammeLeadSchema>;
 export type SealedNativeRun = z.infer<typeof sealedNativeRunSchema>;
 export type ResearchCandidate = z.infer<typeof researchCandidateSchema>;
+export type CandidateAttackerPosition = z.infer<
+  typeof candidateAttackerPositionSchema
+>;
+export type CandidatePriorityImpact = z.infer<
+  typeof candidatePriorityImpactSchema
+>;
 export type ResearchAssessment = z.infer<typeof researchAssessmentSchema>;
 export type ResearchEvidenceSummary = z.infer<
   typeof researchEvidenceSummarySchema

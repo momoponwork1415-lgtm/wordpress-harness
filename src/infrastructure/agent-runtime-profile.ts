@@ -127,11 +127,21 @@ const admittedModels = [
   {
     transportKind: codexNativeTransport.transportKind,
     model: "gpt-daybreak-blue-latest",
+    effort: "high",
+  },
+  {
+    transportKind: codexNativeTransport.transportKind,
+    model: "gpt-daybreak-blue-latest",
     effort: "xhigh",
   },
   {
     transportKind: codexNativeTransport.transportKind,
     model: "gpt-daybreak-blue-latest",
+    effort: "max",
+  },
+  {
+    transportKind: codexNativeTransport.transportKind,
+    model: "gpt-5.6-luna",
     effort: "max",
   },
   {

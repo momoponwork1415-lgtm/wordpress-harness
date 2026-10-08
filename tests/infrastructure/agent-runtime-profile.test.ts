@@ -4,6 +4,7 @@ import { canonicalDigest } from "../../src/infrastructure/canonical-json.js";
 import {
   admitAgentRuntimeProfile,
   claudeCodeNativeTransport,
+  codexNativeTransport,
   deepSeekHarnessNativeTransport,
   defineAgentRuntimeProfile,
 } from "../../src/infrastructure/agent-runtime-profile.js";
@@ -96,6 +97,32 @@ describe("Agent Runtime Profile catalog", () => {
       id: "deepseek-flash-max",
       ...deepSeekHarnessNativeTransport,
       model: "deepseek-flash",
+      effort: "max",
+    });
+
+    expect(
+      admitAgentRuntimeProfile(profile, profile.sandboxImageDigest),
+    ).toEqual({ status: "admitted", profile });
+  });
+
+  it("admits Daybreak Blue high on the pinned Codex transport", () => {
+    const profile = defineAgentRuntimeProfile({
+      id: "daybreak-blue-high",
+      ...codexNativeTransport,
+      model: "gpt-daybreak-blue-latest",
+      effort: "high",
+    });
+
+    expect(
+      admitAgentRuntimeProfile(profile, profile.sandboxImageDigest),
+    ).toEqual({ status: "admitted", profile });
+  });
+
+  it("admits GPT-5.6 Luna max on the pinned Codex transport", () => {
+    const profile = defineAgentRuntimeProfile({
+      id: "gpt-5.6-luna-max",
+      ...codexNativeTransport,
+      model: "gpt-5.6-luna",
       effort: "max",
     });
 

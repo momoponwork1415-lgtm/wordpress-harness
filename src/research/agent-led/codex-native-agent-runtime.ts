@@ -215,11 +215,22 @@ function researchTransportSchema(): Record<string, unknown> {
   const candidate = jsonObject(candidates.items);
   const candidateProperties = jsonObject(candidate.properties);
   const candidateRequired = z.array(z.string()).parse(candidate.required);
+  candidateProperties.attackerPosition = nullableJsonSchema(
+    candidateProperties.attackerPosition,
+  );
+  candidateProperties.priorityImpact = nullableJsonSchema(
+    candidateProperties.priorityImpact,
+  );
   candidateProperties.reproductionRecipe = nullableJsonSchema(
     candidateProperties.reproductionRecipe,
   );
   candidate.properties = candidateProperties;
-  candidate.required = [...candidateRequired, "reproductionRecipe"];
+  candidate.required = [
+    ...candidateRequired,
+    "attackerPosition",
+    "priorityImpact",
+    "reproductionRecipe",
+  ];
   candidates.items = candidate;
   properties.candidates = candidates;
   const assessments = jsonObject(properties.assessments);
@@ -280,8 +291,16 @@ function normalizeTransportReport(value: unknown): unknown {
     .parse(report.candidates)
     .map((value) => {
       const candidate = jsonObject(value);
-      if (candidate.reproductionRecipe !== null) return candidate;
-      const { reproductionRecipe: _recipe, ...normalizedCandidate } = candidate;
+      const normalizedCandidate = { ...candidate };
+      if (candidate.attackerPosition === null) {
+        delete normalizedCandidate.attackerPosition;
+      }
+      if (candidate.priorityImpact === null) {
+        delete normalizedCandidate.priorityImpact;
+      }
+      if (candidate.reproductionRecipe === null) {
+        delete normalizedCandidate.reproductionRecipe;
+      }
       return normalizedCandidate;
     });
   const assessments = z
@@ -326,7 +345,7 @@ function normalizeTransportReport(value: unknown): unknown {
 }
 
 function transportPrompt(prompt: string): string {
-  return `${prompt}\n\nTransport requirement: always include parkedProgrammeLeads; use an empty array when there are none. Every candidate must include reproductionRecipe; set it to null when no private reproduction recipe is available. Every Research Assessment must include unresolvedFacts; set it to null for refuted and use a non-empty array for blocked. Decision must include kind, reason, nextActions, and basis. For continue, set basis to null. For stop, set reason and nextActions to null. These null placeholders are transport-only.`;
+  return `${prompt}\n\nTransport requirement: always include parkedProgrammeLeads; use an empty array when there are none. Every candidate must include attackerPosition, priorityImpact, and reproductionRecipe. When the sealed run has a Programme Research Boundary, attackerPosition and priorityImpact must be exact allowed machine values from candidateAdmission; otherwise set both to null. Set reproductionRecipe to null when no private reproduction recipe is available. Every Research Assessment must include unresolvedFacts; set it to null for refuted and use a non-empty array for blocked. Decision must include kind, reason, nextActions, and basis. For continue, set basis to null. For stop, set reason and nextActions to null. These null placeholders are transport-only.`;
 }
 
 const managedRequirements = `allowed_web_search_modes = []

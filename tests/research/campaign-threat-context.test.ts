@@ -7,6 +7,7 @@ import {
 } from "../../src/infrastructure/agent-runtime-profile.js";
 import {
   campaignInputSchema,
+  programmeResearchBoundarySchema,
   type SealedNativeRun,
 } from "../../src/research/agent-led/contracts.js";
 import { agentResearchPrompt } from "../../src/research/agent-led/gvisor-agent-sandbox.js";
@@ -56,6 +57,26 @@ function programmeBoundary() {
     priorityImpacts: [
       "High-impact broken security semantics attributable to the target plugin.",
     ],
+    candidateAdmission: {
+      eligibleAttackerPositions: [
+        "unauthenticated" as const,
+        "subscriber" as const,
+        "customer" as const,
+      ],
+      priorityImpacts: [
+        "arbitrary-php-file-upload" as const,
+        "arbitrary-php-file-read" as const,
+        "arbitrary-php-file-deletion" as const,
+        "arbitrary-options-update" as const,
+        "remote-code-execution" as const,
+        "authentication-bypass-to-administrator" as const,
+        "privilege-escalation-to-administrator" as const,
+        "stored-cross-site-scripting" as const,
+        "sql-injection" as const,
+        "critical-unauthorized-data-alteration" as const,
+        "critical-unauthorized-data-read" as const,
+      ],
+    },
     explicitExclusions: [
       "Business logic bugs.",
       "Basic information disclosure.",
@@ -120,6 +141,44 @@ function sealedRun(): SealedNativeRun {
 }
 
 describe("Campaign Threat Context", () => {
+  it.each([
+    {
+      field: "eligibleAttackerPositions" as const,
+      value: ["contributor"],
+    },
+    {
+      field: "priorityImpacts" as const,
+      value: ["availability-degradation"],
+    },
+  ])(
+    "rejects an unsupported Candidate admission $field value",
+    ({ field, value }) => {
+      const boundary = programmeBoundary();
+      const { digest: _digest, ...body } = boundary;
+      const changedBody = {
+        ...body,
+        candidateAdmission: {
+          ...body.candidateAdmission,
+          [field]: value,
+        },
+      };
+
+      const parsed = programmeResearchBoundarySchema.safeParse({
+        ...changedBody,
+        digest: canonicalDigest(changedBody),
+      });
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: ["candidateAdmission", field, 0],
+          }),
+        ]),
+      );
+    },
+  );
+
   it("reaches Research Root as planning data without prescribing orchestration", () => {
     const prompt = agentResearchPrompt(
       "Research broken security semantics from source.",
@@ -152,12 +211,27 @@ describe("Campaign Threat Context", () => {
       "Stop tool use and reserve at least 60 seconds to synthesize",
     );
     expect(prompt).toContain('"sourceProvenExcluded":"park"');
+    expect(prompt).toContain(
+      '"eligibleAttackerPositions":["unauthenticated","subscriber","customer"]',
+    );
+    expect(prompt).toContain(
+      "Every Candidate must declare one exact attackerPosition and one exact priorityImpact",
+    );
     expect(prompt).not.toContain("researcherTier");
     expect(prompt).not.toContain("targetEligibility");
     expect(prompt).not.toContain("programme:wordfence");
     expect(prompt).not.toContain("wordfence-scope-snapshot");
     expect(prompt).toContain(
       "Resume deep work only when a concrete source-bound edge could reach an eligible impact",
+    );
+    expect(prompt).toContain(
+      "A Candidate's source-supported attacker position must be explicitly included in eligibleAttackerPositions",
+    );
+    expect(prompt).toContain(
+      "Omission from explicitExclusions does not make an attacker position eligible",
+    );
+    expect(prompt).toContain(
+      "Do not promote a primitive or partial chain whose eligible high-impact effect is still hypothetical",
     );
     expect(prompt).toContain(
       "This Native Run is source investigation time, not a planning turn",
@@ -192,6 +266,12 @@ describe("Campaign Threat Context", () => {
     );
     expect(prompt).toContain(
       "Do not merely repeat the prior actions in decision.nextActions",
+    );
+    expect(prompt).toContain(
+      "Do not continue merely to broaden surface coverage, increase record count, or cosmetically revise an earlier Candidate",
+    );
+    expect(prompt).toContain(
+      "A new Candidate in a continuation run needs a materially distinct sourceTrace and security effect",
     );
   });
 
