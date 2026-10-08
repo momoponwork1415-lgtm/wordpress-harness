@@ -787,6 +787,7 @@ export interface NativeAgentRuntime {
 export interface ResearchCampaigns {
   conduct(command: CampaignCommand): Promise<CampaignOutcomeRef>;
   inspect(query: CampaignQuery): Promise<ResearchCampaignView>;
+  listCampaigns(): Promise<readonly CampaignOutcomeRef[]>;
   close(): void;
 }
 

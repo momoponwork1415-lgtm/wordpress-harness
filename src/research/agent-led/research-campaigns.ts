@@ -1131,6 +1131,27 @@ class SqliteResearchCampaigns implements ResearchCampaigns {
     if (view === undefined) throw new AgentLedCampaignNotFoundError(campaignId);
     return view;
   }
+
+  async listCampaigns(): Promise<readonly CampaignOutcomeRef[]> {
+    const campaignIds = z.array(z.string().min(1)).parse(
+      this.#database
+        .prepare(
+          `SELECT campaign_id FROM agent_led_research_events
+             WHERE kind = 'campaign.defined'
+             ORDER BY global_sequence`,
+        )
+        .pluck()
+        .all(),
+    );
+    return campaignIds.map((campaignId) => {
+      const view = this.#readView(campaignId);
+      if (view === undefined) {
+        throw new AgentLedCampaignNotFoundError(campaignId);
+      }
+      const { kind, schemaVersion, inputDigest, status } = view;
+      return { kind, schemaVersion, campaignId, inputDigest, status };
+    });
+  }
 }
 
 export function openResearchCampaigns(

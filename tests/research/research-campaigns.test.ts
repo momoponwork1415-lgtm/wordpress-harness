@@ -184,6 +184,63 @@ async function conductWithHumanAdvance(
 }
 
 describe("ResearchCampaigns", () => {
+  it("lists the Campaigns recorded in one database in recorded order", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "research-campaigns-"));
+    temporaryDirectories.push(directory);
+    const databasePath = join(directory, "agent-led.sqlite");
+    const runtime: NativeAgentRuntime = {
+      async execute(run) {
+        return {
+          schemaVersion: 2,
+          runId: run.runId,
+          runtimeProfileDigest: run.agentRuntimeProfile.digest,
+          terminal: "provider-quota-exhausted",
+          startedAt: "2026-09-07T01:00:00.000Z",
+          completedAt: "2026-09-07T01:00:10.000Z",
+          usage: { wallTimeMs: 10_000 },
+          activity: { subagents: null, tools: null },
+          failure: { summary: "Quota unavailable.", retryable: true },
+        };
+      },
+    };
+
+    const empty = openResearchCampaigns({ databasePath, runtime });
+    await expect(empty.listCampaigns()).resolves.toStrictEqual([]);
+    const second: CampaignInput = {
+      ...input,
+      campaignId: "campaign-agent-led-2",
+    };
+    await empty.conduct(second);
+    await empty.conduct(input);
+    empty.close();
+
+    const reopened = openResearchCampaigns({
+      databasePath,
+      runtime: {
+        async execute() {
+          throw new Error("listing must not rerun research");
+        },
+      },
+    });
+    await expect(reopened.listCampaigns()).resolves.toStrictEqual([
+      {
+        kind: "agent-led-campaign-outcome",
+        schemaVersion: 4,
+        campaignId: "campaign-agent-led-2",
+        inputDigest: canonicalDigest(second),
+        status: "incomplete",
+      },
+      {
+        kind: "agent-led-campaign-outcome",
+        schemaVersion: 4,
+        campaignId: "campaign-agent-led-1",
+        inputDigest: canonicalDigest(input),
+        status: "incomplete",
+      },
+    ]);
+    reopened.close();
+  });
+
   it("restores a sealed stopped Campaign through its public interface", async () => {
     const directory = await mkdtemp(join(tmpdir(), "research-campaigns-"));
     temporaryDirectories.push(directory);

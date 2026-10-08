@@ -32,6 +32,7 @@
 | 候補を動的検証し、対象範囲と提出承認を扱う | Human OS | [人間による運用](#human-os) |
 | コマンドと実行依存を接続する | Composition root | [CLI](#cli) |
 | 独立した探索試行を保存済み記録から比較する | Operations | [独立探索試行の比較](#independent-research-trial-comparison) |
+| 保存済みCampaignの対象規模と探索量を集計する | Operations | [探索量の集計](#campaign-exploration-volume) |
 | エージェントへ渡る入力の所在を確認する | Research / Runtime Adapter | [エージェント入力](#agent-input) |
 | 共通のJSON・ソースダイジェストを調べる | Infrastructure | [共通基盤](#shared-infrastructure) |
 
@@ -205,7 +206,7 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 <summary>Research — Campaignの判断点と検証handoffを扱う</summary>
 
 - **目的:** 自律Research loop、Human Candidate Review、Candidate Verification Request、Coverageと再開を一つのModuleに隠す。
-- **インターフェース:** `ResearchCampaigns.conduct / inspect`。versioned handoffは[`research/index.ts`](../src/research/index.ts)、入力とcommandのfieldは[`contracts.ts`](../src/research/agent-led/contracts.ts)。
+- **インターフェース:** `ResearchCampaigns.conduct / inspect / listCampaigns`。`listCampaigns`は一つのdatabaseに記録されたCampaignのoutcome refを記録順に返し、runを起動しない。versioned handoffは[`research/index.ts`](../src/research/index.ts)、入力とcommandのfieldは[`contracts.ts`](../src/research/agent-led/contracts.ts)。
 - **所有する記録・不変条件:** SQLiteのappend-only Campaign eventsとprivate Checkpoint / Diagnostic / Candidate Recipeへのopaque ref。Campaign outcome view v4はprovider呼び出し前にexact Sealed Native RunへbindしたNative Run Attemptを公開し、private Receipt artifactのatomic確定後だけterminal eventを記録する。Rootがsource-boundな`continue`を返すと、completed runのexact Checkpointとnext actionを次runへbindして人間の介入なしに継続する。`stop`後だけCandidate ReviewまたはCoverage closureへ進む。`researchProgress`はcompleted runのexact `evidenceSummary`、観測したsource pathごとのrun provenanceと未完了のnext actionを同じ記録からread-onlyに導出し、failed / orphaned runを探索済みへ変換しない。Research Methodは`promptSet.id + digest`としてCampaign、runとCheckpointへbindし、canonicalな`wp2shell` / `cloudflare` / `cloudflare-upstream`のIDと本文digest対応を[`research-methods.ts`](../src/research/agent-led/research-methods.ts)で固定する。`cloudflare-upstream`はpinned公開skillをMethod内部のprivate scratch workflowとして使い、そのcoverage ledgerをHarness stateやResearch Coverageへ昇格させない。方式ごとのstate、schedulerまたはAdapterを追加しない。Research Report v2はrun内のexamined / unexamined領域を示すsource-backed evidence summary、run-localなResearch Assessmentと、ordered source trace・control assessment・未解決事実を持つCandidateを記録する。Programme Boundary付きCandidateは機械判定用`candidateAdmission` allowlistの`attackerPosition`と`priorityImpact`を宣言し、欠落または不一致ならReceiptを保持したままrun全体をadmission failureにする。completed Native Run Receiptと、その結果をCampaignへ採用できないResearch Admission Failureは別eventとして同じtransactionで記録する。固定1時間capやHuman Research Continuation Reviewを持たず、Campaign全体のrun数・wall timeだけをsafety envelopeとして維持する。Parked Programme LeadのCandidate Review除外、admitされたCandidateだけのRequest生成とResearch Coverageとの分離を維持する。`researchProgress`、evidence summaryやAssessmentをwork queue、探索完了またはCoverage proofにせず、Candidate VerificationへCheckpointやProgramme Boundaryを渡さない。provider costは観測値。
 - **失敗時:** 異なるinputまたはstale/partial Candidate Reviewはatomic conflict。started eventだけが残ったattemptは`orphaned`かつCampaign `incomplete`として再構築し、自動再実行しない。同じrun、runtime profile、Receipt digestへ一致するprivate artifactだけをterminal eventとして回復し、欠落・破損・binding不一致ならorphanedのままにする。provider・Budget・policy・invalid outputは`incomplete`として残す。completed runのCandidate identity conflict、機械判定用allowlistの欠落、またはCandidateの攻撃者・impactがProgramme Boundary外ならReceipt、report、Checkpoint、usageを改変せず、digest-boundな`admissionFailure`で`incomplete`にし、そのrunだけをCandidate / Lead集約から除外する。Parked Programme Leadが後続runで同じIDの内容を変えてもReceiptはそのまま保持し、Campaign集約では最初の記録を正本として探索を停止しない。失敗runの自動retryやCandidate promotionは行わない。Researchの有効Checkpointによる明示的resumeと実行前availability / 未認証の一度のretryを区別する。source / Checkpoint integrity failureはretry不可。admit済みCandidateにrecipeがなければRequestを捏造せず`verification-preparation-needed`にする。
 
@@ -307,6 +308,21 @@ Wordfenceのproduction storage、認証、途中で切れた応答、並行更�
 - **失敗時:** missing Campaignは`planned`、binding不一致またはresume開始は`incompatible`、失敗・orphan・administrative incompleteは`incomplete`として表示する。計画外Campaign、重複・改変されたview、Campaign Requestと一致しないHuman OS viewは例外で拒否する。比較はResearch、Human Candidate Review、Candidate Verificationまたは外部行動を起動しない。
 
 **ソース / 振る舞いテスト:** [`independent-research-trial-comparison.ts`](../src/operations/independent-research-trial-comparison.ts) · [`independent-research-trial-comparison.test.ts`](../tests/operations/independent-research-trial-comparison.test.ts)
+
+</details>
+
+<a id="campaign-exploration-volume"></a>
+## 探索量の集計
+
+<details>
+<summary>Operations — 保存済みCampaignの対象規模と探索量を読み取り専用で並べる</summary>
+
+- **目的:** プラグイン規模（manifestのentries / bytes、Target Intake Packetがあれば PHP file数 / bytes）と、Campaignごとの探索量（Native Runの試行・完了・失敗・orphan数、wall time、token、報告された費用、tool呼び出し数、subagent最大数、Candidate数、Parked Lead数、最終decision）を一表にする。
+- **インターフェース:** `deriveCampaignExplorationVolume(views, { sourceManifests })`、installed CLI `wordpress-harness-exploration-volume --database-list <file> [--intake-list <file>] [--format csv|json]`。databaseとintake packetのpathは呼び出し側が一行一pathのファイルで渡す。
+- **所有する記録・不変条件:** mutable stateを持たない。`ResearchCampaigns.listCampaigns / inspect`と`targetIntakePacketSchema`だけから導く。token、費用、tool数、subagent数が一つでも欠けたCampaignは`unknown`とし、0へ丸めない。manifestは`sourceTree.digest`で結び付け、一致しないCampaignのPHP規模は`unknown`。
+- **失敗時:** 存在しないdatabase pathは作成せずmissingとして数え、開けないまたは読めないdatabaseはunreadableとして数えて続行する。intake packetとして検査できないJSONはskippedとして数える。件数はstderrへ出し、stdoutは表だけにする。Research databaseだけを渡す前提であり、他領域のdatabaseを渡さない。
+
+**ソース / 振る舞いテスト:** [`campaign-exploration-volume.ts`](../src/operations/campaign-exploration-volume.ts) · [`campaign-exploration-volume-cli.ts`](../src/operations/campaign-exploration-volume-cli.ts) · [`campaign-exploration-volume.test.ts`](../tests/operations/campaign-exploration-volume.test.ts) · [`campaign-exploration-volume-cli.test.ts`](../tests/operations/campaign-exploration-volume-cli.test.ts)
 
 </details>
 

@@ -93,7 +93,7 @@ Harnessによる強制条件は次に限定します。
 | `cloudflare` | `wordpress-plugin-research-cloudflare-v2` / [Prompt](../prompts/wordpress-plugin-research-cloudflare-v1.md) | ソースの偵察、調査範囲を意識した探索、敵対的な検証、ソースに基づく抜けの補完 |
 | `cloudflare-upstream` | `wordpress-plugin-research-cloudflare-upstream-c1c8a8c-v2` / [Prompt](../prompts/wordpress-plugin-research-cloudflare-upstream-v1.md) | 固定した公開版の全体監査手順、非公開台帳、探索・批評の波、新しいソースによる確認 |
 
-標準IDとPrompt digestの対応は[`research-methods.ts`](../src/research/agent-led/research-methods.ts)で固定します。別方式の本文や旧Promptを同じ名前で実行する誤設定は拒否します。方式固有の探索判断はPromptとプロバイダー固有のRootの内側に置きます。`ResearchCampaigns.conduct / inspect`、探索報告、人間による候補採否、Provider AdapterのInterfaceは方式ごとに分岐させません。
+標準IDとPrompt digestの対応は[`research-methods.ts`](../src/research/agent-led/research-methods.ts)で固定します。別方式の本文や旧Promptを同じ名前で実行する誤設定は拒否します。方式固有の探索判断はPromptとプロバイダー固有のRootの内側に置きます。`ResearchCampaigns.conduct / inspect / listCampaigns`、探索報告、人間による候補採否、Provider AdapterのInterfaceは方式ごとに分岐させません。
 
 プロバイダー固有のRoot agentは対象ソース全体を読み、プラグインが依存するWordPress本体などの挙動を、版を固定した依存ソースから解決します。どの方式でもnative subagentを積極的かつ動的に使い、依存ソース自体を別の監査対象にはしません。Harnessが実行環境で強制するのは、Rootを含めて同時に動けるエージェントが最大4体という資源上限だけです。実際の数、役割、探索回数、脆弱性の種類、読むファイルは指定しません。Rootだけが最大3体のsubagentを起動し、役割、終了後の再投入、次の探索を決めます。探索評価ではGrokを先に使います。利用できない時に同じCampaignを暗黙に別モデルへ切り替えず、GLM 5.3など別の`RuntimeProfile`を結び付けた新しいCampaignとして比較します。
 
