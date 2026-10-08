@@ -42,3 +42,4 @@ node dist/cli.js campaign inspect \
 - [ドキュメント案内](docs/README.md) — 全体図、処理順、用語、設計の入口
 - [コードベース案内](docs/CODEBASE-GUIDE.md) — 変更箇所、インターフェース、振る舞いテスト
 - [開発規則](AGENTS.md) — リポジトリ全体の規則
+- [ライセンス](LICENSE) — Apache License 2.0
