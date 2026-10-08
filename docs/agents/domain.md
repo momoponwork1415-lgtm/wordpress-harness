@@ -2,6 +2,8 @@
 
 コードベースを調べる開発スキルが、このリポジトリのドメイン文書をどう読むかを定める。
 
+Matt Pocockスキル内の`GLOSSARY-MAP.md`はこのリポジトリの`CONTEXT-MAP.md`、`GLOSSARY.md`は担当領域の`CONTEXT.md`として読む。スキルが用語集の作成や更新を求める場合も、既存の`CONTEXT.md`を更新し、並行する`GLOSSARY.md`を作らない。リポジトリの用語と配置は`AGENTS.md`と本書を優先する。
+
 ## 調査前に読むもの
 
 - リポジトリ直下の**`CONTEXT-MAP.md`** — コンテキストごとの`CONTEXT.md`を示す。作業対象に関係するものだけ読む。
