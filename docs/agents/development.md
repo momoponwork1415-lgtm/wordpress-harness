@@ -32,6 +32,6 @@
 
 [Check workflow](../../.github/workflows/check.yml)はPRと`main`へのpushでNode 22・24それぞれに`pnpm install --frozen-lockfile`と`pnpm check`を実行する。書式、型、振る舞いテスト、build、文書リンクを確認する。
 
-[Security workflow](../../.github/workflows/security.yml)はPRの依存差分、lockfile全体のhigh以上の既知脆弱性、TypeScriptとGitHub Actions workflowのCodeQL解析を確認する。依存監査とCodeQLは週次でも実行する。検出結果は人間がトリアージし、無検出を安全性の証明と扱わない。
+[Security workflow](../../.github/workflows/security.yml)はPRの依存差分、ルートのpnpm lockfileとDeepSeekイメージのnpm lockfileに含まれるhigh以上の既知脆弱性、TypeScriptとGitHub Actions workflowのCodeQL解析を確認する。依存監査とCodeQLは週次でも実行する。検出結果は人間がトリアージし、無検出を安全性の証明と扱わない。
 
 Docker・gVisorの実統合テストは専用環境の前提が必要で、通常CIでは2件がskipされる。`HARNESS_RUN_DOCKER_INTEGRATION=1`を通常runnerへ単に設定しない。実対象での探索再現率、使い捨てLabでの発火、プログラム対象範囲、外部提出の承認もCIの成功からは導けない。

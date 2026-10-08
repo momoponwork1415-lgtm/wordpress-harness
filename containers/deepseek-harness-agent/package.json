@@ -4,5 +4,10 @@
   "private": true,
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.6-alpha.2"
+  },
+  "overrides": {
+    "@modelcontextprotocol/client": "2.2.0",
+    "sharp": "0.35.5",
+    "fflate": "0.8.3"
   }
 }

@@ -44,8 +44,11 @@ jobs:
         with:
           package_json_file: package.json
 
-      - name: Audit locked dependencies
+      - name: Audit root pnpm lockfile
         run: pnpm audit --audit-level high
+
+      - name: Audit DeepSeek image npm lockfile
+        run: npm audit --audit-level high --prefix containers/deepseek-harness-agent
 
   codeql:
     runs-on: ubuntu-24.04
